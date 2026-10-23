@@ -134,3 +134,32 @@ describe("searchPublished", () => {
     expect(await searchPublished(deps, { jurisdiction: "NSW" })).toEqual([]);
   });
 });
+
+describe("rental bond pathway at publish", () => {
+  const rent: DraftInput = { ...input, transactionType: "rent" };
+
+  async function readyRental(pathway?: "state_bond_authority" | "solicitor_trust") {
+    const l = await createDraft(deps, owner, rent);
+    const rec = (await repo.get(l.id))!;
+    await repo.save({ ...rec, listingFeePaid: true, termsAccepted: true, ...(pathway ? { rentalBondPathway: pathway } : {}) });
+    return l.id;
+  }
+
+  it("blocks a rental until the bond pathway is confirmed", async () => {
+    const id = await readyRental();
+    const r = await publishListing(deps, owner, id, true);
+    expect(r.ok && r.value.decision.allowed).toBe(false);
+  });
+
+  it("allows a rental whose bond is held by a state bond authority (no trust account needed)", async () => {
+    const id = await readyRental("state_bond_authority");
+    const r = await publishListing(deps, owner, id, false);
+    expect(r.ok && r.value.decision.allowed).toBe(true);
+  });
+
+  it("still requires an approved trust account when the bond goes to a solicitor's trust account", async () => {
+    const id = await readyRental("solicitor_trust");
+    const r = await publishListing(deps, owner, id, true);
+    expect(r.ok && r.value.decision.allowed).toBe(false);
+  });
+});

@@ -1,7 +1,7 @@
 import type { AuditEvent } from "./audit";
 import { isJurisdiction, type Jurisdiction } from "./jurisdiction";
 import type { PropertyListing, PropertyType, PublishDecision, UseClass } from "./listing";
-import { decidePublish } from "./publish";
+import { decidePublish, type BondPathway } from "./publish";
 import { transitionListing } from "./listing-transitions";
 import type { TrustAccountDecision } from "./trust-account";
 import type { AgentLicence } from "./licence";
@@ -23,6 +23,8 @@ export interface ListingRecord {
   listing: PropertyListing;
   listingFeePaid: boolean;
   termsAccepted: boolean;
+  /** Rentals only. Undefined until confirmed; publish stays blocked for rentals until set. */
+  rentalBondPathway?: BondPathway;
 }
 
 export interface ListingRepository {
@@ -195,6 +197,7 @@ export async function publishListing(
     decision = decidePublish(l, required, licences, now.slice(0, 10), {
       termsAccepted: rec.termsAccepted,
       listingFeePaid: rec.listingFeePaid,
+      ...(rec.rentalBondPathway ? { rentalBondPathway: rec.rentalBondPathway } : {}),
       ...(trustAccount ? { trustAccount } : {})
     });
   }
