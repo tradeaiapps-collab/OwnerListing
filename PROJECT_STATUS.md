@@ -137,6 +137,6 @@ Westpac is the bank and payment provider. src/adapters/westpac-payway.ts holds t
 ## Next steps
 1. DONE 22 Oct on owner's machine: npm install, npm test (43 passed, 13 files), typecheck clean. npm audit (22 Oct): fixed. Upgraded to next 16.4.2, vitest 5.0.5, vite 8.3.5 on owner's machine; 43 tests pass, typecheck clean, 0 vulnerabilities. Do not use audit fix --force.
 2. Items 3 to 7, licence table, and targetPriceCents.
-3. DONE (PR #4): PostgreSQL migrations and Google login. Still open: confirm audit writes go to PostgreSQL (the repository SQL exists; the adapter wiring is not confirmed in code); MFA and role checks on API routes are not confirmed in code.
+3. DONE (PR #4): PostgreSQL migrations and Google login. Audit writes go to PostgreSQL (appendAuditPg in src/server/db.ts, wired in src/server/context.ts). Still open: no API route calls the role checks in src/domain/access.ts; MFA is not implemented in code; audit reads (AUDIT_LIST_SQL) have no caller.
 5. Compliance (Shirin) to supply state disclosure configuration.
 6. Australian legal review before any public launch (G0 and G1 controls).
