@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { JSON_HEADERS, fieldStyle } from "../listings/ui";
 
 interface Offer { id: string; priceCents: number; depositCents: number; settlementDays: number; conditions: string[]; status: string; submittedAt: string }
-interface Item { offer: Offer; listingTitle: string; role: "buyer" | "owner" }
+interface Item { offer: Offer; listingTitle: string; role: "buyer" | "owner"; unread: boolean }
 
 const money = (c: number) => (c / 100).toLocaleString("en-AU", { style: "currency", currency: "AUD" });
 
@@ -35,9 +35,9 @@ export default function Offers() {
       {items === null && !error && <p>Loading...</p>}
       {items && items.length === 0 && <p>No offers yet.</p>}
       <ul style={{ listStyle: "none", padding: 0, display: "grid", gap: 12 }}>
-        {items?.map(({ offer: o, listingTitle, role }) => (
+        {items?.map(({ offer: o, listingTitle, role, unread }) => (
           <li key={o.id} style={{ border: "1px solid #8884", borderRadius: 8, padding: 12 }}>
-            <strong>{listingTitle}</strong> <small>({role === "owner" ? "offer on your listing" : "your offer"})</small>
+            {unread && <strong>New: </strong>}<strong>{listingTitle}</strong> <small>({role === "owner" ? "offer on your listing" : "your offer"})</small>
             <div>{money(o.priceCents)} · deposit {money(o.depositCents)} · settlement {o.settlementDays} days</div>
             {o.conditions.length > 0 && <div><small>Conditions: {o.conditions.join("; ")}</small></div>}
             <div><small>Status: {o.status.replace("_", " ")} · {new Date(o.submittedAt).toLocaleString("en-AU")}</small></div>

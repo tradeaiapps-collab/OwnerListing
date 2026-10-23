@@ -1,5 +1,5 @@
 import type { OfferLinkRecord } from "../domain/offer-intake";
-import type { OfferRecord, OfferRepository, OfferStatus } from "../domain/offer-service";
+import type { OfferAlertKind, OfferAlertRepository, OfferRecord, OfferRepository, OfferStatus } from "../domain/offer-service";
 import type { Queryable } from "./db";
 
 const iso = (v: unknown) => (v instanceof Date ? v.toISOString() : new Date(String(v)).toISOString());
@@ -69,6 +69,22 @@ export function createPgOfferRepository(db: Queryable): OfferRepository {
     async setStatus(id, from, to) {
       const r = await db.query("UPDATE formal_offer SET status = $3 WHERE id = $1 AND status = $2 RETURNING id", [id, from, to]);
       return r.rows.length === 1;
+    }
+  };
+}
+
+export function createPgOfferAlertRepository(db: Queryable): OfferAlertRepository {
+  return {
+    async notify(userId, offerId, kind, at) {
+      await db.query("INSERT INTO notification (user_id, kind, offer_id, created_at) VALUES ($1,$2,$3,$4) ON CONFLICT DO NOTHING", [userId, kind, offerId, at]);
+    },
+    async markRead(userId, offerIds, at) {
+      if (offerIds.length === 0) return;
+      await db.query("UPDATE notification SET read_at = $3 WHERE user_id = $1 AND offer_id = ANY($2::uuid[]) AND read_at IS NULL", [userId, [...offerIds], at]);
+    },
+    async unreadOfferIds(userId) {
+      const r = await db.query("SELECT DISTINCT offer_id FROM notification WHERE user_id = $1 AND offer_id IS NOT NULL AND read_at IS NULL", [userId]);
+      return r.rows.map(x => String(x["offer_id"]));
     }
   };
 }

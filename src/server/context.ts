@@ -8,7 +8,7 @@ import { actorFromRequest } from "./auth/actor";
 import { readAuthEnv } from "./auth/config";
 import { appendAuditPg, createPgListingRepository, type Queryable } from "./db";
 import { createPgEnquiryRepository, createPgNotificationRepository, getBuyerVerification } from "./enquiry-db";
-import { createPgOfferRepository } from "./offer-db";
+import { createPgOfferAlertRepository, createPgOfferRepository } from "./offer-db";
 import type { IdDeps } from "../domain/id-review-service";
 import { createPgIdRepository, fileStoreFromEnv, staffFor } from "./id-db";
 import type { PhoneDeps } from "../domain/phone-verification";
@@ -32,7 +32,7 @@ function wire(): Wired {
   const now = () => new Date().toISOString();
   const newId = () => randomUUID();
   const verification = (id: string) => getBuyerVerification(db, id);
-  const offerDeps: OfferDeps = { offers: createPgOfferRepository(db), listings: repo, verification, appendAudit, now, newId };
+  const offerDeps: OfferDeps = { offers: createPgOfferRepository(db), listings: repo, verification, alerts: createPgOfferAlertRepository(db), appendAudit, now, newId };
   const appUrl = readAuthEnv()?.appUrl;
   const secret = readAuthEnv()?.secret;
   const phoneDeps: PhoneDeps = {

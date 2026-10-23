@@ -33,10 +33,20 @@ export interface OfferRepository {
   setStatus(id: string, from: OfferStatus, to: OfferStatus): Promise<boolean>;
 }
 
+export type OfferAlertKind = "offer_submitted" | "offer_decided" | "offer_withdrawn";
+
+/** Tells a person something happened to an offer. At most one unread alert per offer and kind. */
+export interface OfferAlertRepository {
+  notify(userId: string, offerId: string, kind: OfferAlertKind, at: string): Promise<void>;
+  markRead(userId: string, offerIds: readonly string[], at: string): Promise<void>;
+  unreadOfferIds(userId: string): Promise<string[]>;
+}
+
 export interface OfferDeps {
   offers: OfferRepository;
   listings: ListingRepository;
   verification: (userId: string) => Promise<BuyerVerification>;
+  alerts?: OfferAlertRepository;
   appendAudit: (e: AuditEvent) => Promise<void>;
   now: () => string;
   newId: () => string;
@@ -124,7 +134,13 @@ export async function submitOffer(deps: OfferDeps, actor: Actor, input: OfferInp
     aggregateType: "offer", aggregateId: offer.id, eventType: "offer.submitted",
     correlationId: deps.newId(), payload: { listingId: offer.listingId }
   });
+  await alert(deps, rec.listing.ownerUserId, offer.id, "offer_submitted", now);
   return { ok: true, value: offer };
+}
+
+/** Alerts are best effort: the offer is already saved, so a failure here is never reported as a failed offer. */
+async function alert(deps: OfferDeps, userId: string, offerId: string, kind: OfferAlertKind, at: string): Promise<void> {
+  try { await deps.alerts?.notify(userId, offerId, kind, at); } catch { /* best effort */ }
 }
 
 const OWNER_MOVES: Record<string, readonly OfferStatus[]> = {
@@ -158,10 +174,12 @@ export async function changeStatus(deps: OfferDeps, actor: Actor, offerId: strin
     aggregateType: "offer", aggregateId: offer.id, eventType: `offer.${to}`,
     correlationId: deps.newId(), payload: { from: offer.status, to }
   });
+  if (isOwner) await alert(deps, offer.buyerUserId, offer.id, "offer_decided", now);
+  else if (listing) await alert(deps, listing.listing.ownerUserId, offer.id, "offer_withdrawn", now);
   return { ok: true, value: { ...offer, status: to } };
 }
 
-export interface OfferListItem { offer: OfferRecord; listingTitle: string; role: "buyer" | "owner" }
+export interface OfferListItem { offer: OfferRecord; listingTitle: string; role: "buyer" | "owner"; unread: boolean }
 
 /** Offers the user made and offers on their own listings, newest first. Prices are visible only to those two sides. */
 export async function myOffers(deps: OfferDeps, actor: Actor): Promise<OfferListItem[]> {
@@ -169,13 +187,25 @@ export async function myOffers(deps: OfferDeps, actor: Actor): Promise<OfferList
   const titles = new Map(mine.map(r => [r.listing.id, r.listing.title] as const));
   const asOwner = await deps.offers.listByListings([...titles.keys()]);
   const asBuyer = await deps.offers.listByBuyer(actor.userId);
-  const items: OfferListItem[] = asOwner.map(o => ({ offer: o, listingTitle: titles.get(o.listingId) ?? "", role: "owner" as const }));
+  const unread = new Set(deps.alerts ? await deps.alerts.unreadOfferIds(actor.userId) : []);
+  const items: OfferListItem[] = asOwner.map(o => ({ offer: o, listingTitle: titles.get(o.listingId) ?? "", role: "owner" as const, unread: unread.has(o.id) }));
   for (const o of asBuyer) {
     if (items.some(i => i.offer.id === o.id)) continue;
     const rec = await deps.listings.get(o.listingId);
-    items.push({ offer: o, listingTitle: rec?.listing.title ?? "", role: "buyer" });
+    items.push({ offer: o, listingTitle: rec?.listing.title ?? "", role: "buyer", unread: unread.has(o.id) });
   }
+  // Looking at the list counts as seeing them. The flags above still show what was new.
+  if (unread.size > 0) await deps.alerts?.markRead(actor.userId, [...unread], deps.now());
   return items.sort((a, b) => (a.offer.submittedAt < b.offer.submittedAt ? 1 : a.offer.submittedAt > b.offer.submittedAt ? -1 : 0));
+}
+
+export function createInMemoryOfferAlertRepository(): OfferAlertRepository {
+  const unread = new Set<string>();
+  return {
+    async notify(userId, offerId, kind) { unread.add(`${userId}|${offerId}|${kind}`); },
+    async markRead(userId, offerIds) { for (const k of [...unread]) if (k.startsWith(`${userId}|`) && offerIds.includes(k.split("|")[1] ?? "")) unread.delete(k); },
+    async unreadOfferIds(userId) { return [...new Set([...unread].filter(k => k.startsWith(`${userId}|`)).map(k => k.split("|")[1] ?? ""))]; }
+  };
 }
 
 export function createInMemoryOfferRepository(): OfferRepository {
