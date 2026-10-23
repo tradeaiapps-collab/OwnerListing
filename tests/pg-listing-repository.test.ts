@@ -1,11 +1,11 @@
 import pg from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { getThread, reply, startEnquiry, type EnquiryDeps } from "../src/domain/enquiry-service";
+import { inbox, getThread, reply, startEnquiry, type EnquiryDeps } from "../src/domain/enquiry-service";
 import { createDraft, publishListing, searchPublished, updateDraft, type ListingServiceDeps } from "../src/domain/listing-service";
 import { appendAuditPg, createPgListingRepository, type Queryable } from "../src/server/db";
 import { changeStatus, checkOfferLink, issueOfferLink, submitOffer, type OfferDeps } from "../src/domain/offer-service";
 import { createPgOfferRepository } from "../src/server/offer-db";
-import { createPgEnquiryRepository, getBuyerVerification } from "../src/server/enquiry-db";
+import { createPgEnquiryRepository, createPgNotificationRepository, getBuyerVerification } from "../src/server/enquiry-db";
 import { upsertGoogleUser } from "../src/server/users";
 
 // Runs against a real PostgreSQL with all migrations applied (CI provides one). Without DATABASE_URL the suite is not collected.
@@ -94,7 +94,7 @@ describe.skipIf(!url)("Postgres listing repository", () => {
     expect(await getBuyerVerification(db, buyerActor.userId)).toEqual({ emailVerified: true, phoneVerified: false, idVerified: false });
 
     const edeps: EnquiryDeps = {
-      enquiries: createPgEnquiryRepository(db), listings: deps.repo,
+      enquiries: createPgEnquiryRepository(db), notifications: createPgNotificationRepository(db), listings: deps.repo,
       verification: id => getBuyerVerification(db, id),
       appendAudit: e => appendAuditPg(db, e), now: deps.now, newId: deps.newId
     };
@@ -105,9 +105,13 @@ describe.skipIf(!url)("Postgres listing repository", () => {
     const started = await startEnquiry(edeps, buyerActor, l.id, "Hello");
     expect(started.ok).toBe(true);
     const id = started.ok ? started.value.enquiry.id : "";
+    expect((await inbox(edeps, actor)).find(i => i.enquiry.id === id)?.unread).toBe(true);
     expect((await reply(edeps, actor, id, "Hi there")).ok).toBe(true);
+    expect((await reply(edeps, actor, id, "Hi there")).ok).toBe(false);
+    expect((await inbox(edeps, buyerActor)).find(i => i.enquiry.id === id)?.unread).toBe(true);
     const thread = await getThread(edeps, buyerActor, id);
     expect(thread.ok && thread.value.messages.map(m => m.body)).toEqual(["Hello", "Hi there"]);
+    expect((await inbox(edeps, buyerActor)).find(i => i.enquiry.id === id)?.unread).toBe(false);
     expect((await getThread(edeps, { userId: crypto.randomUUID(), userType: "owner" }, id)).ok).toBe(false);
 
     await expect(db.query("UPDATE enquiry_message SET body = 'edited' WHERE enquiry_id = $1", [id])).rejects.toThrow();

@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { JSON_HEADERS, fieldStyle } from "../listings/ui";
 
-interface Item { enquiry: { id: string }; listingTitle: string; role: "buyer" | "owner" }
+interface Item { enquiry: { id: string }; listingTitle: string; role: "buyer" | "owner"; unread: boolean }
 interface Msg { id: string; senderUserId: string | null; automated: boolean; body: string; sentAt: string }
 
 // The system's offer prompt contains our own single-use link; show it as a link and everything else as plain text.
@@ -54,7 +54,7 @@ export default function Enquiries() {
         {items?.map(i => (
           <li key={i.enquiry.id}>
             <button type="button" onClick={() => load(i.enquiry.id)} style={{ ...fieldStyle, textAlign: "left" }} aria-pressed={open === i.enquiry.id}>
-              {i.listingTitle || "Listing"} <small>({i.role === "owner" ? "on your listing" : "you asked"})</small>
+              {i.unread && <strong>New: </strong>}{i.listingTitle || "Listing"} <small>({i.role === "owner" ? "on your listing" : "you asked"})</small>
             </button>
           </li>
         ))}

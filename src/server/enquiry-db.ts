@@ -1,5 +1,5 @@
 import type { BuyerVerification } from "../domain/buyer";
-import type { Enquiry, EnquiryMessage, EnquiryRepository } from "../domain/enquiry-service";
+import type { Enquiry, EnquiryMessage, EnquiryRepository, NotificationRepository } from "../domain/enquiry-service";
 import type { Queryable } from "./db";
 
 const iso = (v: unknown) => (v instanceof Date ? v.toISOString() : new Date(String(v)).toISOString());
@@ -40,6 +40,32 @@ export function createPgEnquiryRepository(db: Queryable): EnquiryRepository {
         senderUserId: x["sender_user_id"] === null ? null : String(x["sender_user_id"]), automated: x["automated"] === true,
         body: String(x["body"]), sentAt: iso(x["sent_at"])
       }));
+    },
+    async countSentSince(senderUserId, sinceIso) {
+      const r = await db.query("SELECT count(*) AS n FROM enquiry_message WHERE sender_user_id = $1 AND NOT automated AND sent_at >= $2", [senderUserId, sinceIso]);
+      return Number(r.rows[0]?.["n"] ?? 0);
+    },
+    async countStartedSince(buyerUserId, sinceIso) {
+      const r = await db.query("SELECT count(*) AS n FROM enquiry WHERE buyer_user_id = $1 AND created_at >= $2", [buyerUserId, sinceIso]);
+      return Number(r.rows[0]?.["n"] ?? 0);
+    }
+  };
+}
+
+export function createPgNotificationRepository(db: Queryable): NotificationRepository {
+  return {
+    async notifyMessage(userId, enquiryId, at) {
+      await db.query(
+        "INSERT INTO notification (user_id, kind, enquiry_id, created_at) VALUES ($1,'enquiry_message',$2,$3) ON CONFLICT DO NOTHING",
+        [userId, enquiryId, at]
+      );
+    },
+    async markRead(userId, enquiryId, at) {
+      await db.query("UPDATE notification SET read_at = $3 WHERE user_id = $1 AND enquiry_id = $2 AND read_at IS NULL", [userId, enquiryId, at]);
+    },
+    async unreadEnquiryIds(userId) {
+      const r = await db.query("SELECT enquiry_id FROM notification WHERE user_id = $1 AND read_at IS NULL", [userId]);
+      return r.rows.map(x => String(x["enquiry_id"]));
     }
   };
 }
