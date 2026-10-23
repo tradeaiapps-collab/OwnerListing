@@ -54,3 +54,8 @@ export function canActOnListing(
   if (appointment.revoked || appointment.listingId !== listing.id || appointment.agentUserId !== actor.id) return false;
   return action !== "listing.publish" || appointment.scope === "full";
 }
+
+/** Returns a forbidden failure when the actor's role may not perform the action; null when allowed. */
+export function forbiddenFor(actor: Actor, action: Action): { ok: false; code: "forbidden"; message: string } | null {
+  return can(actor, action) ? null : { ok: false, code: "forbidden", message: "Your account cannot do this." };
+}
