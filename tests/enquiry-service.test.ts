@@ -101,6 +101,39 @@ describe("startEnquiry", () => {
   });
 });
 
+describe("offer prompt", () => {
+  const withLinks = (): EnquiryDeps => ({ ...deps, offerLinks: async (l, b) => `https://app.test/offers/new?token=${l}-${b}` });
+
+  it("sends one system reply with a link when the buyer's message reads like an offer", async () => {
+    const d = withLinks();
+    const r = await startEnquiry(d, buyer, "pub", "I can offer $850,000 for it");
+    const id = r.ok ? r.value.enquiry.id : "";
+    const t = await getThread(d, buyer, id);
+    const msgs = t.ok ? t.value.messages : [];
+    expect(msgs.map(m => m.automated)).toEqual([false, true]);
+    expect(msgs[1]?.senderUserId).toBeNull();
+    expect(msgs[1]?.body).toContain("https://app.test/offers/new?token=pub-buyer-1");
+    expect(audit.map(e => e.eventType)).toContain("enquiry.offer_prompt_sent");
+  });
+
+  it("does not repeat inside the cooldown, and ignores ordinary questions and owner messages", async () => {
+    const d = withLinks();
+    const a = await startEnquiry(d, buyer, "pub", "Would you take $800k?");
+    const id = a.ok ? a.value.enquiry.id : "";
+    await reply(d, buyer, id, "I'll pay $820,000");
+    await reply(d, buyer, id, "Is parking included?");
+    await reply(d, owner, id, "I can do $900,000");
+    const t = await getThread(d, buyer, id);
+    expect((t.ok ? t.value.messages : []).filter(m => m.automated)).toHaveLength(1);
+  });
+
+  it("sends nothing when offer links are not configured", async () => {
+    const r = await startEnquiry(deps, buyer, "pub", "I can offer $850,000");
+    const t = await getThread(deps, buyer, r.ok ? r.value.enquiry.id : "");
+    expect((t.ok ? t.value.messages : []).some(m => m.automated)).toBe(false);
+  });
+});
+
 describe("threads", () => {
   it("lets the owner and buyer read and reply, and hides it from everyone else", async () => {
     const s = await startEnquiry(deps, buyer, "pub", "Hello");

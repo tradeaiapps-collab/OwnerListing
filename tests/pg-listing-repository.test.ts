@@ -3,6 +3,8 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { getThread, reply, startEnquiry, type EnquiryDeps } from "../src/domain/enquiry-service";
 import { createDraft, publishListing, searchPublished, updateDraft, type ListingServiceDeps } from "../src/domain/listing-service";
 import { appendAuditPg, createPgListingRepository, type Queryable } from "../src/server/db";
+import { changeStatus, checkOfferLink, issueOfferLink, submitOffer, type OfferDeps } from "../src/domain/offer-service";
+import { createPgOfferRepository } from "../src/server/offer-db";
 import { createPgEnquiryRepository, getBuyerVerification } from "../src/server/enquiry-db";
 import { upsertGoogleUser } from "../src/server/users";
 
@@ -110,5 +112,41 @@ describe.skipIf(!url)("Postgres listing repository", () => {
 
     await expect(db.query("UPDATE enquiry_message SET body = 'edited' WHERE enquiry_id = $1", [id])).rejects.toThrow();
     await expect(db.query("DELETE FROM enquiry_message WHERE enquiry_id = $1", [id])).rejects.toThrow();
+  });
+
+  it("keeps offers atomic and locked: one offer per link, terms frozen, no deletes, owner-only decisions", async () => {
+    const actor = { userId: ownerId, userType: "owner" as const };
+    const l = await createDraft(deps, actor, { ...input, title: "Offer home" });
+    const rec = await deps.repo.get(l.id);
+    await deps.repo.save({ ...rec!, listingFeePaid: true, termsAccepted: true });
+    await publishListing({ ...deps, trustAccountFor: async () => ({ kind: "approved" as const, reasons: [] }) }, actor, l.id, false);
+
+    const sub = `offerer-${Date.now()}`;
+    const bu = await upsertGoogleUser(db, { sub, email: `${sub}@example.test`, name: "Offerer" });
+    const buyerActor = { userId: bu!.id, userType: "owner" as const };
+    await db.query("UPDATE buyer_verification SET phone_verified_at = now(), id_verified_at = now() WHERE user_id = $1", [buyerActor.userId]);
+
+    const odeps: OfferDeps = {
+      offers: createPgOfferRepository(db), listings: deps.repo, verification: id => getBuyerVerification(db, id),
+      appendAudit: e => appendAuditPg(db, e), now: deps.now, newId: deps.newId
+    };
+    const url = await issueOfferLink(odeps, "https://app.test", l.id, buyerActor.userId);
+    const token = new URL(url).searchParams.get("token") ?? "";
+    const chk = await checkOfferLink(odeps, buyerActor, token);
+    expect(chk.ok && chk.value.listingTitle).toBe("Offer home");
+
+    const body = { token, priceCents: 85_000_000, depositCents: 8_500_000, settlementDays: 45, conditions: ["Finance approval"], confirmedFinal: true };
+    const [a, b] = await Promise.all([submitOffer(odeps, buyerActor, body), submitOffer(odeps, buyerActor, body)]);
+    expect([a.ok, b.ok].filter(Boolean)).toHaveLength(1);
+    const offer = a.ok ? a.value : b.ok ? b.value : undefined;
+    expect(offer?.priceCents).toBe(85_000_000);
+
+    await expect(db.query("UPDATE formal_offer SET price_cents = 1 WHERE id = $1", [offer!.id])).rejects.toThrow();
+    await expect(db.query("DELETE FROM formal_offer WHERE id = $1", [offer!.id])).rejects.toThrow();
+
+    expect((await changeStatus(odeps, { userId: crypto.randomUUID(), userType: "owner" }, offer!.id, "accepted")).ok).toBe(false);
+    expect((await changeStatus(odeps, buyerActor, offer!.id, "accepted")).ok).toBe(false);
+    const accepted = await changeStatus(odeps, actor, offer!.id, "accepted");
+    expect(accepted.ok && accepted.value.status).toBe("accepted");
   });
 });
