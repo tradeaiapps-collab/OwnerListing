@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { JSON_HEADERS, fieldStyle } from "../listings/ui";
+import IdForm from "./IdForm";
 
 interface Status { emailVerified: boolean; phoneVerified: boolean; idVerified: boolean; nextStep: string | null }
 
@@ -68,6 +69,7 @@ export default function Verify() {
           <button type="submit">Confirm</button>
         </form>
       )}
+      {status && !status.idVerified && <IdForm onDone={refresh} />}
     </main>
   );
 }
