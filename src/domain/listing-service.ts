@@ -12,6 +12,7 @@ export const PROPERTY_TYPES = [
 ] as const satisfies readonly PropertyType[];
 export const USE_CLASSES = ["residential", "commercial"] as const satisfies readonly UseClass[];
 export const TRANSACTION_TYPES = ["sale", "rent"] as const;
+export const BOND_PATHWAYS = ["state_bond_authority", "solicitor_trust", "bank_guarantee", "no_bond"] as const;
 
 export interface Actor {
   userId: string;
@@ -57,7 +58,8 @@ export interface DraftInput {
   propertyType: PropertyType;
 }
 
-export type DraftPatch = Partial<DraftInput>;
+/** rentalBondPathway is stored on the record, not the listing; see updateDraft. */
+export type DraftPatch = Partial<DraftInput> & { rentalBondPathway?: BondPathway };
 
 export type Failure = { ok: false; code: "invalid" | "not_found" | "forbidden" | "conflict"; message: string };
 export type Result<T> = { ok: true; value: T } | Failure;
@@ -105,6 +107,7 @@ export function parseDraftPatch(body: unknown): Result<DraftPatch> {
   if ("transactionType" in b) { const v = oneOf(b["transactionType"], TRANSACTION_TYPES); if (!v) return fail("invalid", "Invalid transaction type."); patch.transactionType = v; }
   if ("useClass" in b) { const v = oneOf(b["useClass"], USE_CLASSES); if (!v) return fail("invalid", "Invalid use."); patch.useClass = v; }
   if ("propertyType" in b) { const v = oneOf(b["propertyType"], PROPERTY_TYPES); if (!v) return fail("invalid", "Invalid property type."); patch.propertyType = v; }
+  if ("rentalBondPathway" in b) { const v = oneOf(b["rentalBondPathway"], BOND_PATHWAYS); if (!v) return fail("invalid", "Invalid bond pathway."); patch.rentalBondPathway = v; }
   if (Object.keys(patch).length === 0) return fail("invalid", "Nothing to update.");
   return { ok: true, value: patch };
 }
@@ -148,8 +151,9 @@ export async function updateDraft(deps: ListingServiceDeps, actor: Actor, id: st
   const rec = await deps.repo.get(id);
   if (!rec || rec.listing.ownerUserId !== actor.userId) return fail("not_found", "Listing not found.");
   if (rec.listing.status !== "draft") return fail("conflict", "Only a draft can be edited.");
-  const listing: PropertyListing = { ...rec.listing, ...patch, updatedAt: deps.now() };
-  await deps.repo.save({ ...rec, listing });
+  const { rentalBondPathway, ...listingPatch } = patch;
+  const listing: PropertyListing = { ...rec.listing, ...listingPatch, updatedAt: deps.now() };
+  await deps.repo.save({ ...rec, listing, ...(rentalBondPathway !== undefined ? { rentalBondPathway } : {}) });
   return { ok: true, value: listing };
 }
 
