@@ -1,0 +1,97 @@
+import type { AuditEvent } from "../domain/audit";
+import type { ListingRecord, ListingRepository } from "../domain/listing-service";
+import type { PropertyListing } from "../domain/listing";
+
+/** The part of pg.Pool this app uses, so tests and the domain do not depend on the driver. */
+export interface Queryable {
+  query(text: string, params?: unknown[]): Promise<{ rows: Record<string, unknown>[] }>;
+}
+
+interface ListingRow {
+  id: string; owner_user_id: string; owner_user_type: string; jurisdiction: string; status: string;
+  title: string; property_type: string; use_class: string; transaction_type: string; address_text: string;
+  created_at: Date | string; updated_at: Date | string; listing_fee_paid: boolean; terms_accepted: boolean;
+}
+interface DisclosureRow { listing_id: string; jurisdiction: string; disclosure_key: string; satisfied: boolean; evidence_reference: string | null }
+
+const iso = (v: Date | string) => (v instanceof Date ? v.toISOString() : new Date(v).toISOString());
+
+const SELECT = `SELECT l.id, l.owner_user_id, u.user_type AS owner_user_type, l.jurisdiction, l.status, l.title,
+  l.property_type, l.use_class, l.transaction_type, l.address_text, l.created_at, l.updated_at,
+  l.listing_fee_paid, l.terms_accepted
+  FROM property_listing l JOIN app_user u ON u.id = l.owner_user_id`;
+
+function toRecord(r: ListingRow, disclosures: DisclosureRow[]): ListingRecord {
+  const listing = {
+    id: r.id, ownerUserId: r.owner_user_id, ownerUserType: r.owner_user_type, jurisdiction: r.jurisdiction.trim(),
+    status: r.status, title: r.title, propertyType: r.property_type, useClass: r.use_class,
+    transactionType: r.transaction_type, address: r.address_text,
+    disclosures: disclosures.map(d => ({
+      key: d.disclosure_key, jurisdiction: d.jurisdiction.trim(), satisfied: d.satisfied,
+      ...(d.evidence_reference ? { evidenceReference: d.evidence_reference } : {})
+    })),
+    createdAt: iso(r.created_at), updatedAt: iso(r.updated_at)
+  } as PropertyListing;
+  return { listing, listingFeePaid: r.listing_fee_paid, termsAccepted: r.terms_accepted };
+}
+
+const COLS = "(id, owner_user_id, jurisdiction, transaction_type, use_class, property_type, title, address_text, status, created_at, updated_at, listing_fee_paid, terms_accepted)";
+const params = (r: ListingRecord) => {
+  const l = r.listing;
+  return [l.id, l.ownerUserId, l.jurisdiction, l.transactionType, l.useClass, l.propertyType, l.title, l.address,
+    l.status, l.createdAt, l.updatedAt, r.listingFeePaid, r.termsAccepted];
+};
+
+/**
+ * PostgreSQL listing store. Disclosures are verified by staff and are read here, never written by the listing API.
+ * Only parameterised queries; no string-built SQL.
+ */
+export function createPgListingRepository(db: Queryable): ListingRepository {
+  async function disclosuresFor(ids: string[]): Promise<Map<string, DisclosureRow[]>> {
+    const map = new Map<string, DisclosureRow[]>();
+    if (ids.length === 0) return map;
+    const res = await db.query(
+      "SELECT listing_id, jurisdiction, disclosure_key, satisfied, evidence_reference FROM listing_disclosure WHERE listing_id = ANY($1::uuid[])",
+      [ids]
+    );
+    for (const row of res.rows as unknown as DisclosureRow[]) {
+      const list = map.get(row.listing_id) ?? [];
+      list.push(row);
+      map.set(row.listing_id, list);
+    }
+    return map;
+  }
+
+  return {
+    async insert(r) {
+      await db.query(`INSERT INTO property_listing ${COLS} VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`, params(r));
+    },
+    async save(r) {
+      await db.query(
+        `UPDATE property_listing SET jurisdiction=$3, transaction_type=$4, use_class=$5, property_type=$6, title=$7,
+         address_text=$8, status=$9, updated_at=$11, listing_fee_paid=$12, terms_accepted=$13 WHERE id=$1 AND owner_user_id=$2`,
+        params(r)
+      );
+    },
+    async get(id) {
+      const res = await db.query(`${SELECT} WHERE l.id = $1`, [id]);
+      const row = res.rows[0] as unknown as ListingRow | undefined;
+      if (!row) return undefined;
+      return toRecord(row, (await disclosuresFor([row.id])).get(row.id) ?? []);
+    },
+    async list() {
+      const res = await db.query(`${SELECT} ORDER BY l.created_at DESC`);
+      const rows = res.rows as unknown as ListingRow[];
+      const ds = await disclosuresFor(rows.map(r => r.id));
+      return rows.map(r => toRecord(r, ds.get(r.id) ?? []));
+    }
+  };
+}
+
+export async function appendAuditPg(db: Queryable, e: AuditEvent): Promise<void> {
+  await db.query(
+    `INSERT INTO audit_event (id, occurred_at, actor_type, actor_id, aggregate_type, aggregate_id, event_type, correlation_id, payload)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb)`,
+    [e.id, e.occurredAt, e.actorType, e.actorId, e.aggregateType, e.aggregateId, e.eventType, e.correlationId, JSON.stringify(e.payload)]
+  );
+}

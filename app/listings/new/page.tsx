@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { DEV_HEADERS, fieldStyle } from "../dev-headers";
+import { JSON_HEADERS, fieldStyle } from "../ui";
 
 type Check = { allowed: boolean; reasons: string[] };
 
@@ -9,6 +9,7 @@ export default function NewListing() {
   const [draftId, setDraftId] = useState("");
   const [check, setCheck] = useState<Check | null>(null);
   const [busy, setBusy] = useState(false);
+  const [signedOut, setSignedOut] = useState(false);
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -17,9 +18,10 @@ export default function NewListing() {
     setError("");
     setCheck(null);
     try {
-      const res = await fetch("/api/listings", { method: "POST", headers: DEV_HEADERS, body: JSON.stringify(body) });
+      const res = await fetch("/api/listings", { method: "POST", headers: JSON_HEADERS, body: JSON.stringify(body) });
       const d = await res.json();
-      if (!res.ok) setError(d.error ?? "Could not save the draft.");
+      if (res.status === 401) setSignedOut(true);
+      else if (!res.ok) setError(d.error ?? "Could not save the draft.");
       else setDraftId(d.listing.id);
     } catch {
       setError("Could not save the draft.");
@@ -32,7 +34,7 @@ export default function NewListing() {
     setBusy(true);
     setError("");
     try {
-      const res = await fetch(`/api/listings/${draftId}/publish?dryRun=1`, { method: "POST", headers: DEV_HEADERS });
+      const res = await fetch(`/api/listings/${draftId}/publish?dryRun=1`, { method: "POST", headers: JSON_HEADERS });
       const d = await res.json();
       if (!res.ok) setError(d.error ?? "Check failed.");
       else setCheck({ allowed: d.decision.allowed, reasons: d.decision.reasons });
@@ -65,6 +67,7 @@ export default function NewListing() {
         </select>
         <button type="submit" disabled={busy} style={fieldStyle}>Save draft</button>
       </form>
+      {signedOut && <p role="alert"><a href="/api/auth/google/start">Sign in with Google</a> to save a listing.</p>}
       {error && <p role="alert">{error}</p>}
       {draftId && (
         <section>

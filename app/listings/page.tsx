@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { fieldStyle } from "./dev-headers";
+import { fieldStyle } from "./ui";
 
 interface Row { id: string; title: string; address: string; jurisdiction: string; transactionType: string; useClass: string }
 

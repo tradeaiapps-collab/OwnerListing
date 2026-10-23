@@ -5,7 +5,6 @@ import {
   publishListing, searchPublished, updateDraft,
   type Actor, type DraftInput, type ListingServiceDeps
 } from "../src/domain/listing-service";
-import { getActor } from "../src/server/context";
 
 const owner: Actor = { userId: "owner-1", userType: "owner" };
 const other: Actor = { userId: "owner-2", userType: "owner" };
@@ -133,18 +132,5 @@ describe("searchPublished", () => {
     expect((await searchPublished(deps, {})).map(l => l.title)).toEqual(["Shop", "Family home"]);
     expect((await searchPublished(deps, { useClass: "commercial" })).map(l => l.title)).toEqual(["Shop"]);
     expect(await searchPublished(deps, { jurisdiction: "NSW" })).toEqual([]);
-  });
-});
-
-describe("getActor", () => {
-  const req = (h: Record<string, string>) => new Request("http://x", { headers: h });
-  it("reads the dev identity outside production only", () => {
-    const h = { "x-dev-user-id": "u1", "x-dev-user-type": "owner" };
-    expect(getActor(req(h), "development")).toEqual({ userId: "u1", userType: "owner" });
-    expect(getActor(req(h), "production")).toBeNull();
-  });
-  it("rejects missing or unknown identity", () => {
-    expect(getActor(req({}), "development")).toBeNull();
-    expect(getActor(req({ "x-dev-user-id": "u1", "x-dev-user-type": "admin" }), "development")).toBeNull();
   });
 });
