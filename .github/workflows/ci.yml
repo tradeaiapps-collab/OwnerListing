@@ -12,6 +12,7 @@ jobs:
         with:
           node-version: 20
       # package-lock.json is not committed yet; switch to `npm ci` once it is.
+      - run: npm install -g npm@latest
       - run: npm install --no-audit --no-fund
       - run: npm run typecheck
       - run: npm test
