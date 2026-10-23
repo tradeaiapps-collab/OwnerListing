@@ -1,7 +1,9 @@
 import pg from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { getThread, reply, startEnquiry, type EnquiryDeps } from "../src/domain/enquiry-service";
 import { createDraft, publishListing, searchPublished, updateDraft, type ListingServiceDeps } from "../src/domain/listing-service";
 import { appendAuditPg, createPgListingRepository, type Queryable } from "../src/server/db";
+import { createPgEnquiryRepository, getBuyerVerification } from "../src/server/enquiry-db";
 import { upsertGoogleUser } from "../src/server/users";
 
 // Runs against a real PostgreSQL with all migrations applied (CI provides one). Without DATABASE_URL the suite is not collected.
@@ -75,5 +77,38 @@ describe.skipIf(!url)("Postgres listing repository", () => {
     const rec = await deps.repo.get(l.id);
     await deps.repo.save({ ...rec!, listing: { ...rec!.listing, ownerUserId: crypto.randomUUID(), title: "Hijacked" } });
     expect((await deps.repo.get(l.id))?.listing.title).toBe("PG home");
+  });
+
+  it("records email verification at login and gates enquiries until phone and ID are verified", async () => {
+    const actor = { userId: ownerId, userType: "owner" as const };
+    const l = await createDraft(deps, actor, { ...input, title: "Enquiry home" });
+    const rec = await deps.repo.get(l.id);
+    await deps.repo.save({ ...rec!, listingFeePaid: true, termsAccepted: true });
+    await publishListing({ ...deps, trustAccountFor: async () => ({ kind: "approved" as const, reasons: [] }) }, actor, l.id, false);
+
+    const sub = `buyer-${Date.now()}`;
+    const buyerUser = await upsertGoogleUser(db, { sub, email: `${sub}@example.test`, name: "Buyer" });
+    const buyerActor = { userId: buyerUser!.id, userType: "owner" as const };
+    expect(await getBuyerVerification(db, buyerActor.userId)).toEqual({ emailVerified: true, phoneVerified: false, idVerified: false });
+
+    const edeps: EnquiryDeps = {
+      enquiries: createPgEnquiryRepository(db), listings: deps.repo,
+      verification: id => getBuyerVerification(db, id),
+      appendAudit: e => appendAuditPg(db, e), now: deps.now, newId: deps.newId
+    };
+    const blocked = await startEnquiry(edeps, buyerActor, l.id, "Hello");
+    expect(!blocked.ok && blocked.code).toBe("forbidden");
+
+    await db.query("UPDATE buyer_verification SET phone_verified_at = now(), id_verified_at = now() WHERE user_id = $1", [buyerActor.userId]);
+    const started = await startEnquiry(edeps, buyerActor, l.id, "Hello");
+    expect(started.ok).toBe(true);
+    const id = started.ok ? started.value.enquiry.id : "";
+    expect((await reply(edeps, actor, id, "Hi there")).ok).toBe(true);
+    const thread = await getThread(edeps, buyerActor, id);
+    expect(thread.ok && thread.value.messages.map(m => m.body)).toEqual(["Hello", "Hi there"]);
+    expect((await getThread(edeps, { userId: crypto.randomUUID(), userType: "owner" }, id)).ok).toBe(false);
+
+    await expect(db.query("UPDATE enquiry_message SET body = 'edited' WHERE enquiry_id = $1", [id])).rejects.toThrow();
+    await expect(db.query("DELETE FROM enquiry_message WHERE enquiry_id = $1", [id])).rejects.toThrow();
   });
 });

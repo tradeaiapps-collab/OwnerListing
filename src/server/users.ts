@@ -20,5 +20,11 @@ export async function upsertGoogleUser(db: Queryable, who: GoogleIdentity): Prom
   if (!row || row["status"] !== "active") return null;
   const type = row["user_type"];
   if ((type !== "owner" && type !== "agent") || typeof row["id"] !== "string") return null;
+  // Google only returns verified emails here, so the email step of buyer verification is done.
+  await db.query(
+    `INSERT INTO buyer_verification (user_id, email_verified_at) VALUES ($1, now())
+     ON CONFLICT (user_id) DO UPDATE SET email_verified_at = COALESCE(buyer_verification.email_verified_at, now())`,
+    [row["id"]]
+  );
   return { id: row["id"], userType: type };
 }

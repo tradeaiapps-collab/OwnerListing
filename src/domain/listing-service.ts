@@ -30,6 +30,7 @@ export interface ListingRepository {
   save(record: ListingRecord): Promise<void>;
   get(id: string): Promise<ListingRecord | undefined>;
   list(): Promise<ListingRecord[]>;
+  listByOwner(ownerUserId: string): Promise<ListingRecord[]>;
 }
 
 export interface ListingServiceDeps {
@@ -60,7 +61,7 @@ export type DraftPatch = Partial<DraftInput>;
 export type Failure = { ok: false; code: "invalid" | "not_found" | "forbidden" | "conflict"; message: string };
 export type Result<T> = { ok: true; value: T } | Failure;
 
-const fail = (code: Failure["code"], message: string): Failure => ({ ok: false, code, message });
+export const fail = (code: Failure["code"], message: string): Failure => ({ ok: false, code, message });
 
 function str(v: unknown, max: number): string | undefined {
   if (typeof v !== "string") return undefined;
@@ -221,6 +222,7 @@ export function createInMemoryListingRepository(): ListingRepository & { clear()
     async save(r) { rows.set(r.listing.id, r); },
     async get(id) { return rows.get(id); },
     async list() { return [...rows.values()]; },
+    async listByOwner(ownerUserId) { return [...rows.values()].filter(r => r.listing.ownerUserId === ownerUserId); },
     clear() { rows.clear(); }
   };
 }
