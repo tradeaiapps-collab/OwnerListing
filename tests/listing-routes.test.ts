@@ -40,7 +40,7 @@ const post = (url: string, body?: unknown) =>
   new Request(`http://test${url}`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: body === undefined ? undefined : JSON.stringify(body)
+    ...(body === undefined ? {} : { body: JSON.stringify(body) })
   });
 
 describe("POST /api/listings (create)", () => {
