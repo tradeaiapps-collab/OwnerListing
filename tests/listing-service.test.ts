@@ -163,3 +163,19 @@ describe("rental bond pathway at publish", () => {
     expect(r.ok && r.value.decision.allowed).toBe(false);
   });
 });
+
+describe("rental bond pathway on drafts", () => {
+  it("accepts a known pathway in a patch and rejects an unknown one", () => {
+    expect(parseDraftPatch({ rentalBondPathway: "solicitor_trust" })).toEqual({ ok: true, value: { rentalBondPathway: "solicitor_trust" } });
+    expect(parseDraftPatch({ rentalBondPathway: "cash" }).ok).toBe(false);
+  });
+
+  it("stores the pathway on the record, not on the listing", async () => {
+    const l = await createDraft(deps, owner, { ...input, transactionType: "rent" });
+    const r = await updateDraft(deps, owner, l.id, { rentalBondPathway: "state_bond_authority" });
+    expect(r.ok).toBe(true);
+    const rec = await repo.get(l.id);
+    expect(rec?.rentalBondPathway).toBe("state_bond_authority");
+    expect("rentalBondPathway" in (rec?.listing ?? {})).toBe(false);
+  });
+});
