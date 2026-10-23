@@ -2,6 +2,7 @@ import type { AuditEvent } from "./audit";
 import { isJurisdiction, type Jurisdiction } from "./jurisdiction";
 import type { PropertyListing, PropertyType, PublishDecision, UseClass } from "./listing";
 import { decidePublish, type BondPathway } from "./publish";
+import { canActOnListing, type AgentAppointment } from "./access";
 import { transitionListing } from "./listing-transitions";
 import type { TrustAccountDecision } from "./trust-account";
 import type { AgentLicence } from "./licence";
@@ -47,6 +48,8 @@ export interface ListingServiceDeps {
   /** Trust account decision for the listing. Undefined means none yet, so publishing is blocked. */
   trustAccountFor?: (listingId: string) => Promise<TrustAccountDecision | undefined>;
   licences?: () => Promise<readonly AgentLicence[]>;
+  /** The active appointment of an agent to a listing, if any. */
+  appointmentFor?: (listingId: string, agentUserId: string) => Promise<AgentAppointment | undefined>;
 }
 
 export interface DraftInput {
@@ -184,8 +187,19 @@ export async function publishListing(
   deps: ListingServiceDeps, actor: Actor, id: string, dryRun: boolean
 ): Promise<Result<{ decision: PublishDecision; listing: PropertyListing }>> {
   const rec = await deps.repo.get(id);
-  if (!rec || rec.listing.ownerUserId !== actor.userId) return fail("not_found", "Listing not found.");
+  if (!rec) return fail("not_found", "Listing not found.");
   const l = rec.listing;
+  // The owner publishes. An agent may publish only with an active appointment of scope "full".
+  // Anyone else gets not_found, the same as an unknown listing.
+  const isOwner = l.ownerUserId === actor.userId;
+  let actingAgent: string | undefined;
+  if (!isOwner) {
+    const appointment = deps.appointmentFor ? await deps.appointmentFor(l.id, actor.userId) : undefined;
+    if (!appointment || !canActOnListing({ id: actor.userId, role: actor.userType }, l, "listing.publish", appointment)) {
+      return fail("not_found", "Listing not found.");
+    }
+    actingAgent = actor.userId;
+  }
 
   const now = deps.now();
   const required = deps.requiredDisclosures(l.jurisdiction, l.transactionType, l.useClass);
@@ -202,6 +216,7 @@ export async function publishListing(
       termsAccepted: rec.termsAccepted,
       listingFeePaid: rec.listingFeePaid,
       ...(rec.rentalBondPathway ? { rentalBondPathway: rec.rentalBondPathway } : {}),
+      ...(actingAgent ? { actingAgentId: actingAgent } : {}),
       ...(trustAccount ? { trustAccount } : {})
     });
   }

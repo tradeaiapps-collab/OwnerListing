@@ -179,3 +179,35 @@ describe("rental bond pathway on drafts", () => {
     expect("rentalBondPathway" in (rec?.listing ?? {})).toBe(false);
   });
 });
+
+describe("agent publishing with an appointment", () => {
+  const agent: Actor = { userId: "agent-1", userType: "agent" };
+
+  async function draftWithFee() {
+    const l = await createDraft(deps, owner, input);
+    const rec = (await repo.get(l.id))!;
+    await repo.save({ ...rec, listingFeePaid: true, termsAccepted: true });
+    return l.id;
+  }
+
+  it("refuses an agent with no appointment, as if the listing did not exist", async () => {
+    const id = await draftWithFee();
+    deps.appointmentFor = async () => undefined;
+    const r = await publishListing(deps, agent, id, true);
+    expect(r.ok).toBe(false);
+  });
+
+  it("refuses an agent whose appointment is only enquiries and offers", async () => {
+    const id = await draftWithFee();
+    deps.appointmentFor = async (listingId, agentUserId) => ({ listingId, agentUserId, scope: "enquiries_and_offers", revoked: false });
+    const r = await publishListing(deps, agent, id, true);
+    expect(r.ok).toBe(false);
+  });
+
+  it("blocks a full-scope agent until the agent's licence is verified (fails closed)", async () => {
+    const id = await draftWithFee();
+    deps.appointmentFor = async (listingId, agentUserId) => ({ listingId, agentUserId, scope: "full", revoked: false });
+    const r = await publishListing(deps, agent, id, true);
+    expect(r.ok && r.value.decision.allowed).toBe(false);
+  });
+});
