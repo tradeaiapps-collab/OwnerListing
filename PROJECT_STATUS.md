@@ -2,13 +2,15 @@
 
 Brand name: **OwnerListing** (decided 23 Oct 2026). Domain not yet checked or bought. Remaining business decisions (hosting, ID provider, keys, counsel) are left to the end of the project.
 
-Last updated: 2026-10-21. Source: Implementation Playbook v1.0 (20 Oct 2026) and Build 001 starter code.
+Last updated: 2026-10-24, after PR #3 (listings) and PR #4 (PostgreSQL migrations and Google login) were merged. Source: Implementation Playbook v1.0 (20 Oct 2026), Build 001 starter code and the merged code.
 
 ## Architecture (decided)
 - Login provider: Google (OIDC with MFA).
 - Local dev port: 3004 (others are taken).
 - TypeScript domain layer (pure functions, no framework), tested with Vitest.
-- Planned: PostgreSQL for data, Next.js for the web front end, separate services later for AI and payments.
+- PostgreSQL: migrations db/001 to db/016 plus a timestamped Google login and listing flags migration, run by scripts/migrate.mjs (PR #4).
+- Next.js app (app/): Google login routes, listings API and listing pages (PR #4).
+- Separate services later for AI and payments.
 - Investment module hard-disabled until Gate G4.
 
 ## Team (playbook section 12)
@@ -109,7 +111,8 @@ Westpac is the bank and payment provider. src/adapters/westpac-payway.ts holds t
 - Offer policy: AI can draft but never accept; floor not exposed; escalation on out-of-mandate offers.
 - Append-only audit model (in memory).
 - Investment Gate G4 controls (disabled).
-- Initial PostgreSQL schema (not yet applied), plus agent_licence table (db/002).
+- Initial PostgreSQL schema plus agent_licence table (db/002); migration runner and Google login merged in PR #4.
+- CI workflow (.github/workflows/ci.yml) runs typecheck and tests.
 - Unit tests for the above. Not run yet: npm registry was unreachable from the build environment.
 
 - Website scaffold (Next.js, files only, not installed or run): home page, dry-run publish check page, /api/listings/check. Fails closed: no state has disclosure config yet, so every check is blocked until Compliance supplies it (src/config/disclosures.ts).
@@ -134,7 +137,6 @@ Westpac is the bank and payment provider. src/adapters/westpac-payway.ts holds t
 ## Next steps
 1. DONE 22 Oct on owner's machine: npm install, npm test (43 passed, 13 files), typecheck clean. npm audit (22 Oct): fixed. Upgraded to next 16.4.2, vitest 5.0.5, vite 8.3.5 on owner's machine; 43 tests pass, typecheck clean, 0 vulnerabilities. Do not use audit fix --force.
 2. Items 3 to 7, licence table, and targetPriceCents.
-3. Add PostgreSQL migrations and audit persistence.
-4. Auth with OIDC, MFA and role-based access (Phase 0).
+3. DONE (PR #4): PostgreSQL migrations and Google login. Still open: confirm audit writes go to PostgreSQL (the repository SQL exists; the adapter wiring is not confirmed in code); MFA and role checks on API routes are not confirmed in code.
 5. Compliance (Shirin) to supply state disclosure configuration.
 6. Australian legal review before any public launch (G0 and G1 controls).
