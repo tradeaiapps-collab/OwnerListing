@@ -1,0 +1,150 @@
+import { beforeEach, describe, expect, it } from "vitest";
+import type { AuditEvent } from "../src/domain/audit";
+import {
+  createDraft, createInMemoryListingRepository, getListing, parseDraftInput, parseDraftPatch,
+  publishListing, searchPublished, updateDraft,
+  type Actor, type DraftInput, type ListingServiceDeps
+} from "../src/domain/listing-service";
+import { getActor } from "../src/server/context";
+
+const owner: Actor = { userId: "owner-1", userType: "owner" };
+const other: Actor = { userId: "owner-2", userType: "owner" };
+const input: DraftInput = {
+  title: "Family home", address: "1 Example St, Brisbane QLD", jurisdiction: "QLD",
+  transactionType: "sale", useClass: "residential", propertyType: "house"
+};
+
+let n = 0;
+let audit: AuditEvent[];
+let repo: ReturnType<typeof createInMemoryListingRepository>;
+let deps: ListingServiceDeps;
+
+beforeEach(() => {
+  n = 0;
+  audit = [];
+  repo = createInMemoryListingRepository();
+  deps = {
+    repo,
+    appendAudit: async e => { audit.push(e); },
+    now: () => `2026-10-23T00:00:${String(n).padStart(2, "0")}.000Z`,
+    newId: () => `id-${++n}`,
+    requiredDisclosures: () => []
+  };
+});
+
+describe("parseDraftInput", () => {
+  it("accepts a complete draft and trims text", () => {
+    const r = parseDraftInput({ ...input, title: "  Family home  " });
+    expect(r).toEqual({ ok: true, value: input });
+  });
+  it("rejects missing fields, bad enums and non-objects", () => {
+    expect(parseDraftInput(null).ok).toBe(false);
+    expect(parseDraftInput({ ...input, title: "" }).ok).toBe(false);
+    expect(parseDraftInput({ ...input, jurisdiction: "XX" }).ok).toBe(false);
+    expect(parseDraftInput({ ...input, propertyType: "castle" }).ok).toBe(false);
+  });
+});
+
+describe("parseDraftPatch", () => {
+  it("keeps only known fields and rejects empty or invalid patches", () => {
+    expect(parseDraftPatch({ title: "New", ownerUserId: "evil" })).toEqual({ ok: true, value: { title: "New" } });
+    expect(parseDraftPatch({}).ok).toBe(false);
+    expect(parseDraftPatch({ useClass: "mixed" }).ok).toBe(false);
+  });
+});
+
+describe("drafts", () => {
+  it("creates an unpublished draft owned by the actor, unpaid, with an audit event", async () => {
+    const l = await createDraft(deps, owner, input);
+    expect(l.status).toBe("draft");
+    expect(l.ownerUserId).toBe("owner-1");
+    expect((await repo.get(l.id))?.listingFeePaid).toBe(false);
+    expect(audit.map(e => e.eventType)).toEqual(["listing.created"]);
+  });
+
+  it("lets only the owner edit, and only while a draft", async () => {
+    const l = await createDraft(deps, owner, input);
+    const ok = await updateDraft(deps, owner, l.id, { title: "Renamed" });
+    expect(ok.ok && ok.value.title).toBe("Renamed");
+    const notOwner = await updateDraft(deps, other, l.id, { title: "Hijack" });
+    expect(!notOwner.ok && notOwner.code).toBe("not_found");
+    const rec = await repo.get(l.id);
+    await repo.save({ ...rec!, listing: { ...rec!.listing, status: "published" } });
+    const locked = await updateDraft(deps, owner, l.id, { title: "Late" });
+    expect(!locked.ok && locked.code).toBe("conflict");
+  });
+
+  it("hides drafts from everyone except the owner", async () => {
+    const l = await createDraft(deps, owner, input);
+    expect((await getListing(deps, owner, l.id)).ok).toBe(true);
+    expect((await getListing(deps, other, l.id)).ok).toBe(false);
+    expect((await getListing(deps, null, l.id)).ok).toBe(false);
+  });
+});
+
+describe("publishing", () => {
+  it("blocks when no disclosure configuration exists (fail closed)", async () => {
+    const l = await createDraft({ ...deps, requiredDisclosures: () => null }, owner, input);
+    const r = await publishListing({ ...deps, requiredDisclosures: () => null }, owner, l.id, false);
+    expect(r.ok && r.value.decision.allowed).toBe(false);
+    expect(r.ok && r.value.listing.status).toBe("draft");
+  });
+
+  it("blocks until fee, terms and trust account are in place", async () => {
+    const l = await createDraft(deps, owner, input);
+    const r = await publishListing(deps, owner, l.id, false);
+    expect(r.ok && r.value.decision.allowed).toBe(false);
+    const reasons = r.ok ? r.value.decision.reasons.join(" ") : "";
+    expect(reasons).toContain("listing fee");
+    expect(reasons).toContain("terms and conditions");
+    expect(reasons).toContain("Trust account");
+    expect((await repo.get(l.id))?.listing.status).toBe("draft");
+  });
+
+  it("publishes through pending_review with audit events once every gate passes", async () => {
+    const l = await createDraft(deps, owner, input);
+    const rec = await repo.get(l.id);
+    await repo.save({ ...rec!, listingFeePaid: true, termsAccepted: true });
+    const ready = { ...deps, trustAccountFor: async () => ({ kind: "approved" as const, reasons: [] }) };
+    const dry = await publishListing(ready, owner, l.id, true);
+    expect(dry.ok && dry.value.decision.allowed).toBe(true);
+    expect((await repo.get(l.id))?.listing.status).toBe("draft");
+    const live = await publishListing(ready, owner, l.id, false);
+    expect(live.ok && live.value.listing.status).toBe("published");
+    expect(audit.map(e => e.eventType)).toEqual(["listing.created", "listing.pending_review", "listing.published"]);
+  });
+
+  it("does not let another user publish", async () => {
+    const l = await createDraft(deps, owner, input);
+    const r = await publishListing(deps, other, l.id, false);
+    expect(!r.ok && r.code).toBe("not_found");
+  });
+});
+
+describe("searchPublished", () => {
+  it("returns only published listings, filtered, newest first", async () => {
+    const a = await createDraft(deps, owner, input);
+    const b = await createDraft(deps, owner, { ...input, title: "Shop", useClass: "commercial", propertyType: "retail" });
+    await createDraft(deps, owner, { ...input, title: "Unpublished" });
+    for (const l of [a, b]) {
+      const rec = await repo.get(l.id);
+      await repo.save({ ...rec!, listing: { ...rec!.listing, status: "published" } });
+    }
+    expect((await searchPublished(deps, {})).map(l => l.title)).toEqual(["Shop", "Family home"]);
+    expect((await searchPublished(deps, { useClass: "commercial" })).map(l => l.title)).toEqual(["Shop"]);
+    expect(await searchPublished(deps, { jurisdiction: "NSW" })).toEqual([]);
+  });
+});
+
+describe("getActor", () => {
+  const req = (h: Record<string, string>) => new Request("http://x", { headers: h });
+  it("reads the dev identity outside production only", () => {
+    const h = { "x-dev-user-id": "u1", "x-dev-user-type": "owner" };
+    expect(getActor(req(h), "development")).toEqual({ userId: "u1", userType: "owner" });
+    expect(getActor(req(h), "production")).toBeNull();
+  });
+  it("rejects missing or unknown identity", () => {
+    expect(getActor(req({}), "development")).toBeNull();
+    expect(getActor(req({ "x-dev-user-id": "u1", "x-dev-user-type": "admin" }), "development")).toBeNull();
+  });
+});
