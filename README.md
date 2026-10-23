@@ -11,7 +11,7 @@ This is the first implementation slice based on `Real Estate Marketplace Impleme
 - Unit tests for release-blocking rules.
 
 ## Deliberate limits
-This is a starter codebase, not a production-ready marketplace. It does not yet include authentication, a database adapter, payments, search, media processing, Meta integration, e-signatures, or legal-approved state disclosure content. Do not deploy publicly until G0/G1 controls and Australian legal review are complete.
+This is not a production-ready marketplace. Google login, PostgreSQL migrations and listing pages are in place (PR #4). It does not yet include payments (Westpac PayWay is not connected), search, media processing, Meta integration, e-signatures, or legal-approved state disclosure content. Do not deploy publicly until G0/G1 controls and Australian legal review are complete.
 
 ## Requirements
 - Node.js 20+
@@ -26,8 +26,8 @@ npm run typecheck
 
 ## Next implementation sequence
 1. Approve architecture decision records and deployment/provider choices.
-2. Add PostgreSQL migrations and transactional audit-event persistence.
-3. Add OIDC authentication, MFA, RBAC and record-level authorization.
+2. Done (PR #4): PostgreSQL migrations and Google login. Copy `.env.example` to `.env` for database and login settings.
+3. Connect audit writes to PostgreSQL; add MFA, RBAC and record-level authorization on routes.
 4. Implement state-specific disclosure configuration with compliance-owned content.
-5. Add listing API and frontend against these domain rules.
-6. Add observability, feature flags, security controls and CI.
+5. Wire the listing API and pages to the publish gates and domain rules.
+6. Done: CI runs typecheck and tests (`.github/workflows/ci.yml`). Observability, feature flags and security controls remain.
