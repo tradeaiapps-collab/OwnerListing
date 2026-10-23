@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { JSON_HEADERS, fieldStyle } from "../ui";
+import { BOND_PATHWAY_LABELS, JSON_HEADERS, fieldStyle } from "../ui";
 
 type Check = { allowed: boolean; reasons: string[] };
 
@@ -10,6 +10,9 @@ export default function NewListing() {
   const [check, setCheck] = useState<Check | null>(null);
   const [busy, setBusy] = useState(false);
   const [signedOut, setSignedOut] = useState(false);
+  const [isRent, setIsRent] = useState(false);
+  const [bond, setBond] = useState("");
+  const [bondState, setBondState] = useState<"idle" | "saving" | "saved" | "error">("idle");
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -17,16 +20,34 @@ export default function NewListing() {
     setBusy(true);
     setError("");
     setCheck(null);
+    setBond("");
+    setBondState("idle");
     try {
       const res = await fetch("/api/listings", { method: "POST", headers: JSON_HEADERS, body: JSON.stringify(body) });
       const d = await res.json();
       if (res.status === 401) setSignedOut(true);
       else if (!res.ok) setError(d.error ?? "Could not save the draft.");
-      else setDraftId(d.listing.id);
+      else {
+        setDraftId(d.listing.id);
+        setIsRent(d.listing.transactionType === "rent");
+      }
     } catch {
       setError("Could not save the draft.");
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function saveBond(e: React.ChangeEvent<HTMLSelectElement>) {
+    const value = e.target.value;
+    setBond(value);
+    setBondState("saving");
+    setCheck(null);
+    try {
+      const res = await fetch(`/api/listings/${draftId}`, { method: "PATCH", headers: JSON_HEADERS, body: JSON.stringify({ rentalBondPathway: value }) });
+      setBondState(res.ok ? "saved" : "error");
+    } catch {
+      setBondState("error");
     }
   }
 
@@ -72,6 +93,18 @@ export default function NewListing() {
       {draftId && (
         <section>
           <h2>Draft saved</h2>
+          {isRent && (
+            <div style={{ display: "grid", gap: 8, marginBottom: 12 }}>
+              <label htmlFor="bond-pathway">Where will the rental bond be held? The platform never holds it.</label>
+              <select id="bond-pathway" value={bond} onChange={saveBond} disabled={bondState === "saving"} style={fieldStyle}>
+                <option value="" disabled>Choose an option</option>
+                {Object.entries(BOND_PATHWAY_LABELS).map(([k, label]) => <option key={k} value={k}>{label}</option>)}
+              </select>
+              {bondState === "saving" && <small role="status">Saving...</small>}
+              {bondState === "saved" && <small role="status">Bond arrangement saved.</small>}
+              {bondState === "error" && <small role="alert">Could not save the bond arrangement. Try again.</small>}
+            </div>
+          )}
           <button type="button" disabled={busy} style={fieldStyle} onClick={runCheck}>Check if it can be published</button>
           {check && (
             <div>
