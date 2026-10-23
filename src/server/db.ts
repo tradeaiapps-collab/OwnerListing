@@ -67,10 +67,12 @@ export function createPgListingRepository(db: Queryable): ListingRepository {
       await db.query(`INSERT INTO property_listing ${COLS} VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`, params(r));
     },
     async save(r) {
+      const l = r.listing;
       await db.query(
         `UPDATE property_listing SET jurisdiction=$3, transaction_type=$4, use_class=$5, property_type=$6, title=$7,
-         address_text=$8, status=$9, updated_at=$11, listing_fee_paid=$12, terms_accepted=$13 WHERE id=$1 AND owner_user_id=$2`,
-        params(r)
+         address_text=$8, status=$9, updated_at=$10, listing_fee_paid=$11, terms_accepted=$12 WHERE id=$1 AND owner_user_id=$2`,
+        [l.id, l.ownerUserId, l.jurisdiction, l.transactionType, l.useClass, l.propertyType, l.title, l.address,
+          l.status, l.updatedAt, r.listingFeePaid, r.termsAccepted]
       );
     },
     async get(id) {

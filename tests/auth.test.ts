@@ -48,7 +48,7 @@ describe("actorFromRequest", () => {
 });
 
 describe("google", () => {
-  const cfg: GoogleConfig = { clientId: "cid", clientSecret: "sec", redirectUri: "https://app.test/api/auth/google/callback" };
+  const cfg: GoogleConfig = { clientId: "cid", clientSecret: "TOP-SECRET-VALUE", redirectUri: "https://app.test/api/auth/google/callback" };
   const claims = { iss: "https://accounts.google.com", aud: "cid", exp: now + 60, nonce: "n1", sub: "g-1", email: "a@b.co", email_verified: true, name: "Ann" };
   const expectOk = { clientId: "cid", nonce: "n1", nowSeconds: now };
 
@@ -58,7 +58,7 @@ describe("google", () => {
     expect(u.searchParams.get("nonce")).toBe("n1");
     expect(u.searchParams.get("code_challenge")).toBe(pkceChallenge("ver"));
     expect(u.searchParams.get("code_challenge_method")).toBe("S256");
-    expect(u.toString()).not.toContain("sec");
+    expect(u.toString()).not.toContain("TOP-SECRET-VALUE");
   });
   it("accepts good claims", () => {
     expect(readIdentity(claims, expectOk)).toEqual({ sub: "g-1", email: "a@b.co", name: "Ann" });
