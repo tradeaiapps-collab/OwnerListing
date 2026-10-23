@@ -4,7 +4,7 @@ import { getRequiredDisclosureKeys } from "../config/disclosures";
 import type { Actor, ListingServiceDeps } from "../domain/listing-service";
 import { actorFromRequest } from "./auth/actor";
 import { readAuthEnv } from "./auth/config";
-import { appendAuditPg, createPgListingRepository, type Queryable } from "./db";
+import { appendAuditPg, appointmentForPg, createPgListingRepository, type Queryable } from "./db";
 
 interface Wired { db: Queryable; deps: ListingServiceDeps }
 const g = globalThis as unknown as { __ownerlisting?: Wired };
@@ -26,7 +26,8 @@ function wire(): Wired {
       appendAudit: e => appendAuditPg(db, e),
       now: () => new Date().toISOString(),
       newId: () => randomUUID(),
-      requiredDisclosures: getRequiredDisclosureKeys
+      requiredDisclosures: getRequiredDisclosureKeys,
+      appointmentFor: (listingId, agentUserId) => appointmentForPg(db, listingId, agentUserId)
     }
   };
 }

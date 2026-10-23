@@ -2,6 +2,7 @@ import type { AuditEvent } from "../domain/audit";
 import type { ListingRecord, ListingRepository } from "../domain/listing-service";
 import type { PropertyListing } from "../domain/listing";
 import type { BondPathway } from "../domain/publish";
+import type { AgentAppointment } from "../domain/access";
 
 /** The part of pg.Pool this app uses, so tests and the domain do not depend on the driver. */
 export interface Queryable {
@@ -92,6 +93,20 @@ export function createPgListingRepository(db: Queryable): ListingRepository {
       const ds = await disclosuresFor(rows.map(r => r.id));
       return rows.map(r => toRecord(r, ds.get(r.id) ?? []));
     }
+  };
+}
+
+/** Active appointment of an agent to a listing. Parameterised; returns undefined when none is active. */
+export async function appointmentForPg(db: Queryable, listingId: string, agentUserId: string): Promise<AgentAppointment | undefined> {
+  const res = await db.query(
+    "SELECT listing_id, agent_user_id, scope FROM listing_agent_appointment WHERE listing_id = $1 AND agent_user_id = $2 AND revoked_at IS NULL",
+    [listingId, agentUserId]
+  );
+  const row = res.rows[0];
+  if (!row) return undefined;
+  return {
+    listingId: String(row["listing_id"]), agentUserId: String(row["agent_user_id"]),
+    scope: row["scope"] === "full" ? "full" : "enquiries_and_offers", revoked: false
   };
 }
 
