@@ -58,7 +58,7 @@ export interface DraftInput {
 
 export type DraftPatch = Partial<DraftInput>;
 
-export type Failure = { ok: false; code: "invalid" | "not_found" | "forbidden" | "conflict"; message: string };
+export type Failure = { ok: false; code: "invalid" | "not_found" | "forbidden" | "conflict" | "rate_limited" | "unavailable"; message: string };
 export type Result<T> = { ok: true; value: T } | Failure;
 
 export const fail = (code: Failure["code"], message: string): Failure => ({ ok: false, code, message });
