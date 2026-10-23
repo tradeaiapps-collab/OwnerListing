@@ -1,0 +1,140 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  createDraft, createInMemoryListingRepository,
+  type Actor, type DraftInput, type ListingServiceDeps
+} from "../src/domain/listing-service";
+
+const state = vi.hoisted(() => ({ actor: null as Actor | null, deps: null as ListingServiceDeps | null }));
+
+vi.mock("../src/server/context", () => ({
+  getActor: () => state.actor,
+  getDeps: () => state.deps
+}));
+
+import { POST as createRoute } from "../app/api/listings/route";
+import { POST as publishRoute } from "../app/api/listings/[id]/publish/route";
+import { GET as getRoute, PATCH as patchRoute } from "../app/api/listings/[id]/route";
+
+const owner: Actor = { userId: "owner-1", userType: "owner" };
+const agent: Actor = { userId: "agent-1", userType: "agent" };
+const vendor = { userId: "vendor-1", userType: "vendor" } as unknown as Actor;
+const input: DraftInput = {
+  title: "Family home", address: "1 Example St, Brisbane QLD", jurisdiction: "QLD",
+  transactionType: "sale", useClass: "residential", propertyType: "house"
+};
+
+let n: number;
+
+beforeEach(() => {
+  n = 0;
+  state.actor = null;
+  state.deps = {
+    repo: createInMemoryListingRepository(),
+    appendAudit: async () => {},
+    now: () => "2026-10-24T00:00:00.000Z",
+    newId: () => `id-${++n}`,
+    requiredDisclosures: () => []
+  };
+});
+
+const post = (url: string, body?: unknown) =>
+  new Request(`http://test${url}`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) })
+  });
+
+describe("POST /api/listings (create)", () => {
+  it("returns 401 when signed out", async () => {
+    expect((await createRoute(post("/api/listings", input))).status).toBe(401);
+  });
+  it("returns 403 for agents and other roles", async () => {
+    for (const a of [agent, vendor]) {
+      state.actor = a;
+      expect((await createRoute(post("/api/listings", input))).status).toBe(403);
+    }
+  });
+  it("returns 400 for an owner with an invalid body", async () => {
+    state.actor = owner;
+    expect((await createRoute(post("/api/listings", { title: "" }))).status).toBe(400);
+  });
+  it("returns 201 for an owner with a valid body", async () => {
+    state.actor = owner;
+    expect((await createRoute(post("/api/listings", input))).status).toBe(201);
+  });
+});
+
+describe("POST /api/listings/[id]/publish", () => {
+  const call = (id: string, query = "?dryRun=1") =>
+    publishRoute(post(`/api/listings/${id}/publish${query}`), { params: Promise.resolve({ id }) });
+
+  it("returns 401 when signed out", async () => {
+    expect((await call("x")).status).toBe(401);
+  });
+  it("returns 403 for roles other than owner and agent", async () => {
+    state.actor = vendor;
+    expect((await call("x")).status).toBe(403);
+  });
+  it("returns 404 for an agent with no appointment on the listing", async () => {
+    const draft = await createDraft(state.deps!, owner, input);
+    state.actor = agent;
+    expect((await call(draft.id)).status).toBe(404);
+  });
+  it("returns 404 for a different owner", async () => {
+    const draft = await createDraft(state.deps!, owner, input);
+    state.actor = { userId: "owner-2", userType: "owner" };
+    expect((await call(draft.id)).status).toBe(404);
+  });
+  it("returns 200 for the owner's dry run, without publishing", async () => {
+    const draft = await createDraft(state.deps!, owner, input);
+    state.actor = owner;
+    expect((await call(draft.id)).status).toBe(200);
+    expect((await state.deps!.repo.get(draft.id))?.listing.status).toBe("draft");
+  });
+});
+
+describe("PATCH /api/listings/[id] (edit draft)", () => {
+  const patch = (id: string, body: unknown) =>
+    patchRoute(
+      new Request(`http://test/api/listings/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }),
+      { params: Promise.resolve({ id }) }
+    );
+
+  it("returns 401 when signed out", async () => {
+    expect((await patch("x", { title: "New" })).status).toBe(401);
+  });
+  it("returns 400 for an empty or invalid patch", async () => {
+    const draft = await createDraft(state.deps!, owner, input);
+    state.actor = owner;
+    expect((await patch(draft.id, {})).status).toBe(400);
+    expect((await patch(draft.id, { jurisdiction: "ZZ" })).status).toBe(400);
+  });
+  it("returns 404 for a different user", async () => {
+    const draft = await createDraft(state.deps!, owner, input);
+    state.actor = { userId: "owner-2", userType: "owner" };
+    expect((await patch(draft.id, { title: "Hijack" })).status).toBe(404);
+  });
+  it("returns 200 and saves the owner's changes", async () => {
+    const draft = await createDraft(state.deps!, owner, input);
+    state.actor = owner;
+    expect((await patch(draft.id, { title: "Renamed", transactionType: "rent" })).status).toBe(200);
+    const saved = (await state.deps!.repo.get(draft.id))?.listing;
+    expect(saved?.title).toBe("Renamed");
+    expect(saved?.transactionType).toBe("rent");
+  });
+  it("returns 409 once the listing is no longer a draft", async () => {
+    const draft = await createDraft(state.deps!, owner, input);
+    const rec = (await state.deps!.repo.get(draft.id))!;
+    await state.deps!.repo.save({ ...rec, listing: { ...rec.listing, status: "published" } });
+    state.actor = owner;
+    expect((await patch(draft.id, { title: "Late" })).status).toBe(409);
+  });
+  it("GET returns a draft to its owner and 404 to anyone else", async () => {
+    const draft = await createDraft(state.deps!, owner, input);
+    const get = () => getRoute(new Request(`http://test/api/listings/${draft.id}`), { params: Promise.resolve({ id: draft.id }) });
+    state.actor = owner;
+    expect((await get()).status).toBe(200);
+    state.actor = null;
+    expect((await get()).status).toBe(404);
+  });
+});

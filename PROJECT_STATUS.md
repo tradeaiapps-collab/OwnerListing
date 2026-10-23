@@ -2,7 +2,7 @@
 
 Brand name: **OwnerListing** (decided 23 Oct 2026). Domain not yet checked or bought. Remaining business decisions (hosting, ID provider, keys, counsel) are left to the end of the project.
 
-Last updated: 2026-10-24, after PR #3 (listings) and PR #4 (PostgreSQL migrations and Google login) were merged. Source: Implementation Playbook v1.0 (20 Oct 2026), Build 001 starter code and the merged code.
+Last updated: 2026-10-24, after PR #19 (bond pathway owner UI) was merged. Earlier: PR #3 (listings), PR #4 (PostgreSQL migrations and Google login). Source: Implementation Playbook v1.0 (20 Oct 2026), Build 001 starter code and the merged code.
 
 ## Architecture (decided)
 - Login provider: Google (OIDC with MFA).
@@ -137,6 +137,11 @@ Westpac is the bank and payment provider. src/adapters/westpac-payway.ts holds t
 ## Next steps
 1. DONE 22 Oct on owner's machine: npm install, npm test (43 passed, 13 files), typecheck clean. npm audit (22 Oct): fixed. Upgraded to next 16.4.2, vitest 5.0.5, vite 8.3.5 on owner's machine; 43 tests pass, typecheck clean, 0 vulnerabilities. Do not use audit fix --force.
 2. Items 3 to 7, licence table, and targetPriceCents.
-3. DONE (PR #4): PostgreSQL migrations and Google login. Audit writes go to PostgreSQL (appendAuditPg in src/server/db.ts, wired in src/server/context.ts). Still open: no API route calls the role checks in src/domain/access.ts; MFA is not implemented in code; audit reads (AUDIT_LIST_SQL) have no caller.
+3. DONE (PR #4): PostgreSQL migrations and Google login. Audit writes go to PostgreSQL (appendAuditPg in src/server/db.ts, wired in src/server/context.ts). Role checks are now enforced on the listing create and publish routes (#16, tested in #18). Still open: MFA is not implemented in code; audit reads (AUDIT_LIST_SQL) have no caller.
 5. Compliance (Shirin) to supply state disclosure configuration.
 6. Australian legal review before any public launch (G0 and G1 controls).
+7. MERGED since #15: #16 role checks on the listing create and publish routes; #18 route-level role-check tests (401/403/400/201/404/200); #19 owner UI to set the rental bond pathway, on the new-listing page only.
+8. OPEN, green on `gate`, awaiting the owner's explicit approval by PR number (security-sensitive, self-review only): #17 agent publishing with a full-scope appointment (widens who can publish; adds a parameterised raw SQL lookup); #20 verified licence records wired into publish (read-only query on agent_licence). Both touch src/server/context.ts and src/server/db.ts, so the second to merge may need a small conflict fix. Agent publishing stays blocked in practice until both are merged.
+9. IN PROGRESS: edit-draft page so an owner can change the bond pathway after leaving the new-listing page.
+10. NOT DONE: browser check of the bond pathway UI at 375, 768 and 1280 px, light and dark (code inspection only so far).
+11. Launch items waiting on others: Compliance (disclosures), counsel (docs/COUNSEL_QUESTIONS.md), ABN Lookup key, Westpac PayWay, an ID provider. No live payment keys.
