@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
-import { BOND_PATHWAY_LABELS, JSON_HEADERS, fieldStyle } from "../ui";
+import { BondPathwayField, ListingFields, type BondState } from "../fields";
+import { JSON_HEADERS, fieldStyle } from "../ui";
 
 type Check = { allowed: boolean; reasons: string[] };
 
@@ -12,7 +13,7 @@ export default function NewListing() {
   const [signedOut, setSignedOut] = useState(false);
   const [isRent, setIsRent] = useState(false);
   const [bond, setBond] = useState("");
-  const [bondState, setBondState] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [bondState, setBondState] = useState<BondState>("idle");
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -70,22 +71,7 @@ export default function NewListing() {
     <main>
       <h1>Create a listing</h1>
       <form onSubmit={onSubmit} style={{ display: "grid", gap: 8 }}>
-        <input name="title" placeholder="Title" maxLength={200} required style={fieldStyle} />
-        <input name="address" placeholder="Address" maxLength={300} required style={fieldStyle} />
-        <select name="jurisdiction" defaultValue="QLD" style={fieldStyle} aria-label="State">
-          {["NSW", "VIC", "QLD", "WA", "SA", "TAS", "ACT", "NT"].map(j => <option key={j}>{j}</option>)}
-        </select>
-        <select name="transactionType" defaultValue="sale" style={fieldStyle} aria-label="Sale or rent">
-          <option value="sale">Sale</option>
-          <option value="rent">Rental</option>
-        </select>
-        <select name="useClass" defaultValue="residential" style={fieldStyle} aria-label="Use">
-          <option value="residential">Residential</option>
-          <option value="commercial">Commercial</option>
-        </select>
-        <select name="propertyType" defaultValue="house" style={fieldStyle} aria-label="Property type">
-          {["house", "unit", "townhouse", "land", "office", "retail", "industrial", "warehouse", "hospitality", "other"].map(t => <option key={t}>{t}</option>)}
-        </select>
+        <ListingFields />
         <button type="submit" disabled={busy} style={fieldStyle}>Save draft</button>
       </form>
       {signedOut && <p role="alert"><a href="/api/auth/google/start">Sign in with Google</a> to save a listing.</p>}
@@ -93,17 +79,9 @@ export default function NewListing() {
       {draftId && (
         <section>
           <h2>Draft saved</h2>
+          <p><a href={`/listings/${draftId}/edit`}>Edit this draft</a></p>
           {isRent && (
-            <div style={{ display: "grid", gap: 8, marginBottom: 12 }}>
-              <label htmlFor="bond-pathway">Where will the rental bond be held? The platform never holds it.</label>
-              <select id="bond-pathway" value={bond} onChange={saveBond} disabled={bondState === "saving"} style={fieldStyle}>
-                <option value="" disabled>Choose an option</option>
-                {Object.entries(BOND_PATHWAY_LABELS).map(([k, label]) => <option key={k} value={k}>{label}</option>)}
-              </select>
-              {bondState === "saving" && <small role="status">Saving...</small>}
-              {bondState === "saved" && <small role="status">Bond arrangement saved.</small>}
-              {bondState === "error" && <small role="alert">Could not save the bond arrangement. Try again.</small>}
-            </div>
+            <BondPathwayField value={bond} state={bondState} onChange={saveBond} />
           )}
           <button type="button" disabled={busy} style={fieldStyle} onClick={runCheck}>Check if it can be published</button>
           {check && (
