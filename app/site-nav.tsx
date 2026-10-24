@@ -32,6 +32,7 @@ export default function SiteNav() {
       {who === "owner" && <a href="/listings/mine">My listings</a>}
       {who === "owner" && <a href="/listings/mine">Offers</a>}
       {buyer && <a href="/buyer/saved-searches">Saved searches</a>}
+      {who === "buyer" && <a href="/buyer/saved-listings">Saved homes</a>}
       {who === "buyer" && <a href="/buyer/verification">Verification</a>}
       {who !== "loading" && who !== "out" && <a href="/dashboard">Dashboard</a>}
       {who === "staff" && <a href="/staff">Staff</a>}

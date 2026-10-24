@@ -78,3 +78,23 @@ export async function verifyTrustAccount(input: TrustAccountInput, ports: Verifi
   const openAdminCase = decision.kind === "flagged_for_admin" || decision.kind === "rejected" || decision.kind === "awaiting_human_approval";
   return { decision, evidence, fingerprint, openAdminCase };
 }
+
+/**
+ * What a person still has to do for a check, in plain words, from the stored evidence. Empty when nothing is outstanding.
+ * Only a check waiting for human approval can be approved; every other open check is a to-do list (fail closed).
+ */
+export function checksToPerform(decision: TrustAccountDecision["kind"], evidence: Partial<TrustAccountEvidence>): string[] {
+  if (decision === "approved") return [];
+  if (decision === "rejected") return ["Do not publish. Confirm the rejection reason and contact the firm through the register's details only."];
+  const todo: string[] = [];
+  if (decision === "flagged_for_admin" || evidence.automationError) {
+    todo.push(`Automation failed${evidence.automationError ? ` (${evidence.automationError})` : ""}: repeat every check below by hand.`);
+  }
+  if (evidence.practisingCertificateCurrent !== true) todo.push("Confirm the practising certificate is current on the state register.");
+  if (evidence.firmEmailVerified !== true) todo.push("Confirm the firm replied to the verification email sent to its registered address.");
+  if (evidence.accountNameMatches === false) todo.push("Account name does not match the firm: escalate as possible fraud.");
+  if (evidence.accountNameMatches !== true && evidence.callbackCompleted !== true) todo.push("Name check unavailable: phone the firm on its registered number and record the call-back.");
+  if (evidence.bankLetterOnFile !== true) todo.push("Obtain a bank letter or statement header showing a trust account.");
+  if (decision === "awaiting_human_approval") todo.push("All automated checks passed: review the evidence, then approve or reject.");
+  return todo;
+}

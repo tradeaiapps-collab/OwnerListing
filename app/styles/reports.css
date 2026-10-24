@@ -1,0 +1,8 @@
+.report-grid { display: grid; gap: var(--space-4); grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); margin-bottom: var(--space-6); }
+.report-card { padding: var(--space-4); border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+.report-card h2 { margin-top: 0; }
+.report-table { width: 100%; border-collapse: collapse; }
+.report-table th, .report-table td { padding: var(--space-2); border-bottom: 1px solid var(--border); text-align: left; }
+.report-table td.num, .report-table th.num { text-align: right; font-variant-numeric: tabular-nums; }
+.report-actions { display: flex; flex-wrap: wrap; gap: var(--space-3); margin-bottom: var(--space-4); }
+.report-note { padding: var(--space-3) var(--space-4); border-left: 4px solid currentColor; margin-bottom: var(--space-4); }

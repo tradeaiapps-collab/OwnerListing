@@ -79,7 +79,7 @@ export default function NewListing() {
       {signedOut && <p role="alert"><a href="/api/auth/google/start">Sign in with Google</a> to save a listing.</p>}
       {error && <p role="alert">{error}</p>}
       {draftId && (
-        <section>
+        <section role="status">
           <h2>Draft saved</h2>
           <p><a href={`/listings/${draftId}/edit`}>Edit this draft</a></p>
           {isRent && (

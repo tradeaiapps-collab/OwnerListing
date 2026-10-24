@@ -86,7 +86,7 @@ describe("listing actions", () => {
   });
   it("sends signed-in visitors straight to the action", () => {
     expect(actionHref(ID, "enquire", true)).toBe(`/listings/${ID}/enquire`);
-    expect(actionHref(ID, "save", true)).toBe(`/buyer/saved-searches?listing=${ID}`);
+    expect(actionHref(ID, "save", true)).toBe(`/listings/${ID}`);
   });
   it("refuses a malformed listing id instead of building a next param", () => {
     for (const bad of ["//evil.test", "../x", "a b", "https://evil.test", ""]) {
