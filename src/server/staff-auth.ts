@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { readAppMode } from "../config/app-mode";
 import type { StaffActor } from "../domain/staff-access";
 import { asStaffRole, normaliseStaffEmail } from "../domain/staff-invite";
 import type { GoogleIdentity } from "./auth/google";
@@ -79,6 +80,7 @@ export async function staffSignIn(db: Queryable, who: GoogleIdentity, bootstrap:
  * same email never revives when the address is invited again (for example after the mailbox was reassigned); that person must sign in again.
  */
 export async function staffFromRequest(db: Queryable, req: Request, secret: string, nowSeconds: number): Promise<StaffActor | null> {
+  if (readAppMode() === "public") return null; // defence in depth: a public deployment never honours a staff cookie
   const p = verifyStaffSession(staffTokenFromRequest(req), secret, nowSeconds);
   if (!p) return null;
   const res = await db.query(
