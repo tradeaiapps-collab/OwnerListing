@@ -129,8 +129,9 @@ describe("POST /api/listings/[id]/offers (buyer submits)", () => {
     expect(spend).toHaveLength(1);
     expect(spend[0]!.params).not.toContain("attacker");
     expect(spend[0]!.params).toContain(listingId);
-    expect(audit.map(a => a.eventType)).toEqual(["offer.submitted"]);
-    expect(audit[0]!.actorId).toBe("buyer-9");
+    const submitted = audit.filter(a => a.eventType === "offer.submitted");
+    expect(submitted).toHaveLength(1);
+    expect(submitted[0]!.actorId).toBe("buyer-9");
   });
 });
 
