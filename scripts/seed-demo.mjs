@@ -6,8 +6,9 @@ import pg from "pg";
 const url = process.env.DATABASE_URL;
 if (process.env.NODE_ENV === "production") { console.error("Refusing to seed: NODE_ENV is production."); process.exit(2); }
 if (!url) { console.error("DATABASE_URL is required."); process.exit(2); }
+// Check the host pg will REALLY use, not just the URL authority: "?host=prod.example.com" (or PGHOST when the URL has none) overrides it.
 let host = "";
-try { host = new URL(url).hostname.toLowerCase(); } catch { /* handled below */ }
+try { host = String(new pg.Client({ connectionString: url }).connectionParameters.host ?? "").toLowerCase(); } catch { /* handled below */ }
 if (host !== "localhost" && host !== "127.0.0.1") { console.error(`Refusing to seed: database host "${host}" is not localhost or 127.0.0.1.`); process.exit(2); }
 
 const D = "@demo.invalid";

@@ -122,3 +122,24 @@ describe("POST /api/dev/login", () => {
     expect((await call({}, { userId: "x" })).status).toBe(400);
   });
 });
+
+describe("seed-demo database guard", () => {
+  const run = async (env: Record<string, string>) => {
+    const { spawnSync } = await import("node:child_process");
+    const r = spawnSync(process.execPath, ["scripts/seed-demo.mjs"], { env: { PATH: process.env["PATH"] ?? "", ...env }, encoding: "utf8", timeout: 20000 });
+    return { code: r.status, err: r.stderr };
+  };
+  it.each([
+    "postgres://u:p@db.example.com/x",
+    "postgres://u:p@localhost/x?host=prod.example.com",
+    "postgres://u:p@127.0.0.1/x?host=prod.example.com",
+    "postgres://u:p@localhost.evil.com/x"
+  ])("refuses %s", async url => {
+    const r = await run({ DATABASE_URL: url });
+    expect(r.code).toBe(2);
+    expect(r.err).toContain("Refusing to seed");
+  });
+  it("refuses NODE_ENV=production even for localhost", async () => {
+    expect((await run({ DATABASE_URL: "postgres://u:p@localhost/x", NODE_ENV: "production" })).code).toBe(2);
+  });
+});
