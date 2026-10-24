@@ -87,6 +87,7 @@ Required means the site does not work without it. Fail-closed-optional means lea
 | `TRUSTED_PROXY_HOPS` | `1` | `1` | Required in practice (default 1). Vercel is one hop. |
 | `NODE_ENV` | do not set | do not set | Vercel sets it. |
 | `NEXT_PUBLIC_SITE_NAME`, `SITE_NAME`, `NEXT_PUBLIC_SITE_TAGLINE`, `SITE_TAGLINE` | optional | optional | Optional. Brand name and tagline; default "OwnerListing". Set `NEXT_PUBLIC_SITE_NAME` on both projects, then redeploy. |
+| `THEME_PREVIEW_SECRET` | `openssl rand -base64 48` | the SAME value as public | Optional. Signs the 15-minute `?theme_preview=` link used by Staff > Site appearance. Unset: Preview is off. Not the session secret. On admin also set `APP_URL` to the public address (used only to build the preview link). |
 | `OFFER_LINK_TOKEN_KEY` | `openssl rand -base64 32` | leave empty | Fail-closed-optional. Empty: offer links are refused. |
 | `ALERT_UNSUBSCRIBE_KEY` | `openssl rand -base64 48` | empty | Fail-closed-optional. Empty: no alerts sent. |
 | `ALERT_CRON_SECRET` | `openssl rand -base64 48` | empty | Fail-closed-optional. Empty: `/api/internal/alerts/run` answers 503. |

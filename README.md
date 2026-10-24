@@ -31,3 +31,6 @@ npm run typecheck
 4. Implement state-specific disclosure configuration with compliance-owned content.
 5. Wire the listing API and pages to the publish gates and domain rules.
 6. Done: CI runs typecheck and tests (`.github/workflows/ci.yml`). Observability, feature flags and security controls remain.
+
+## Local test kit
+Run the whole site on your own PC (public http://localhost:3005, admin http://localhost:3006) with demo data and a dev-only sign-in: see docs/LOCAL_TEST.md.

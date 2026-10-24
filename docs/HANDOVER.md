@@ -17,7 +17,7 @@ OwnerListing: Australian marketplace where owners list their own homes. AI assis
 - Storage and malware scan: 503. Alerts: engine built, nothing sends. AI: rules-only, features report off.
 - ID check: in-house photo ID + live selfie upload and staff review are built (encrypted images, claim-based audited viewing, retention job). Off until storage, ClamAV, `ID_IMAGE_KEY` and `ID_RETENTION_CRON_SECRET` are set. **Counsel must approve the retention periods, the privacy notice and Privacy Act handling before real use; this holds sensitive personal information, so a pen test is advised before real users.** Limits: no government-record (DVS) check, no deepfake or liveness detection, the in-app selfie can be bypassed by a determined user.
 | Staff | `/staff` dashboard, admin cases, trust-account approvals (two people), identity review checklist, pricing, audit log, staff access (invite, revoke, set role; admin only); role read from the active invite per request |
-| Staff | `/staff` dashboard, admin cases, trust-account approvals (two people), identity review checklist, pricing, audit log, messaging settings (super admin); role read from the database per request |
+| Staff | `/staff` dashboard, admin cases, trust-account approvals (two people), identity review checklist, pricing, audit log, messaging settings (`messaging.settings`), staff access, and roles and permissions at `/staff/roles` (custom roles built from the permission catalogue in `src/domain/staff-access.ts`; super admin only; no escalation; sensitive permissions need a super admin; insert-only history; access review CSV). Role and permissions read from the database on every request |
 
 ## Placeholder or off
 - Payments: adapter is a stub and the webhook format is our placeholder; nothing publishes until a real paid confirmation exists.
@@ -45,3 +45,6 @@ OwnerListing: Australian marketplace where owners list their own homes. AI assis
 
 ## Working rules
 One feature per PR; minimal patches; `npm test` and `npm run typecheck` are the gate; never skip tests or edit CI; security review for auth, uploads, ID data, raw SQL and payments; chat and published files are never deletable.
+
+## Site appearance (theme and branding)
+See docs/SITE_APPEARANCE.md. Permission `theme.edit` is held by `super_admin` and the new `designer` role only (the designer has no other permission). Staff screen: `/staff/site` (admin site).

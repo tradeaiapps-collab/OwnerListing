@@ -4,27 +4,33 @@ export const MIN_REASON = 10;
 export const reasonOk = (r: unknown): r is string => typeof r === "string" && r.trim().length >= MIN_REASON;
 export const REASON_ERROR = `A reason of at least ${MIN_REASON} characters is required.`;
 
-export interface StaffSection { href: string; label: string; permission: StaffPermission }
+/** A staff screen and the permissions that open it (any one of them). The API routes behind each screen use the same permissions. */
+export interface StaffSection { href: string; label: string; permissions: readonly StaffPermission[] }
 
-const SECTIONS: readonly StaffSection[] = [
-  { href: "/staff/cases", label: "Admin cases", permission: "case.manage" },
-  { href: "/staff/trust-accounts", label: "Trust account approvals", permission: "trust_account.approve" },
-  { href: "/staff/id-review", label: "Identity review", permission: "identity.review" },
-  { href: "/staff/reports", label: "Reports", permission: "report.sales" },
-  { href: "/staff/audit", label: "Audit log", permission: "report.audit" },
-  { href: "/staff/invites", label: "Staff access", permission: "staff.manage" },
-  { href: "/staff/messaging", label: "Messaging settings", permission: "staff.manage" },
-  { href: "/staff/investments", label: "Investor projects review", permission: "investment.review" },
-  { href: "/staff/investments/settings", label: "Investor module switch", permission: "investment.manage" }
+export const STAFF_SECTIONS: readonly StaffSection[] = [
+  { href: "/staff/cases", label: "Admin cases", permissions: ["case.manage"] },
+  { href: "/staff/trust-accounts", label: "Trust account approvals", permissions: ["trust_account.approve"] },
+  { href: "/staff/id-review", label: "Identity review", permissions: ["identity.review"] },
+  { href: "/staff/reports", label: "Reports", permissions: ["report.sales"] },
+  { href: "/staff/audit", label: "Audit log", permissions: ["report.audit"] },
+  { href: "/staff/pricing", label: "Pricing and plans", permissions: ["pricing.manage"] },
+  { href: "/staff/invites", label: "Staff access", permissions: ["staff.manage"] },
+  { href: "/staff/roles", label: "Roles and permissions", permissions: ["staff.manage"] },
+  { href: "/staff/messaging", label: "Messaging settings", permissions: ["messaging.settings"] },
+  { href: "/staff/site", label: "Site appearance", permissions: ["theme.edit"] },
+  { href: "/staff/investments", label: "Investor projects review", permissions: ["investment.review"] },
+  { href: "/staff/investments/settings", label: "Investor module switch", permissions: ["investment.manage"] }
 ];
 
-/** Only the sections this staff member's role allows. */
-export const sectionsFor = (actor: StaffActor): StaffSection[] => SECTIONS.filter(s => staffCan(actor, s.permission));
+/** Only the sections this staff member's permissions allow (resolved from the role definition on every request). */
+export const sectionsFor = (actor: StaffActor): StaffSection[] => STAFF_SECTIONS.filter(s => s.permissions.some(p => staffCan(actor, p)));
 
 export type CaseKind = "trust_account_verification" | "licence_verification" | "identity_verification" | "other";
 export interface CaseState {
   kind: CaseKind; status: "open" | "in_progress" | "resolved"; assignedTo: string | null;
-  proposedBy: string | null; proposedByRole: StaffActor["role"] | null; proposedReason: string | null;
+  proposedBy: string | null; proposedByRole: string | null; proposedReason: string | null;
+  /** The proposer's permissions when they hold a custom role (built-in roles use the fixed matrix). */
+  proposedByPermissions?: readonly StaffPermission[];
 }
 export type Deny = { action: "deny"; status: number; error: string };
 export type ResolvePlan =
@@ -63,7 +69,8 @@ export function planCaseResolve(actor: StaffActor, c: CaseState, reason: unknown
     return d.requiresSecondApprover ? { action: "propose", reason } : deny(403, d.reasons[0] ?? "Not allowed.");
   }
   if (c.proposedByRole === null || c.proposedReason === null) return deny(409, "The proposing staff member is no longer active.");
-  const d = evaluateOverride({ id: c.proposedBy, role: c.proposedByRole }, { target, reason: c.proposedReason }, actor);
+  const proposer: StaffActor = { id: c.proposedBy, role: c.proposedByRole, ...(c.proposedByPermissions ? { permissions: c.proposedByPermissions } : {}) };
+  const d = evaluateOverride(proposer, { target, reason: c.proposedReason }, actor);
   if (!d.allowed) return deny(403, d.reasons[0] ?? "A different authorised person must approve this override.");
   return { action: "resolve", override: { actorId: c.proposedBy, approverId: actor.id, reason: c.proposedReason, target }, reason };
 }

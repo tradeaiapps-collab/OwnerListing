@@ -3,3 +3,18 @@
 .staff-reason { width: 100%; min-height: 4rem; }
 .staff-notice { padding: 0.75rem 1rem; border-left: 4px solid currentColor; }
 .staff-checks { display: grid; gap: 0.25rem; margin: 0.5rem 0; }
+main.roles-page { max-width: 1280px; }
+.roles-matrix th, .roles-matrix td { vertical-align: top; overflow-wrap: normal; word-break: normal; }
+.roles-matrix thead th { min-width: 6.5rem; }
+.roles-matrix tbody th[scope="row"], .roles-matrix thead th:first-child { position: sticky; left: 0; background: var(--bg); z-index: 1; }
+.roles-matrix thead th small, .roles-matrix .perm-desc { display: block; font-weight: normal; }
+.roles-matrix tbody th[scope="row"] { text-align: left; min-width: 14rem; max-width: 22rem; }
+.roles-matrix .area-row th { text-align: left; padding-top: 1rem; border-bottom: 2px solid currentColor; }
+.roles-matrix .cell { text-align: center; min-width: 6rem; }
+.roles-matrix .role-disabled { opacity: 0.6; }
+.badge { display: inline-block; margin-left: 0.4rem; padding: 0 0.4rem; border: 1px solid currentColor; border-radius: 0.25rem; font-size: 0.75em; }
+.badge.sensitive { color: #b45309; }
+.linklike { background: none; border: 0; padding: 0; font: inherit; font-weight: bold; text-decoration: underline; cursor: pointer; color: inherit; }
+.stack-tight { display: grid; gap: 0.25rem; }
+.role-summary { margin: 1.5rem 0; }
+.access-detail { margin: 0.25rem 0 0.75rem; }
