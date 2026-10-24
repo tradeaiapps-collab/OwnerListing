@@ -32,7 +32,7 @@ export default function MyListings() {
               <strong>{r.title}</strong>
               <div>{r.address}</div>
               <small className="muted">{STATUS_LABELS[r.status] ?? r.status} · {r.transactionType === "sale" ? "Sale" : "Rent"}</small>
-              {r.status === "draft" && <div><a href={`/listings/${r.id}/edit`}>Edit this draft</a></div>}
+              {r.status === "draft" && <div><a href={`/listings/${r.id}/edit`}>Edit this draft</a> · <a href={`/listings/${r.id}/checkout`}>Pay and publish</a></div>}
             </li>
           ))}
         </ul>

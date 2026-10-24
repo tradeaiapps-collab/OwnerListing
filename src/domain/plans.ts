@@ -67,3 +67,8 @@ export function quote(plan: PlanDef, addOns: readonly Feature[], addOnPrices: Pa
   }
   return missing.length > 0 ? { ok: false, missing } : { ok: true, totalCents: total };
 }
+
+/** Entitlements from code with the admin-set prices (plan id to cents excluding GST) laid over them. Plans without a price stay null. */
+export function withPrices(plans: readonly PlanDef[], prices: Readonly<Record<string, number>>): PlanDef[] {
+  return plans.map(p => ({ ...p, priceCents: prices[p.id] ?? null }));
+}
