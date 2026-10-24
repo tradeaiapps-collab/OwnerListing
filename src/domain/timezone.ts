@@ -25,3 +25,8 @@ export function deadlineInfo(deadlineIso: string, jurisdiction: Jurisdiction, vi
     viewerTime: formatInZone(deadlineIso, viewerTz, locale)
   };
 }
+
+/** The calendar date (YYYY-MM-DD) of an instant in the given time zone. */
+export function localDateInZone(iso: string, timeZone: string): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(iso));
+}

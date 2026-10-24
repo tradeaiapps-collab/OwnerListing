@@ -12,6 +12,6 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export async function GET(req: Request, { params }: Ctx) {
   const { id } = await params;
   if (!UUID.test(id)) return failure({ ok: false, code: "not_found", message: "Listing not found." });
-  const r = await listDocuments(getDeps(), createPgDocumentStore(getDb()), getActor(req), id);
+  const r = await listDocuments(getDeps(), createPgDocumentStore(getDb()), await getActor(req), id);
   return r.ok ? NextResponse.json({ documents: r.value }) : failure(r);
 }

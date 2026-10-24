@@ -8,7 +8,7 @@ type Ctx = { params: Promise<{ id: string }> };
 
 /** The owner's assignments for one listing. Anyone else gets 404. */
 export async function GET(req: Request, { params }: Ctx) {
-  const actor = getActor(req);
+  const actor = await getActor(req);
   if (!actor) return unauthenticated();
   const { id } = await params;
   const r = await listAssignments(getAssignmentRepo(), actor, id);
@@ -21,7 +21,7 @@ export async function GET(req: Request, { params }: Ctx) {
  * The owner is always the signed-in user; the body cannot name one.
  */
 export async function POST(req: Request, { params }: Ctx) {
-  const actor = getActor(req);
+  const actor = await getActor(req);
   if (!actor) return unauthenticated();
   const { id } = await params;
   const r = await inviteContractor(getAssignmentRepo(), actor, id, await req.json().catch(() => null), assignmentIds);
