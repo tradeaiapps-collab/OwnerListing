@@ -2,10 +2,11 @@ import { NextResponse } from "next/server";
 import { forbiddenFor } from "../../../../../src/domain/access";
 import { hashToken, validateFormalOffer, validateOfferLink, type FormalOffer } from "../../../../../src/domain/offer-intake";
 import { parseOfferSubmission } from "../../../../../src/domain/offer-submission";
+import { clientIp } from "../../../../../src/server/client-ip";
 import { getActor, getDb, getDeps } from "../../../../../src/server/context";
 import { failure, unauthenticated } from "../../../../../src/server/http";
 import { OFFER_RATE, windowStart, withinLimit } from "../../../../../src/domain/rate-limit";
-import { countHitPg } from "../../../../../src/server/offer-flow-db";
+import { countHitPg, eligibleBuyerPg } from "../../../../../src/server/offer-flow-db";
 import { offerLinkPg, offersForOwnerPg, submitOfferPg } from "../../../../../src/server/offers-db";
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -30,7 +31,7 @@ export async function POST(req: Request, { params }: Ctx) {
   const now = deps.now();
   const tokenHash = await hashToken(parsed.value.token);
   // Rate limit per link and per IP-hash window, before the link lookup. Fails closed: a store error blocks the request.
-  const ip = (req.headers.get("x-forwarded-for") ?? "").split(",")[0]?.trim() || "unknown";
+  const ip = clientIp(req);
   const start = windowStart(now, OFFER_RATE.windowMs);
   try {
     const perLink = await countHitPg(db, await hashToken(`link:${tokenHash}`), start);
@@ -42,8 +43,16 @@ export async function POST(req: Request, { params }: Ctx) {
     return NextResponse.json({ error: "Offers are unavailable right now. Try again later." }, { status: 503 });
   }
 
+  // The link is a bearer token, so it is only honoured for the buyer it was issued to, signed in as that buyer.
+  const actor = getActor(req);
+  if (!actor) return unauthenticated();
   const link = await offerLinkPg(db, tokenHash);
   if (!link) return failure(badLink);
+  if (actor.userId !== link.buyerUserId) return failure(badLink);
+  // Re-check at submit time: the buyer may have been suspended or lost verification since the link was issued.
+  if (!(await eligibleBuyerPg(db, link.buyerUserId, rec.listing.ownerUserId))) {
+    return failure({ ok: false, code: "forbidden", message: "You cannot submit an offer on this listing." });
+  }
 
   const offer: FormalOffer = {
     listingId: id,
