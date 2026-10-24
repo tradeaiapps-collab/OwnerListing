@@ -1,3 +1,5 @@
+import { malwareScannerFromEnv } from "../adapters/malware-scan";
+import { objectStorageFromEnv } from "../adapters/object-storage";
 import { randomUUID } from "node:crypto";
 import pg from "pg";
 import { getRequiredDisclosureKeys } from "../config/disclosures";
@@ -52,4 +54,9 @@ export async function getStaff(req: Request): Promise<StaffActor | null> {
 export function getActor(req: Request): Actor | null {
   const auth = readAuthEnv();
   return auth ? actorFromRequest(req, auth.secret, Math.floor(Date.now() / 1000)) : null;
+}
+
+/** File storage and malware scanner. Both fail closed (uploads refused) until real providers are configured. */
+export function getUploadPorts() {
+  return { storage: objectStorageFromEnv(process.env), scanner: malwareScannerFromEnv(process.env) };
 }

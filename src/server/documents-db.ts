@@ -1,4 +1,4 @@
-import type { DocumentStore } from "../domain/document-service";
+import type { UploadStore } from "../domain/document-upload";
 import type { DocumentKind, DocumentRecord, DocumentStatus, Visibility } from "../domain/documents";
 import type { JobAssignment } from "../domain/job-chat";
 import type { Queryable } from "./db";
@@ -18,7 +18,7 @@ const toDocument = (r: Record<string, unknown>): DocumentRecord => ({
   ...(r["supersedes_id"] ? { supersedesId: String(r["supersedes_id"]) } : {})
 });
 
-export function createPgDocumentStore(db: Queryable): DocumentStore {
+export function createPgDocumentStore(db: Queryable): UploadStore {
   return {
     async documentsForListing(listingId) {
       const res = await db.query(`${DOC_SELECT} WHERE d.listing_id = $1 ORDER BY d.uploaded_at, d.id`, [listingId]);
@@ -37,6 +37,19 @@ export function createPgDocumentStore(db: Queryable): DocumentStore {
         id: String(r["id"]), listingId: String(r["listing_id"]), ownerUserId: String(r["owner_user_id"]),
         contractorUserId: String(r["contractor_user_id"]), kind: r["kind"], status: r["status"]
       }) as JobAssignment);
+    },
+    /** One statement: insert the new version and mark the earlier one superseded together. Insert and update only. */
+    async addDocument(d, supersede) {
+      const r = d.record;
+      await db.query(
+        `WITH ins AS (
+           INSERT INTO property_document (id, property_id, listing_id, kind, storage_key, sha256, uploaded_by, source, declared_mime, size_bytes, visibility, status, supersedes_id)
+           SELECT $1, l.property_id, l.id, $2, $3, $4, $5, $6, $7, $8, $9, 'active', $10::uuid FROM property_listing l WHERE l.id = $11
+           RETURNING id)
+         UPDATE property_document SET status = 'superseded' WHERE id = $10::uuid AND EXISTS (SELECT 1 FROM ins)`,
+        [r.id, r.kind, d.storageKey, d.sha256, r.uploadedBy, r.uploadedBy === r.ownerUserId ? "owner_supplied" : "platform",
+          d.declaredMime, d.sizeBytes, r.visibility, supersede?.id ?? null, r.listingId]
+      );
     },
     async recordDeletionRequest(r) {
       await db.query(
