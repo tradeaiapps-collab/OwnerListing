@@ -1,5 +1,6 @@
 import { toListingSummary, type AlertPreference, type ListingSummary, type SavedSearch } from "./buyer";
 import { dispatchAlerts, planNewAlerts, type AlertChannel, type AlertDeliveryPort, type DeliveryLogEntry } from "./alerts";
+import type { PlannedAlert } from "./buyer";
 import type { PropertyListing } from "./listing";
 
 /** What was already done for a listing: `sentKeys` are alertKey values already delivered; `searchIds` are searches already attempted. */
@@ -15,6 +16,9 @@ export interface PublishAlertDeps {
   unsubscribeUrlFor(buyerUserId: string, channel: AlertChannel): string;
   now(): string;
   log(entry: DeliveryLogEntry): Promise<void>;
+  overRate?(buyerUserId: string): Promise<boolean>;
+  defer?(plan: PlannedAlert): Promise<void>;
+  enqueueRetry?(entry: DeliveryLogEntry): Promise<void>;
 }
 
 /**
@@ -33,7 +37,10 @@ export function createPublishAlertHook(d: PublishAlertDeps): (listing: PropertyL
     const fresh = searches.filter(s => !handled.searchIds.has(s.id));
     const plans = planNewAlerts(summary, fresh, prefsByBuyer, handled.sentKeys);
     return dispatchAlerts(plans, {
-      port: d.port, prefsByBuyer, alreadySent: handled.sentKeys, unsubscribeUrlFor: d.unsubscribeUrlFor, now: d.now, log: d.log
+      port: d.port, prefsByBuyer, alreadySent: handled.sentKeys, unsubscribeUrlFor: d.unsubscribeUrlFor, now: d.now, log: d.log,
+      ...(d.overRate ? { overRate: d.overRate } : {}),
+      ...(d.defer ? { defer: d.defer } : {}),
+      ...(d.enqueueRetry ? { enqueueRetry: d.enqueueRetry } : {})
     });
   };
 }

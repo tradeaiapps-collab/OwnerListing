@@ -37,6 +37,12 @@ export interface DispatchDeps {
   now(): string;
   /** Called once for every attempt, including skipped ones. Insert-only. */
   log(entry: DeliveryLogEntry): Promise<void>;
+  /** True when this buyer already has their hourly share of alerts: the alert is deferred to the outbox instead of sent. */
+  overRate?(buyerUserId: string): Promise<boolean>;
+  /** Queues an alert for a later run (rate limit hit). Not an attempt, so nothing is logged. */
+  defer?(plan: PlannedAlert): Promise<void>;
+  /** Queues a failed send for retry with backoff. Not called for "not_configured": nothing queues up while no provider is set. */
+  enqueueRetry?(entry: DeliveryLogEntry): Promise<void>;
 }
 
 /** Re-checks consent and duplicates at send time, refuses to send without an unsubscribe link, logs every attempt. */
@@ -51,6 +57,7 @@ export async function dispatchAlerts(plans: readonly PlannedAlert[], d: Dispatch
     if (!mayAlert(pref)) outcome = "skipped_no_consent";
     else if (sent.has(key)) outcome = "skipped_duplicate";
     else if (unsubscribeUrl === "") outcome = "skipped_no_unsubscribe";
+    else if (await d.overRate?.(p.buyerUserId)) { await d.defer?.(p); continue; }
     else {
       try { outcome = await d.port.send({ buyerUserId: p.buyerUserId, channel: p.channel, listingId: p.listingId, searchId: p.searchId, unsubscribeUrl }); }
       catch { outcome = "failed"; }
@@ -58,6 +65,7 @@ export async function dispatchAlerts(plans: readonly PlannedAlert[], d: Dispatch
     }
     const entry: DeliveryLogEntry = { buyerUserId: p.buyerUserId, channel: p.channel, listingId: p.listingId, searchId: p.searchId, outcome, attemptedAt: d.now() };
     await d.log(entry);
+    if (outcome === "failed") await d.enqueueRetry?.(entry);
     out.push(entry);
   }
   return out;
