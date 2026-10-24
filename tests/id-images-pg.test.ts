@@ -21,7 +21,6 @@ describe.skipIf(!DATABASE_URL)("ID images on Postgres", () => {
     buyer = await addUser(t.db, "buyer");
     rev1 = await addUser(t.db, "admin");
     rev2 = await addUser(t.db, "admin");
-    await t.db.query("UPDATE app_user SET staff_role = 'compliance' WHERE id = ANY($1::uuid[])", [[rev1, rev2]]);
     await t.db.query("INSERT INTO buyer_verification (user_id, email_verified_at, phone_verified_at) VALUES ($1, now(), now())", [buyer]);
     storage = memStorage();
     d = { store: createPgIdImageStore(t.db), storage: storage.port, scanner: scanner(), key: KEY, retentionSecret: RETENTION_SECRET };

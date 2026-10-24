@@ -23,8 +23,8 @@ export const ID_CLAIM_TTL_MS = 30 * 60 * 1000;
 
 /** Draft wording; counsel to confirm. Bump the version whenever the text changes: the version is recorded with each consent. */
 export const ID_IMAGE_CONSENT_VERSION = "2026-10-25.v1";
-export const ID_IMAGE_CONSENT_TEXT =
-  "I agree that OwnerListing may collect photos of my Australian government photo ID and a live selfie to confirm my identity. " +
+export const idImageConsentText = (brandName: string): string =>
+  `I agree that ${brandName} may collect photos of my Australian government photo ID and a live selfie to confirm my identity. ` +
   "The photos are encrypted, are seen only by the staff member assigned to review my check, are not shared with anyone else, " +
   "and are deleted 7 days after approval or 30 days after rejection. A person compares the photos; no face template is made. " +
   "My document number is never recorded.";
@@ -49,7 +49,7 @@ export function idImageKeyUsable(keyB64: string | undefined): boolean {
 
 /** Separate sub-key for rate-limit buckets and IP hashes, so the encryption key is never used for anything else. */
 export function idImageHmacKey(keyB64: string | undefined): Buffer {
-  return createHash("sha256").update("ownerlisting:id-image:hmac:v1").update(keyBytes(keyB64)).digest();
+  return createHash("sha256").update("app:id-image:hmac:v1").update(keyBytes(keyB64)).digest();
 }
 
 // ---------- sealing ----------
