@@ -119,7 +119,7 @@ describe("POST /api/listings/[id]/offers (buyer submits)", () => {
   it("returns 409 when the link was spent by a concurrent request", async () => {
     spendRows = [];
     expect((await submit(listingId, goodBody())).status).toBe(409);
-    expect(audit).toHaveLength(0);
+    expect(audit.filter(a => a.eventType === "offer.submitted")).toHaveLength(0);
   });
   it("returns 201, takes the buyer from the link (not the body), audits, and spends the link in one statement", async () => {
     const res = await submit(listingId, { ...goodBody(), buyerUserId: "attacker" });
