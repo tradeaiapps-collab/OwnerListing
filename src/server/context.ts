@@ -7,7 +7,7 @@ import type { Actor, ListingServiceDeps } from "../domain/listing-service";
 import { actorFromRequest } from "./auth/actor";
 import { readAuthEnv } from "./auth/config";
 import { appendAuditPg, createPgListingRepository, type Queryable } from "./db";
-import { createPgEnquiryRepository, getBuyerVerification } from "./enquiry-db";
+import { createPgEnquiryRepository, createPgNotificationRepository, getBuyerVerification } from "./enquiry-db";
 import { createPgOfferRepository } from "./offer-db";
 import type { IdDeps } from "../domain/id-review-service";
 import { createPgIdRepository, fileStoreFromEnv, staffFor } from "./id-db";
@@ -52,6 +52,7 @@ function wire(): Wired {
     offerDeps,
     enquiryDeps: {
       enquiries: createPgEnquiryRepository(db),
+      notifications: createPgNotificationRepository(db),
       listings: repo,
       verification,
       ...(appUrl ? { offerLinks: (listingId: string, buyerId: string) => issueOfferLink(offerDeps, appUrl, listingId, buyerId) } : {}),
