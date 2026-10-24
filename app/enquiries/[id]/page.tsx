@@ -6,6 +6,12 @@ import "../../styles/enquiries.css";
 
 type Message = { id: string; senderUserId: string | null; automated: boolean; body: string; sentAt: string };
 
+type OfferLinkState = {
+  role: "buyer" | "owner";
+  request?: { status: "requested" | "issued" | "declined" };
+  link?: { token: string; listingId: string; expiresAt: string };
+};
+
 /** One enquiry thread, for its buyer and the listing's owner. Messages cannot be edited or deleted. */
 export default function Thread() {
   const { id } = useParams<{ id: string }>();
@@ -27,7 +33,29 @@ export default function Thread() {
     }
   }, [id]);
 
-  useEffect(() => { void load(); }, [load]);
+  const [olr, setOlr] = useState<OfferLinkState | null>(null);
+  const loadOlr = useCallback(async () => {
+    try {
+      const r = await fetch(`/api/enquiries/${id}/offer-link`);
+      if (r.ok) setOlr(await r.json());
+    } catch { /* the thread still works without this panel */ }
+  }, [id]);
+
+  useEffect(() => { void load(); void loadOlr(); }, [load, loadOlr]);
+
+  async function olrAction(action: "request" | "issue" | "decline") {
+    setBusy(true);
+    setError("");
+    try {
+      const r = await fetch(`/api/enquiries/${id}/offer-link`, { method: "POST", headers: JSON_HEADERS, body: JSON.stringify({ action }) });
+      if (!r.ok) setError(((await r.json().catch(() => ({}))) as { error?: string }).error ?? "That did not work.");
+      await Promise.all([load(), loadOlr()]);
+    } catch {
+      setError("That did not work.");
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function onSend(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -69,7 +97,25 @@ export default function Thread() {
             <button type="submit" disabled={busy || !draft.trim()}>{busy ? "Sending…" : "Send"}</button>
             {error && <p role="alert">{error}</p>}
           </form>
-          <p className="muted">Owners can issue a secure formal offer link from <a href={`/listings/${data.enquiry.listingId}/offers`}>the offers page</a>. Buyers: ask the owner to send you one.</p>
+          {olr && (
+            <section aria-label="Formal offer link">
+              <h2>Formal offer link</h2>
+              {olr.role === "buyer" && olr.link && (
+                <p><a href={`/offers/new?listing=${encodeURIComponent(olr.link.listingId)}#token=${encodeURIComponent(olr.link.token)}`}>Make a formal offer</a> (single use, expires {new Date(olr.link.expiresAt).toLocaleString("en-AU")}).</p>
+              )}
+              {olr.role === "buyer" && olr.request?.status === "requested" && <p className="muted">Waiting for the owner to answer your request.</p>}
+              {olr.role === "buyer" && olr.request?.status !== "requested" && !olr.link && (
+                <button type="button" disabled={busy} onClick={() => void olrAction("request")}>Request an offer link</button>
+              )}
+              {olr.role === "owner" && olr.request?.status === "requested" && (
+                <p>
+                  <button type="button" disabled={busy} onClick={() => void olrAction("issue")}>Approve and issue link</button>{" "}
+                  <button type="button" disabled={busy} onClick={() => void olrAction("decline")}>Decline</button>
+                </p>
+              )}
+              {olr.role === "owner" && olr.request?.status !== "requested" && <p className="muted">No open request. You decide every offer yourself; nothing is accepted automatically.</p>}
+            </section>
+          )}
         </>
       )}
     </main>

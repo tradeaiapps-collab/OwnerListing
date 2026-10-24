@@ -4,10 +4,12 @@ import type { BuyerVerification } from "../domain/buyer";
 import type { DraftRepository, DraftStatus, ReplyDraft } from "../domain/enquiry-drafts";
 import type { Enquiry, EnquiryDeps, EnquiryMessage, EnquiryRepository } from "../domain/enquiry-service";
 import { hashToken } from "../domain/offer-intake";
+import { openOfferToken, sealOfferToken } from "../domain/offer-link-crypto";
 import { windowStart } from "../domain/rate-limit";
+import type { OfferLinkDeps, OfferLinkRequest, OfferLinkRequestRepository, OfferLinkRequestStatus } from "../domain/offer-link-request";
 import { getDb, getDeps } from "./context";
 import type { Queryable } from "./db";
-import { countHitPg } from "./offer-flow-db";
+import { countHitPg, eligibleBuyerPg } from "./offer-flow-db";
 
 // Every statement has constant text; user input only ever travels as a bound parameter.
 // There is no UPDATE or DELETE on enquiry_message anywhere: it is an append-only record (db trigger too).
@@ -47,6 +49,15 @@ export function createPgEnquiryRepository(db: Queryable): EnquiryRepository {
         "INSERT INTO enquiry_message (id, enquiry_id, sender_user_id, automated, body, sent_at) VALUES ($1::uuid,$2::uuid,$3::uuid,$4,$5,$6::timestamptz)",
         [m.id, m.enquiryId, m.senderUserId, m.automated, m.body, m.sentAt]
       );
+    },
+    async addNotice(m) {
+      // ON CONFLICT DO NOTHING hits enquiry_message_one_notice_per_hour_idx: a racing second notice inserts nothing.
+      const r = await db.query(
+        `INSERT INTO enquiry_message (id, enquiry_id, sender_user_id, automated, body, sent_at) VALUES ($1::uuid,$2::uuid,NULL,true,$3,$4::timestamptz)
+         ON CONFLICT DO NOTHING RETURNING id`,
+        [m.id, m.enquiryId, m.body, m.sentAt]
+      );
+      return r.rows.length === 1;
     },
     async messages(enquiryId) {
       const r = await db.query("SELECT * FROM enquiry_message WHERE enquiry_id = $1::uuid ORDER BY sent_at, id", [enquiryId]);
@@ -160,4 +171,79 @@ export function getEnquiryDeps(): EnquiryDeps {
     now: base.now,
     newId: () => randomUUID()
   };
+}
+
+/** The server key for sealing delivered offer tokens (base64, 32 bytes). Unset means offer links are refused. */
+const offerLinkKey = () => process.env["OFFER_LINK_TOKEN_KEY"];
+
+export function createPgOfferLinkRepository(db: Queryable, getKey: () => string | undefined = offerLinkKey): OfferLinkRequestRepository {
+  return {
+    async open(r) {
+      const x = await db.query(
+        "INSERT INTO offer_link_request (id, enquiry_id, requested_at) VALUES ($1::uuid,$2::uuid,$3::timestamptz) ON CONFLICT DO NOTHING RETURNING id",
+        [r.id, r.enquiryId, r.at]
+      );
+      return x.rows.length === 1;
+    },
+    async latest(enquiryId) {
+      const x = await db.query(
+        "SELECT id, enquiry_id, status, requested_at, decided_at FROM offer_link_request WHERE enquiry_id = $1::uuid ORDER BY requested_at DESC, id DESC LIMIT 1",
+        [enquiryId]
+      );
+      const r = x.rows[0];
+      if (!r) return undefined;
+      const out: OfferLinkRequest = {
+        id: String(r["id"]), enquiryId: String(r["enquiry_id"]), status: String(r["status"]) as OfferLinkRequestStatus, requestedAt: iso(r["requested_at"])
+      };
+      if (r["decided_at"]) out.decidedAt = iso(r["decided_at"]);
+      return out;
+    },
+    async decline(id, at) {
+      const x = await db.query(
+        "UPDATE offer_link_request SET status = 'declined', decided_at = $2::timestamptz WHERE id = $1::uuid AND status = 'requested' RETURNING id",
+        [id, at]
+      );
+      return x.rows.length === 1;
+    },
+    async issue(id, link, token, at) {
+      // Sealed before touching the database: with no usable key this throws and nothing is stored.
+      const sealed = await sealOfferToken(token, getKey(), id);
+      // One statement: the request flips to issued and the hashed link is stored, or neither happens.
+      const x = await db.query(
+        `WITH r AS (
+           UPDATE offer_link_request SET status = 'issued', decided_at = $2::timestamptz, token_hash = $3, link_ciphertext = $7
+           WHERE id = $1::uuid AND status = 'requested' RETURNING id
+         )
+         INSERT INTO offer_link (token_hash, listing_id, buyer_user_id, created_at, expires_at)
+         SELECT $3, $4::uuid, $5::uuid, $2::timestamptz, $6::timestamptz FROM r RETURNING token_hash`,
+        [id, at, link.tokenHash, link.listingId, link.buyerUserId, link.expiresAt, sealed]
+      );
+      return x.rows.length === 1;
+    },
+    async liveLink(enquiryId, now) {
+      // Wipe the ciphertext of any link that is used or expired, then read the one that is still live.
+      await db.query(
+        `UPDATE offer_link_request r SET link_ciphertext = NULL FROM offer_link l
+         WHERE r.enquiry_id = $1::uuid AND r.link_ciphertext IS NOT NULL AND l.token_hash = r.token_hash
+           AND (l.used_at IS NOT NULL OR l.expires_at <= $2::timestamptz)`,
+        [enquiryId, now]
+      );
+      const x = await db.query(
+        `SELECT r.id, r.link_ciphertext, l.listing_id, l.expires_at FROM offer_link_request r JOIN offer_link l ON l.token_hash = r.token_hash
+         WHERE r.enquiry_id = $1::uuid AND r.status = 'issued' AND r.link_ciphertext IS NOT NULL AND l.used_at IS NULL AND l.expires_at > $2::timestamptz
+         ORDER BY r.requested_at DESC LIMIT 1`,
+        [enquiryId, now]
+      );
+      const r = x.rows[0];
+      if (!r) return undefined;
+      // Fails closed: no key, wrong key or tampered data all mean the link is not shown.
+      const token = await openOfferToken(String(r["link_ciphertext"]), getKey(), String(r["id"])).catch(() => undefined);
+      return token === undefined ? undefined : { token, listingId: String(r["listing_id"]), expiresAt: iso(r["expires_at"]) };
+    }
+  };
+}
+
+export function getOfferLinkDeps(): OfferLinkDeps {
+  const db = getDb();
+  return { ...getEnquiryDeps(), offerLinks: createPgOfferLinkRepository(db), eligibleBuyer: (b, o) => eligibleBuyerPg(db, b, o) };
 }
