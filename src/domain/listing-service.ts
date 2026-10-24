@@ -57,6 +57,24 @@ export interface ListingServiceDeps {
   appointmentFor?: (listingId: string, agentUserId: string) => Promise<AgentAppointment | undefined>;
   /** True when the user accepted the terms version in force now. When set, publishing needs it for the owner and the actor. */
   termsCurrentFor?: (userId: string) => Promise<boolean>;
+  /** Post-publish hook (saved-search alerts). Runs after the listing is saved as published; it can never block or fail publishing. */
+  afterPublish?: (listing: PropertyListing) => Promise<unknown>;
+}
+
+/** Hook budget: a slow hook is abandoned (not awaited further) so publishing returns promptly. */
+export const AFTER_PUBLISH_TIMEOUT_MS = 3000;
+
+async function runAfterPublish(hook: (l: PropertyListing) => Promise<unknown>, listing: PropertyListing): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const run = Promise.resolve().then(() => hook(listing));
+    run.catch(() => undefined);
+    await Promise.race([run, new Promise<void>(resolve => { timer = setTimeout(resolve, AFTER_PUBLISH_TIMEOUT_MS); })]);
+  } catch {
+    // Alerts are best effort; a failing hook must not undo or fail a publish.
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
 export interface DraftInput {
@@ -260,6 +278,7 @@ export async function publishListing(
   const done = transitionListing(current, "published", { ...ctx, eventId: deps.newId() }, decision);
   await deps.appendAudit(done.event);
   await deps.repo.save({ ...rec, listing: done.listing });
+  if (deps.afterPublish) await runAfterPublish(deps.afterPublish, done.listing);
   return { ok: true, value: { decision, listing: done.listing } };
 }
 
