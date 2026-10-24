@@ -2,7 +2,7 @@
 
 Brand name: **OwnerListing** (decided 23 Oct 2026). Domain not yet checked or bought. Remaining business decisions (hosting, ID provider, keys, counsel) are left to the end of the project.
 
-Last updated: 2026-10-24, after PR #47 (acting-agent licence blocks publish) was merged. Earlier: PR #3 (listings), PR #4 (PostgreSQL migrations and Google login). Source: Implementation Playbook v1.0 (20 Oct 2026), Build 001 starter code and the merged code.
+Last updated: 2026-10-24, after PR #61 was merged (open: #59). Deploy and handover: docs/DEPLOYMENT.md, docs/HANDOVER.md. Earlier: PR #3 (listings), PR #4 (PostgreSQL migrations and Google login). Source: Implementation Playbook v1.0 (20 Oct 2026), Build 001 starter code and the merged code.
 
 ## Architecture (decided)
 - Login provider: Google (OIDC with MFA).
@@ -160,3 +160,6 @@ Listings now carry optional suburb, postcode, priceCents (sale price, or rent pe
 Versioned terms with insert-only acceptance log (db/20261024160000), /terms accept page, publish needs current terms for owner and actor (domain dep termsCurrentFor). /settings stores language and time zone per user (default en-AU, Australia/Sydney). /dashboard lists owner, agent, buyer and staff tasks. Open: counsel to approve the terms text (seed version 2026-10-24 is a draft); offers, enquiries and listing create are not yet gated on terms; staff have no settings page (separate sign-in).
 ## Offer comparison and contract draft (built 24 Oct 2026, PR feat/offer-analysis-screens)
 Owner-only (404 for others): /listings/[id]/offer-analysis (sorted table of price, deposit, settlement days, conditions; no buyer identity; src/domain/offer-analysis.ts) and /listings/[id]/contract-draft (template preview labelled "Draft, not legal advice. Solicitor to review before anyone signs."; src/domain/contract-draft.ts; nothing stored or sent). APIs: GET/POST /api/listings/[id]/offer-analysis, POST /api/listings/[id]/contract-draft (csrfGuard on POST, audited). Optional AI summary goes through the AI port (src/server/ai.ts, rules-only engine today): off, errors or output that steers a decision all give an "AI unavailable" state. AI never accepts, rejects or counters. Open: plan entitlement checks (ai_applicant_report, contract_drafting) not enforced yet; AI summary has no rate limit; solicitor-approved template and counsel review (COUNSEL_QUESTIONS 7, 16) pending.
+
+## Status refresh (24 Oct 2026, merged through #61; open #59)
+MERGED since #47: #48 status refresh; #49 upload follow-ups; #50 licence local-date fix; #51 offer screens; #52 documents UI and download; #53 plans and checkout (PayWay stub, webhook); #54 staff admin; #55 enquiries chat; #56 verification nav; #57 offer comparison and contract draft; #58 account settings and terms; #60 security review of #51-56 (docs/security-review-2026-10.md); #61 search and price filters. OPEN: #59 enquiry thread offer-link request and owner issue flow (needs security review). Added .env.example (enforced by tests/env-example.test.ts), docs/DEPLOYMENT.md, docs/HANDOVER.md. Ops task before go-live: revoke TRUNCATE from the app DB role. Blockers: docs/HANDOVER.md.
