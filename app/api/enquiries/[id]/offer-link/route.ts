@@ -5,6 +5,7 @@ import { getActor } from "../../../../../src/server/context";
 import { csrfGuard } from "../../../../../src/server/csrf";
 import { getOfferLinkDeps } from "../../../../../src/server/enquiry-db";
 import { failure, unauthenticated } from "../../../../../src/server/http";
+import { requireCurrentTerms } from "../../../../../src/server/terms-guard";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -35,6 +36,11 @@ export async function POST(req: Request, { params }: Ctx) {
   const body: unknown = await req.json().catch(() => null);
   const action = typeof body === "object" && body !== null ? (body as Record<string, unknown>)["action"] : undefined;
   const deps = getOfferLinkDeps();
+  // Requesting or issuing a link needs the current terms (declining does not).
+  if (action === "request" || action === "issue") {
+    const noTerms = await requireCurrentTerms(deps.termsCurrentFor, actor.userId);
+    if (noTerms) return failure(noTerms);
+  }
   if (action === "request") {
     const r = await requestOfferLink(deps, actor, id);
     return r.ok ? NextResponse.json({ request: r.value }, { status: 201 }) : failure(r);
