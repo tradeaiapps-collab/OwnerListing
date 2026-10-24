@@ -4,8 +4,8 @@ export const CODE_TTL_MS = 10 * 60 * 1000;
 export const MAX_CODE_ATTEMPTS = 5;
 export const SMS_CONSENT_VERSION = "2026-10-24";
 /** Shown next to the checkbox. The version above is recorded with the consent. */
-export const SMS_CONSENT_TEXT =
-  "I agree that OwnerListing may send one text message with a verification code to this mobile number. It is used only to verify my number.";
+export const smsConsentText = (brandName: string) =>
+  `I agree that ${brandName} may send one text message with a verification code to this mobile number. It is used only to verify my number.`;
 
 /** Send: 5 per user and 10 per IP per hour, and 3 per phone number per hour (stops texting a stranger repeatedly). */
 export const SMS_SEND_RATE = { windowMs: 60 * 60 * 1000, perUser: 5, perIp: 10, perPhone: 3 } as const;

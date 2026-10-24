@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { readAppMode } from "../config/app-mode";
 import type { StaffActor, StaffRole } from "../domain/staff-access";
 import type { GoogleIdentity } from "./auth/google";
 import { staffTokenFromRequest, verifyStaffSession } from "./auth/staff-session";
@@ -44,6 +45,7 @@ export async function staffSignIn(db: Queryable, who: GoogleIdentity): Promise<S
 
 /** The signed-in staff member for this request, or null. The role is read from the database now, so removing or changing it takes effect at once. */
 export async function staffFromRequest(db: Queryable, req: Request, secret: string, nowSeconds: number): Promise<StaffActor | null> {
+  if (readAppMode() === "public") return null; // defence in depth: a public deployment never honours a staff cookie
   const p = verifyStaffSession(staffTokenFromRequest(req), secret, nowSeconds);
   if (!p) return null;
   const res = await db.query(

@@ -1,4 +1,5 @@
 import { createHmac } from "node:crypto";
+import { readBrand } from "../config/brand";
 import { alertDeliveryFromEnv } from "../adapters/alert-delivery";
 import { emailFromConfig, type EmailPort, type HostResolver, type TransportFactory } from "../adapters/email";
 import { failed, type SendResult } from "../adapters/messaging";
@@ -82,7 +83,7 @@ export function createDbAlertDelivery(db: Queryable, env: Env, deps: MessagingDe
           "SELECT phone_e164 FROM buyer_verification WHERE user_id = $1::uuid AND phone_verified_at IS NOT NULL AND phone_e164 IS NOT NULL", [msg.buyerUserId]);
         const to = r.rows[0]?.["phone_e164"];
         if (typeof to !== "string") { await recordOutbox(db, env, "sms", "alert_listing", msg.buyerUserId, failed("no_recipient", false)); return "failed"; }
-        const res = await sms.sendText(to, `OwnerListing: a new property matches your saved search: ${link} Opt out: ${msg.unsubscribeUrl}`);
+        const res = await sms.sendText(to, `${readBrand().name}: a new property matches your saved search: ${link} Opt out: ${msg.unsubscribeUrl}`);
         return res.status === "sent" ? "sent" : res.status === "failed" ? "failed" : "not_configured";
       }
       const email = await getEmailPort(db, env, "alert_listing", deps);
@@ -92,7 +93,7 @@ export function createDbAlertDelivery(db: Queryable, env: Env, deps: MessagingDe
       if (typeof to !== "string") { await recordOutbox(db, env, "email", "alert_listing", msg.buyerUserId, failed("no_recipient", false)); return "failed"; }
       const res = await email.send({
         to, subject: "New property matching your saved search",
-        text: `A new property matching your saved search has been listed on OwnerListing.\n\nView it: ${link}\n\nYou are receiving this because you asked for alerts. Unsubscribe: ${msg.unsubscribeUrl}\n`
+        text: `A new property matching your saved search has been listed on ${readBrand().name}.\n\nView it: ${link}\n\nYou are receiving this because you asked for alerts. Unsubscribe: ${msg.unsubscribeUrl}\n`
       });
       return res.status === "sent" ? "sent" : res.status === "failed" ? "failed" : "not_configured";
     }
@@ -110,12 +111,12 @@ export async function sendTestMessage(db: Queryable, env: Env, staffId: string, 
   if (channel === "sms") {
     const sms = await getSmsPort(db, env, "settings_test", deps);
     if (!sms.configured) return { status: "not_configured" };
-    return phone ? sms.sendText(phone, "OwnerListing test message. SMS delivery is working.") : failed("invalid_recipient", false);
+    return phone ? sms.sendText(phone, `${readBrand().name} test message. SMS delivery is working.`) : failed("invalid_recipient", false);
   }
   const email = await getEmailPort(db, env, "settings_test", deps);
   if (!email.configured) return { status: "not_configured" };
   const r = await db.query("SELECT email FROM app_user WHERE id = $1::uuid AND status = 'active'", [staffId]);
   const to = r.rows[0]?.["email"];
   if (typeof to !== "string") return failed("no_recipient", false);
-  return email.send({ to, subject: "OwnerListing test email", text: "This is a test message from OwnerListing. Email delivery is working.\n" });
+  return email.send({ to, subject: `${readBrand().name} test email`, text: `This is a test message from ${readBrand().name}. Email delivery is working.\n` });
 }

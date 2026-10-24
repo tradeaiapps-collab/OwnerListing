@@ -1,3 +1,4 @@
+import { readBrand } from "../config/brand";
 import { isMessagingServiceSid, resolveMessaging, type SmsConfig } from "../domain/messaging-settings";
 import { failed, type SendErrorCode, type SendResult } from "./messaging";
 
@@ -33,7 +34,7 @@ export function createUnconfiguredSms(): SmsTextPort {
 }
 
 /** The text of a verification code message. */
-export const verificationCodeText = (code: string): string => `Your OwnerListing verification code is ${code}. It expires in 10 minutes. Do not share it.`;
+export const verificationCodeText = (code: string): string => `Your ${readBrand().name} verification code is ${code}. It expires in 10 minutes. Do not share it.`;
 
 const TWILIO_BASE = "https://api.twilio.com/2010-04-01/Accounts";
 export const SMS_TIMEOUT_MS = 10_000;
