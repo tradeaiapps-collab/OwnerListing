@@ -1,10 +1,11 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { appOriginFor, isAllowed, readAppMode } from "../src/config/app-mode";
+import { appOriginFor, isAllowed, normalizePath, readAppMode } from "../src/config/app-mode";
 import { readAuthEnv } from "../src/server/auth/config";
 import { csrfGuard } from "../src/server/csrf";
-import { proxy } from "../proxy";
+import { config as proxyConfig, proxy } from "../proxy";
+import { staffFromRequest } from "../src/server/staff-auth";
 import { NextRequest } from "next/server";
 
 vi.mock("../src/server/context", () => ({ getActor: () => null, getDeps: () => null, getDb: () => ({ query: async () => ({ rows: [{ id: "s1", staff_role: "compliance" }] }) }), getStaff: async () => null }));
@@ -136,5 +137,67 @@ describe("staff session cookie is host-only", () => {
     const walk = (d: string): string[] => readdirSync(d).flatMap(n => { const p = path.join(d, n); return statSync(p).isDirectory() ? walk(p) : /\.tsx?$/.test(n) ? [p] : []; });
     const bad = [...walk(path.join(root, "app")), ...walk(path.join(root, "src"))].filter(f => /cookies\.set\([^)]*\bdomain\s*:|[;,]\s*Domain=/i.test(readFileSync(f, "utf8")));
     expect(bad).toEqual([]);
+  });
+});
+
+describe("path tricks cannot bypass the split (review of #78)", () => {
+  const TRICKS = ["/%73taff", "/%73taff/cases", "//staff", "///staff/x", "/staff//cases", "/api/%73taff/me", "/api//staff/me", "/%2573taff", "/%2fstaff", "/Staff", "/STAFF/Cases",
+    "/api/Staff/me", "/staff;x=1", "/a/../staff", "/%2e%2e/staff", "/staff%5Ccases", "/\\staff", "/api/staff/", "/staff%00", "/%zz"];
+  it("public: every variant of a staff path answers 404", () => {
+    setMode("public");
+    for (const p of TRICKS) expect(hit(p).status, p).toBe(404);
+  });
+  it("public: encoded and slashed staff sign-in variants answer 404", () => {
+    setMode("public");
+    for (const p of ["/api/auth/google/start/?as=staff", "//api/auth/google/start?as=staff", "/api/auth/google/%73tart?as=staff", "/API/auth/google/start?as=staff"]) expect(hit(p).status, p).toBe(404);
+    expect(hit("/api/auth/google/callback/?code=c", { cookie: "ol_role=staff" }).status).toBe(404);
+    expect(hit("/api/auth/google//callback?code=c", { cookie: "ol_role=staff" }).status).toBe(404);
+  });
+  it("duplicate ol_role cookies are read the way the route reads them", () => {
+    setMode("public");
+    // The route (readCookie) takes the first ol_role; the proxy now uses the same reader, so they cannot disagree.
+    expect(hit("/api/auth/google/callback?code=c", { cookie: "ol_role=staff; ol_role=owner" }).status).toBe(404);
+    setMode("admin");
+    expect(hit("/api/auth/google/callback?code=c", { cookie: "ol_role=owner; ol_role=staff" }).status).toBe(404);
+  });
+  it("admin: encoded public paths answer 404, encoded staff paths still work", () => {
+    setMode("admin");
+    for (const p of ["/%6cistings", "//listings", "/api//listings", "/api/%77ebhooks/payway", "/_next/data/b/listings.json", "/_next/webpack-hmr"]) expect(hit(p).status, p).toBe(404);
+    for (const p of ["/%73taff", "//staff/cases"]) expect(hit(p).status, p).not.toBe(404);
+  });
+  it("public: /_next/data is not exempt; static assets and health still pass", () => {
+    setMode("public");
+    expect(hit("/_next/data/b/staff.json").status).toBe(404);
+    // A traversal out of /_next/static is resolved before the static exemption is checked.
+    expect(isAllowed("admin", "/_next/static/..%2flistings", null, undefined)).toBe(false);
+    expect(isAllowed("public", "/_next/static/..%2f..%2fstaff", null, undefined)).toBe(false);
+    for (const p of ["/_next/static/chunks/a.js", "/_next/image", "/api/health", "/favicon.ico"]) expect(hit(p).status, p).not.toBe(404);
+  });
+  it("other methods are covered too", () => {
+    setMode("public");
+    for (const method of ["HEAD", "OPTIONS", "POST", "PUT", "DELETE"]) expect(hit("/api/staff/pricing", { method }).status, method).toBe(404);
+    setMode("admin");
+    for (const method of ["HEAD", "OPTIONS", "POST"]) expect(hit("/api/listings", { method }).status, method).toBe(404);
+  });
+  it("a typo, blank or odd APP_MODE in production is public", () => {
+    for (const v of ["", " ", "Admn", "true", "1", "publc"]) expect(readAppMode({ APP_MODE: v, NODE_ENV: "production" }), JSON.stringify(v)).toBe("public");
+  });
+  it("normalizePath", () => {
+    expect(normalizePath("/%73taff/")).toBe("/staff");
+    expect(normalizePath("//a///b/./c/../d")).toBe("/a/b/d");
+    expect(normalizePath("/x%00")).toBeNull();
+    expect(normalizePath("/%E0%A4%A")).toBeNull();
+    expect(normalizePath("/%25252573")).toBeNull();
+  });
+  it("the proxy matcher covers every path", () => {
+    expect(JSON.stringify(proxyConfig.matcher)).toBe('["/:path*"]');
+  });
+});
+
+describe("staff cookie is not honoured on a public deployment", () => {
+  it("staffFromRequest returns null in public mode before touching the database", async () => {
+    setMode("public");
+    const db = { query: async () => { throw new Error("must not be called"); } };
+    expect(await staffFromRequest(db as never, new Request("https://x.example/", { headers: { cookie: "ol_staff=anything" } }), "s".repeat(40), 0)).toBeNull();
   });
 });

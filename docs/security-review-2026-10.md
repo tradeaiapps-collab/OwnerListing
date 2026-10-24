@@ -89,3 +89,33 @@ Scope: PR #68 (mobile-number SMS verification, provider ID-check and its webhook
 - Every new state-changing route calls `csrfGuard` first and awaits `getActor`; all are buyer-only; no id in the path, so no IDOR. SQL is constant text with bound parameters; migration triggers make consent and both logs append-only.
 - No phone number, code, IP or provider payload is logged (`console` is not used in the new code).
 - #59: AES-256-GCM, random 12-byte IV, AAD bound to the request row, key must be exactly 32 bytes of base64 or sealing and opening throw (nothing stored or shown); the token is shown only to the verified buyer, with `no-store`, and wiped on use. #65: CSV cells starting `= + - @ tab CR` are prefixed with an apostrophe (owner listing titles included); owner reports are scoped by `owner_user_id` in SQL and the per-listing report answers 404 to non-owners; staff report sections follow role permissions, exports are audited, no personal data or account numbers are selected. #66: saved listings are scoped to the session buyer and published listings only; unique index on (saved search, listing) stops repeat alerts.
+
+## PR #78 review: APP_MODE split, ADMIN_APP_URL, brand, Vercel docs
+
+### Fixed in this review
+
+| Severity | Finding | Fix |
+|---|---|---|
+| High | **Proxy allow-list compared the raw path.** `NextURL.pathname` keeps percent-encoding and repeated slashes (`/%73taff`, `/api/%73taff/me`, `//staff`, `/%2573taff`, `/api//staff/me`) while the router decodes them, so these could reach `/staff` and `/api/staff` on a public deployment (and public routes on admin). Also `/Staff`, `;params`, backslashes, `..` after decoding. Staff sign-in checks (`/api/auth/google/start/?as=staff`) had the same hole. | `normalizePath` decodes (up to 3 rounds), collapses slashes, drops `;params`, resolves dot segments, lower-cases; an undecodable path or one with NUL/leftover `%` is refused. `isAllowed` works on that. Tests cover every variant above. |
+| Medium | **Matcher skipped `/_next/static` and `/_next/image` by prefix**, so `/_next/static/..%2fstaff` was never seen by the proxy; and `isAllowed` exempted all of `/_next/` (including `/_next/data`, `/_next/webpack-hmr`). | Matcher is now `/:path*`; only `/_next/static/`, `/_next/image`, `favicon.ico`, `robots.txt` are exempt, checked after normalisation. |
+| Low | Proxy read `ol_role` with `req.cookies`, the route with `readCookie` (a different parser); with duplicate cookies they could disagree. | Proxy uses `readCookie`. |
+| Low | `staffFromRequest` honoured a valid staff cookie on any deployment (only the proxy blocked it). | Returns null when `APP_MODE` resolves to `public` (defence in depth). |
+| Low | `.env.example` shipped `APP_MODE=all`; copying it to production would expose staff routes publicly. | Now `APP_MODE=` (unset: `all` in development, `public` in production). |
+| Info | Deploy doc did not say the alert scheduler must call the public host. | Added (admin answers 404 to webhooks and cron). |
+
+### Checked and found sound
+
+- Fail closed: unset in production, blank, typos (`Admn`, `publc`, `true`) all resolve to `public`; `all` only when set explicitly or in non-production.
+- 404 (not 403) in the wrong mode for staff pages, `/api/staff/*`, staff sign-in and callback (public), and every buyer/owner/listing/webhook/internal/auth-me route (admin). All HTTP methods pass through the proxy (HEAD, OPTIONS included).
+- `csrfGuard` trusts only `ADMIN_APP_URL` in admin and only `APP_URL` otherwise; missing or invalid value gives 403. Google redirect URI and `secure` cookies come from the same per-mode URL; admin without `ADMIN_APP_URL` has sign-in off.
+- Cookies are host-only (no `Domain`; test scans `app/` and `src/`), and the two projects use different `SESSION_SECRET`s per the docs, so a cookie from one host does not verify on the other.
+- Split of shared routes: public keeps `/api/auth/me`, logout, webhooks (`payway`, `id-check`) and `/api/internal/alerts/run` (secret-gated), so provider callbacks and the scheduler work; admin has only staff, staff sign-in, logout, health. `/api/auth/me` returns only id and type of the caller's own session; the staff cookie is a separate cookie that routes outside `/api/staff` do not read.
+- `/api/health` returns `{ok:true}` with no database call.
+- Brand: values are trimmed, cut to 60 characters and rendered only as React text children and Next metadata (escaped); no `dangerouslySetInnerHTML`. `NEXT_PUBLIC_*` is public by design and the docs say so.
+- Docs recommend no unsafe settings (no live payment keys, separate secrets, no cookie domain).
+
+### Not fixed
+
+1. **Info: `/_next/data/...` URLs** are rewritten by `NextURL` to the underlying page path, so they are judged like the page itself (correct today, and the App Router does not use them).
+2. **Low: a new route is allowed in public by default** (deny-list for staff). A future staff-only route must live under `/staff` or `/api/staff`; consider a test that fails if a route file name contains "staff" elsewhere.
+3. **Low: admin `/` redirect and `failed()` redirect use `req.url`/`appUrl`**; behind Vercel these are the real host, but check if a custom proxy rewrites Host.

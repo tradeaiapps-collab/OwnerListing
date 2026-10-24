@@ -121,7 +121,7 @@ Using one parent domain is fine (`www.` and `admin.`), but the staff cookie is h
 ## Honest limits of Vercel (free "Hobby" plan)
 
 - **Uploads.** The documents route accepts up to 100 MB in code, but Vercel functions accept a request body of only about 4.5 MB, and on the free plan a function may run only a short time (10 to 60 seconds, depending on plan and settings). Larger photos, reports or videos will fail on Vercel even once storage exists. Also, the local-disk storage driver and the ClamAV scanner need a disk and a long-running server, which serverless does not give. So uploads stay at 503 on this test deploy. Production needs object storage with direct (presigned) uploads or a normal server/container.
-- **Time limits.** Slow routes (AI, reports, bulk alerts) can time out. The hourly alert job needs a scheduler calling `POST /api/internal/alerts/run` with header `x-cron-secret`; Vercel's free cron is limited, and no scheduler is configured here.
+- **Time limits.** Slow routes (AI, reports, bulk alerts) can time out. The hourly alert job needs a scheduler calling the **public** address (the admin site answers 404 to it, as it does for webhooks): `POST /api/internal/alerts/run` with header `x-cron-secret`; Vercel's free cron is limited, and no scheduler is configured here.
 - **Rate limiting.** In-memory rate limits are per function instance, so they are weaker on serverless than on one server.
 - **Database.** Free tiers sleep or pause when idle (first request is slow) and have small storage and no guaranteed backups. Do not rely on them for data you cannot lose.
 - **Commercial use.** Vercel's free Hobby plan is for non-commercial use; a live business needs a paid plan.
