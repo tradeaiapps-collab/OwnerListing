@@ -27,6 +27,14 @@ Put a TLS-terminating reverse proxy in front. Set `TRUSTED_PROXY_HOPS` to the re
 - Audit, chat and ledger tables are never rewritten; do not "clean" them after a restore.
 - Uploaded files (once storage exists) need their own versioned backup; the database holds only keys and SHA-256 hashes.
 - Retention and deletion periods are pending counsel (docs/COUNSEL_QUESTIONS.md).
+- ID images are encrypted with `ID_IMAGE_KEY`; back the key up separately (secrets manager). Restoring an ID image from backup after the retention job deleted it would break the retention promise: exclude `id/` from long-term file backups or keep backups no longer than 30 days.
+
+## 4a. In-house ID photo review (holds sensitive personal information)
+Do not turn this on for real users until counsel has approved the retention periods (7 days after approval, 30 after rejection), the privacy notice wording (`ID_IMAGE_CONSENT_TEXT`, versioned in `src/domain/id-image.ts`) and Privacy Act handling of ID images and selfies (biometric information is sensitive information), and a pen test has been done.
+- Needs all of: `STORAGE_DRIVER` + `STORAGE_LOCAL_DIR` (encrypted volume, not web-served), `CLAMD_HOST` + `CLAMD_PORT`, `ID_IMAGE_KEY` (`openssl rand -base64 32`), `ID_RETENTION_CRON_SECRET` (32+ chars). Any one missing = off.
+- Schedule daily: `curl -fsS -X POST -H "x-cron-secret: $ID_RETENTION_CRON_SECRET" $APP_URL/api/internal/id-images/retention`. Safe to repeat; answers `{counts:{deleted,failed}}`; investigate any `failed`.
+- Never rotate `ID_IMAGE_KEY` while images are stored (they become unreadable); wait until the queue is empty and 30 days have passed.
+- Images are viewable only by the reviewer holding the 30-minute claim, through `/api/staff/id-review/[id]/image/[part]` (no-store, every view in `id_review_access`).
 
 ## 5. Smoke test after deploy
 Home loads; Google sign-in works; `/plans` loads; an upload answers 503 (storage off, expected); checkout answers "not available yet" (expected); `/api/webhooks/payway` rejects unsigned posts.
@@ -39,6 +47,8 @@ Home loads; Google sign-in works; `/plans` loads; an upload answers 503 (storage
 | Email and SMS (alerts, verification) | Built (SMTP via nodemailer; Twilio-compatible SMS). Fails closed: nothing sends until an admin enters settings in `/staff/messaging` (section 6a) | SMTP account or email provider, SMS account and sender, Spam Act consent wording (counsel) |
 | Payments | Adapter stub; nothing can be marked paid, so nothing publishes | Westpac PayWay merchant account and docs |
 | File storage and malware scan | Upload and download answer 503 | Storage provider, scanner, encryption at rest |
+| ID verification | In-house photo ID + selfie review is built but off until storage, ClamAV, `ID_IMAGE_KEY` and `ID_RETENTION_CRON_SECRET` are all set (page says "not available yet", approval blocked) | Settings below; counsel sign-off; pen test |
+| ABN check | Adapter built, no env wiring | ABN Lookup GUID |
 | ID verification | Manual reviewer checklist only; image storage missing, approval blocked | DVS provider or image storage |
 | ABN check | Adapter built, reads ABN_LOOKUP_GUID (unset = not confirmed, staff review) | ABN Lookup GUID |
 | AI | Rules-only engine; features report off | Self-hosted model and OCR server |

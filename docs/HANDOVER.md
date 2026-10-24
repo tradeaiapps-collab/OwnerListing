@@ -10,6 +10,12 @@ OwnerListing: Australian marketplace where owners list their own homes. AI assis
 | Agent | Appointed by the owner; publishes only with a full-scope appointment and a verified, unexpired licence |
 | Buyer | Sign-up, saved searches and alert consent, enquire (needs verification), formal offer via single-use link |
 | Contractor | Accept or decline assignment, job chat, upload own document kinds when approved |
+| Staff | `/staff` dashboard, admin cases, trust-account approvals (two people), identity review (claim, view images, checklist), pricing, audit log; role read from the database per request |
+
+## Placeholder or off
+- Payments: adapter is a stub and the webhook format is our placeholder; nothing publishes until a real paid confirmation exists.
+- Storage and malware scan: 503. Alerts: engine built, nothing sends. AI: rules-only, features report off.
+- ID check: in-house photo ID + live selfie upload and staff review are built (encrypted images, claim-based audited viewing, retention job). Off until storage, ClamAV, `ID_IMAGE_KEY` and `ID_RETENTION_CRON_SECRET` are set. **Counsel must approve the retention periods, the privacy notice and Privacy Act handling before real use; this holds sensitive personal information, so a pen test is advised before real users.** Limits: no government-record (DVS) check, no deepfake or liveness detection, the in-app selfie can be bypassed by a determined user.
 | Staff | `/staff` dashboard, admin cases, trust-account approvals (two people), identity review checklist, pricing, audit log, staff access (invite, revoke, set role; admin only); role read from the active invite per request |
 | Staff | `/staff` dashboard, admin cases, trust-account approvals (two people), identity review checklist, pricing, audit log, messaging settings (super admin); role read from the database per request |
 
@@ -32,7 +38,7 @@ OwnerListing: Australian marketplace where owners list their own homes. AI assis
 2. Email account (SMTP details) and SMS account (Twilio-compatible). Not needed to build: the admin enters the phone and email details later in `/staff/messaging` (needs `MESSAGING_SETTINGS_KEY` on the server first; see docs/DEPLOYMENT.md 6a). Until then everything stays "not configured" and the outbox records that. Spam Act consent wording for alert and verification messages still needs counsel (docs/COUNSEL_QUESTIONS.md).
 3. Westpac PayWay merchant account (then real checkout and webhook from their docs).
 4. Storage provider and malware scanner.
-5. ID verification provider (DVS) and biometric handling decision.
+5. ID verification provider (DVS) and biometric handling decision; counsel sign-off on in-house ID image retention and Privacy Act handling.
 6. ABN Lookup access key (free registration).
 7. Counsel review: terms, contract template, retention and deletion, trust-account and licensing questions, AI-learning consent.
 8. Compliance to supply state disclosure configuration; domain name; hosting; GPU server for AI.

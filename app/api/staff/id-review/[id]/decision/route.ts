@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
+import { ID_CLAIM_TTL_MS } from "../../../../../../src/domain/id-image";
 import { reviewSubmission, type ReviewChecklist, type ReviewOutcome } from "../../../../../../src/domain/id-verification";
-import { ID_IMAGES_AVAILABLE, REASON_ERROR, reasonOk } from "../../../../../../src/domain/staff-admin";
+import { REASON_ERROR, reasonOk } from "../../../../../../src/domain/staff-admin";
+import { approvalBlocker } from "../../../../../../src/server/id-image";
+import { getIdImageDeps } from "../../../../../../src/server/verification-context";
 import { getDb } from "../../../../../../src/server/context";
 import { getIdSubmission, saveIdReview } from "../../../../../../src/server/staff-admin-db";
 import { fail, readJsonObject, staffAudit, staffGate, UUID_RE } from "../../../../../../src/server/staff-route";
@@ -19,8 +22,8 @@ function parseChecklist(v: unknown): ReviewChecklist {
 }
 
 /**
- * One reviewer's decision on an identity check (checklist workflow only). Approval is blocked while document images
- * cannot be shown (storage not built), a reviewer cannot review their own check, and every decision needs a reason.
+ * One reviewer's decision on an identity check. Approval needs image storage configured, the reviewer's live claim and
+ * every image opened under that claim (approvalBlocker). A reviewer cannot review their own check; every decision needs a reason.
  */
 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const staff = await staffGate(req, "identity.review");
@@ -35,7 +38,10 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   const before = UUID_RE.test(id) ? await getIdSubmission(db, id) : null;
   if (!before) return fail(404, "Submission not found.");
   if (before.userId === staff.id) return fail(403, "Staff cannot review their own identity check.");
-  if (outcome === "approve" && !ID_IMAGES_AVAILABLE) return fail(409, "Document images are unavailable, so approval is blocked until image storage exists.");
+  if (outcome === "approve") {
+    const blocker = await approvalBlocker(getIdImageDeps(), staff.id, id);
+    if (blocker) return fail(409, blocker);
+  }
   const checklist = parseChecklist(body["checklist"]);
   let after;
   try {
@@ -43,7 +49,9 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   } catch (e) {
     return fail(409, e instanceof Error ? e.message : "Review not allowed.");
   }
-  if (!(await saveIdReview(db, before, after))) return fail(409, "This submission changed; reload it.");
+  if (!(await saveIdReview(db, before, after, { staffId: staff.id, claimTtlMs: ID_CLAIM_TTL_MS }))) {
+    return fail(409, "This submission changed, your claim ended or another reviewer holds it; reload it.");
+  }
   await staffAudit(staff, "id_submission", id, "staff.id_reviewed", { outcome, resultingStatus: after.status, checklist, reason: (body["reason"] as string).trim() });
   return NextResponse.json({ ok: true, status: after.status });
 }

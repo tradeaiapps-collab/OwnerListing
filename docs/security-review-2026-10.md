@@ -90,6 +90,40 @@ Scope: PR #68 (mobile-number SMS verification, provider ID-check and its webhook
 - No phone number, code, IP or provider payload is logged (`console` is not used in the new code).
 - #59: AES-256-GCM, random 12-byte IV, AAD bound to the request row, key must be exactly 32 bytes of base64 or sealing and opening throw (nothing stored or shown); the token is shown only to the verified buyer, with `no-store`, and wiped on use. #65: CSV cells starting `= + - @ tab CR` are prefixed with an apostrophe (owner listing titles included); owner reports are scoped by `owner_user_id` in SQL and the per-listing report answers 404 to non-owners; staff report sections follow role permissions, exports are audited, no personal data or account numbers are selected. #66: saved listings are scoped to the session buyer and published listings only; unique index on (saved search, listing) stops repeat alerts.
 
+## Independent review of PR #80 (in-house photo ID + selfie images)
+
+### Fixed in PR #80
+
+| Severity | Finding | Fix |
+|---|---|---|
+| High | JPEG stripping copied everything from the first SOS to the end of the file. Data after EOI survived: Pixel/Samsung motion-photo MP4 (a video of the person, with its own location atoms), MPF second images, appended ZIP/PDF/HTML polyglots. COM/APPn segments between scans of a progressive JPEG survived too; only the strings `Exif\0\0` and the XMP namespace were caught. | `cleanJpeg` now walks the entropy-coded data and every later segment, keeps image-structure markers only (SOFn, DHT, DAC, DQT, DRI, DNL, SOS; JFIF, ICC, Adobe) and stops at EOI; a file without EOI is refused. JPGn (0xF0-0xFD) segments are dropped too. Tests added. |
+| Medium | WebP kept every chunk except `EXIF`/`XMP `, so any unknown chunk (arbitrary data) survived. | Allow-list: `VP8X`, `VP8 `, `VP8L`, `ALPH`, `ICCP`. Test added. |
+| Medium | Approval without seeing every image: the "view" audit row is written before storage is read (correct), but `viewedParts` counted it even when the read failed or the image failed its integrity check, so a reviewer could approve having seen nothing. | A second row `shown:<part>` is written after decryption and the hash check, just before the bytes are sent (the image is refused if it cannot be written); `approvalBlocker` counts only `shown:` rows. Test added. |
+| Medium | Claim checked only before the save: `approvalBlocker` and `saveIdReview` were separate, and `saveIdReview` did not look at the claim. A reviewer whose claim expired (and was taken by another reviewer) between the two could still approve; any reviewer could reject or "needs more" a check that another reviewer held. | `saveIdReview` re-checks in the same UPDATE: an approval needs the reviewer's live claim (DB clock); any other decision is refused while someone else holds a live claim. Postgres test added. |
+| Low | Decompression bomb aimed at the reviewer's browser: a few hundred bytes could declare a 100000 x 100000 canvas (server never decodes, the staff browser would). | PNG IHDR (must be first, 13 bytes), JPEG SOFn and WebP VP8X canvas capped at 16384 px a side and 120 MP. Test added. |
+
+### Not fixed
+
+1. **Medium: pending submissions never expire.** Retention only runs after a decision, so images of a check nobody reviews stay indefinitely (and the buyer cannot resubmit while it is pending). Needs a product/counsel decision (for example auto-"needs more" after N days, which then starts the 30-day clock) and a queue SLA alert.
+2. **Low: orphaned encrypted objects.** If storage removal fails after a failed insert (errors are swallowed), or the process dies between `put` and the insert, the object has no row and retention can never find it. Encrypted and unlinkable to a person, but it should be swept: add a storage lifecycle rule (or sweep job) for `id/` objects older than the longest possible retention.
+3. **Low: no key rotation story.** The sealed format has a version byte but no key id; changing `ID_IMAGE_KEY` makes every live image fail its integrity check (fails closed, nothing leaks). Rotate only after the queue is drained and retention has run, or add a key id plus `ID_IMAGE_KEY_PREVIOUS` for decrypt.
+4. **Low: free-text decision reasons go into the staff audit log** and could contain a document number typed by a reviewer. Add guidance in the review screen, or a pattern check that refuses long digit runs.
+5. **Info: "live selfie" is client-asserted** (`selfieSource=camera`); the server cannot prove the photo was taken live. Reviewers must still judge it.
+6. **Info: Australian documents need one approval** (`requiredApprovals` is 1 for AU, and only AU is accepted here), so the two-person rule never applies to this flow. A staff member's own *separate* buyer account is not detectable as "own identity".
+7. **Info: ICC profiles (JPEG APP2, PNG iCCP, WebP ICCP) are kept** for colour accuracy; they can carry free-text description/copyright tags but not location data.
+
+### Checked and found sound
+
+- AES-256-GCM: random 12-byte IV per image, AAD binds submission id, part and storage key (a swapped or copied blob fails), key must be exactly 32 bytes of base64 or every operation throws; HMAC sub-key derived separately for rate-limit buckets and IP hashes. Plaintext zeroed after streaming.
+- Fails closed: nothing collected, shown or approved unless storage (with delete), scanner, key and a 32+ character retention secret are all configured; availability is derived from config and enforced server side. Scanner errors and any verdict other than "clean" refuse the upload before anything is stored.
+- Body: CSRF, buyer-only, multipart only; rate limits (per user and per IP, refused attempts count, counter errors fail closed) and buyer-state checks run before the body is read; missing or non-numeric Content-Length (chunked) is refused before reading; per-file 10 MB after.
+- Type from bytes only (declared type and filename ignored); HEIC/PDF/other refused; PNG keeps image chunks only and drops data after IEND; WebP drops data after the RIFF size.
+- IDOR: submission ids must be UUIDs, `part` is matched against a fixed list, storage keys are server-generated random hex and the storage adapter refuses any other shape and deletes `id/` keys only. Only the live claim holder can view; everyone else gets the same 404. The buyer route returns status only, never images, keys or hashes.
+- Claim: atomic UPDATE refuses own check, a reviewer who already approved, and a live claim by someone else; re-claiming resets the view window.
+- Audit: view row before any storage read (a failed write refuses the view); event log and consent are insert-only (triggers); no image data, key, hash, IP or document number is logged.
+- Image response: fixed `content-type` from the CHECK-constrained column, `no-store`, `nosniff`, `default-src 'none'; sandbox`, `inline`, `no-referrer`, CORP same-origin.
+- Retention: secret compared with `timingSafeEqual` over SHA-256 digests; idempotent (ENOENT counts as deleted, `markDeleted` is conditional); a partial failure leaves the row unmarked so the next run retries; keys and hashes cleared with a CHECK that none remain; the decision row is kept.
+- Consent with the current wording version is required before processing and recorded before anything is stored. All SQL is constant text with bound parameters.
 # Security review addendum, October 2026 (PR #79, staff invites)
 
 Scope: staff sign-in through the admin-managed `staff_invite` allowlist, `STAFF_BOOTSTRAP_ADMIN_EMAILS`, the invite/revoke/set_role routes and the migration that drops `app_user.staff_role`. Fixes are on the #79 branch.
