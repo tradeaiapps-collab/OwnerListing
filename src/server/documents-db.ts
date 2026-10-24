@@ -66,8 +66,10 @@ export function createPgDocumentStore(db: Queryable): UploadStore {
       return row ? { storageKey: String(row["storage_key"]), contentType: String(row["declared_mime"]) } : undefined;
     },
     async recordDeletionRequest(r, limits) {
-      // One statement: counts the requester's rows and inserts only while under both limits. Any unusable answer fails closed.
-      const res = await db.query(
+      // One statement counts the requester's rows and inserts only while under both limits. Under READ COMMITTED two
+      // concurrent requests would both see the old count, so when the pool offers a transaction the requester's
+      // requests are serialised with a transaction-scoped advisory lock taken first (the guard then gets a fresh snapshot).
+      const guard = (q: Queryable) => q.query(
         `WITH c AS (
            SELECT count(*) FILTER (WHERE requested_at >= $5::timestamptz) AS recent,
                   count(*) FILTER (WHERE outcome <> 'delete_now') AS open_count
@@ -80,6 +82,12 @@ export function createPgDocumentStore(db: Queryable): UploadStore {
          SELECT (SELECT count(*) FROM ins) AS inserted, c.recent, c.open_count FROM c`,
         [r.documentId, r.requestedBy, r.outcome, r.reason, limits.sinceIso, limits.perWindow, limits.maxOpen]
       );
+      const res = db.transaction
+        ? await db.transaction(async tx => {
+            await tx.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`deletion_request:${r.requestedBy}`]);
+            return guard(tx);
+          })
+        : await guard(db);
       const row = res.rows[0];
       const inserted = Number(row?.["inserted"]), open = Number(row?.["open_count"]);
       if (inserted === 1) return "recorded";

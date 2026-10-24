@@ -38,3 +38,15 @@ Fixes are in the PR "Security review fixes for PRs #51-#56". This file lists wha
 - SQL: all `src/server/*-db.ts` statements are constant text with bound parameters; the only interpolated pieces are constant fragments.
 - Open redirect: `safeNext` allows only `/` plus a short character allowlist (no `//`, `\`, `:`, `%`); the callback re-validates the cookie value and prefixes the configured app URL. The checkout redirect only follows `https://` URLs returned by the provider adapter.
 - No secrets, tokens or personal data in logs (the one `console.error` logs a storage key only).
+
+## Independent review of PR #69 (appointed agents, deletion-request limits, price gate)
+
+Result: no Critical or High findings. Appointed-agent access fails closed (revoked, other listing or agent, unverified or expired licence on the state-local date, other state, lookup error, missing dependency, unknown time zone all answer 404 via `isAppointedAgent`). Offer decisions (`offer.approve`, owner check in the route), contract drafts and auto-reply drafts stay owner-only (tests cover the 403/404 paths). Enquiry/thread ids give the same 404 to non-parties. The buyer is re-checked against the listing's owner, not the acting agent. Audit events carry the real actor id, and offer-link events also carry `byAppointedAgent`. All new SQL is parameterised.
+
+| Severity | Finding | Status |
+|---|---|---|
+| Medium | The deletion-request guard was one statement, but under READ COMMITTED two concurrent requests from one user both read the old count and both insert, so a burst could exceed the limits. | Fixed: `recordDeletionRequest` takes `pg_advisory_xact_lock` on the requester inside a transaction before the guard statement (single statement if the pool offers no transaction). Test: `tests/deletion-request-lock.test.ts`. |
+| Low (product) | The "open" cap counts every non-`delete_now` request ever made (insert-only ledger, no resolved flag), so after 20 a user is blocked permanently. Safe, but needs a review/resolution record to be a real "open" count. | Not fixed. |
+| Low | Appointed agents are not checked against listing status: they can read threads and offers on draft, withdrawn or sold listings (the owner can too). Issuing links still needs `published`. | Not fixed; acceptable. |
+| Low | Offer GET and offer-analysis routes do not require current terms for the agent (the issue route does). Read-only. | Not fixed. |
+| Info | The licence lookup loads all verified licences per check (constant query). Could filter by user id later. | Not fixed. |
