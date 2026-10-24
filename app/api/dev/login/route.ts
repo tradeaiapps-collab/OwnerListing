@@ -5,7 +5,7 @@ import { csrfGuard } from "../../../../src/server/csrf";
 import { getDb } from "../../../../src/server/context";
 import { SESSION_COOKIE, SESSION_TTL_SECONDS, signSession } from "../../../../src/server/auth/session";
 import { STAFF_COOKIE, STAFF_TTL_SECONDS, signStaffSession } from "../../../../src/server/auth/staff-session";
-import { asStaffRole } from "../../../../src/domain/staff-invite";
+import { isRoleKey } from "../../../../src/domain/staff-roles";
 
 const notFound = () => new NextResponse("Not found", { status: 404 });
 
@@ -33,7 +33,7 @@ export async function POST(req: Request) {
   const now = Math.floor(Date.now() / 1000);
   const opts = { httpOnly: true, sameSite: "lax" as const, secure: false, path: "/" };
   if (row["user_type"] === "admin") {
-    if (!surface.staff || !asStaffRole(row["role"])) return NextResponse.json({ error: "Staff accounts sign in on the admin site." }, { status: 400 });
+    if (!surface.staff || !isRoleKey(row["role"])) return NextResponse.json({ error: "Staff accounts sign in on the admin site." }, { status: 400 });
     const res = NextResponse.json({ ok: true, redirect: "/staff" });
     res.cookies.set(STAFF_COOKIE, signStaffSession({ uid: userId, exp: now + STAFF_TTL_SECONDS }, secret), { ...opts, maxAge: STAFF_TTL_SECONDS });
     res.cookies.set(SESSION_COOKIE, "", { ...opts, maxAge: 0 });
