@@ -7,6 +7,7 @@ import {
 import type { Queryable } from "../src/server/db";
 import { nextStatus, parseDecision } from "../src/domain/offer-decision";
 import { windowStart, withinLimit } from "../src/domain/rate-limit";
+import { clientIp, trustedProxyHops } from "../src/server/client-ip";
 
 const state = vi.hoisted(() => ({
   actor: null as Actor | null,
@@ -23,6 +24,8 @@ vi.mock("../src/server/context", () => ({
 import { POST as issuePost } from "../app/api/listings/[id]/offer-links/route";
 import { POST as decisionPost } from "../app/api/listings/[id]/offers/[offerId]/decision/route";
 import { POST as submitPost } from "../app/api/listings/[id]/offers/route";
+process.env["APP_URL"] = "http://test";
+
 
 const owner: Actor = { userId: "owner-1", userType: "owner" };
 const agent: Actor = { userId: "agent-1", userType: "agent" };
@@ -74,7 +77,7 @@ beforeEach(async () => {
       calls.push({ text, params: params ?? [] });
       if (text.includes("offer_submit_attempt")) {
         if (storeDown) throw new Error("down");
-        return { rows: [{ hits: hits.shift() }] };
+        return { rows: [{ hits: hits.length > 0 ? hits.shift() : 1 }] };
       }
       if (text.includes("FROM app_user u JOIN buyer_verification")) return { rows: buyerEligible ? [{ id: BUYER }] : [] };
       if (text.includes("SELECT o.status")) return { rows: offerStatus ? [{ status: offerStatus }] : [] };
@@ -88,7 +91,7 @@ beforeEach(async () => {
 const json = (url: string, body?: unknown, headers: Record<string, string> = {}) =>
   new Request(`http://test${url}`, {
     method: "POST",
-    headers: { "content-type": "application/json", ...headers },
+    headers: { "content-type": "application/json", origin: "http://test", ...headers },
     ...(body === undefined ? {} : { body: JSON.stringify(body) })
   });
 const issue = (id: string, body: unknown) =>
@@ -151,6 +154,32 @@ describe("POST /api/listings/[id]/offer-links (owner issues a link)", () => {
     expect((await issue(listingId, { buyerUserId: "x'; DROP TABLE app_user;--" })).status).toBe(400);
     buyerEligible = false;
     expect((await issue(listingId, { buyerUserId: BUYER })).status).toBe(400);
+    expect(calls.filter(c => c.text.includes("INSERT INTO offer_link"))).toHaveLength(0);
+  });
+  it("returns the same generic error for a malformed, ineligible or self buyer, so verification status cannot be probed", async () => {
+    state.actor = owner;
+    const bodies: string[] = [];
+    for (const buyerUserId of ["not-a-uuid", BUYER]) {
+      buyerEligible = false;
+      const res = await issue(listingId, { buyerUserId });
+      expect(res.status).toBe(400);
+      bodies.push(JSON.stringify(await res.json()));
+    }
+    expect(bodies[0]).toBe(bodies[1]);
+    expect(bodies[0]!.toLowerCase()).not.toMatch(/verif|active|eligible/);
+  });
+  it("returns 429 once an owner has issued too many links, before the eligibility lookup", async () => {
+    state.actor = owner;
+    hits = [11];
+    const res = await issue(listingId, { buyerUserId: BUYER });
+    expect(res.status).toBe(429);
+    expect(calls.filter(c => c.text.includes("buyer_verification"))).toHaveLength(0);
+    expect(calls.filter(c => c.text.includes("INSERT INTO offer_link"))).toHaveLength(0);
+  });
+  it("fails closed with 503 when the issuance counter store is down", async () => {
+    state.actor = owner;
+    storeDown = true;
+    expect((await issue(listingId, { buyerUserId: BUYER })).status).toBe(503);
     expect(calls.filter(c => c.text.includes("INSERT INTO offer_link"))).toHaveLength(0);
   });
   it("returns 201 with the raw token once, stores only the hash, and audits without the token", async () => {
@@ -259,5 +288,30 @@ describe("POST /api/listings/[id]/offers rate limiting", () => {
     hits = [undefined, 1];
     expect((await submit(listingId)).status).toBe(429);
     expect(audit.filter(a => a.eventType === "offer.submitted")).toHaveLength(0);
+  });
+});
+
+describe("client IP from x-forwarded-for", () => {
+  const req = (xff?: string) => new Request("http://test/", xff === undefined ? {} : { headers: { "x-forwarded-for": xff } });
+  it("takes the right-most trusted hop, ignoring client-supplied left-most values", () => {
+    expect(clientIp(req("1.1.1.1, 203.0.113.5"), 1)).toBe("203.0.113.5");
+    expect(clientIp(req("9.9.9.9, 203.0.113.5"), 1)).toBe("203.0.113.5");
+    expect(clientIp(req("1.1.1.1, 203.0.113.5, 10.0.0.1"), 2)).toBe("203.0.113.5");
+  });
+  it("falls back to unknown for a missing, too short or non-IP value", () => {
+    expect(clientIp(req(), 1)).toBe("unknown");
+    expect(clientIp(req("203.0.113.5"), 2)).toBe("unknown");
+    expect(clientIp(req("1.1.1.1, not-an-ip"), 1)).toBe("unknown");
+  });
+  it("reads TRUSTED_PROXY_HOPS and defaults to 1 when invalid", () => {
+    expect(trustedProxyHops("2")).toBe(2);
+    for (const bad of [undefined, "", "0", "-1", "abc", "1.5", "99"]) expect(trustedProxyHops(bad)).toBe(1);
+  });
+  it("gives a spoofed left-most value the same rate-limit bucket as the real client", async () => {
+    await submit(listingId, { "x-forwarded-for": "1.1.1.1, 203.0.113.5" });
+    await submit(listingId, { "x-forwarded-for": "9.9.9.9, 203.0.113.5" });
+    const counted = calls.filter(c => c.text.includes("offer_submit_attempt"));
+    expect(counted).toHaveLength(4);
+    expect(counted[1]!.params[0]).toBe(counted[3]!.params[0]);
   });
 });

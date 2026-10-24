@@ -1,11 +1,19 @@
 export default function Home() {
   return (
     <main>
-      <h1>OwnerListing</h1>
-      <p>Internal build. Not live; no listings are published.</p>
-      <p><a href="/api/auth/google/start">Sign in with Google</a> (property owners and agents)</p>
-      <p><a href="/api/auth/google/start?as=buyer">Sign in with Google as a buyer</a></p>
-      <p><a href="/listings">Listings</a> · <a href="/listings/new">Create a listing</a> · <a href="/listings/mine">My listings</a></p>
+      <section className="hero">
+        <h1>Sell or rent your property yourself</h1>
+        <p className="lead">OwnerListing lets owners list their own homes. AI helps with replies and reports, but only you decide on offers. Internal build: not live, no listings are published.</p>
+        <div className="actions">
+          <a className="button" href="/api/auth/google/start">Sign in as owner or agent</a>
+          <a className="button secondary" href="/api/auth/google/start?as=buyer">Sign in as buyer</a>
+        </div>
+      </section>
+      <div className="actions">
+        <a href="/listings">Browse listings</a>
+        <a href="/listings/new">Create a listing</a>
+        <a href="/listings/mine">My listings</a>
+      </div>
     </main>
   );
 }

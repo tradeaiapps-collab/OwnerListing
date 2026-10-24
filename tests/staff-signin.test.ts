@@ -177,7 +177,7 @@ describe("sign-in routes for staff", () => {
     expect(calls.some(c => /INSERT INTO app_user/i.test(c.text))).toBe(false);
   });
   it("logout clears the staff cookie too", async () => {
-    const set = (await logoutPost()).headers.get("set-cookie") ?? "";
+    const set = (await logoutPost(new Request("https://app.example.com/api/auth/logout", { method: "POST", headers: { origin: "https://app.example.com" } }))).headers.get("set-cookie") ?? "";
     expect(set).toMatch(/ol_staff=;/);
     expect(set).toMatch(/ol_session=;/);
   });

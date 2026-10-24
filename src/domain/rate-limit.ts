@@ -8,4 +8,6 @@ export function windowStart(nowIso: string, windowMs: number): string {
 export const withinLimit = (hits: unknown, limit: number): boolean =>
   typeof hits === "number" && Number.isFinite(hits) && hits >= 1 && hits <= limit;
 
-export const OFFER_RATE = { windowMs: 10 * 60 * 1000, perLink: 5, perIp: 20 } as const;
+export const OFFER_LINK_ISSUE_RATE = { windowMs: 10 * 60 * 1000, perOwner: 10 } as const;
+
+export const OFFER_RATE ={ windowMs: 10 * 60 * 1000, perLink: 5, perIp: 20 } as const;

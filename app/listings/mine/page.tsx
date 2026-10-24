@@ -23,21 +23,21 @@ export default function MyListings() {
     <main>
       <h1>My listings</h1>
       {error && <p role="alert">{error}</p>}
-      {!error && rows === null && <p>Loading...</p>}
-      {rows && rows.length === 0 && <p>You have no listings yet. <a href="/listings/new">Create one</a>.</p>}
+      {!error && rows === null && <p className="muted" role="status">Loading...</p>}
+      {rows && rows.length === 0 && <p className="empty">You have no listings yet. <a href="/listings/new">Create one</a>.</p>}
       {rows && rows.length > 0 && (
-        <ul style={{ listStyle: "none", padding: 0, display: "grid", gap: 12 }}>
+        <ul className="card-list">
           {rows.map(r => (
-            <li key={r.id} style={{ border: "1px solid #8884", borderRadius: 8, padding: 12, overflowWrap: "anywhere" }}>
+            <li key={r.id}>
               <strong>{r.title}</strong>
               <div>{r.address}</div>
-              <small>{STATUS_LABELS[r.status] ?? r.status} · {r.transactionType === "sale" ? "Sale" : "Rent"}</small>
+              <small className="muted">{STATUS_LABELS[r.status] ?? r.status} · {r.transactionType === "sale" ? "Sale" : "Rent"}</small>
               {r.status === "draft" && <div><a href={`/listings/${r.id}/edit`}>Edit this draft</a></div>}
             </li>
           ))}
         </ul>
       )}
-      <p><a href="/listings/new">Create a listing</a></p>
+      <p><a className="button" href="/listings/new">Create a listing</a></p>
     </main>
   );
 }

@@ -23,6 +23,8 @@ vi.mock("../src/server/documents-db", () => ({
 
 import { GET as listRoute } from "../app/api/listings/[id]/documents/route";
 import { POST as deletionRoute } from "../app/api/documents/[id]/deletion-request/route";
+process.env["APP_URL"] = "http://test";
+
 
 const uid = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 const owner: Actor = { userId: uid(1), userType: "owner" };
@@ -75,7 +77,7 @@ beforeEach(async () => {
 const list = (id = listingId) =>
   listRoute(new Request(`http://test/api/listings/${id}/documents`), { params: Promise.resolve({ id }) });
 const del = (id: string) =>
-  deletionRoute(new Request(`http://test/api/documents/${id}/deletion-request`, { method: "POST" }), { params: Promise.resolve({ id }) });
+  deletionRoute(new Request(`http://test/api/documents/${id}/deletion-request`, { method: "POST", headers: { origin: "http://test" } }), { params: Promise.resolve({ id }) });
 const ids = async (r: Response) => ((await r.json()) as { documents: { id: string }[] }).documents.map(d => d.id).sort();
 
 describe("GET /api/listings/[id]/documents", () => {

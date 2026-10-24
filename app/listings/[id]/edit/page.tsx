@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { BondPathwayField, ListingFields, type BondState, type ListingDefaults } from "../../fields";
-import { JSON_HEADERS, fieldStyle } from "../../ui";
+import { JSON_HEADERS } from "../../ui";
 
 type Loaded = ListingDefaults & { id: string; status: string };
 type Check = { allowed: boolean; reasons: string[] };
@@ -88,29 +88,29 @@ export default function EditListing() {
     <main>
       <h1>Edit draft</h1>
       {loadError && <p role="alert">{loadError}</p>}
-      {!loadError && !listing && <p>Loading...</p>}
+      {!loadError && !listing && <p className="muted" role="status">Loading...</p>}
       {listing && listing.status !== "draft" && <p role="alert">Only a draft can be edited.</p>}
       {listing && listing.status === "draft" && (
         <>
-          <form onSubmit={onSubmit} style={{ display: "grid", gap: 8 }}>
+          <form className="stack" onSubmit={onSubmit}>
             <ListingFields defaults={listing} />
-            <button type="submit" disabled={busy} style={fieldStyle}>Save changes</button>
+            <button type="submit" disabled={busy}>Save changes</button>
           </form>
           {saved && <p role="status">Changes saved.</p>}
           {error && <p role="alert">{error}</p>}
           <section>
             {listing.transactionType === "rent" && <BondPathwayField value={bond} state={bondState} onChange={saveBond} />}
-            <button type="button" disabled={busy} style={fieldStyle} onClick={runCheck}>Check if it can be published</button>
+            <button type="button" className="secondary" disabled={busy} onClick={runCheck}>Check if it can be published</button>
             {check && (
               <div>
                 <h3>{check.allowed ? "Can be published" : "Blocked"}</h3>
-                <ul>{check.reasons.map(r => <li key={r}>{r}</li>)}</ul>
+                <ul className="plain-list">{check.reasons.map(r => <li key={r}>{r}</li>)}</ul>
               </div>
             )}
           </section>
         </>
       )}
-      <p><a href="/listings">View listings</a></p>
+      <p><a className="button secondary" href="/listings">View listings</a></p>
     </main>
   );
 }

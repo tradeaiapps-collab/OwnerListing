@@ -25,6 +25,11 @@ export function decidePublish(
     hasVerifiedLicence(licences, actingAgentId, listing.jurisdiction, today);
   const licenceOk = ownerLicenceOk && actingAgentLicenceOk;
   const base = evaluatePublish(listing, requiredDisclosureKeys, licenceOk);
+  // evaluatePublish only reports a licence failure for agent owners; report the acting agent's too (fail closed).
+  if (!actingAgentLicenceOk) {
+    base.reasons.push("Acting agent licence must be verified and current before publication.");
+    base.allowed = false;
+  }
   if (termsAccepted !== true) {
     base.reasons.push("The current terms and conditions have not been accepted.");
     base.allowed = false;
