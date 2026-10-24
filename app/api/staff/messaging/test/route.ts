@@ -11,7 +11,7 @@ import { fail, readJsonObject, staffAudit, staffGate } from "../../../../../src/
  * Limited to a few per hour per admin and overall (both counters fail closed); SMS only to Australian mobiles; a refused attempt still counts. Not configured = nothing sent (409).
  */
 export async function POST(req: Request) {
-  const staff = await staffGate(req, "staff.manage");
+  const staff = await staffGate(req, "messaging.settings");
   if (staff instanceof NextResponse) return staff;
   const body = await readJsonObject(req);
   const channel = body?.["channel"];
