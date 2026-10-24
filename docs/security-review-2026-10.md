@@ -89,3 +89,34 @@ Scope: PR #68 (mobile-number SMS verification, provider ID-check and its webhook
 - Every new state-changing route calls `csrfGuard` first and awaits `getActor`; all are buyer-only; no id in the path, so no IDOR. SQL is constant text with bound parameters; migration triggers make consent and both logs append-only.
 - No phone number, code, IP or provider payload is logged (`console` is not used in the new code).
 - #59: AES-256-GCM, random 12-byte IV, AAD bound to the request row, key must be exactly 32 bytes of base64 or sealing and opening throw (nothing stored or shown); the token is shown only to the verified buyer, with `no-store`, and wiped on use. #65: CSV cells starting `= + - @ tab CR` are prefixed with an apostrophe (owner listing titles included); owner reports are scoped by `owner_user_id` in SQL and the per-listing report answers 404 to non-owners; staff report sections follow role permissions, exports are audited, no personal data or account numbers are selected. #66: saved listings are scoped to the session buyer and published listings only; unique index on (saved search, listing) stops repeat alerts.
+
+# Security review addendum, October 2026 (PR #79, staff invites)
+
+Scope: staff sign-in through the admin-managed `staff_invite` allowlist, `STAFF_BOOTSTRAP_ADMIN_EMAILS`, the invite/revoke/set_role routes and the migration that drops `app_user.staff_role`. Fixes are on the #79 branch.
+
+## Fixed in PR #79
+
+| Severity | Finding | Fix |
+|---|---|---|
+| High | Bootstrap race: the "insert a super_admin only if none exists" statement ran on its own, so under READ COMMITTED two bootstrap sign-ins (two listed emails, or an env list left set) could both see no admin and both insert, giving several super_admins. | Runs in one transaction under the same advisory lock as `changeInvite`. Now audited as `staff.bootstrap_admin_created` (no email). Test with four concurrent sign-ins. |
+| Medium | `upsertGoogleUser` (owner/buyer sign-in) did `ON CONFLICT (google_sub) DO UPDATE SET email`, which also rewrote the email of a staff (admin) account. The email is now the key to the role, so a Google email change would silently move or drop a staff role. | The update applies to owner, agent and buyer accounts only. Admin (and vendor) emails are never rewritten. |
+| Medium | A staff cookie (4 h) outlived a revoke and came back to life if the same address was invited again (for example a reassigned mailbox): the old holder regained access without signing in, while the new holder is refused (account bound to the first Google subject). | `staffFromRequest` requires `accepted_at IS NOT NULL`. A fresh invite is pending until its holder signs in; a role change copies `accepted_at`, so live sessions survive a role change. |
+| Low | `changeInvite` trusted the actor from the gate. A super_admin revoked a moment earlier could still finish a revoke/set_role already past the gate. | The actor's active, signed-in invite and role are re-read under the lock; otherwise 403. |
+
+## Not fixed
+
+1. **Low: a mailbox that is reassigned to a new person cannot sign in** if the old holder had signed in (the account is bound to the old Google subject, correctly refused). Recovery is by hand in the database. Add an admin "reset Google link" action (audited) when needed.
+2. **Low: the last-admin count includes pending (never signed-in) super_admin invites.** Not a lockout today, because the acting admin is always an active admin and cannot change themselves, but a mistyped super_admin invite counts as an admin.
+3. **Low: every denied staff sign-in writes an audit row for anyone who can start the staff flow** (no rate limit). Add a per-IP limit or sample the rows.
+4. **Low: a bootstrap-listed email does one extra write, so its timing differs from an unlisted one.** Needs an attacker holding a verified Google account for the address, so it reveals nothing they do not already hold.
+5. **Info: migration is lossy and not reversible.** It copies only active admin accounts with a well-formed email; suspended staff roles and the `staff_role` column are dropped. Take a backup before applying. Safer later: ship the copy in one release and drop the column in the next (a rolling deploy with old code still reading `staff_role` fails at the drop). Re-running is guarded by `schema_migration` (the file itself is not idempotent).
+6. **Info: a never-signed-in invite is exposed to whoever first controls that address at Google** (any Google account is allowed by design). Invite only addresses the person already uses; revoke unused invites.
+
+## Checked and found sound
+
+- Email match: trimmed, lower-cased, ASCII only, single `@`, at most 254 characters; look-alike Unicode, inner whitespace and control characters never match. Plus and dot variants, other domains and Workspace aliases do not match (exact compare; Google reports the primary address), so they fail closed. Bootstrap list drops empty, blank and invalid entries; no env entry means no bootstrap.
+- Takeover: an existing owner, buyer or vendor account with the invited email is never converted or linked (denied as `account_conflict`); an admin account linked to a different Google subject is denied; linking a pre-provisioned admin is a single `UPDATE ... WHERE google_sub IS NULL`. Suspended admins are denied at sign-in and on every request. `email_verified=true` is required in `readIdentity`.
+- set_role/revoke/invite need `staff.manage` (super_admin only) through `staffGate`, which runs `csrfGuard` first and awaits the lookup; no self change; the last super_admin is protected by an advisory lock in one real transaction (the production pool provides `transaction`); concurrent mutual revokes leave one admin (test).
+- Role is read from the active invite on each request; revoking takes effect at once. The staff cookie uses a domain-separated HMAC and carries no role; user and staff tokens do not verify as each other.
+- Every denial returns the same generic failed login; audit rows carry reason codes, ids and roles but no emails or names. All SQL is constant text with bound parameters.
+- `staff_invite` triggers: no delete, email/role/inviter/created_at immutable, `accepted_at` and revoke set once. CHECK constraints refuse non-normalised emails. Unique partial index allows one active invite per email.

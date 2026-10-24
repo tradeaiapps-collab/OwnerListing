@@ -28,13 +28,23 @@ export async function staffSignIn(db: Queryable, who: GoogleIdentity, bootstrap:
   if (!email || !who.sub) return deny("bad_identity");
 
   if (bootstrap.includes(email)) {
-    await db.query(
+    // One transaction under the same advisory lock as changeInvite, so two bootstrap sign-ins cannot both see "no super_admin" and both insert.
+    const run = (tx: Queryable) => tx.query(`SELECT pg_advisory_xact_lock(hashtext('staff_invite_admins'))`).then(() => tx.query(
       `INSERT INTO staff_invite (email, role, invited_by)
        SELECT $1, 'super_admin', NULL
         WHERE NOT EXISTS (SELECT 1 FROM staff_invite WHERE role = 'super_admin' AND revoked_at IS NULL)
-       ON CONFLICT DO NOTHING`,
+       ON CONFLICT DO NOTHING RETURNING id`,
       [email]
-    );
+    )).then(async r => {
+      const newId = r.rows[0]?.["id"];
+      if (typeof newId === "string") {
+        await appendAuditPg(tx, {
+          id: randomUUID(), occurredAt: new Date().toISOString(), actorType: "system", actorId: "bootstrap",
+          aggregateType: "staff_invite", aggregateId: newId, eventType: "staff.bootstrap_admin_created", correlationId: randomUUID(), payload: {}
+        });
+      }
+    });
+    await (db.transaction ? db.transaction(run) : run(db));
   }
   const invite = (await db.query(`SELECT id, role FROM staff_invite WHERE email = $1 AND revoked_at IS NULL`, [email])).rows[0];
   const role = asStaffRole(invite?.["role"]);
@@ -65,14 +75,15 @@ export async function staffSignIn(db: Queryable, who: GoogleIdentity, bootstrap:
 
 /**
  * The signed-in staff member for this request, or null. The role is read from the active invite now, so revoking or changing it takes
- * effect at once.
+ * effect at once. Only an invite that has been signed in to counts (accepted_at), so a cookie issued under an earlier, revoked invite for the
+ * same email never revives when the address is invited again (for example after the mailbox was reassigned); that person must sign in again.
  */
 export async function staffFromRequest(db: Queryable, req: Request, secret: string, nowSeconds: number): Promise<StaffActor | null> {
   const p = verifyStaffSession(staffTokenFromRequest(req), secret, nowSeconds);
   if (!p) return null;
   const res = await db.query(
     `SELECT u.id, i.role FROM app_user u JOIN staff_invite i ON i.email = lower(u.email::text) AND i.revoked_at IS NULL
-      WHERE u.id = $1 AND u.user_type = 'admin' AND u.status = 'active'`,
+      WHERE u.id = $1 AND u.user_type = 'admin' AND u.status = 'active' AND i.accepted_at IS NOT NULL`,
     [p.uid]
   );
   const row = res.rows[0];

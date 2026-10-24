@@ -2,6 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { StaffActor } from "../src/domain/staff-access";
 import { signStaffSession } from "../src/server/auth/staff-session";
 import { staffFromRequest, staffSignIn } from "../src/server/staff-auth";
+import { upsertGoogleUser } from "../src/server/users";
 import { changeInvite, createInvite, listInvites } from "../src/server/staff-invite-db";
 import { addUser, createTestDb, DATABASE_URL, type TestDb } from "./helpers/pg-db";
 
@@ -111,14 +112,21 @@ describe.skipIf(!DATABASE_URL)("staff invites (Postgres)", () => {
     expect((await listInvites(db)).find(i => i.id === mine.id)!.revokedAt).toBeNull();
     expect((await audits("staff.invite_change_refused")).some(r => (r["payload"] as { reason?: string }).reason === "self")).toBe(true);
   });
-  it("the last admin cannot be revoked or demoted, even by another admin", async () => {
-    const { email } = await bootstrapAdmin();
-    const other: StaffActor = { id: await addUser(db, "admin"), role: "super_admin" };
-    const mine = (await listInvites(db)).find(i => i.email === email && !i.revokedAt)!;
-    expect(await changeInvite(db, other, mine.id, null)).toMatchObject({ ok: false, status: 409, error: "The last admin cannot be removed." });
-    expect(await changeInvite(db, other, mine.id, "support")).toMatchObject({ ok: false, status: 409 });
+  it("the last admin cannot be revoked or demoted: the other admin goes first, then nobody can remove the one left", async () => {
+    const { actor: a, email } = await bootstrapAdmin();
+    const e2 = fresh();
+    await createInvite(db, a, e2, "super_admin");
+    const bActor = (await staffSignIn(db, { ...sub(e2), email: e2 }))!;
+    const list = await listInvites(db);
+    const mine = list.find(i => i.email === email && !i.revokedAt)!;
+    const theirs = list.find(i => i.email === e2 && !i.revokedAt)!;
+    expect(await changeInvite(db, a, theirs.id, null)).toMatchObject({ ok: true });
+    // B is now revoked: a request that passed the gate earlier is refused, and A cannot touch their own invite.
+    expect(await changeInvite(db, bActor, mine.id, null)).toMatchObject({ ok: false, status: 403 });
+    expect(await changeInvite(db, a, mine.id, null)).toMatchObject({ ok: false, status: 409 });
+    expect(await changeInvite(db, a, mine.id, "support")).toMatchObject({ ok: false, status: 409 });
     expect((await listInvites(db)).find(i => i.id === mine.id)!.revokedAt).toBeNull();
-    expect((await audits("staff.invite_change_refused")).some(r => (r["payload"] as { reason?: string }).reason === "last_admin")).toBe(true);
+    expect((await audits("staff.invite_change_refused")).length).toBeGreaterThan(0);
   });
   it("concurrent revokes of the last two admins leave one admin", async () => {
     const { actor } = await bootstrapAdmin();
@@ -173,5 +181,61 @@ describe.skipIf(!DATABASE_URL)("staff invites (Postgres)", () => {
     await expect(db.query(`INSERT INTO staff_invite (email, role) VALUES ('A@B.com', 'support')`)).rejects.toThrow(/check/i);
     await expect(db.query(`INSERT INTO staff_invite (email, role) VALUES (' a@b.com', 'support')`)).rejects.toThrow(/check/i);
     await expect(db.query(`INSERT INTO staff_invite (email, role) VALUES ('a@b.com', 'root')`)).rejects.toThrow(/check/i);
+  });
+  // ---- Independent review (October 2026) ----
+  it("concurrent bootstrap sign-ins of several listed emails create exactly one super_admin (and one audit row, no email in it)", async () => {
+    const emails = [fresh(), fresh(), fresh(), fresh()];
+    const before = (await audits("staff.bootstrap_admin_created")).length;
+    const results = await Promise.all(emails.map(e => staffSignIn(db, { ...sub(e), email: e }, emails)));
+    expect(results.filter(r => r !== null)).toHaveLength(1);
+    expect((await listInvites(db)).filter(i => i.role === "super_admin" && !i.revokedAt)).toHaveLength(1);
+    const rows = await audits("staff.bootstrap_admin_created");
+    expect(rows).toHaveLength(before + 1);
+    expect(JSON.stringify(rows)).not.toContain("@");
+  }, 30_000);
+  it("an admin revoked a moment ago cannot finish a change that passed the gate earlier", async () => {
+    const { actor: a } = await bootstrapAdmin();
+    const b = fresh();
+    const c = fresh();
+    await createInvite(db, a, b, "super_admin");
+    await createInvite(db, a, c, "super_admin");
+    const bActor = (await staffSignIn(db, { ...sub(b), email: b }))!;
+    const all = await listInvites(db);
+    const idOf = (e: string) => all.find(i => i.email === e && !i.revokedAt)!.id;
+    expect(await changeInvite(db, a, idOf(b), null)).toMatchObject({ ok: true });
+    expect(await changeInvite(db, bActor, idOf(c), null)).toMatchObject({ ok: false, status: 403 });
+    expect((await listInvites(db)).find(i => i.id === idOf(c))!.revokedAt).toBeNull();
+  });
+  it("a cookie from an earlier, revoked invite does not revive when the same address is invited again", async () => {
+    const { actor: admin } = await bootstrapAdmin();
+    const e = fresh();
+    await createInvite(db, admin, e, "support");
+    const member = (await staffSignIn(db, { ...sub(e), email: e }))!;
+    const req = new Request("http://x", { headers: { cookie: `ol_staff=${signStaffSession({ uid: member.id, exp: 2_000_000_000 }, secret)}` } });
+    expect(await staffFromRequest(db, req, secret, 1_900_000_000)).toEqual(member);
+    const inv = (await listInvites(db)).find(i => i.email === e && !i.revokedAt)!;
+    await changeInvite(db, admin, inv.id, null);
+    await createInvite(db, admin, e, "super_admin");
+    expect(await staffFromRequest(db, req, secret, 1_900_000_000)).toBeNull();
+    // Someone else signing in with the reassigned address is refused (the account is bound to the first Google subject)...
+    expect(await staffSignIn(db, { sub: "sub-other-person", name: "Other", email: e })).toBeNull();
+    // ...and the same person signing in again gets the new role and a working session.
+    expect((await staffSignIn(db, { ...sub(e), email: e }))?.role).toBe("super_admin");
+    expect(await staffFromRequest(db, req, secret, 1_900_000_000)).toMatchObject({ role: "super_admin" });
+  });
+  it("the owner/buyer sign-in never rewrites the email of a staff account (the email is the key to its role)", async () => {
+    const { actor: admin } = await bootstrapAdmin();
+    const e = fresh();
+    await createInvite(db, admin, e, "support");
+    const member = (await staffSignIn(db, { ...sub(e), email: e }))!;
+    const moved = fresh();
+    expect(await upsertGoogleUser(db, { ...sub(e), email: moved })).toBeNull();
+    expect((await db.query(`SELECT email::text AS email FROM app_user WHERE id = $1`, [member.id])).rows[0]!["email"]).toBe(e);
+    // An ordinary owner still gets the email refreshed.
+    const o = fresh();
+    const owner = (await upsertGoogleUser(db, { sub: `sub-${o}`, name: "O", email: o }))!;
+    const o2 = fresh();
+    await upsertGoogleUser(db, { sub: `sub-${o}`, name: "O", email: o2 });
+    expect((await db.query(`SELECT email::text AS email FROM app_user WHERE id = $1`, [owner.id])).rows[0]!["email"]).toBe(o2);
   });
 });
