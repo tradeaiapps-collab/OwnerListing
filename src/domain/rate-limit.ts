@@ -43,3 +43,13 @@ export function withinByteQuota(usedBytes: unknown, incomingBytes: number, limit
   return typeof usedBytes === "number" && Number.isFinite(usedBytes) && usedBytes >= 0
     && Number.isFinite(incomingBytes) && incomingBytes > 0 && usedBytes + incomingBytes <= limit;
 }
+
+/** Investor projects module. Every counter fails closed (withinLimit). Product can change the numbers. */
+export const INVESTMENT_RATE = {
+  projectWrite: { windowMs: 24 * 60 * 60 * 1000, perUser: 10 },
+  declaration: { windowMs: 24 * 60 * 60 * 1000, perUser: 5 },
+  newInterest: { windowMs: 24 * 60 * 60 * 1000, perUser: 10 },
+  message: { windowMs: 60 * 60 * 1000, perUser: 30 },
+  toggle: { windowMs: 60 * 60 * 1000, perUser: 10 },
+  contractUpload: { windowMs: 24 * 60 * 60 * 1000, perUser: 5 }
+} as const;

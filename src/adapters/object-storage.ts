@@ -24,8 +24,8 @@ export function createUnconfiguredStorage(): ObjectStoragePort {
   };
 }
 
-/** Keys are made by the server: listings/<uuid>/<uuid> or id/<hex>/<hex>. Anything else is refused, so a key can never climb out of the storage folder. */
-const KEY = /^(listings|id)\/[A-Za-z0-9_-]{1,64}\/[A-Za-z0-9_-]{1,64}$/;
+/** Keys are made by the server: listings/<uuid>/<uuid>, id/<hex>/<hex> or investments/<hex>/<hex>. Anything else is refused, so a key can never climb out of the storage folder. */
+const KEY = /^(listings|id|investments)\/[A-Za-z0-9_-]{1,64}\/[A-Za-z0-9_-]{1,64}$/;
 const ID_KEY = /^id\//;
 
 /**

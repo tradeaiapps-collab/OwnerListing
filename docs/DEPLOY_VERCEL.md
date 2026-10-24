@@ -95,7 +95,7 @@ Required means the site does not work without it. Fail-closed-optional means lea
 | `ID_CHECK_WEBHOOK_SECRET` | empty | empty | Fail-closed-optional. Empty: webhook rejects everything. |
 | `PAYWAY_MERCHANT_ID`, `PAYWAY_API_KEY`, `PAYWAY_WEBHOOK_SECRET` | empty | empty | Fail-closed-optional. Empty: checkout "not available yet", so nothing can be marked paid and nothing publishes. Never set live keys here. |
 | `STORAGE_DRIVER`, `STORAGE_LOCAL_DIR`, `STORAGE_LOCAL_ALLOW_PRODUCTION`, `CLAMD_HOST`, `CLAMD_PORT` | leave empty | empty | Fail-closed-optional. Empty: uploads answer 503 (see limits below). |
-| `INVESTMENT_MODULE_ENABLED` | `false` | `false` | Reserved, not read. Keep `false`. |
+| `INVESTMENT_MODULE_ENABLED` | `false` | `false` | Master key of the investor projects module (also needs the admin switch). Keep `false` until counsel signs off. |
 
 Use a different value for every secret, and different values in the two projects. Never paste a secret into chat, email or the repository.
 

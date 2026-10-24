@@ -6,21 +6,23 @@ export type StaffPermission =
   | "pii.view_masked" | "pii.view_full"
   | "case.manage" | "trust_account.approve" | "licence.verify"
   | "ai.engine_set" | "config.edit" | "logs.technical" | "dispute.read_chat"
-  | "override.request" | "override.approve" | "staff.manage" | "pricing.manage" | "identity.review";
+  | "override.request" | "override.approve" | "staff.manage" | "pricing.manage" | "identity.review"
+  | "investment.review" | "investment.manage";
 
 const ALL: readonly StaffPermission[] = [
   "report.sales", "report.suburb", "report.financial", "report.solicitor", "report.broker",
   "report.buyer", "report.seller", "report.audit", "report.operations",
   "pii.view_masked", "pii.view_full", "case.manage", "trust_account.approve", "licence.verify",
   "ai.engine_set", "config.edit", "logs.technical", "dispute.read_chat",
-  "override.request", "override.approve", "staff.manage", "pricing.manage", "identity.review"
+  "override.request", "override.approve", "staff.manage", "pricing.manage", "identity.review",
+  "investment.review", "investment.manage"
 ];
 
 /** Least privilege: each team sees only what its job needs. Technical staff get no personal data. */
 const ROLE_PERMISSIONS: Record<StaffRole, readonly StaffPermission[]> = {
   super_admin: ALL,
   compliance: ["report.audit", "report.solicitor", "report.broker", "pii.view_full", "case.manage",
-    "trust_account.approve", "licence.verify", "dispute.read_chat", "override.request", "identity.review"],
+    "trust_account.approve", "licence.verify", "dispute.read_chat", "override.request", "identity.review", "investment.review"],
   accountant: ["report.financial", "report.sales", "pii.view_masked"],
   support: ["report.buyer", "report.seller", "pii.view_masked", "case.manage", "override.request"],
   technical: ["logs.technical", "report.operations", "config.edit"],

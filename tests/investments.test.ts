@@ -14,7 +14,7 @@ describe("investment Gate G4", () => {
     })).toBe(false);
   });
 
-  it("keeps module disabled unless explicitly configured", () => {
+  it("assertInvestmentModuleDisabled passes for any flag but \"true\" and throws (Gate G4) for \"true\"", () => {
     expect(() => assertInvestmentModuleDisabled("false")).not.toThrow();
     expect(() => assertInvestmentModuleDisabled("true")).toThrow(/Gate G4/);
   });
