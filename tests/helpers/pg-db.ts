@@ -83,7 +83,7 @@ export async function createTestDb(): Promise<TestDb> {
 }
 
 /** Inserts a user and returns its id. */
-export async function addUser(db: Queryable, type: "owner" | "buyer" | "admin", status = "active"): Promise<string> {
+export async function addUser(db: Queryable, type: "owner" | "buyer" | "admin" | "agent", status = "active"): Promise<string> {
   const r = await db.query(
     "INSERT INTO app_user (email, display_name, user_type, status) VALUES ($1,$2,$3,$4) RETURNING id",
     [`${randomUUID()}@example.test`, `Test ${type}`, type, status]
