@@ -4,6 +4,8 @@ import { hashToken, validateFormalOffer, validateOfferLink, type FormalOffer } f
 import { parseOfferSubmission } from "../../../../../src/domain/offer-submission";
 import { getActor, getDb, getDeps } from "../../../../../src/server/context";
 import { failure, unauthenticated } from "../../../../../src/server/http";
+import { OFFER_RATE, windowStart, withinLimit } from "../../../../../src/domain/rate-limit";
+import { countHitPg } from "../../../../../src/server/offer-flow-db";
 import { offerLinkPg, offersForOwnerPg, submitOfferPg } from "../../../../../src/server/offers-db";
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -25,10 +27,24 @@ export async function POST(req: Request, { params }: Ctx) {
   if (!rec || rec.listing.status !== "published") return failure(notFound);
 
   const db = getDb();
-  const link = await offerLinkPg(db, await hashToken(parsed.value.token));
+  const now = deps.now();
+  const tokenHash = await hashToken(parsed.value.token);
+  // Rate limit per link and per IP-hash window, before the link lookup. Fails closed: a store error blocks the request.
+  const ip = (req.headers.get("x-forwarded-for") ?? "").split(",")[0]?.trim() || "unknown";
+  const start = windowStart(now, OFFER_RATE.windowMs);
+  try {
+    const perLink = await countHitPg(db, await hashToken(`link:${tokenHash}`), start);
+    const perIp = await countHitPg(db, await hashToken(`ip:${ip}`), start);
+    if (!withinLimit(perLink, OFFER_RATE.perLink) || !withinLimit(perIp, OFFER_RATE.perIp)) {
+      return NextResponse.json({ error: "Too many attempts. Try again later." }, { status: 429, headers: { "Retry-After": "600" } });
+    }
+  } catch {
+    return NextResponse.json({ error: "Offers are unavailable right now. Try again later." }, { status: 503 });
+  }
+
+  const link = await offerLinkPg(db, tokenHash);
   if (!link) return failure(badLink);
 
-  const now = deps.now();
   const offer: FormalOffer = {
     listingId: id,
     buyerUserId: link.buyerUserId,
