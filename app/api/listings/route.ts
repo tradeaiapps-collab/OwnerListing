@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { isJurisdiction } from "../../../src/domain/jurisdiction";
 import {
-  createDraft, parseDraftInput, searchPublished,
+  createDraft, parseDraftInput, searchPublished, toPublicListing,
   TRANSACTION_TYPES, USE_CLASSES, type SearchFilters
 } from "../../../src/domain/listing-service";
 import { forbiddenFor } from "../../../src/domain/access";
@@ -20,7 +20,7 @@ export async function GET(req: Request) {
   if (txMatch) filters.transactionType = txMatch;
   const useMatch = USE_CLASSES.find(u => u === use);
   if (useMatch) filters.useClass = useMatch;
-  return NextResponse.json({ listings: await searchPublished(getDeps(), filters) });
+  return NextResponse.json({ listings: (await searchPublished(getDeps(), filters)).map(toPublicListing) });
 }
 
 /** Creates a draft owned by the signed-in user. */

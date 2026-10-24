@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getListing, parseDraftPatch, updateDraft } from "../../../../src/domain/listing-service";
+import { getListing, parseDraftPatch, toPublicListing, updateDraft } from "../../../../src/domain/listing-service";
 import { getActor, getDeps } from "../../../../src/server/context";
 import { failure, unauthenticated } from "../../../../src/server/http";
 
@@ -11,12 +11,15 @@ export async function GET(req: Request, { params }: Ctx) {
   const deps = getDeps();
   const r = await getListing(deps, actor, id);
   if (!r.ok) return failure(r);
-  // The bond pathway is returned to the listing's owner only. Everyone else gets the same body as before.
-  if (actor && actor.userId === r.value.ownerUserId) {
+  // Ownership is decided here from the signed-in actor and returned as a flag; the owner's id is never sent.
+  const isOwner = actor !== null && actor.userId === r.value.ownerUserId;
+  const listing = toPublicListing(r.value);
+  // The bond pathway is returned to the listing's owner only.
+  if (isOwner) {
     const rec = await deps.repo.get(id);
-    if (rec?.rentalBondPathway !== undefined) return NextResponse.json({ listing: r.value, rentalBondPathway: rec.rentalBondPathway });
+    if (rec?.rentalBondPathway !== undefined) return NextResponse.json({ listing, isOwner, rentalBondPathway: rec.rentalBondPathway });
   }
-  return NextResponse.json({ listing: r.value });
+  return NextResponse.json({ listing, isOwner });
 }
 
 /** Edits a draft. Published listings cannot be edited here. */

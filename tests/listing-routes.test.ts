@@ -11,7 +11,7 @@ vi.mock("../src/server/context", () => ({
   getDeps: () => state.deps
 }));
 
-import { POST as createRoute } from "../app/api/listings/route";
+import { GET as searchRoute, POST as createRoute } from "../app/api/listings/route";
 import { POST as publishRoute } from "../app/api/listings/[id]/publish/route";
 import { GET as getRoute, PATCH as patchRoute } from "../app/api/listings/[id]/route";
 
@@ -162,7 +162,7 @@ describe("GET /api/listings/[id] (owner-only bond pathway)", () => {
   it("omits the field when no bond pathway has been saved yet", async () => {
     const draft = await createDraft(state.deps!, owner, rental);
     state.actor = owner;
-    expect(Object.keys(await (await get(draft.id)).json())).toEqual(["listing"]);
+    expect(Object.keys(await (await get(draft.id)).json())).toEqual(["listing", "isOwner"]);
   });
   it("never returns it to another user or a signed-out visitor, even on a published listing", async () => {
     const id = await saveWithBond(true);
@@ -170,7 +170,56 @@ describe("GET /api/listings/[id] (owner-only bond pathway)", () => {
       state.actor = a;
       const res = await get(id);
       expect(res.status).toBe(200);
-      expect(Object.keys(await res.json())).toEqual(["listing"]);
+      expect(Object.keys(await res.json())).toEqual(["listing", "isOwner"]);
     }
+  });
+});
+
+describe("public listing responses never expose internal ownership fields", () => {
+  const publishDirect = async () => {
+    const draft = await createDraft(state.deps!, owner, input);
+    const rec = (await state.deps!.repo.get(draft.id))!;
+    await state.deps!.repo.save({ ...rec, listing: { ...rec.listing, status: "published" } });
+    return draft.id;
+  };
+  const get = (id: string) => getRoute(new Request(`http://test/api/listings/${id}`), { params: Promise.resolve({ id }) });
+
+  it("GET omits ownerUserId and ownerUserType for signed-out visitors and other users, with isOwner false", async () => {
+    const id = await publishDirect();
+    for (const a of [null, { userId: "owner-2", userType: "owner" } as Actor, agent]) {
+      state.actor = a;
+      const body = await (await get(id)).json();
+      expect(body.isOwner).toBe(false);
+      expect(body.listing).not.toHaveProperty("ownerUserId");
+      expect(body.listing).not.toHaveProperty("ownerUserType");
+      expect(JSON.stringify(body)).not.toContain("owner-1");
+    }
+  });
+  it("GET gives the owner isOwner true and still no ownerUserId", async () => {
+    const id = await publishDirect();
+    state.actor = owner;
+    const body = await (await get(id)).json();
+    expect(body.isOwner).toBe(true);
+    expect(body.listing).not.toHaveProperty("ownerUserId");
+    expect(body.listing.title).toBe("Family home");
+  });
+  it("GET still returns the owner-only bond pathway alongside isOwner", async () => {
+    const draft = await createDraft(state.deps!, owner, { ...input, transactionType: "rent" });
+    const rec = (await state.deps!.repo.get(draft.id))!;
+    await state.deps!.repo.save({ ...rec, rentalBondPathway: "solicitor_trust" });
+    state.actor = owner;
+    const body = await (await get(draft.id)).json();
+    expect(body.isOwner).toBe(true);
+    expect(body.rentalBondPathway).toBe("solicitor_trust");
+  });
+  it("search results omit ownerUserId and ownerUserType", async () => {
+    await publishDirect();
+    state.actor = null;
+    const res = await searchRoute(new Request("http://test/api/listings"));
+    const body = await res.json();
+    expect(body.listings).toHaveLength(1);
+    expect(body.listings[0]).not.toHaveProperty("ownerUserId");
+    expect(body.listings[0]).not.toHaveProperty("ownerUserType");
+    expect(JSON.stringify(body)).not.toContain("owner-1");
   });
 });
