@@ -35,11 +35,13 @@ export interface PostingTerms {
   commissionFixedCents: number;
   upfrontFeeCents: number;
   upfrontFeeStatus: "not_required" | "unpaid" | "paid";
+  /** Model 2 disclosure rule agreed when posted ("off" under Model 1). A later admin change never opens contacts on an existing project. */
+  model2Disclosure: Model2Disclosure;
 }
 
 export const termsFrom = (s: PostingSettings): PostingTerms => s.model === "commission_on_contract"
-  ? { model: s.model, commissionType: s.commissionType, commissionBps: s.commissionBps, commissionFixedCents: s.commissionFixedCents, upfrontFeeCents: 0, upfrontFeeStatus: "not_required" }
-  : { model: s.model, commissionType: "fixed", commissionBps: 0, commissionFixedCents: 0, upfrontFeeCents: s.upfrontFeeCents, upfrontFeeStatus: s.upfrontFeeCents > 0 ? "unpaid" : "not_required" };
+  ? { model: s.model, commissionType: s.commissionType, commissionBps: s.commissionBps, commissionFixedCents: s.commissionFixedCents, upfrontFeeCents: 0, upfrontFeeStatus: "not_required", model2Disclosure: "off" }
+  : { model: s.model, commissionType: "fixed", commissionBps: 0, commissionFixedCents: 0, upfrontFeeCents: s.upfrontFeeCents, upfrontFeeStatus: s.upfrontFeeCents > 0 ? "unpaid" : "not_required", model2Disclosure: s.model2Disclosure };
 
 const int = (v: unknown, min: number, max: number): v is number => typeof v === "number" && Number.isSafeInteger(v) && v >= min && v <= max;
 
@@ -92,17 +94,46 @@ export function posterText(s: PostingSettings): string {
 
 // ---- Contact masking ----
 
-const EMAIL = /[A-Z0-9._%+-]+\s*(?:@|\(at\)|\[at\])\s*[A-Z0-9-]+(?:\s*(?:\.|\(dot\)|\[dot\])\s*[A-Z0-9-]+)+/gi;
-const URL = /\b(?:https?:\/\/|www\.)[^\s<>"']+|\b[A-Z0-9-]+(?:\.[A-Z0-9-]+)*\.(?:com|net|org|au|io|co|biz|info|me|app)\b(?:\/[^\s<>"']*)?/gi;
-const PHONE = /(?:\+|\b)\d(?:[\s().-]*\d){7,}/g;
+const TLD = "(?:com|net|org|au|io|co|biz|info|me|app|xyz|online|site|email|uk|nz|us|dev|ai|ly|gg|link|page|store|shop|tech|cc|tv|to|in|ws|club|live|pro|top)";
+const AT = String.raw`(?:\s*(?:@|[(\[{]\s*(?:at|@)\s*[)\]}])\s*)`;
+const DOT = String.raw`(?:\s*(?:\.|[(\[{]\s*(?:dot|\.)\s*[)\]}])\s*|\s+dot\s+)`;
+const EMAIL = new RegExp(String.raw`[\p{L}\p{N}._%+-]+${AT}[\p{L}\p{N}-]+(?:${DOT}[\p{L}\p{N}-]+)*`, "giu");
+/** "jo at example dot com" / "jo at example.com": the spelled-out form, only when it ends in a known domain ending. */
+const EMAIL_WORDS = new RegExp(String.raw`[\p{L}\p{N}._%+-]+\s+at\s+[\p{L}\p{N}-]+(?:${DOT}[\p{L}\p{N}-]+)*${DOT}${TLD}(?![\p{L}\p{N}])`, "giu");
+const URL = new RegExp(String.raw`\b(?:https?:\/\/|www\.)[^\s<>"'()\[\]]+|\b[\p{L}\p{N}-]+(?:${DOT}[\p{L}\p{N}-]+)*${DOT}${TLD}(?![\p{L}\p{N}])(?:\/[^\s<>"'()\[\]]*)?`, "giu");
+/** 8+ digits with any common separator; letters O/I/l standing in for digits and digits spelled as words count too. */
+const DIGIT = "(?:[0-9]|[OoIl](?![\\p{L}])|(?:zero|oh|one|two|three|four|five|six|seven|eight|nine)(?![\\p{L}]))";
+const PHONE = new RegExp(String.raw`(?<![\p{L}\p{N}])(?:\+\s*)?${DIGIT}(?:[\s().\-/_~*|·•]*${DIGIT}){7,}`, "giu");
+const REAL_DIGITS = /[0-9]|zero|oh|one|two|three|four|five|six|seven|eight|nine/gi;
 export const MASK = "[hidden]";
 
-/** Hides emails, web links and phone numbers (8+ digits). `masked` tells the sender something was hidden. */
-export function maskContacts(text: string): { text: string; masked: boolean } {
+/** Latin look-alikes (Cyrillic and Greek). Applied only inside a word that already mixes Latin with other letters. */
+const CONFUSABLE: Record<string, string> = {
+  "а": "a", "в": "b", "е": "e", "к": "k", "м": "m", "н": "h", "о": "o", "р": "p", "с": "c", "т": "t", "у": "y", "х": "x", "і": "i", "ј": "j", "ѕ": "s", "ԁ": "d", "ӏ": "l", "ո": "n", "ɡ": "g",
+  "А": "A", "В": "B", "Е": "E", "К": "K", "М": "M", "Н": "H", "О": "O", "Р": "P", "С": "C", "Т": "T", "Х": "X", "І": "I", "Ј": "J", "Ѕ": "S",
+  "α": "a", "ε": "e", "ι": "i", "κ": "k", "ν": "v", "ο": "o", "ρ": "p", "τ": "t", "υ": "u", "χ": "x", "Α": "A", "Β": "B", "Ε": "E", "Ζ": "Z", "Η": "H", "Ι": "I", "Κ": "K", "Μ": "M", "Ν": "N", "Ο": "O", "Ρ": "P", "Τ": "T", "Υ": "Y", "Χ": "X"
+};
+
+/**
+ * Undoes the usual tricks before matching: full-width and other compatibility forms (NFKC), invisible format characters
+ * (zero-width, bidi, soft hyphen, emoji variation and keycap marks), and look-alike letters inside mixed-script words.
+ */
+export function normaliseForMasking(text: string): string {
+  return text.normalize("NFKC")
+    .replace(/[\p{Cf}͏ᅟᅠㅤ︀-️⃣]/gu, "")
+    .replace(/[\p{L}\p{N}@._%+-]+/gu, w => (/[A-Za-z]/.test(w) && /[^\x00-\x7f]/.test(w) ? w.replace(/[^\x00-\x7f]/g, c => CONFUSABLE[c] ?? c) : w));
+}
+
+/**
+ * Hides emails, web links and phone numbers (8+ digits), including spaced, spelled-out, full-width, zero-width and look-alike forms.
+ * The text that comes back is the normalised text. `masked` tells the sender something was hidden.
+ * `phones: false` keeps digit runs (for licence, ABN and ACN numbers in the issuer details).
+ */
+export function maskContacts(text: string, opts: { phones?: boolean } = {}): { text: string; masked: boolean } {
   let masked = false;
-  const out = text.replace(EMAIL, () => { masked = true; return MASK; })
-    .replace(URL, () => { masked = true; return MASK; })
-    .replace(PHONE, () => { masked = true; return MASK; });
+  const hide = () => { masked = true; return MASK; };
+  let out = normaliseForMasking(text).replace(EMAIL, hide).replace(EMAIL_WORDS, hide).replace(URL, hide);
+  if (opts.phones !== false) out = out.replace(PHONE, m => ((m.match(REAL_DIGITS)?.length ?? 0) >= 6 ? hide() : m));
   return { text: out, masked };
 }
 export const MASKED_NOTICE = "Contact details (emails, phone numbers and links) are not allowed here and were hidden. Keep talking through the platform.";
@@ -118,7 +149,7 @@ export function contractTransition(from: ContractStatus, action: "submit" | "con
   return action === "confirm" ? "returned" : "rejected";
 }
 
-/** Model 2 contact disclosure: fee paid and the admin setting allows it at this stage. Model 1: never. */
+/** Model 2 contact disclosure: fee paid and the rule recorded on the project (`setting`, from its terms) allows it at this stage. Model 1: never. */
 export function contactsDisclosed(t: PostingTerms, setting: Model2Disclosure, contract: ContractStatus): boolean {
   if (t.model !== "upfront_fee" || t.upfrontFeeStatus !== "paid") return false;
   return setting === "after_fee" || (setting === "after_contract" && contract === "returned");

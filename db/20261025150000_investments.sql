@@ -51,9 +51,11 @@ CREATE TABLE investment_project (
   commission_fixed_cents      BIGINT NOT NULL CHECK (commission_fixed_cents BETWEEN 0 AND 100000000),
   upfront_fee_cents           BIGINT NOT NULL CHECK (upfront_fee_cents BETWEEN 0 AND 100000000),
   upfront_fee_status          TEXT NOT NULL CHECK (upfront_fee_status IN ('not_required','unpaid','paid')),
+  model2_disclosure           TEXT NOT NULL CHECK (model2_disclosure IN ('off','after_fee','after_contract')),
   created_at                  TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at                  TIMESTAMPTZ NOT NULL DEFAULT now(),
-  CHECK (minimum_ticket_cents <= funding_target_cents)
+  CHECK (minimum_ticket_cents <= funding_target_cents),
+  CHECK (posting_model = 'upfront_fee' OR model2_disclosure = 'off')
 );
 CREATE INDEX investment_project_status_idx ON investment_project(status, updated_at DESC);
 CREATE INDEX investment_project_owner_idx ON investment_project(owner_user_id, updated_at DESC);
@@ -189,3 +191,33 @@ BEGIN
     EXECUTE format('CREATE TRIGGER %I BEFORE TRUNCATE ON %I FOR EACH STATEMENT EXECUTE FUNCTION reject_investment_ledger_mutation()', t || '_no_truncate', t);
   END LOOP;
 END $$;
+
+-- Posting terms are fixed when a project is posted: no later update may change them (the upfront fee may only go unpaid -> paid).
+CREATE OR REPLACE FUNCTION reject_investment_terms_change() RETURNS trigger AS $$
+BEGIN
+  IF NEW.owner_user_id IS DISTINCT FROM OLD.owner_user_id OR NEW.created_at IS DISTINCT FROM OLD.created_at
+     OR NEW.posting_model IS DISTINCT FROM OLD.posting_model OR NEW.commission_type IS DISTINCT FROM OLD.commission_type
+     OR NEW.commission_bps IS DISTINCT FROM OLD.commission_bps OR NEW.commission_fixed_cents IS DISTINCT FROM OLD.commission_fixed_cents
+     OR NEW.upfront_fee_cents IS DISTINCT FROM OLD.upfront_fee_cents OR NEW.model2_disclosure IS DISTINCT FROM OLD.model2_disclosure
+     OR (NEW.upfront_fee_status IS DISTINCT FROM OLD.upfront_fee_status AND NOT (OLD.upfront_fee_status = 'unpaid' AND NEW.upfront_fee_status = 'paid')) THEN
+    RAISE EXCEPTION 'investment_project posting terms are fixed when posted';
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+CREATE TRIGGER investment_project_terms_fixed BEFORE UPDATE ON investment_project FOR EACH ROW EXECUTE FUNCTION reject_investment_terms_change();
+CREATE TRIGGER investment_project_no_delete BEFORE DELETE OR TRUNCATE ON investment_project FOR EACH STATEMENT EXECUTE FUNCTION reject_investment_ledger_mutation();
+
+-- A fee keeps its amount, parties and project; its status only moves due -> paid or due -> waived.
+CREATE OR REPLACE FUNCTION reject_investment_fee_change() RETURNS trigger AS $$
+BEGIN
+  IF NEW.amount_cents IS DISTINCT FROM OLD.amount_cents OR NEW.interest_id IS DISTINCT FROM OLD.interest_id OR NEW.project_id IS DISTINCT FROM OLD.project_id
+     OR NEW.owner_user_id IS DISTINCT FROM OLD.owner_user_id OR NEW.created_at IS DISTINCT FROM OLD.created_at
+     OR (NEW.status IS DISTINCT FROM OLD.status AND NOT (OLD.status = 'due' AND NEW.status IN ('paid','waived'))) THEN
+    RAISE EXCEPTION 'investment_fee amount is fixed and settled fees are final';
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+CREATE TRIGGER investment_fee_fixed BEFORE UPDATE ON investment_fee FOR EACH ROW EXECUTE FUNCTION reject_investment_fee_change();
+CREATE TRIGGER investment_fee_no_delete BEFORE DELETE OR TRUNCATE ON investment_fee FOR EACH STATEMENT EXECUTE FUNCTION reject_investment_ledger_mutation();

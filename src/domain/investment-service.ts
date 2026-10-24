@@ -161,14 +161,18 @@ async function mayPost(deps: InvestmentDeps, actor: Actor): Promise<Fail | null>
   return null;
 }
 
-/** Contact details are hidden from free-text project fields (the issuer fields are kept: counsel to confirm what must be shown). */
-const MASKED_FIELDS = ["title", "location", "summary", "timeline", "risks", "structureDescription"] as const;
+/**
+ * Contact details are hidden from every free-text field investors see, the issuer fields included (a name or licence basis is kept,
+ * an email, phone or link is not). The licence basis keeps digit runs, so AFSL, ABN and ACN numbers survive. Counsel to confirm.
+ */
+const MASKED_FIELDS = ["title", "location", "summary", "timeline", "risks", "structureDescription", "issuerName", "issuerStatement", "issuerLicenceBasis"] as const;
 function maskProject(f: ProjectFields): { fields: ProjectFields; masked: string[] } {
   const out = { ...f };
   const masked: string[] = [];
   for (const k of MASKED_FIELDS) {
-    const m = maskContacts(out[k]);
-    if (m.masked) { out[k] = m.text; masked.push(k); }
+    const m = maskContacts(out[k], { phones: k !== "issuerLicenceBasis" });
+    out[k] = m.text;
+    if (m.masked) masked.push(k);
   }
   return { fields: out, masked };
 }
@@ -284,9 +288,8 @@ async function party(deps: InvestmentDeps, actor: Actor, interestId: string) {
   return undefined;
 }
 
-async function disclosed(deps: InvestmentDeps, p: InvestmentProject, i: Interest): Promise<boolean> {
-  try { return contactsDisclosed(p.terms, (await deps.postingSettings()).model2Disclosure, i.contractStatus); } catch { return false; }
-}
+/** Uses the disclosure rule recorded on the project when posted, never the current admin setting (no retroactive disclosure). */
+const disclosed = (p: InvestmentProject, i: Interest): boolean => contactsDisclosed(p.terms, p.terms.model2Disclosure, i.contractStatus);
 
 /**
  * The conversation as one party sees it. No user ids, names, emails or phones of the other party, unless Model 2 disclosure has unlocked.
@@ -295,7 +298,7 @@ async function disclosed(deps: InvestmentDeps, p: InvestmentProject, i: Interest
 export async function getThread(deps: InvestmentDeps, actor: Actor, interestId: string) {
   const pt = await party(deps, actor, interestId);
   if (!pt) return NOT_FOUND;
-  const open = await disclosed(deps, pt.p, pt.i);
+  const open = disclosed(pt.p, pt.i);
   const counterpart = open ? await deps.contactFor(pt.other) : undefined;
   const otherLabel = pt.role === "investor" ? "Project owner" : "Investor";
   return {
@@ -320,7 +323,7 @@ export async function postMessage(deps: InvestmentDeps, actor: Actor, interestId
   const body = cleanText(raw !== null && typeof raw === "object" ? (raw as Record<string, unknown>)["body"] : undefined, 1, 4000);
   if (!body.ok) return fail("invalid", `Message: ${body.error}`);
   if (!(await under(deps, `inv-msg:${actor.userId}`, INVESTMENT_RATE.message))) return TOO_FAST;
-  const m = (await disclosed(deps, pt.p, pt.i)) ? { text: body.value, masked: false } : maskContacts(body.value);
+  const m = disclosed(pt.p, pt.i) ? { text: body.value, masked: false } : maskContacts(body.value);
   const msg: InvestmentMessage = { id: deps.newId(), interestId, senderUserId: actor.userId, body: m.text, sentAt: deps.now() };
   await deps.repo.addMessage(msg);
   await audit(deps, actor.userId, "investment_interest", interestId, "investment.message_sent", { messageId: msg.id, masked: m.masked });

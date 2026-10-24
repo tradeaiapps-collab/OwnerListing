@@ -104,7 +104,7 @@ export async function savePosting(db: Queryable, staff: StaffActor, s: PostingSe
 
 const COLS = `id, owner_user_id, title, location, jurisdiction, project_type, summary, stage, funding_target_cents, minimum_ticket_cents, timeline, risks,
   structure_description, visible_to, issuer_name, issuer_licence_basis, issuer_statement, issuer_authorised_confirmed, status, version, review_reason, created_at, updated_at,
-  posting_model, commission_type, commission_bps, commission_fixed_cents, upfront_fee_cents, upfront_fee_status`;
+  posting_model, commission_type, commission_bps, commission_fixed_cents, upfront_fee_cents, upfront_fee_status, model2_disclosure`;
 
 const toProject = (r: Record<string, unknown>): InvestmentProject => ({
   id: String(r["id"]), ownerUserId: String(r["owner_user_id"]), title: String(r["title"]), location: String(r["location"]),
@@ -117,7 +117,8 @@ const toProject = (r: Record<string, unknown>): InvestmentProject => ({
   terms: {
     model: r["posting_model"] as InvestmentProject["terms"]["model"], commissionType: r["commission_type"] as InvestmentProject["terms"]["commissionType"],
     commissionBps: n(r["commission_bps"]), commissionFixedCents: n(r["commission_fixed_cents"]), upfrontFeeCents: n(r["upfront_fee_cents"]),
-    upfrontFeeStatus: r["upfront_fee_status"] as InvestmentProject["terms"]["upfrontFeeStatus"]
+    upfrontFeeStatus: r["upfront_fee_status"] as InvestmentProject["terms"]["upfrontFeeStatus"],
+    model2Disclosure: r["model2_disclosure"] as InvestmentProject["terms"]["model2Disclosure"]
   },
   ...(r["review_reason"] != null ? { reviewReason: String(r["review_reason"]) } : {}),
   createdAt: iso(r["created_at"]), updatedAt: iso(r["updated_at"])
@@ -160,10 +161,10 @@ export function createPgInvestmentRepository(db: Queryable): InvestmentRepositor
       await q.query(
         `INSERT INTO investment_project (id, owner_user_id, title, location, jurisdiction, project_type, summary, stage, funding_target_cents, minimum_ticket_cents,
            timeline, risks, structure_description, visible_to, issuer_name, issuer_licence_basis, issuer_statement, issuer_authorised_confirmed, status, version, created_at, updated_at,
-           posting_model, commission_type, commission_bps, commission_fixed_cents, upfront_fee_cents, upfront_fee_status)
+           posting_model, commission_type, commission_bps, commission_fixed_cents, upfront_fee_cents, upfront_fee_status, model2_disclosure)
          VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, true, 'pending_review', 1, $18::timestamptz, $18::timestamptz,
-           $19, $20, $21, $22, $23, $24)`,
-        [p.id, p.ownerUserId, ...fieldParams(p), p.createdAt, t.model, t.commissionType, t.commissionBps, t.commissionFixedCents, t.upfrontFeeCents, t.upfrontFeeStatus]);
+           $19, $20, $21, $22, $23, $24, $25)`,
+        [p.id, p.ownerUserId, ...fieldParams(p), p.createdAt, t.model, t.commissionType, t.commissionBps, t.commissionFixedCents, t.upfrontFeeCents, t.upfrontFeeStatus, t.model2Disclosure]);
       await addHistory(q, h);
     }),
     // Posting terms are deliberately not in the SET list: they stay as first posted.

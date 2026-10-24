@@ -283,7 +283,7 @@ describe("posting model", () => {
     const b = await posted({ title: "Second project here" });
     as(owner);
     await projectRoute.PUT(req("PUT", project({ title: "Edited first project" })), ctx(a.id));
-    expect((await mem.repo.getProject(a.id))!.terms).toEqual({ model: "upfront_fee", commissionType: "fixed", commissionBps: 0, commissionFixedCents: 0, upfrontFeeCents: 49_900, upfrontFeeStatus: "unpaid" });
+    expect((await mem.repo.getProject(a.id))!.terms).toEqual({ model: "upfront_fee", commissionType: "fixed", commissionBps: 0, commissionFixedCents: 0, upfrontFeeCents: 49_900, upfrontFeeStatus: "unpaid", model2Disclosure: "after_fee" });
     expect((await mem.repo.getProject(b.id))!.terms).toMatchObject({ model: "commission_on_contract", commissionType: "fixed", commissionFixedCents: 150_000, upfrontFeeStatus: "not_required" });
   });
 
@@ -314,6 +314,39 @@ describe("contact masking and no cross-party leakage", () => {
       expect(m.text).toContain("[hidden]");
     }
     expect(maskContacts("Target is $2,500,000 over 18 months, 6 units")).toEqual({ text: "Target is $2,500,000 over 18 months, 6 units", masked: false });
+  });
+
+  it("masking survives zero-width, full-width, spelled-out, look-alike and odd-separator tricks, and keeps ordinary text", () => {
+    for (const t of ["jo@\u200bexample.com", "0412\u200b345\u200b678", "\uff10\uff14\uff11\uff12\uff13\uff14\uff15\uff16\uff17\uff18", "jo\uff20example\uff0ecom",
+      "jo at example dot com", "0412/345/678", "0412_345_678", "jo@ex\u0430mple.com", "[site](example.xyz)", "jo [@] example [.] com", "O4I2 345 678",
+      "zero four one two three four five six", "jo\u00adsmith@example\u00ad.com", "jo@gmail", "example dot com"]) {
+      const m = maskContacts(t);
+      expect(m.masked, JSON.stringify(t)).toBe(true);
+      expect(m.text, JSON.stringify(t)).not.toMatch(/example|gmail|0412|345/);
+    }
+    for (const t of ["I will meet at the site. Then talk.", "Available at 5.30pm on site", "Units 1 to 6, stage one of two", "\u041f\u0440\u043e\u0435\u043a\u0442 \u0432 \u041c\u043e\u0441\u043a\u0432\u0435."]) {
+      expect(maskContacts(t)).toEqual({ text: t, masked: false });
+    }
+    expect(maskContacts("AFSL 123456, ABN 12 345 678 901, see example.com", { phones: false }).text).toBe("AFSL 123456, ABN 12 345 678 901, see [hidden]");
+  });
+
+  it("issuer fields are masked too, so contact details cannot be slipped in through the issuer statement", async () => {
+    const p = await posted({ issuerStatement: "Call our director on 0412 345 678 or jo@example.com", issuerName: "Riverside Dev Pty Ltd (jo@example.com)", issuerLicenceBasis: "ABN 12 345 678 901, www.example.com" });
+    expect(p).toMatchObject({ issuerStatement: "Call our director on [hidden] or [hidden]", issuerName: "Riverside Dev Pty Ltd ([hidden])", issuerLicenceBasis: "ABN 12 345 678 901, [hidden]" });
+  });
+
+  it("model 2 disclosure follows the rule recorded on the project, never a later admin change", async () => {
+    settings = { ...DEFAULT_POSTING, model: "upfront_fee", upfrontFeeCents: 100, model2Disclosure: "off" };
+    const { p, interestId } = await interested();
+    const stored = (await mem.repo.getProject(p.id))!;
+    expect(stored.terms.model2Disclosure).toBe("off");
+    stored.terms.upfrontFeeStatus = "paid";
+    await mem.repo.createProject(stored, mem.history[0]!);
+    settings = { ...settings, model2Disclosure: "after_fee" };
+    as(wholesale);
+    const t = await json(await threadRoute.GET(req("GET"), ctx(interestId)));
+    expect(t.body["contactsHidden"]).toBe(true);
+    expect(t.body["counterpart"]).toBeUndefined();
   });
 
   it("model 1: message bodies are masked before they are stored and the sender is told", async () => {
@@ -385,6 +418,9 @@ describe("signed contract and platform fee", () => {
     expect((await up(PDF)).status).toBe(503);
     files.configured = true;
     expect((await up("<html>not a pdf</html>")).status).toBe(400);
+    // No Content-Length (streamed): the body is still cut off past 10 MB.
+    const big = new ReadableStream<Uint8Array>({ start(c) { for (let k = 0; k < 11; k++) c.enqueue(new Uint8Array(1024 * 1024)); c.close(); } });
+    expect((await contractRoute.POST(new Request("http://test/x", { method: "POST", headers: { origin: "http://test", "content-type": "application/pdf" }, body: big, duplex: "half" } as RequestInit), ctx(interestId))).status).toBe(413);
     files.verdict = "infected";
     expect((await up(PDF)).status).toBe(400);
     files.verdict = "clean";

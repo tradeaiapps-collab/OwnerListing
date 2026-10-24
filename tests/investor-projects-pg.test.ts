@@ -110,6 +110,14 @@ describe.skipIf(!DATABASE_URL)("investor projects on Postgres", () => {
     expect((await repo.getInterest(iid))!.contractStatus).toBe("returned");
     expect(await repo.changeFee({ id: "d1111111-1111-4111-8111-111111111111", feeId: "b1111111-1111-4111-8111-111111111111", fromStatus: "due", toStatus: "paid", actorId: admin.id, reason: "Bank transfer in.", at: now })).toBe(true);
     expect(await repo.changeFee({ id: "e1111111-1111-4111-8111-111111111111", feeId: "b1111111-1111-4111-8111-111111111111", fromStatus: "due", toStatus: "waived", actorId: admin.id, reason: "Bank transfer in.", at: now })).toBe(false);
+    // Posting terms and fee amounts cannot be altered retroactively, even by direct SQL; projects and fees are never deleted.
+    await expect(db.query("UPDATE investment_project SET commission_bps = 0")).rejects.toThrow(/fixed when posted/);
+    await expect(db.query("UPDATE investment_project SET model2_disclosure = 'after_fee'")).rejects.toThrow();
+    await expect(db.query("UPDATE investment_project SET upfront_fee_status = 'paid'")).rejects.toThrow(/fixed when posted/);
+    await expect(db.query("UPDATE investment_fee SET amount_cents = 1")).rejects.toThrow(/fixed/);
+    await expect(db.query("UPDATE investment_fee SET status = 'due'")).rejects.toThrow(/final/);
+    await expect(db.query("DELETE FROM investment_project")).rejects.toThrow(/insert-only/);
+    await expect(db.query("DELETE FROM investment_fee")).rejects.toThrow(/insert-only/);
     for (const tbl of ["investment_contract_file", "investment_contract_history", "investment_fee_history", "investment_project_status_history"]) {
       await expect(db.query(`DELETE FROM ${tbl}`)).rejects.toThrow(/insert-only/);
     }
