@@ -24,6 +24,7 @@ export async function GET(req: Request, { params }: Ctx) {
       "content-length": String(r.value.bytes.length),
       "content-disposition": "attachment",
       "x-content-type-options": "nosniff",
+      "content-security-policy": "default-src 'none'; sandbox",
       "cache-control": "private, no-store"
     }
   });

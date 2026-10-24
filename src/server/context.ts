@@ -22,6 +22,26 @@ function wire(): Wired {
     async query(text, params) {
       const r = await pool.query(text, params);
       return { rows: r.rows as Record<string, unknown>[] };
+    },
+    async transaction(fn) {
+      const client = await pool.connect();
+      const tx: Queryable = {
+        async query(text, params) {
+          const r = await client.query(text, params);
+          return { rows: r.rows as Record<string, unknown>[] };
+        }
+      };
+      try {
+        await client.query("BEGIN");
+        const out = await fn(tx);
+        await client.query("COMMIT");
+        return out;
+      } catch (e) {
+        await client.query("ROLLBACK").catch(() => undefined);
+        throw e;
+      } finally {
+        client.release();
+      }
     }
   };
   return {
