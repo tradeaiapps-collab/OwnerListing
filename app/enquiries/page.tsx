@@ -3,7 +3,14 @@ import { useEffect, useState } from "react";
 import { JSON_HEADERS, fieldStyle } from "../listings/ui";
 
 interface Item { enquiry: { id: string }; listingTitle: string; role: "buyer" | "owner" }
-interface Msg { id: string; senderUserId: string; body: string; sentAt: string }
+interface Msg { id: string; senderUserId: string | null; automated: boolean; body: string; sentAt: string }
+
+// The system's offer prompt contains our own single-use link; show it as a link and everything else as plain text.
+const LINK = /(https?:\/\/\S*\/offers\/new\?token=[\w-]+)/;
+function MessageBody({ m }: { m: Msg }) {
+  if (!m.automated) return <>{m.body}</>;
+  return <>{m.body.split(LINK).map((part, i) => (i % 2 === 1 ? <a key={i} href={part}>Open the offer form</a> : part))}</>;
+}
 
 export default function Enquiries() {
   const [items, setItems] = useState<Item[] | null>(null);
@@ -57,7 +64,7 @@ export default function Enquiries() {
           <ul style={{ listStyle: "none", padding: 0, display: "grid", gap: 8 }}>
             {msgs.map(m => (
               <li key={m.id} style={{ border: "1px solid #8884", borderRadius: 8, padding: 8, whiteSpace: "pre-wrap" }}>
-                {m.body}<br /><small>{new Date(m.sentAt).toLocaleString("en-AU")}</small>
+                <MessageBody m={m} /><br /><small>{new Date(m.sentAt).toLocaleString("en-AU")}</small>
               </li>
             ))}
           </ul>

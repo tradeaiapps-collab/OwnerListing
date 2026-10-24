@@ -1,9 +1,11 @@
 import type { AuditEvent } from "./audit";
 import { canContactSeller, nextVerificationStep, type BuyerVerification, type VerificationStep } from "./buyer";
+import { buildOfferPrompt, AUTOMATED_SENDER_ID, shouldSendOfferPrompt } from "./offer-intake";
 import { fail, type Actor, type ListingRepository, type Result } from "./listing-service";
 
 export interface Enquiry { id: string; listingId: string; buyerUserId: string; createdAt: string }
-export interface EnquiryMessage { id: string; enquiryId: string; senderUserId: string; body: string; sentAt: string }
+/** senderUserId is null for automated messages such as the offer-link prompt. */
+export interface EnquiryMessage { id: string; enquiryId: string; senderUserId: string | null; automated: boolean; body: string; sentAt: string }
 /** An enquiry as shown in an inbox: which listing it is about and the viewer's side of it. */
 export interface InboxItem { enquiry: Enquiry; listingTitle: string; role: "buyer" | "owner" }
 
@@ -24,6 +26,8 @@ export interface EnquiryDeps {
   listings: ListingRepository;
   /** Missing verification data must come back as all false (fail closed). */
   verification: (userId: string) => Promise<BuyerVerification>;
+  /** Issues a single-use offer link URL for the buyer. When absent, offer prompts are not sent. */
+  offerLinks?: (listingId: string, buyerUserId: string) => Promise<string>;
   appendAudit: (e: AuditEvent) => Promise<void>;
   now: () => string;
   newId: () => string;
@@ -46,14 +50,32 @@ export function parseMessageBody(body: unknown): Result<string> {
 
 async function post(deps: EnquiryDeps, e: Enquiry, senderUserId: string, body: string): Promise<EnquiryMessage> {
   const now = deps.now();
-  const m: EnquiryMessage = { id: deps.newId(), enquiryId: e.id, senderUserId, body, sentAt: now };
+  const m: EnquiryMessage = { id: deps.newId(), enquiryId: e.id, senderUserId, automated: false, body, sentAt: now };
   await deps.enquiries.addMessage(m);
   await deps.appendAudit({
     id: deps.newId(), occurredAt: now, actorType: "user", actorId: senderUserId,
     aggregateType: "enquiry", aggregateId: e.id, eventType: "enquiry.message_sent",
     correlationId: deps.newId(), payload: { messageId: m.id }
   });
+  if (deps.offerLinks && e.buyerUserId === senderUserId) await maybePromptOffer(deps, e, body);
   return m;
+}
+
+/** If a buyer's message reads like an offer, the system replies in the thread with a single-use link to the offer form. */
+async function maybePromptOffer(deps: EnquiryDeps, e: Enquiry, text: string): Promise<void> {
+  if (!deps.offerLinks) return;
+  const prior = (await deps.enquiries.messages(e.id)).filter(m => m.automated).at(-1)?.sentAt;
+  const d = shouldSendOfferPrompt({ senderRole: "buyer", text }, await deps.verification(e.buyerUserId), prior, deps.now());
+  if (!d.send) return;
+  const url = await deps.offerLinks(e.listingId, e.buyerUserId);
+  const now = deps.now();
+  const m: EnquiryMessage = { id: deps.newId(), enquiryId: e.id, senderUserId: null, automated: true, body: buildOfferPrompt(url), sentAt: now };
+  await deps.enquiries.addMessage(m);
+  await deps.appendAudit({
+    id: deps.newId(), occurredAt: now, actorType: "system", actorId: AUTOMATED_SENDER_ID,
+    aggregateType: "enquiry", aggregateId: e.id, eventType: "enquiry.offer_prompt_sent",
+    correlationId: deps.newId(), payload: { messageId: m.id }
+  });
 }
 
 /** A verified buyer messages the owner of a published listing. Re-uses the buyer's existing thread for that listing. */

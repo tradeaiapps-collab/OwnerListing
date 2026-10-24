@@ -31,12 +31,13 @@ export function createPgEnquiryRepository(db: Queryable): EnquiryRepository {
       return r.rows.map(toEnquiry);
     },
     async addMessage(m) {
-      await db.query("INSERT INTO enquiry_message (id, enquiry_id, sender_user_id, body, sent_at) VALUES ($1,$2,$3,$4,$5)", [m.id, m.enquiryId, m.senderUserId, m.body, m.sentAt]);
+      await db.query("INSERT INTO enquiry_message (id, enquiry_id, sender_user_id, automated, body, sent_at) VALUES ($1,$2,$3,$4,$5,$6)", [m.id, m.enquiryId, m.senderUserId, m.automated, m.body, m.sentAt]);
     },
     async messages(enquiryId) {
       const r = await db.query("SELECT * FROM enquiry_message WHERE enquiry_id = $1 ORDER BY sent_at, id", [enquiryId]);
       return r.rows.map((x): EnquiryMessage => ({
-        id: String(x["id"]), enquiryId: String(x["enquiry_id"]), senderUserId: String(x["sender_user_id"]),
+        id: String(x["id"]), enquiryId: String(x["enquiry_id"]),
+        senderUserId: x["sender_user_id"] === null ? null : String(x["sender_user_id"]), automated: x["automated"] === true,
         body: String(x["body"]), sentAt: iso(x["sent_at"])
       }));
     }
