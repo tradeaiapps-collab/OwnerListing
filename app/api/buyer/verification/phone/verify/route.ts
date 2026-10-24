@@ -13,6 +13,6 @@ export async function POST(req: Request) {
   const actor = await getActor(req);
   if (!actor) return unauthenticated();
   if (actor.userType !== "buyer") return NextResponse.json({ error: "Buyers only." }, { status: 403 });
-  const r = await verifyPhoneCode(getPhoneDeps(), actor.userId, clientIp(req), await req.json().catch(() => null));
+  const r = await verifyPhoneCode(await getPhoneDeps(), actor.userId, clientIp(req), await req.json().catch(() => null));
   return r.ok ? NextResponse.json(r.value) : failure(r);
 }

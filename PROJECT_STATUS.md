@@ -178,3 +178,6 @@ publishListing calls an optional `afterPublish` hook after the listing is saved 
 
 ## Alert prefilter and agent inbox (24 Oct 2026)
 Publish alerts load candidate searches with a parameterised SQL pre-filter (buildAlertCandidateQuery in src/server/publish-alerts-db.ts, cap 5000); matchesSearch still decides. Searches already attempted for a listing are dropped before planning, so a buyer with several matching searches is still alerted once. Agent inbox: GET /api/agent/listings and /agent/listings (src/domain/agent-inbox.ts): agents with a verified licence in the listing state, active appointments only, unread enquiry counts; read-only.
+
+## Messaging delivery (25 Oct 2026)
+Email (SMTP via nodemailer) and SMS (Twilio-compatible REST over fetch) adapters sit behind the existing alert-delivery and sms ports. Settings are admin-managed at /staff/messaging (super admin, `staff.manage`), secrets sealed with AES-256-GCM under MESSAGING_SETTINGS_KEY, env vars override per field, resolved at send time. Every send attempt is recorded in the insert-only messaging_outbox. All of it fails closed until configured. Open: provider accounts, Spam Act consent wording (counsel, COUNSEL_QUESTIONS 18), security review of this PR.
