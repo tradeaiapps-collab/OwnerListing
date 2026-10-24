@@ -1,0 +1,42 @@
+# Deployment
+
+Stack: Next.js app, PostgreSQL. Env reference: `.env.example` (comments say which settings fail closed).
+
+## 1. Database
+1. Create a PostgreSQL database and two roles: an owner/migration role and a runtime app role.
+2. Run migrations as the owner role: `DATABASE_URL=... npm run migrate`. It applies `db/*.sql` in filename order, once each, one transaction per file, and records them in `schema_migration`. Re-run after every deploy that adds a file; it stops at the first failure.
+3. Runtime role: grant only the privileges the app needs (SELECT/INSERT, UPDATE where a table needs it). **Revoke TRUNCATE, UPDATE and DELETE** from the app role on the append-only tables, because row triggers do not block TRUNCATE (docs/security-review-2026-10.md, "Not fixed" item 2): `audit_event`, `enquiry_message`, `chat_message`, `override_log`, `trust_account_approval` and the ledgers from `db/20261024150000_append_only_ledgers.sql`. Simplest: `REVOKE TRUNCATE ON ALL TABLES IN SCHEMA public FROM <app_role>;` then check with `\dp`. The app must never connect as the owner role.
+
+## 2. Build and start
+```
+npm ci
+npm run typecheck && npm test
+npm run build
+npm run start      # next start -p 3004
+```
+Put a TLS-terminating reverse proxy in front. Set `TRUSTED_PROXY_HOPS` to the real number of proxies (client IP is read from the right of x-forwarded-for). Set `APP_URL` to the exact public https origin, or state-changing routes return 403.
+
+## 3. Required env
+`APP_URL`, `DATABASE_URL`, `TRUSTED_PROXY_HOPS`, `SESSION_SECRET` (32+ chars), `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`. Google OAuth redirect URI: `${APP_URL}/api/auth/google/callback`. `PAYWAY_*` stay unset until the merchant account exists. No live payment keys until pen test and counsel sign-off.
+
+## 4. Backups
+- Daily full backup plus WAL archiving (point-in-time recovery); keep at least 30 days; encrypted; stored off the primary host.
+- Test a restore monthly into a scratch database; `npm run migrate` against it should apply nothing.
+- Audit, chat and ledger tables are never rewritten; do not "clean" them after a restore.
+- Uploaded files (once storage exists) need their own versioned backup; the database holds only keys and SHA-256 hashes.
+- Retention and deletion periods are pending counsel (docs/COUNSEL_QUESTIONS.md).
+
+## 5. Smoke test after deploy
+Home loads; Google sign-in works; `/plans` loads; an upload answers 503 (storage off, expected); checkout answers "not available yet" (expected); `/api/webhooks/payway` rejects unsigned posts.
+
+## 6. Blocked on providers (stays off or fails closed)
+| Area | Behaviour now | Needs |
+|---|---|---|
+| Staff sign-in linking | First-login linking by email match waits | Google Workspace domain (hd claim) |
+| Email and SMS (alerts, verification) | Delivery port fails closed, nothing sends | Provider, consent wording |
+| Payments | Adapter stub; nothing can be marked paid, so nothing publishes | Westpac PayWay merchant account and docs |
+| File storage and malware scan | Upload and download answer 503 | Storage provider, scanner, encryption at rest |
+| ID verification | Manual reviewer checklist only; image storage missing, approval blocked | DVS provider or image storage |
+| ABN check | Adapter built, no env wiring | ABN Lookup GUID |
+| AI | Rules-only engine; features report off | Self-hosted model and OCR server |
+| Legal text | Draft terms and contract template | Counsel review |
