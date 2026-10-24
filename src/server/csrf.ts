@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { appOriginFor, readAppMode } from "../config/app-mode";
 
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 
@@ -16,13 +17,14 @@ const originOf = (value: string | null): string | null => {
 
 /**
  * CSRF guard for cookie-authenticated, state-changing routes. Call first in every POST/PUT/PATCH/DELETE handler.
- * Requires Origin (or Referer, only when Origin is absent) to equal the origin of APP_URL; fails closed if APP_URL is unset.
+ * Requires Origin (or Referer, only when Origin is absent) to equal the origin of this deployment: ADMIN_APP_URL when APP_MODE=admin,
+ * otherwise APP_URL. Fails closed if that URL is unset or invalid.
  * Requires application/json unless `json: false` (routes that read no body). Returns a 403 response, or null to proceed.
  * Safe methods pass through untouched.
  */
 export function csrfGuard(req: Request, opts: { json?: boolean } = {}): NextResponse | null {
   if (SAFE_METHODS.has(req.method.toUpperCase())) return null;
-  const expected = originOf(process.env["APP_URL"] ?? null);
+  const expected = appOriginFor(readAppMode());
   if (!expected) return deny("Request origin could not be verified.");
   const supplied = req.headers.has("origin") ? originOf(req.headers.get("origin")) : originOf(req.headers.get("referer"));
   if (supplied !== expected) return deny("Cross-origin request denied.");

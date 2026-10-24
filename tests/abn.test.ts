@@ -15,7 +15,7 @@ describe("ABN", () => {
   });
   it("accepts an active, matching business with proof of authority and an ID-verified person", async () => {
     const r = await verifyBusinessBuyer(claim, true, port({ abn: "51824753556", active: true, entityName: "EXAMPLE HOLDINGS PTY LTD" }));
-    expect(r).toEqual({ ok: true, problems: [] });
+    expect(r).toEqual({ ok: true, problems: [], abnStatus: "confirmed" });
   });
   it("lists every problem, and hands over to an admin if the register is down", async () => {
     const bad = await verifyBusinessBuyer({ ...claim, authorityDocumentReviewed: false }, false,
@@ -23,7 +23,7 @@ describe("ABN", () => {
     expect(bad.ok).toBe(false);
     expect(bad.problems.length).toBe(4);
     const down = await verifyBusinessBuyer(claim, true, port("throw"));
-    expect(down.problems[0]).toMatch(/admin must verify/);
+    expect(down.problems[0]).toMatch(/not confirmed with ABR/);
     expect((await verifyBusinessBuyer({ ...claim, abn: "11111111111" }, true, port(null))).problems).toEqual(["The ABN is not valid."]);
   });
 });

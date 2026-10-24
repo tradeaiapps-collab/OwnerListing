@@ -18,7 +18,7 @@ export default function StaffHome() {
     <main>
       <h1>Staff</h1>
       {sections === null && <p className="muted">Loading…</p>}
-      {sections !== null && role === null && <p role="alert">Sign in as staff.</p>}
+      {sections !== null && role === null && <p role="alert"><a href="/api/auth/google/start?as=staff">Sign in as staff</a>.</p>}
       {role !== null && <p className="muted">Signed in as {role.replace("_", " ")}. You see only the sections your role allows.</p>}
       {role !== null && sections?.length === 0 && <p className="empty">Your role has no staff screens yet.</p>}
       <nav className="staff-links" aria-label="Staff sections">

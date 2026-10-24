@@ -11,7 +11,9 @@ const SECTIONS: readonly StaffSection[] = [
   { href: "/staff/trust-accounts", label: "Trust account approvals", permission: "trust_account.approve" },
   { href: "/staff/id-review", label: "Identity review", permission: "identity.review" },
   { href: "/staff/reports", label: "Reports", permission: "report.sales" },
-  { href: "/staff/audit", label: "Audit log", permission: "report.audit" }
+  { href: "/staff/audit", label: "Audit log", permission: "report.audit" },
+  { href: "/staff/invites", label: "Staff access", permission: "staff.manage" },
+  { href: "/staff/messaging", label: "Messaging settings", permission: "staff.manage" }
 ];
 
 /** Only the sections this staff member's role allows. */

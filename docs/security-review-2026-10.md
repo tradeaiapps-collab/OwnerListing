@@ -124,3 +124,95 @@ Scope: PR #68 (mobile-number SMS verification, provider ID-check and its webhook
 - Image response: fixed `content-type` from the CHECK-constrained column, `no-store`, `nosniff`, `default-src 'none'; sandbox`, `inline`, `no-referrer`, CORP same-origin.
 - Retention: secret compared with `timingSafeEqual` over SHA-256 digests; idempotent (ENOENT counts as deleted, `markDeleted` is conditional); a partial failure leaves the row unmarked so the next run retries; keys and hashes cleared with a CHECK that none remain; the decision row is kept.
 - Consent with the current wording version is required before processing and recorded before anything is stored. All SQL is constant text with bound parameters.
+# Security review addendum, October 2026 (PR #79, staff invites)
+
+Scope: staff sign-in through the admin-managed `staff_invite` allowlist, `STAFF_BOOTSTRAP_ADMIN_EMAILS`, the invite/revoke/set_role routes and the migration that drops `app_user.staff_role`. Fixes are on the #79 branch.
+
+## Fixed in PR #79
+
+| Severity | Finding | Fix |
+|---|---|---|
+| High | Bootstrap race: the "insert a super_admin only if none exists" statement ran on its own, so under READ COMMITTED two bootstrap sign-ins (two listed emails, or an env list left set) could both see no admin and both insert, giving several super_admins. | Runs in one transaction under the same advisory lock as `changeInvite`. Now audited as `staff.bootstrap_admin_created` (no email). Test with four concurrent sign-ins. |
+| Medium | `upsertGoogleUser` (owner/buyer sign-in) did `ON CONFLICT (google_sub) DO UPDATE SET email`, which also rewrote the email of a staff (admin) account. The email is now the key to the role, so a Google email change would silently move or drop a staff role. | The update applies to owner, agent and buyer accounts only. Admin (and vendor) emails are never rewritten. |
+| Medium | A staff cookie (4 h) outlived a revoke and came back to life if the same address was invited again (for example a reassigned mailbox): the old holder regained access without signing in, while the new holder is refused (account bound to the first Google subject). | `staffFromRequest` requires `accepted_at IS NOT NULL`. A fresh invite is pending until its holder signs in; a role change copies `accepted_at`, so live sessions survive a role change. |
+| Low | `changeInvite` trusted the actor from the gate. A super_admin revoked a moment earlier could still finish a revoke/set_role already past the gate. | The actor's active, signed-in invite and role are re-read under the lock; otherwise 403. |
+
+## Not fixed
+
+1. **Low: a mailbox that is reassigned to a new person cannot sign in** if the old holder had signed in (the account is bound to the old Google subject, correctly refused). Recovery is by hand in the database. Add an admin "reset Google link" action (audited) when needed.
+2. **Low: the last-admin count includes pending (never signed-in) super_admin invites.** Not a lockout today, because the acting admin is always an active admin and cannot change themselves, but a mistyped super_admin invite counts as an admin.
+3. **Low: every denied staff sign-in writes an audit row for anyone who can start the staff flow** (no rate limit). Add a per-IP limit or sample the rows.
+4. **Low: a bootstrap-listed email does one extra write, so its timing differs from an unlisted one.** Needs an attacker holding a verified Google account for the address, so it reveals nothing they do not already hold.
+5. **Info: migration is lossy and not reversible.** It copies only active admin accounts with a well-formed email; suspended staff roles and the `staff_role` column are dropped. Take a backup before applying. Safer later: ship the copy in one release and drop the column in the next (a rolling deploy with old code still reading `staff_role` fails at the drop). Re-running is guarded by `schema_migration` (the file itself is not idempotent).
+6. **Info: a never-signed-in invite is exposed to whoever first controls that address at Google** (any Google account is allowed by design). Invite only addresses the person already uses; revoke unused invites.
+
+## Checked and found sound
+
+- Email match: trimmed, lower-cased, ASCII only, single `@`, at most 254 characters; look-alike Unicode, inner whitespace and control characters never match. Plus and dot variants, other domains and Workspace aliases do not match (exact compare; Google reports the primary address), so they fail closed. Bootstrap list drops empty, blank and invalid entries; no env entry means no bootstrap.
+- Takeover: an existing owner, buyer or vendor account with the invited email is never converted or linked (denied as `account_conflict`); an admin account linked to a different Google subject is denied; linking a pre-provisioned admin is a single `UPDATE ... WHERE google_sub IS NULL`. Suspended admins are denied at sign-in and on every request. `email_verified=true` is required in `readIdentity`.
+- set_role/revoke/invite need `staff.manage` (super_admin only) through `staffGate`, which runs `csrfGuard` first and awaits the lookup; no self change; the last super_admin is protected by an advisory lock in one real transaction (the production pool provides `transaction`); concurrent mutual revokes leave one admin (test).
+- Role is read from the active invite on each request; revoking takes effect at once. The staff cookie uses a domain-separated HMAC and carries no role; user and staff tokens do not verify as each other.
+- Every denial returns the same generic failed login; audit rows carry reason codes, ids and roles but no emails or names. All SQL is constant text with bound parameters.
+- `staff_invite` triggers: no delete, email/role/inviter/created_at immutable, `accepted_at` and revoke set once. CHECK constraints refuse non-normalised emails. Unique partial index allows one active invite per email.
+## PR #78 review: APP_MODE split, ADMIN_APP_URL, brand, Vercel docs
+
+### Fixed in this review
+
+| Severity | Finding | Fix |
+|---|---|---|
+| High | **Proxy allow-list compared the raw path.** `NextURL.pathname` keeps percent-encoding and repeated slashes (`/%73taff`, `/api/%73taff/me`, `//staff`, `/%2573taff`, `/api//staff/me`) while the router decodes them, so these could reach `/staff` and `/api/staff` on a public deployment (and public routes on admin). Also `/Staff`, `;params`, backslashes, `..` after decoding. Staff sign-in checks (`/api/auth/google/start/?as=staff`) had the same hole. | `normalizePath` decodes (up to 3 rounds), collapses slashes, drops `;params`, resolves dot segments, lower-cases; an undecodable path or one with NUL/leftover `%` is refused. `isAllowed` works on that. Tests cover every variant above. |
+| Medium | **Matcher skipped `/_next/static` and `/_next/image` by prefix**, so `/_next/static/..%2fstaff` was never seen by the proxy; and `isAllowed` exempted all of `/_next/` (including `/_next/data`, `/_next/webpack-hmr`). | Matcher is now `/:path*`; only `/_next/static/`, `/_next/image`, `favicon.ico`, `robots.txt` are exempt, checked after normalisation. |
+| Low | Proxy read `ol_role` with `req.cookies`, the route with `readCookie` (a different parser); with duplicate cookies they could disagree. | Proxy uses `readCookie`. |
+| Low | `staffFromRequest` honoured a valid staff cookie on any deployment (only the proxy blocked it). | Returns null when `APP_MODE` resolves to `public` (defence in depth). |
+| Low | `.env.example` shipped `APP_MODE=all`; copying it to production would expose staff routes publicly. | Now `APP_MODE=` (unset: `all` in development, `public` in production). |
+| Info | Deploy doc did not say the alert scheduler must call the public host. | Added (admin answers 404 to webhooks and cron). |
+
+### Checked and found sound
+
+- Fail closed: unset in production, blank, typos (`Admn`, `publc`, `true`) all resolve to `public`; `all` only when set explicitly or in non-production.
+- 404 (not 403) in the wrong mode for staff pages, `/api/staff/*`, staff sign-in and callback (public), and every buyer/owner/listing/webhook/internal/auth-me route (admin). All HTTP methods pass through the proxy (HEAD, OPTIONS included).
+- `csrfGuard` trusts only `ADMIN_APP_URL` in admin and only `APP_URL` otherwise; missing or invalid value gives 403. Google redirect URI and `secure` cookies come from the same per-mode URL; admin without `ADMIN_APP_URL` has sign-in off.
+- Cookies are host-only (no `Domain`; test scans `app/` and `src/`), and the two projects use different `SESSION_SECRET`s per the docs, so a cookie from one host does not verify on the other.
+- Split of shared routes: public keeps `/api/auth/me`, logout, webhooks (`payway`, `id-check`) and `/api/internal/alerts/run` (secret-gated), so provider callbacks and the scheduler work; admin has only staff, staff sign-in, logout, health. `/api/auth/me` returns only id and type of the caller's own session; the staff cookie is a separate cookie that routes outside `/api/staff` do not read.
+- `/api/health` returns `{ok:true}` with no database call.
+- Brand: values are trimmed, cut to 60 characters and rendered only as React text children and Next metadata (escaped); no `dangerouslySetInnerHTML`. `NEXT_PUBLIC_*` is public by design and the docs say so.
+- Docs recommend no unsafe settings (no live payment keys, separate secrets, no cookie domain).
+
+### Not fixed
+
+1. **Info: `/_next/data/...` URLs** are rewritten by `NextURL` to the underlying page path, so they are judged like the page itself (correct today, and the App Router does not use them).
+2. **Low: a new route is allowed in public by default** (deny-list for staff). A future staff-only route must live under `/staff` or `/api/staff`; consider a test that fails if a route file name contains "staff" elsewhere.
+3. **Low: admin `/` redirect and `failed()` redirect use `req.url`/`appUrl`**; behind Vercel these are the real host, but check if a custom proxy rewrites Host.
+# Security review addendum, October 2026 (PR #77: messaging settings, SMTP and SMS adapters, outbox)
+
+Independent review of `feat/messaging-settings`. Fixes are on the same branch.
+
+## Fixed in PR #77
+
+| Severity | Finding | Fix |
+|---|---|---|
+| High | SSRF through the admin-entered SMTP host: any host (`localhost`, `169.254.169.254`, `10.x`, decimal IPs such as `2130706433`) and any port 1-65535 was accepted, and nodemailer resolved the name itself. A compromised or malicious super admin could probe the internal network and metadata service, and the "Send test" button would return distinguishable results. | `src/domain/net-guard.ts`. Save time: public DNS names only (no IP literals, numeric last label, `localhost`, `.internal`/`.local`/`.lan` and similar); ports 25, 465, 587, 2525 only; the same rules apply to values already stored or set in the environment (invalid = email off). Send time: the host is resolved once, every answer must be public (loopback, private, CGNAT, link-local incl. metadata, documentation, multicast, reserved, IPv4-mapped, NAT64, 6to4, Teredo, ULA all refused), and the connection goes to that address with `tls.servername` set to the name and certificate verification on, so DNS rebinding between check and connect is closed. Outbox code `blocked_host`. |
+| High | nodemailer 8.0.11 (the pinned range `^8.0.11`) has 12 published advisories (`npm` bulk advisory API): addressparser DoS (high, fixed <=10.0.5), file read / SSRF through `raw` (high, <=9.0.0), recipient-domain parsing bypasses (<10.1.4), process-global DNS cache reusing TLS `servername` across transports, i.e. cross-tenant credential disclosure (<10.0.2). Several are mitigated by our strict single-recipient regex, but not all. | Bumped to `^10.2.1` (latest, no advisories at review time); `@types/nodemailer` dropped (v10 ships its own types). Typecheck and tests pass on 10.2.1. `package-lock.json` is not committed here: regenerate it with `npm install`. |
+| Medium | Test SMS could be sent to any E.164 number worldwide (5 per hour per admin), so a hijacked admin session could pump premium-rate or international numbers. | Test SMS accepts only Australian mobiles (`+614XXXXXXXX`), the only numbers the platform texts, plus an overall cap of 20 per hour across all staff. Both counters fail closed (a counter error or missing row refuses). |
+| Low | `messaging_outbox` was insert-only through row triggers, which TRUNCATE bypasses. | `BEFORE TRUNCATE` statement trigger added to the (unreleased) migration, and the table named in the REVOKE TRUNCATE list in `docs/DEPLOYMENT.md` section 1 (with `messaging_setting`, TRUNCATE only). |
+| Low | Email address regex allowed control characters other than CR/LF/space in the local part. | Control characters excluded. |
+
+## Not fixed
+
+1. **Low: one key, no version or rotation.** `MESSAGING_SETTINGS_KEY` has no key id; rotating it makes saved secrets unreadable until re-entered (documented). Do not reuse `OFFER_LINK_TOKEN_KEY` (not enforced).
+2. **Low: AAD binds the field name only**, not a row version, so a database writer could swap an older sealed value into the same field. A database writer can also just overwrite it, so no new capability.
+3. **Low: the outbox write is best-effort** (a failed insert is swallowed so a sent message is not re-sent). A database outage can therefore lose an outbox row. Acceptable; the send itself is the risk being avoided.
+4. **Low: the shared "msg-test:all" bucket lets one admin exhaust test sends for others for an hour.** Test sends only.
+5. **Info: network egress.** Application-level SSRF guards are in place; also deny egress from the app to internal ranges and the metadata address at the network level.
+6. **Info: the test-send audit row is written after the send, outside any transaction**; a crash between them loses the audit row for that test message (the outbox row, written first, still shows it).
+
+## Checked and found sound
+
+- Secrets: SMS auth token and SMTP password are write-only. They are sealed before the transaction, never selected into a response (GET returns set/not set; display values only for non-secret fields, masked for ids, numbers, addresses), never in the audit payload (field name, role, set/cleared), never in error output (adapters map to a fixed code vocabulary; SMTP/Twilio error text is discarded; `SmsSendError` carries a code only), and not logged (no `console`, `logger: false`, `debug: false`). The outbox stores template, status, provider reference and fixed code only; recipient is HMAC-SHA-256 under `SESSION_SECRET` (32+ characters, else null, never a plain hash).
+- AES-256-GCM: reuses the reviewed offer-link primitive: random 12-byte IV per seal, tag verified, AAD `messaging-setting:<field>` so a value cannot be moved to another field, key strictly 32 bytes of base64 (checked before any write; the PUT returns 503 and saves nothing without it, and stored secrets stop resolving when the key is missing or wrong, so the channel fails closed). Tampered or wrong-field ciphertext opens to `undefined`.
+- Routes: all three call `staffGate` first (csrfGuard, awaited `getStaff`, `staff.manage` from the role read from the database); owners and buyers have no staff session (401). Unknown settings are rejected, values validated server-side, responses `no-store`.
+- Header injection: recipient must match a strict address pattern (no whitespace, quotes, commas, angle brackets), `from` is validated the same way at save time, subject rejects CR/LF and is length-capped, plain text only, `disableFileAccess`/`disableUrlAccess` on, no attachments or `raw`.
+- SMTP TLS: TLS 1.2 minimum, certificate verification on, implicit TLS on 465, STARTTLS required otherwise (no clear-text credentials), 10 s timeouts, no automatic retry.
+- Twilio: fixed host `api.twilio.com`, HTTPS, `redirect: "error"`, 10 s timeout, SID URL-encoded, form-encoded body, E.164 check before any request, credentials sent only to that host.
+- SQL: all parameterised or constant. Migration: field whitelist and secret-must-be-encrypted CHECKs, `template` and `error_code` CHECKs keep free text out of the outbox, update/delete triggers.
+- Atomicity: setting upserts and their audit rows share one transaction (test forces the audit insert to fail and checks nothing is saved).
