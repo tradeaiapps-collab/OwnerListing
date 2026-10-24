@@ -29,8 +29,8 @@ export function ListingFields({ defaults = {} }: { defaults?: ListingDefaults })
   );
   return (
     <>
-      <input name="title" placeholder="Title" maxLength={200} required defaultValue={defaults.title ?? ""} />
-      <input name="address" placeholder="Address" maxLength={300} required defaultValue={defaults.address ?? ""} />
+      <input name="title" aria-label="Title" placeholder="Title" maxLength={200} required defaultValue={defaults.title ?? ""} />
+      <input name="address" aria-label="Address" placeholder="Address" maxLength={300} required defaultValue={defaults.address ?? ""} />
       <select name="jurisdiction" defaultValue={defaults.jurisdiction ?? "QLD"} aria-label="State">
         {["NSW", "VIC", "QLD", "WA", "SA", "TAS", "ACT", "NT"].map(j => <option key={j}>{j}</option>)}
       </select>
