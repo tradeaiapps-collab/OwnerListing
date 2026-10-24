@@ -3,6 +3,8 @@ import { isJurisdiction, type Jurisdiction } from "./jurisdiction";
 import type { PropertyListing, PropertyType, PublishDecision, UseClass } from "./listing";
 import { decidePublish, type BondPathway } from "./publish";
 import { canActOnListing, type AgentAppointment } from "./access";
+import { applyDetails, DETAIL_KEYS, parseDetails, priceError, type DetailsPatch, type ListingDetails } from "./listing-details";
+import { searchInMemory, type SearchPage, type SearchQuery } from "./listing-search";
 import { transitionListing } from "./listing-transitions";
 import type { TrustAccountDecision } from "./trust-account";
 import type { AgentLicence } from "./licence";
@@ -33,7 +35,8 @@ export interface ListingRepository {
   insert(record: ListingRecord): Promise<void>;
   save(record: ListingRecord): Promise<void>;
   get(id: string): Promise<ListingRecord | undefined>;
-  list(): Promise<ListingRecord[]>;
+  /** Published listings only: filtered, sorted and paged. */
+  search(q: SearchQuery): Promise<SearchPage<ListingRecord>>;
   /** One owner's listings, newest first. The owner id always comes from the signed-in actor. */
   listByOwner(ownerUserId: string): Promise<ListingRecord[]>;
 }
@@ -52,6 +55,8 @@ export interface ListingServiceDeps {
   licences?: () => Promise<readonly AgentLicence[]>;
   /** The active appointment of an agent to a listing, if any. */
   appointmentFor?: (listingId: string, agentUserId: string) => Promise<AgentAppointment | undefined>;
+  /** True when the user accepted the terms version in force now. When set, publishing needs it for the owner and the actor. */
+  termsCurrentFor?: (userId: string) => Promise<boolean>;
 }
 
 export interface DraftInput {
@@ -62,9 +67,10 @@ export interface DraftInput {
   useClass: UseClass;
   propertyType: PropertyType;
 }
+export type DraftCreate = DraftInput & ListingDetails;
 
-/** rentalBondPathway is stored on the record, not the listing; see updateDraft. */
-export type DraftPatch = Partial<DraftInput> & { rentalBondPathway?: BondPathway };
+/** rentalBondPathway is stored on the record, not the listing; see updateDraft. A null detail clears it. */
+export type DraftPatch = Partial<DraftInput> & DetailsPatch & { rentalBondPathway?: BondPathway };
 
 export type Failure = { ok: false; code: "invalid" | "not_found" | "forbidden" | "conflict" | "rate_limited"; message: string };
 export type Result<T> = { ok: true; value: T } | Failure;
@@ -82,7 +88,7 @@ function oneOf<T extends string>(v: unknown, allowed: readonly T[]): T | undefin
 }
 
 /** Validates a full draft. Every field is required. */
-export function parseDraftInput(body: unknown): Result<DraftInput> {
+export function parseDraftInput(body: unknown): Result<DraftCreate> {
   if (typeof body !== "object" || body === null) return fail("invalid", "Invalid input.");
   const b = body as Record<string, unknown>;
   const title = str(b["title"], 200);
@@ -94,7 +100,9 @@ export function parseDraftInput(body: unknown): Result<DraftInput> {
   if (!title || !address || !jurisdiction || !transactionType || !useClass || !propertyType) {
     return fail("invalid", "Title, address, state, sale or rent, use and property type are all required.");
   }
-  return { ok: true, value: { title, address, jurisdiction, transactionType, useClass, propertyType } };
+  const details = parseDetails(b, transactionType);
+  if (!details.ok) return fail("invalid", details.message);
+  return { ok: true, value: applyDetails<DraftCreate>({ title, address, jurisdiction, transactionType, useClass, propertyType }, details.value) };
 }
 
 /** Validates a partial update. Only known fields are kept; unknown fields are ignored. */
@@ -112,14 +120,21 @@ export function parseDraftPatch(body: unknown): Result<DraftPatch> {
   if ("transactionType" in b) { const v = oneOf(b["transactionType"], TRANSACTION_TYPES); if (!v) return fail("invalid", "Invalid transaction type."); patch.transactionType = v; }
   if ("useClass" in b) { const v = oneOf(b["useClass"], USE_CLASSES); if (!v) return fail("invalid", "Invalid use."); patch.useClass = v; }
   if ("propertyType" in b) { const v = oneOf(b["propertyType"], PROPERTY_TYPES); if (!v) return fail("invalid", "Invalid property type."); patch.propertyType = v; }
+  if (DETAIL_KEYS.some(k => k in b)) {
+    // The price limit depends on sale or rent; updateDraft re-checks it against the stored type when the type is not in this patch.
+    const details = parseDetails(b, patch.transactionType ?? "sale");
+    if (!details.ok) return fail("invalid", details.message);
+    Object.assign(patch, details.value);
+  }
   if ("rentalBondPathway" in b) { const v = oneOf(b["rentalBondPathway"], BOND_PATHWAYS); if (!v) return fail("invalid", "Invalid bond pathway."); patch.rentalBondPathway = v; }
   if (Object.keys(patch).length === 0) return fail("invalid", "Nothing to update.");
   return { ok: true, value: patch };
 }
 
-export async function createDraft(deps: ListingServiceDeps, actor: Actor, input: DraftInput): Promise<PropertyListing> {
+export async function createDraft(deps: ListingServiceDeps, actor: Actor, input: DraftCreate): Promise<PropertyListing> {
   const now = deps.now();
-  const listing: PropertyListing = {
+  const { title, address, jurisdiction, transactionType, useClass, propertyType, ...details } = input;
+  const listing: PropertyListing = applyDetails<PropertyListing>({
     id: deps.newId(),
     ownerUserId: actor.userId,
     ownerUserType: actor.userType,
@@ -133,7 +148,7 @@ export async function createDraft(deps: ListingServiceDeps, actor: Actor, input:
     disclosures: [],
     createdAt: now,
     updatedAt: now
-  };
+  }, details);
   await deps.repo.insert({ listing, listingFeePaid: false, termsAccepted: false });
   await deps.appendAudit({
     id: deps.newId(), occurredAt: now, actorType: "user", actorId: actor.userId,
@@ -157,18 +172,17 @@ export async function updateDraft(deps: ListingServiceDeps, actor: Actor, id: st
   if (!rec || rec.listing.ownerUserId !== actor.userId) return fail("not_found", "Listing not found.");
   if (rec.listing.status !== "draft") return fail("conflict", "Only a draft can be edited.");
   const { rentalBondPathway, ...listingPatch } = patch;
-  const listing: PropertyListing = { ...rec.listing, ...listingPatch, updatedAt: deps.now() };
+  const plain = Object.fromEntries(Object.entries(listingPatch).filter(([k]) => !(DETAIL_KEYS as readonly string[]).includes(k)));
+  const listing: PropertyListing = { ...applyDetails({ ...rec.listing, ...plain }, listingPatch), updatedAt: deps.now() };
+  // The price limit depends on sale or rent, so check the result, not just the patch.
+  if (listing.priceCents !== undefined) {
+    const e = priceError(listing.priceCents, listing.transactionType);
+    if (e) return fail("invalid", e);
+  }
   await deps.repo.save({ ...rec, listing, ...(rentalBondPathway !== undefined ? { rentalBondPathway } : {}) });
   return { ok: true, value: listing };
 }
 
-export interface SearchFilters {
-  jurisdiction?: Jurisdiction;
-  transactionType?: "sale" | "rent";
-  useClass?: UseClass;
-}
-
-/** Published listings only, newest first. */
 /** The signed-in user's own listings (drafts and published), newest first. */
 export async function listMyListings(deps: ListingServiceDeps, actor: Actor): Promise<PropertyListing[]> {
   return (await deps.repo.listByOwner(actor.userId)).map(r => r.listing);
@@ -182,16 +196,10 @@ export function toPublicListing(l: PropertyListing): PublicListing {
   return pub;
 }
 
-export async function searchPublished(deps: ListingServiceDeps, f: SearchFilters): Promise<PropertyListing[]> {
-  const all = await deps.repo.list();
-  return all
-    .map(r => r.listing)
-    .filter(l =>
-      l.status === "published" &&
-      (f.jurisdiction === undefined || l.jurisdiction === f.jurisdiction) &&
-      (f.transactionType === undefined || l.transactionType === f.transactionType) &&
-      (f.useClass === undefined || l.useClass === f.useClass))
-    .sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0));
+/** Published listings only: filtered, sorted and paged by the repository. */
+export async function searchPublished(deps: ListingServiceDeps, q: SearchQuery): Promise<SearchPage<PropertyListing>> {
+  const r = await deps.repo.search(q);
+  return { ...r, items: r.items.map(rec => rec.listing) };
 }
 
 /**
@@ -227,8 +235,12 @@ export async function publishListing(
   } else {
     const trustAccount = deps.trustAccountFor ? await deps.trustAccountFor(l.id) : undefined;
     const licences = deps.licences ? await deps.licences() : [];
+    // With the terms check wired, the accepted-version log decides (owner and actor); the stored flag is the fallback.
+    const termsAccepted = deps.termsCurrentFor
+      ? (await Promise.all([...new Set([l.ownerUserId, actor.userId])].map(deps.termsCurrentFor))).every(Boolean)
+      : rec.termsAccepted;
     decision = decidePublish(l, required, licences, now, {
-      termsAccepted: rec.termsAccepted,
+      termsAccepted,
       listingFeePaid: rec.listingFeePaid,
       ...(rec.rentalBondPathway ? { rentalBondPathway: rec.rentalBondPathway } : {}),
       ...(actingAgent ? { actingAgentId: actingAgent } : {}),
@@ -257,7 +269,11 @@ export function createInMemoryListingRepository(): ListingRepository & { clear()
     async insert(r) { rows.set(r.listing.id, r); },
     async save(r) { rows.set(r.listing.id, r); },
     async get(id) { return rows.get(id); },
-    async list() { return [...rows.values()]; },
+    async search(q) {
+      const byId = new Map([...rows.values()].map(r => [r.listing.id, r]));
+      const page = searchInMemory([...rows.values()].map(r => r.listing), q);
+      return { ...page, items: page.items.map(l => byId.get(l.id)!) };
+    },
     async listByOwner(ownerUserId) {
       return [...rows.values()].filter(r => r.listing.ownerUserId === ownerUserId).sort((x, y) => y.listing.createdAt.localeCompare(x.listing.createdAt));
     },

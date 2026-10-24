@@ -81,6 +81,7 @@ describe("GET /api/documents/[id]/file: visibility matrix", () => {
     expect(r.headers.get("content-disposition")).toBe("attachment");
     expect(r.headers.get("content-type")).toBe("image/jpeg");
     expect(r.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(r.headers.get("content-security-policy")).toBe("default-src 'none'; sandbox");
     expect(new Uint8Array(await r.arrayBuffer())).toEqual(BYTES);
     expect(audits.filter(a => a.eventType === "document.downloaded")).toEqual([]);
   });

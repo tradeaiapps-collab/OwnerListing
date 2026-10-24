@@ -87,6 +87,7 @@ export default function Offers() {
     <main>
       <h1>Offers</h1>
       <p>Formal offers submitted through the offer form. The AI never accepts an offer: you decide.</p>
+      <p><a href={`/listings/${id}/offer-analysis`}>Compare offers</a> · <a href={`/listings/${id}/contract-draft`}>Preview a contract draft</a></p>
       {error ? <p role="alert">{error}</p> : null}
       {notice ? <p role="status">{notice}</p> : null}
       <section className="panel">
