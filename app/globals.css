@@ -108,8 +108,6 @@ button.secondary, .button.secondary { background: transparent; color: var(--seco
 
 [role="alert"] { color: var(--danger); font-weight: 600; }
 
-.hero { padding: var(--space-6) 0; }
-.hero p.lead { color: var(--muted); font-size: 1.125rem; max-width: 40rem; }
 .actions { display: flex; flex-wrap: wrap; gap: var(--space-3); margin: var(--space-4) 0; }
 .card-grid { display: grid; gap: var(--space-4); grid-template-columns: 1fr; }
 
