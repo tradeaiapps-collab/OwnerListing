@@ -6,7 +6,7 @@ import type { AgentLicence } from "../src/domain/licence";
 const listing: PropertyListing = {
   id: "l1", ownerUserId: "owner1", ownerUserType: "owner", jurisdiction: "QLD", status: "draft",
   title: "Home", propertyType: "house", useClass: "residential", transactionType: "sale",
-  address: "1 Test St", disclosures: [], createdAt: "2026-10-01", updatedAt: "2026-10-01"
+  address: "1 Test St", priceCents: 85_000_000, disclosures: [], createdAt: "2026-10-01", updatedAt: "2026-10-01"
 };
 const ok = { termsAccepted: true, listingFeePaid: true, trustAccount: { kind: "approved" as const, reasons: [] } };
 const today = "2026-10-23";

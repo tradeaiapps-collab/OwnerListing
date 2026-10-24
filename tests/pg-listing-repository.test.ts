@@ -33,7 +33,7 @@ describe.skipIf(!url)("Postgres listing repository", () => {
   });
   afterAll(async () => { await pool.end(); });
 
-  const input = { title: "PG home", address: "1 Test St NT", jurisdiction: "NT", transactionType: "sale", useClass: "residential", propertyType: "house" } as const;
+  const input = { title: "PG home", address: "1 Test St NT", jurisdiction: "NT", transactionType: "sale", useClass: "residential", propertyType: "house", priceCents: 50_000_000 } as const;
 
   it("upserts the same Google user to the same id", async () => {
     const sub = `sub-same-${Date.now()}`;

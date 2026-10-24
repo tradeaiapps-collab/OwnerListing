@@ -79,27 +79,31 @@ export async function requestOfferLink(deps: OfferLinkDeps, actor: Actor, enquir
   return { ok: true, value: { id: req.id, enquiryId, status: "requested", requestedAt: req.at } };
 }
 
-async function openRequestForOwner(deps: OfferLinkDeps, actor: Actor, enquiryId: string): Promise<Result<{ enquiry: Enquiry; request: OfferLinkRequest }>> {
-  // Same permission as the existing issue route: only an owner may approve; agents and buyers are denied.
-  const denied = forbiddenFor({ id: actor.userId, role: actor.userType }, "offer.approve");
+async function openRequestForOwner(deps: OfferLinkDeps, actor: Actor, enquiryId: string): Promise<Result<{ enquiry: Enquiry; request: OfferLinkRequest; ownerUserId: string }>> {
+  // The owner (offer.approve) or the listing's appointed agent (offer.analyse, plus a valid appointment and licence,
+  // checked by participantEnquiry) may answer a request. Buyers and everyone else are denied. Deciding on offers stays with the owner.
+  const denied = forbiddenFor({ id: actor.userId, role: actor.userType }, "offer.analyse");
   if (denied) return denied;
   const p = await participantEnquiry(deps, actor, enquiryId);
   if (!p.ok) return p;
-  if (p.value.ownerUserId !== actor.userId) return NOT_FOUND;
+  if (p.value.ownerUserId === actor.userId) {
+    const notOwnerRole = forbiddenFor({ id: actor.userId, role: actor.userType }, "offer.approve");
+    if (notOwnerRole) return notOwnerRole;
+  } else if (!p.value.asAgent) return NOT_FOUND; // the buyer of the thread, or anyone else
   const rec = await deps.listings.get(p.value.enquiry.listingId);
   if (!rec || rec.listing.status !== "published") return NOT_FOUND;
   const latest = await deps.offerLinks.latest(enquiryId);
   if (!latest || latest.status !== "requested") return fail("conflict", "There is no open request to answer.");
-  return { ok: true, value: { enquiry: p.value.enquiry, request: latest } };
+  return { ok: true, value: { enquiry: p.value.enquiry, request: latest, ownerUserId: p.value.ownerUserId } };
 }
 
 /** The owner approves the open request and issues the single-use link. Only a person approves; the AI has no part in this. */
 export async function issueOfferLinkFromThread(deps: OfferLinkDeps, actor: Actor, enquiryId: string): Promise<Result<{ expiresAt: string }>> {
   const o = await openRequestForOwner(deps, actor, enquiryId);
   if (!o.ok) return o;
-  const { enquiry, request } = o.value;
-  // The buyer is re-checked at issue time too.
-  if (!(await deps.eligibleBuyer(enquiry.buyerUserId, actor.userId)) || !canContactSeller(await deps.verification(enquiry.buyerUserId))) {
+  const { enquiry, request, ownerUserId } = o.value;
+  // The buyer is re-checked at issue time too (against the listing's owner, who may not be the one acting).
+  if (!(await deps.eligibleBuyer(enquiry.buyerUserId, ownerUserId)) || !canContactSeller(await deps.verification(enquiry.buyerUserId))) {
     return fail("invalid", "An offer link could not be created for that buyer.");
   }
   if (await overLimit(deps, `issue:${actor.userId}`, OFFER_LINK_ISSUE_RATE.windowMs, OFFER_LINK_ISSUE_RATE.perOwner)) {
@@ -115,7 +119,7 @@ export async function issueOfferLinkFromThread(deps: OfferLinkDeps, actor: Actor
     throw e;
   }
   const m = await say(deps, enquiry, actor.userId, ISSUED_TEXT);
-  await audit(deps, actor.userId, enquiryId, "offer_link.issued", { requestId: request.id, messageId: m.id, expiresAt: record.expiresAt });
+  await audit(deps, actor.userId, enquiryId, "offer_link.issued", { requestId: request.id, messageId: m.id, expiresAt: record.expiresAt, byAppointedAgent: actor.userId !== ownerUserId });
   return { ok: true, value: { expiresAt: record.expiresAt } };
 }
 
@@ -124,7 +128,7 @@ export async function declineOfferLinkFromThread(deps: OfferLinkDeps, actor: Act
   if (!o.ok) return o;
   if (!(await deps.offerLinks.decline(o.value.request.id, deps.now()))) return fail("conflict", "That request was already answered.");
   const m = await say(deps, o.value.enquiry, actor.userId, DECLINED_TEXT);
-  await audit(deps, actor.userId, enquiryId, "offer_link.declined", { requestId: o.value.request.id, messageId: m.id });
+  await audit(deps, actor.userId, enquiryId, "offer_link.declined", { requestId: o.value.request.id, messageId: m.id, byAppointedAgent: actor.userId !== o.value.ownerUserId });
   return { ok: true, value: true };
 }
 

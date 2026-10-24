@@ -171,7 +171,9 @@ export function getEnquiryDeps(): EnquiryDeps {
     termsCurrentFor: userId => hasCurrentTermsPg(db, userId, base.now()),
     appendAudit: base.appendAudit,
     now: base.now,
-    newId: () => randomUUID()
+    newId: () => randomUUID(),
+    ...(base.appointmentFor ? { appointmentFor: base.appointmentFor } : {}),
+    ...(base.licences ? { licences: base.licences } : {})
   };
 }
 

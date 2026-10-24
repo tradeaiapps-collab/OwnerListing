@@ -135,9 +135,9 @@ describe("pg saved-listing repository", () => {
 
 // ---------------------------------------------------------------- post-publish alert hook
 
-const draft: DraftInput = {
+const draft: DraftInput & { priceCents: number } = {
   title: "Family home", address: "1 Example St, Brisbane QLD", jurisdiction: "QLD",
-  transactionType: "sale", useClass: "residential", propertyType: "house"
+  transactionType: "sale", useClass: "residential", propertyType: "house", priceCents: 80_000_000
 };
 
 async function publishable(extra: Partial<ListingServiceDeps>) {

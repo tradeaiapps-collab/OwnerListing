@@ -135,12 +135,12 @@ describe("offer decision rules", () => {
 });
 
 describe("POST /api/listings/[id]/offer-links (owner issues a link)", () => {
-  it("returns 401 signed out and 403 for agents and other roles", async () => {
+  it("returns 401 signed out, 403 for other roles and 404 for an agent who is not appointed", async () => {
     expect((await issue(listingId, { buyerUserId: BUYER })).status).toBe(401);
-    for (const a of [agent, vendor]) {
-      state.actor = a;
-      expect((await issue(listingId, { buyerUserId: BUYER })).status).toBe(403);
-    }
+    state.actor = vendor;
+    expect((await issue(listingId, { buyerUserId: BUYER })).status).toBe(403);
+    state.actor = agent;
+    expect((await issue(listingId, { buyerUserId: BUYER })).status).toBe(404);
   });
   it("returns 403 and issues no link until the owner has accepted the current terms", async () => {
     state.actor = owner;
