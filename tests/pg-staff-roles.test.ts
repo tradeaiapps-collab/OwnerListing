@@ -166,3 +166,16 @@ describe.skipIf(!DATABASE_URL)("staff roles (Postgres)", () => {
     expect(rows.filter(r => r[2] === "super_admin").length).toBeGreaterThan(20);
   });
 });
+
+// Its own database: the cap test fills the role table and role rows can never be deleted.
+describe.skipIf(!DATABASE_URL)("custom role cap (Postgres)", () => {
+  let t: TestDb;
+  beforeAll(async () => { t = await createTestDb(); }, 60_000);
+  afterAll(async () => { await t?.close(); });
+  it("the number of custom roles is capped so the roles list and the export stay complete", async () => {
+    const e = `cap-${Math.random().toString(36).slice(2, 8)}@gmail.com`;
+    const a = (await staffSignIn(t.db, { sub: `sub-${e}`, name: "n", email: e }, [e]))!;
+    await t.db.query(`INSERT INTO staff_role_def (key, is_system) SELECT 'custom_cap' || g, false FROM generate_series(1, 150) g`);
+    expect(await createRole(t.db, a, { key: "custom_one_more", label: "One too many", description: "", permissions: [] })).toMatchObject({ ok: false, status: 409 });
+  });
+});

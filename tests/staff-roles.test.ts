@@ -117,6 +117,10 @@ describe("role input (injection)", () => {
       expect(cleanLabel(v)).toBeNull();
     }
   });
+  it("a custom role cannot borrow a built-in role's name", () => {
+    for (const v of ["Super admin", "super  ADMIN", "super-admin", "Compliance", "support", "Super_admin"]) expect(cleanLabel(v)).toBeNull();
+    expect(cleanLabel("Support lead")).toBe("Support lead");
+  });
   it("create needs a custom_ key, a clean label and known permissions", () => {
     const ok = { key: "custom_web", label: "Web", description: "Website team", permissions: ["theme.edit", "theme.edit"] };
     expect(parseRoleCreate(ok)).toEqual({ ok: true, value: { key: "custom_web", label: "Web", description: "Website team", permissions: ["theme.edit"] } });

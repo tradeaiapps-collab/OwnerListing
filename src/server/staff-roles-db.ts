@@ -23,6 +23,9 @@ function toRole(r: Record<string, unknown>): RoleDef | null {
   };
 }
 
+/** Kept below the list limit so the roles page and the access review export always show every custom role. */
+const MAX_CUSTOM_ROLES = 150;
+
 const COLS = `role_key, version, label, description, permissions, disabled`;
 
 /** Every role as it stands now: built-in first (in code order), then custom roles by label. */
@@ -65,6 +68,8 @@ export async function createRole(db: Queryable, actorIn: StaffActor, input: Role
       if (AUDITED_REFUSALS.includes(plan.reason)) await audit(tx, actor, input.key, "staff.role_change_refused", { action: "create", reason: plan.reason });
       return { ok: false as const, status: plan.status, error: plan.error };
     }
+    const count = Number((await tx.query(`SELECT count(*) AS n FROM staff_role_def WHERE NOT is_system`)).rows[0]?.["n"] ?? 0);
+    if (count >= MAX_CUSTOM_ROLES) return { ok: false as const, status: 409, error: "There are too many custom roles. Disable and reuse one instead." };
     const made = await tx.query(`INSERT INTO staff_role_def (key, is_system, created_by) VALUES ($1, false, $2) ON CONFLICT DO NOTHING RETURNING key`, [input.key, actor.id]);
     if (!made.rows[0]) return { ok: false as const, status: 409, error: "A role with that key already exists." };
     await tx.query(

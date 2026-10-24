@@ -52,8 +52,11 @@ const BAD_TEXT_RE = /[\p{Cc}\p{Cf}<>]/u;
 export function cleanLabel(v: unknown): string | null {
   if (typeof v !== "string") return null;
   const s = v.normalize("NFC").trim().replace(/ {2,}/g, " ");
-  return LABEL_RE.test(s) && !BAD_TEXT_RE.test(s) ? s : null;
+  if (!LABEL_RE.test(s) || BAD_TEXT_RE.test(s)) return null;
+  // A custom role may not borrow a built-in role's name (it would look like "Super admin" in the staff list and the access review).
+  return SYSTEM_ROLES.some(r => squash(r.label) === squash(s) || squash(r.key) === squash(s)) ? null : s;
 }
+const squash = (v: string) => v.toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
 export function cleanDescription(v: unknown): string | null {
   if (v === undefined || v === null) return "";
   if (typeof v !== "string") return null;
@@ -73,7 +76,7 @@ function parsePermissionList(v: unknown): Parsed<StaffPermission[]> {
 
 function parseFields(b: Record<string, unknown>): Parsed<RoleInput> {
   const label = cleanLabel(b["label"]);
-  if (!label) return { ok: false, error: "Enter a name of up to 60 letters, numbers and simple punctuation." };
+  if (!label) return { ok: false, error: "Enter a name of up to 60 letters, numbers and simple punctuation. Built-in role names cannot be reused." };
   const description = cleanDescription(b["description"]);
   if (description === null) return { ok: false, error: "The description must be plain text of up to 300 characters." };
   const perms = parsePermissionList(b["permissions"]);
