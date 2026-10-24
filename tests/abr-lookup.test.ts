@@ -6,15 +6,15 @@ const reply = (body: string, ok = true) => async () => ({ ok, text: async () => 
 
 describe("ABR lookup", () => {
   it("reads an active business", async () => {
-    const p = createAbrLookup("key", reply('cb({"Abn":"51824753556","AbnStatus":"Active","EntityName":"EXAMPLE PTY LTD","Message":""})'));
+    const p = createAbrLookup("key", reply('callback({"Abn":"51824753556","AbnStatus":"Active","EntityName":"EXAMPLE PTY LTD","Message":""})'));
     expect(await p.lookup("51 824 753 556")).toEqual({ abn: "51824753556", active: true, entityName: "EXAMPLE PTY LTD" });
   });
   it("reads a cancelled business as not active", async () => {
-    const p = createAbrLookup("key", reply('cb({"Abn":"51824753556","AbnStatus":"Cancelled","EntityName":"X","Message":""})'));
+    const p = createAbrLookup("key", reply('callback({"Abn":"51824753556","AbnStatus":"Cancelled","EntityName":"X","Message":""})'));
     expect((await p.lookup("51824753556"))?.active).toBe(false);
   });
   it("returns null when not found, and throws when the register is down", async () => {
-    expect(await createAbrLookup("key", reply('cb({"Message":"No records found"})')).lookup("51824753556")).toBeNull();
+    expect(await createAbrLookup("key", reply('callback({"Message":"No records found"})')).lookup("51824753556")).toBeNull();
     await expect(createAbrLookup("key", reply("", false)).lookup("51824753556")).rejects.toThrow();
     expect(() => createAbrLookup(" ")).toThrow();
   });

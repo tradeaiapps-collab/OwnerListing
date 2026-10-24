@@ -39,7 +39,7 @@ Home loads; Google sign-in works; `/plans` loads; an upload answers 503 (storage
 | Payments | Adapter stub; nothing can be marked paid, so nothing publishes | Westpac PayWay merchant account and docs |
 | File storage and malware scan | Upload and download answer 503 | Storage provider, scanner, encryption at rest |
 | ID verification | Manual reviewer checklist only; image storage missing, approval blocked | DVS provider or image storage |
-| ABN check | Adapter built, no env wiring | ABN Lookup GUID |
+| ABN check | Adapter built, reads ABN_LOOKUP_GUID (unset = not confirmed, staff review) | ABN Lookup GUID |
 | AI | Rules-only engine; features report off | Self-hosted model and OCR server |
 | Legal text | Draft terms and contract template | Counsel review |
 
