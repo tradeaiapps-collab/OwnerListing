@@ -2,6 +2,8 @@ import type { AuditEvent } from "../domain/audit";
 import type { ListingRecord, ListingRepository } from "../domain/listing-service";
 import type { PropertyListing } from "../domain/listing";
 import type { BondPathway } from "../domain/publish";
+import { isJurisdiction } from "../domain/jurisdiction";
+import type { AgentLicence } from "../domain/licence";
 import type { AgentAppointment } from "../domain/access";
 
 /** The part of pg.Pool this app uses, so tests and the domain do not depend on the driver. */
@@ -116,4 +118,27 @@ export async function appendAuditPg(db: Queryable, e: AuditEvent): Promise<void>
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb)`,
     [e.id, e.occurredAt, e.actorType, e.actorId, e.aggregateType, e.aggregateId, e.eventType, e.correlationId, JSON.stringify(e.payload)]
   );
+}
+
+/**
+ * Verified agent licences only (read-only, constant query, no user input). Anything not verified is never
+ * loaded, so the publish gate stays fail-closed. Expiry is judged by the domain (hasVerifiedLicence), not here.
+ * This code never writes licence rows: verification is a Compliance action (see db/002).
+ */
+export async function verifiedLicencesPg(db: Queryable): Promise<AgentLicence[]> {
+  const res = await db.query(
+    `SELECT user_id, jurisdiction, status, to_char(expires_at, 'YYYY-MM-DD') AS expires_at
+     FROM agent_licence WHERE status = 'verified'`
+  );
+  const out: AgentLicence[] = [];
+  for (const r of res.rows) {
+    const jurisdiction = String(r["jurisdiction"]).trim();
+    if (!isJurisdiction(jurisdiction)) continue;
+    const expiresAt = r["expires_at"];
+    out.push({
+      userId: String(r["user_id"]), jurisdiction, status: "verified",
+      ...(typeof expiresAt === "string" ? { expiresAt } : {})
+    });
+  }
+  return out;
 }
