@@ -5,8 +5,10 @@ import { createInMemoryDocumentStore } from "../src/domain/document-service";
 import type { NewDocument, UploadStore } from "../src/domain/document-upload";
 import type { DocumentRecord } from "../src/domain/documents";
 import { sniffMime } from "../src/domain/file-sniff";
+import { UPLOAD_DAILY_BYTES, UPLOAD_RATE, withinByteQuota } from "../src/domain/rate-limit";
 import { createDraft, createInMemoryListingRepository, type Actor, type DraftInput, type ListingServiceDeps } from "../src/domain/listing-service";
 
+const hitBuckets = vi.hoisted(() => [] as string[]);
 const state = vi.hoisted(() => ({
   actor: null as Actor | null,
   deps: null as ListingServiceDeps | null,
@@ -19,6 +21,9 @@ vi.mock("../src/server/context", () => ({
   getDeps: () => state.deps,
   getDb: () => ({}),
   getUploadPorts: () => state.ports
+}));
+vi.mock("../src/server/offer-flow-db", () => ({
+  countHitPg: async (_db: unknown, bucket: string) => { hitBuckets.push(bucket); if (hitThrows) throw new Error("db down"); return hitCount; }
 }));
 vi.mock("../src/server/documents-db", () => ({ createPgDocumentStore: () => state.store }));
 
@@ -41,6 +46,9 @@ let listingId: string;
 let stored: { key: string; type: string }[];
 let scanned: number;
 let hasProperty: boolean;
+let usedBytes: number | undefined;
+let hitCount: number | undefined;
+let hitThrows: boolean;
 let added: { doc: NewDocument; supersede?: DocumentRecord }[];
 let storage: ObjectStoragePort;
 let scanner: MalwareScanPort;
@@ -61,8 +69,10 @@ beforeEach(async () => {
   });
   added = [];
   hasProperty = true;
+  usedBytes = 0; hitCount = 1; hitThrows = false; hitBuckets.length = 0;
   const store: UploadStore = {
     ...mem.store, async listingHasProperty() { return hasProperty; },
+    async bytesUploadedSince() { return usedBytes; },
     async addDocument(doc, supersede) { added.push({ doc, ...(supersede ? { supersede } : {}) }); }
   };
   state.store = store;
@@ -305,5 +315,62 @@ describe("follow-ups: no body read before cheap checks, missing property, orphan
     expect(log).toHaveBeenCalledWith(expect.stringContaining(stored[0]!.key));
     expect("delete" in storage).toBe(false);
     log.mockRestore();
+  });
+});
+
+describe("per-user upload rate limit and daily byte quota", () => {
+  const attempt = () => {
+    const form = new FormData();
+    form.set("file", new File([PDF as Uint8Array<ArrayBuffer>], "scan.pdf", { type: "application/pdf" }));
+    form.set("kind", "contract"); form.set("visibility", "owner_only");
+    const req = new Request("http://x/api", { method: "POST", body: form, headers: { "content-length": "100000", origin: "http://test" } });
+    const spy = vi.spyOn(req, "formData");
+    return { spy, res: POST(req, { params: Promise.resolve({ id: listingId }) }) };
+  };
+  it("withinByteQuota fails closed", () => {
+    expect(withinByteQuota(0, 1_000)).toBe(true);
+    expect(withinByteQuota(UPLOAD_DAILY_BYTES - 1_000, 1_000)).toBe(true);
+    expect(withinByteQuota(UPLOAD_DAILY_BYTES - 999, 1_000)).toBe(false);
+    for (const bad of [undefined, null, Number.NaN, Number.POSITIVE_INFINITY, -1, "0"]) expect(withinByteQuota(bad, 1_000)).toBe(false);
+    expect(withinByteQuota(0, 0)).toBe(false);
+    expect(withinByteQuota(0, Number.NaN)).toBe(false);
+  });
+  it("counts the attempt in a hashed per-user bucket", async () => {
+    expect((await upload(PDF)).status).toBe(201);
+    expect(hitBuckets).toHaveLength(1);
+    expect(hitBuckets[0]).toMatch(/^[0-9a-f]{64}$/);
+  });
+  it("returns 429 over the rate limit, before the body is read", async () => {
+    hitCount = UPLOAD_RATE.perUser + 1;
+    const { spy, res } = attempt();
+    const r = await res;
+    expect(r.status).toBe(429);
+    expect(r.headers.get("Retry-After")).toBe("600");
+    expect(spy).not.toHaveBeenCalled();
+    expect(added).toHaveLength(0);
+  });
+  it("returns 429 over the daily byte quota, before the body is read", async () => {
+    usedBytes = UPLOAD_DAILY_BYTES - 10;
+    const { spy, res } = attempt();
+    expect((await res).status).toBe(429);
+    expect(spy).not.toHaveBeenCalled();
+    expect(stored).toHaveLength(0);
+  });
+  it("fails closed when the counter or the usage lookup is down or unusable", async () => {
+    hitThrows = true;
+    expect((await upload(PDF)).status).toBe(503);
+    hitThrows = false; hitCount = undefined;
+    expect((await upload(PDF)).status).toBe(429);
+    hitCount = 1; usedBytes = undefined;
+    expect((await upload(PDF)).status).toBe(429);
+    state.store = { ...(state.store as object), async bytesUploadedSince() { throw new Error("db down"); } };
+    expect((await upload(PDF)).status).toBe(503);
+    expect(added).toHaveLength(0);
+    expect(stored).toHaveLength(0);
+  });
+  it("does not spend rate budget on a wrong-role request", async () => {
+    state.actor = stranger;
+    expect((await upload(PDF)).status).toBe(403);
+    expect(hitBuckets).toHaveLength(0);
   });
 });

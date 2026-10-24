@@ -55,7 +55,9 @@ async function publishedListing(): Promise<string> {
   return draft.id;
 }
 
+let termsOk = true;
 beforeEach(async () => {
+  termsOk = true;
   n = 0;
   audit = [];
   calls = [];
@@ -70,7 +72,8 @@ beforeEach(async () => {
     appendAudit: async e => { audit.push(e); },
     now: () => NOW,
     newId: () => `id-${++n}`,
-    requiredDisclosures: () => []
+    requiredDisclosures: () => [],
+    termsCurrentFor: async () => termsOk
   };
   state.db = {
     async query(text, params) {
@@ -138,6 +141,13 @@ describe("POST /api/listings/[id]/offer-links (owner issues a link)", () => {
       state.actor = a;
       expect((await issue(listingId, { buyerUserId: BUYER })).status).toBe(403);
     }
+  });
+  it("returns 403 and issues no link until the owner has accepted the current terms", async () => {
+    state.actor = owner;
+    termsOk = false;
+    expect((await issue(listingId, { buyerUserId: BUYER })).status).toBe(403);
+    termsOk = true;
+    expect((await issue(listingId, { buyerUserId: BUYER })).status).toBe(201);
   });
   it("returns 404 for another owner, an unknown listing and an unpublished listing", async () => {
     state.actor = { userId: "owner-2", userType: "owner" };

@@ -8,6 +8,7 @@ import { windowStart } from "../domain/rate-limit";
 import { getDb, getDeps } from "./context";
 import type { Queryable } from "./db";
 import { countHitPg } from "./offer-flow-db";
+import { hasCurrentTermsPg } from "./terms-db";
 
 // Every statement has constant text; user input only ever travels as a bound parameter.
 // There is no UPDATE or DELETE on enquiry_message anywhere: it is an append-only record (db trigger too).
@@ -156,6 +157,7 @@ export function getEnquiryDeps(): EnquiryDeps {
     verification: userId => getBuyerVerification(db, userId),
     countHit: async (key, windowMs) => countHitPg(db, await hashToken(key), windowStart(base.now(), windowMs)),
     offerRequestUrl: enquiryId => `${(process.env["APP_URL"] ?? "").replace(/\/+$/, "")}/enquiries/${enquiryId}`,
+    termsCurrentFor: userId => hasCurrentTermsPg(db, userId, base.now()),
     appendAudit: base.appendAudit,
     now: base.now,
     newId: () => randomUUID()
