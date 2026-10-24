@@ -9,10 +9,12 @@ import { readAuthEnv } from "./auth/config";
 import { appendAuditPg, createPgListingRepository, type Queryable } from "./db";
 import { createPgEnquiryRepository, getBuyerVerification } from "./enquiry-db";
 import { createPgOfferRepository } from "./offer-db";
+import type { IdDeps } from "../domain/id-review-service";
+import { createPgIdRepository, fileStoreFromEnv, staffFor } from "./id-db";
 import type { PhoneDeps } from "../domain/phone-verification";
 import { createPgPhoneRepository, hashCodeWith, newSixDigitCode, smsFromEnv } from "./phone-db";
 
-interface Wired { db: Queryable; deps: ListingServiceDeps; enquiryDeps: EnquiryDeps; offerDeps: OfferDeps; phoneDeps: PhoneDeps }
+interface Wired { db: Queryable; deps: ListingServiceDeps; enquiryDeps: EnquiryDeps; offerDeps: OfferDeps; phoneDeps: PhoneDeps; idDeps: IdDeps }
 const g = globalThis as unknown as { __ownerlisting?: Wired };
 
 function wire(): Wired {
@@ -41,9 +43,11 @@ function wire(): Wired {
     newCode: newSixDigitCode,
     appendAudit, now, newId
   };
+  const idDeps: IdDeps = { ids: createPgIdRepository(db), files: fileStoreFromEnv(), staffFor: id => staffFor(db, id), appendAudit, now, newId };
   return {
     db,
     phoneDeps,
+    idDeps,
     deps: { repo, appendAudit, now, newId, requiredDisclosures: getRequiredDisclosureKeys },
     offerDeps,
     enquiryDeps: {
@@ -64,6 +68,7 @@ function wired(): Wired {
 export const getDeps = () => wired().deps;
 export const getDb = () => wired().db;
 export const getEnquiryDeps = () => wired().enquiryDeps;
+export const getIdDeps = () => wired().idDeps;
 export const getPhoneDeps = () => wired().phoneDeps;
 export const getOfferDeps = () => wired().offerDeps;
 
