@@ -1,0 +1,22 @@
+# LOCAL TEST KIT ONLY (docs/LOCAL_TEST.md). Never use this for a real deployment: the password is public.
+# Postgres 16 on localhost:5544 (not 5432, so it does not clash with a Postgres you may already have). Data lives in the named volume.
+name: ownerlisting-local
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ownerlisting
+      POSTGRES_PASSWORD: localtest
+      POSTGRES_DB: ownerlisting
+    ports:
+      - "127.0.0.1:5544:5432"
+    volumes:
+      - ownerlisting_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ownerlisting -d ownerlisting"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+volumes:
+  ownerlisting_pgdata:
