@@ -96,7 +96,7 @@ export default function SavedSearches() {
   return (
     <main>
       <h1>Saved searches</h1>
-      {signedOut && <p role="alert"><a href="/api/auth/google/start">Sign in with Google</a> to save a search.</p>}
+      {signedOut && <p role="alert"><a href="/api/auth/google/start?as=buyer">Sign in with Google</a> to save a search.</p>}
       <form onSubmit={onSubmit} style={{ display: "grid", gap: 8 }}>
         <select name="transactionType" aria-label="Sale or rent" style={fieldStyle} defaultValue="sale">
           <option value="sale">Buy</option>

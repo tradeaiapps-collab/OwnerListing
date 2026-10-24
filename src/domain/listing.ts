@@ -21,7 +21,7 @@ export interface PropertyListing {
   id: string;
   ownerUserId: string;
   /** Mirrors app_user.user_type for the listing's owner. Never inferred from IDs. */
-  ownerUserType: "owner" | "agent" | "vendor" | "admin" | "project_owner" | "investor";
+  ownerUserType: "owner" | "agent" | "buyer" | "vendor" | "admin" | "project_owner" | "investor";
   jurisdiction: Jurisdiction;
   status: ListingStatus;
   title: string;
