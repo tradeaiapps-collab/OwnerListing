@@ -10,7 +10,11 @@ import type { AgentAppointment } from "../domain/access";
 /** The part of pg.Pool this app uses, so tests and the domain do not depend on the driver. */
 export interface Queryable {
   query(text: string, params?: unknown[]): Promise<{ rows: Record<string, unknown>[] }>;
+  /** Runs `fn` in one database transaction (commit on return, rollback on throw). Provided by the real pool; test doubles may omit it. */
+  transaction?<T>(fn: (tx: Queryable) => Promise<T>): Promise<T>;
 }
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 interface ListingRow {
   id: string; owner_user_id: string; owner_user_type: string; jurisdiction: string; status: string;
@@ -97,6 +101,8 @@ export function createPgListingRepository(db: Queryable): ListingRepository {
       );
     },
     async get(id) {
+      // A malformed id is simply "no such listing" (not a database error, so routes answer 404 rather than 500).
+      if (!UUID_RE.test(id)) return undefined;
       const res = await db.query(`${SELECT} WHERE l.id = $1`, [id]);
       const row = res.rows[0] as unknown as ListingRow | undefined;
       if (!row) return undefined;

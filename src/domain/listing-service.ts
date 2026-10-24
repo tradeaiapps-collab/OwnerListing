@@ -55,6 +55,8 @@ export interface ListingServiceDeps {
   licences?: () => Promise<readonly AgentLicence[]>;
   /** The active appointment of an agent to a listing, if any. */
   appointmentFor?: (listingId: string, agentUserId: string) => Promise<AgentAppointment | undefined>;
+  /** True when the user accepted the terms version in force now. When set, publishing needs it for the owner and the actor. */
+  termsCurrentFor?: (userId: string) => Promise<boolean>;
 }
 
 export interface DraftInput {
@@ -233,8 +235,12 @@ export async function publishListing(
   } else {
     const trustAccount = deps.trustAccountFor ? await deps.trustAccountFor(l.id) : undefined;
     const licences = deps.licences ? await deps.licences() : [];
+    // With the terms check wired, the accepted-version log decides (owner and actor); the stored flag is the fallback.
+    const termsAccepted = deps.termsCurrentFor
+      ? (await Promise.all([...new Set([l.ownerUserId, actor.userId])].map(deps.termsCurrentFor))).every(Boolean)
+      : rec.termsAccepted;
     decision = decidePublish(l, required, licences, now, {
-      termsAccepted: rec.termsAccepted,
+      termsAccepted,
       listingFeePaid: rec.listingFeePaid,
       ...(rec.rentalBondPathway ? { rentalBondPathway: rec.rentalBondPathway } : {}),
       ...(actingAgent ? { actingAgentId: actingAgent } : {}),

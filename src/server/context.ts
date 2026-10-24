@@ -9,6 +9,7 @@ import { readAuthEnv } from "./auth/config";
 import type { StaffActor } from "../domain/staff-access";
 import { createPgBillingStore } from "./billing-db";
 import { staffFromRequest } from "./staff-auth";
+import { hasCurrentTermsPg } from "./terms-db";
 import { appendAuditPg, appointmentForPg, createPgListingRepository, verifiedLicencesPg, type Queryable } from "./db";
 
 interface Wired { db: Queryable; deps: ListingServiceDeps }
@@ -22,6 +23,26 @@ function wire(): Wired {
     async query(text, params) {
       const r = await pool.query(text, params);
       return { rows: r.rows as Record<string, unknown>[] };
+    },
+    async transaction(fn) {
+      const client = await pool.connect();
+      const tx: Queryable = {
+        async query(text, params) {
+          const r = await client.query(text, params);
+          return { rows: r.rows as Record<string, unknown>[] };
+        }
+      };
+      try {
+        await client.query("BEGIN");
+        const out = await fn(tx);
+        await client.query("COMMIT");
+        return out;
+      } catch (e) {
+        await client.query("ROLLBACK").catch(() => undefined);
+        throw e;
+      } finally {
+        client.release();
+      }
     }
   };
   return {
@@ -33,7 +54,8 @@ function wire(): Wired {
       now: () => new Date().toISOString(),
       newId: () => randomUUID(),
       requiredDisclosures: getRequiredDisclosureKeys,
-      appointmentFor: (listingId, agentUserId) => appointmentForPg(db, listingId, agentUserId)
+      appointmentFor: (listingId, agentUserId) => appointmentForPg(db, listingId, agentUserId),
+      termsCurrentFor: userId => hasCurrentTermsPg(db, userId, new Date().toISOString())
     }
   };
 }
