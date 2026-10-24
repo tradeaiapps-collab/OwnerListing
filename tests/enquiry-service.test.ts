@@ -49,6 +49,7 @@ beforeEach(async () => {
       hits.set(k, (hits.get(k) ?? 0) + 1);
       return hits.get(k);
     },
+    termsCurrentFor: async () => true,
     offerRequestUrl: id => `http://test/enquiries/${id}`,
     appendAudit: async e => { audit.push(e); },
     now: () => new Date(clock).toISOString(), newId: () => `id-${++n}`

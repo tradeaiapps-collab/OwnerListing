@@ -57,7 +57,9 @@ async function publishedListing(): Promise<string> {
   return draft.id;
 }
 
+let termsOk = true;
 beforeEach(async () => {
+  termsOk = true;
   n = 0;
   buyerEligible = true;
   audit = [];
@@ -68,7 +70,8 @@ beforeEach(async () => {
     appendAudit: async e => { audit.push(e); },
     now: () => NOW,
     newId: () => `id-${++n}`,
-    requiredDisclosures: () => []
+    requiredDisclosures: () => [],
+    termsCurrentFor: async () => termsOk
   };
   state.db = {
     async query(text, params) {
@@ -109,6 +112,12 @@ describe("POST /api/listings/[id]/offers (buyer submits)", () => {
       expect((await submit(listingId, goodBody())).status).toBe(400);
     }
     expect(calls.filter(c => c.text.includes("WITH spent"))).toHaveLength(0);
+    expect(audit.filter(a => a.eventType === "offer.submitted")).toHaveLength(0);
+  });
+  it("returns 403 and spends nothing until the buyer has accepted the current terms", async () => {
+    termsOk = false;
+    expect((await submit(listingId, goodBody())).status).toBe(403);
+    expect(calls.filter(c => c.text.includes("FROM offer_link WHERE") || c.text.includes("WITH spent"))).toHaveLength(0);
     expect(audit.filter(a => a.eventType === "offer.submitted")).toHaveLength(0);
   });
   it("returns 403 when the buyer is no longer active or verified, and does not spend the link", async () => {

@@ -3,7 +3,8 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { formatPrice } from "../../../src/domain/listing-details";
 import "../../styles/documents.css";
-import "../../styles/search.css";
+import { actionHref, publicPhotos } from "../../../src/domain/listing-actions";
+import "../../styles/detail.css";
 
 interface Listing {
   id: string;
@@ -36,9 +37,8 @@ function Gallery({ listingId, title }: { listingId: string; title: string }) {
       .then(all => setDocs(all.filter(d => d.visibility === "public" && d.status === "active")))
       .catch(() => setDocs([]));
   }, [listingId]);
-  const of = (...kinds: string[]) => docs.filter(d => kinds.includes(d.kind));
-  const images = of("photo", "photo_360");
-  const links = [...of("floorplan").map(d => ({ d, label: "Floor plan" })), ...of("video", "video_360").map(d => ({ d, label: d.kind === "video" ? "Video" : "360 video" }))];
+  const images = publicPhotos(docs);
+  const links = [...docs.filter(d => d.kind === "floorplan").map(d => ({ d, label: "Floor plan" })), ...docs.filter(d => d.kind === "video" || d.kind === "video_360").map(d => ({ d, label: d.kind === "video" ? "Video" : "360 video" }))];
   if (images.length === 0 && links.length === 0) return null;
   return (
     <section aria-label="Photos and plans">
@@ -67,6 +67,11 @@ export default function ListingDetail() {
   const { id } = useParams<{ id: string }>();
   const [listing, setListing] = useState<Listing | null>(null);
   const [error, setError] = useState("");
+  const [signedIn, setSignedIn] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/auth/me").then(async r => setSignedIn(r.ok && (await r.json()).user !== null)).catch(() => setSignedIn(false));
+  }, []);
 
   useEffect(() => {
     setListing(null);
@@ -100,9 +105,14 @@ export default function ListingDetail() {
     <main>
       {back}
       <h1>{listing.title}</h1>
+      <p className="detail-address">{listing.address}</p>
       {listing.priceCents !== undefined && <p className="detail-price">{formatPrice(listing.priceCents, listing.transactionType as "sale" | "rent")}</p>}
-      <p>{listing.address}</p>
-      <dl className="details">
+      <div className="detail-actions">
+        <a className="button" href={actionHref(listing.id, "enquire", signedIn)}>Enquire</a>
+        <a className="button secondary" href={actionHref(listing.id, "save", signedIn)}>Save</a>
+      </div>
+      <Gallery listingId={listing.id} title={listing.title} />
+      <dl className="details detail-facts">
         <dt>State</dt><dd>{listing.jurisdiction}</dd>
         <dt>Offer</dt><dd>{listing.transactionType === "sale" ? "For sale" : "For rent"}</dd>
         <dt>Use</dt><dd>{cap(listing.useClass)}</dd>
@@ -118,7 +128,6 @@ export default function ListingDetail() {
           <ul className="plain-list">{provided.map(d => <li key={d.key}>{cap(d.key)}</li>)}</ul>
         </section>
       )}
-      <Gallery listingId={listing.id} title={listing.title} />
     </main>
   );
 }

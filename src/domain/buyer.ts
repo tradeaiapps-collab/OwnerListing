@@ -1,5 +1,5 @@
 import type { Jurisdiction } from "./jurisdiction";
-import type { PropertyType, UseClass } from "./listing";
+import type { PropertyListing, PropertyType, UseClass } from "./listing";
 
 /** Searches use only property facts. There are deliberately no demographic fields. */
 export interface SavedSearch {
@@ -20,13 +20,25 @@ export interface ListingSummary {
   id: string;
   status: "draft" | "pending_review" | "published" | "withdrawn";
   jurisdiction: Jurisdiction;
-  suburb: string;
+  /** Missing until the owner fills it in. A search that names suburbs never matches a listing without one. */
+  suburb?: string;
   transactionType: "sale" | "rent";
   useClass: UseClass;
   propertyType: PropertyType;
-  /** Sale price, or rent per period, in cents. */
-  priceCents: number;
+  /** Sale price, or rent per week, in cents. A search with a price limit never matches a listing without a price. */
+  priceCents?: number;
   bedrooms?: number;
+}
+
+/** The only fields alerts and saved searches may see of a listing. Owner, address, title and documents are left out on purpose. */
+export function toListingSummary(l: PropertyListing): ListingSummary {
+  return {
+    id: l.id, status: l.status, jurisdiction: l.jurisdiction, transactionType: l.transactionType,
+    useClass: l.useClass, propertyType: l.propertyType,
+    ...(l.suburb !== undefined ? { suburb: l.suburb } : {}),
+    ...(l.priceCents !== undefined ? { priceCents: l.priceCents } : {}),
+    ...(l.bedrooms !== undefined ? { bedrooms: l.bedrooms } : {})
+  };
 }
 
 const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
@@ -35,10 +47,11 @@ export function matchesSearch(s: SavedSearch, l: ListingSummary): boolean {
   if (!s.active || l.status !== "published") return false;
   if (s.transactionType !== l.transactionType || s.useClass !== l.useClass) return false;
   if (s.jurisdictions.length > 0 && !s.jurisdictions.includes(l.jurisdiction)) return false;
-  if (s.suburbs.length > 0 && !s.suburbs.some(x => same(x, l.suburb))) return false;
+  const suburb = l.suburb;
+  if (s.suburbs.length > 0 && (suburb === undefined || !s.suburbs.some(x => same(x, suburb)))) return false;
   if (s.propertyTypes.length > 0 && !s.propertyTypes.includes(l.propertyType)) return false;
-  if (s.minPriceCents !== undefined && l.priceCents < s.minPriceCents) return false;
-  if (s.maxPriceCents !== undefined && l.priceCents > s.maxPriceCents) return false;
+  if (s.minPriceCents !== undefined && (l.priceCents === undefined || l.priceCents < s.minPriceCents)) return false;
+  if (s.maxPriceCents !== undefined && (l.priceCents === undefined || l.priceCents > s.maxPriceCents)) return false;
   if (s.minBedrooms !== undefined && (l.bedrooms === undefined || l.bedrooms < s.minBedrooms)) return false;
   return true;
 }

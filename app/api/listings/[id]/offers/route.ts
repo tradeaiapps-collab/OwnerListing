@@ -9,6 +9,7 @@ import { OFFER_RATE, windowStart, withinLimit } from "../../../../../src/domain/
 import { countHitPg, eligibleBuyerPg } from "../../../../../src/server/offer-flow-db";
 import { offerLinkPg, offersForOwnerPg, submitOfferPg } from "../../../../../src/server/offers-db";
 import { csrfGuard } from "../../../../../src/server/csrf";
+import { requireCurrentTerms } from "../../../../../src/server/terms-guard";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -49,6 +50,8 @@ export async function POST(req: Request, { params }: Ctx) {
   // The link is a bearer token, so it is only honoured for the buyer it was issued to, signed in as that buyer.
   const actor = await getActor(req);
   if (!actor) return unauthenticated();
+  const noTerms = await requireCurrentTerms(deps.termsCurrentFor, actor.userId);
+  if (noTerms) return failure(noTerms);
   const link = await offerLinkPg(db, tokenHash);
   if (!link) return failure(badLink);
   if (actor.userId !== link.buyerUserId) return failure(badLink);

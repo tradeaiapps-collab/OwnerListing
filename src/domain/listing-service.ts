@@ -72,7 +72,7 @@ export type DraftCreate = DraftInput & ListingDetails;
 /** rentalBondPathway is stored on the record, not the listing; see updateDraft. A null detail clears it. */
 export type DraftPatch = Partial<DraftInput> & DetailsPatch & { rentalBondPathway?: BondPathway };
 
-export type Failure = { ok: false; code: "invalid" | "not_found" | "forbidden" | "conflict" | "rate_limited"; message: string };
+export type Failure = { ok: false; code: "invalid" | "not_found" | "forbidden" | "conflict" | "rate_limited" | "unavailable"; message: string };
 export type Result<T> = { ok: true; value: T } | Failure;
 
 const fail = (code: Failure["code"], message: string): Failure => ({ ok: false, code, message });

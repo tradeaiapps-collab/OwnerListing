@@ -51,6 +51,11 @@ export function createPgDocumentStore(db: Queryable): UploadStore {
           d.declaredMime, d.sizeBytes, r.visibility, supersede?.id ?? null, r.listingId]
       );
     },
+    async bytesUploadedSince(userId, sinceIso) {
+      const res = await db.query("SELECT COALESCE(SUM(size_bytes), 0) AS total FROM property_document WHERE uploaded_by = $1::uuid AND uploaded_at >= $2::timestamptz", [userId, sinceIso]);
+      const total = Number(res.rows[0]?.["total"]);
+      return Number.isFinite(total) ? total : undefined;
+    },
     async listingHasProperty(listingId) {
       const res = await db.query("SELECT 1 FROM property_listing WHERE id = $1 AND property_id IS NOT NULL", [listingId]);
       return res.rows.length > 0;

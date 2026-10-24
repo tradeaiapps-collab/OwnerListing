@@ -4,11 +4,11 @@ import type { AlertPreference, SavedSearch } from "../../../src/domain/buyer";
 import { AU_JURISDICTIONS } from "../../../src/domain/jurisdiction";
 import { PROPERTY_TYPES } from "../../../src/domain/listing-service";
 import { JSON_HEADERS } from "../../listings/ui";
+import { actionPath } from "../../../src/domain/listing-actions";
+import { savedSearchFormBody } from "./form";
 
-const dollarsToCents = (v: string): number | undefined => {
-  const n = Number(v);
-  return v.trim() !== "" && Number.isFinite(n) && n >= 0 ? Math.round(n * 100) : undefined;
-};
+/** Starting values taken from a listing the buyer chose to save a search from. */
+interface Prefill { transactionType?: string; useClass?: string; jurisdiction?: string; propertyType?: string; suburb?: string; bedrooms?: number }
 
 const summarise = (s: SavedSearch) => [
   s.transactionType === "sale" ? "Buy" : "Rent",
@@ -29,6 +29,7 @@ export default function SavedSearches() {
   const [signedOut, setSignedOut] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [prefill, setPrefill] = useState<Prefill>({});
 
   useEffect(() => {
     Promise.all([fetch("/api/buyer/saved-searches"), fetch("/api/buyer/alert-preferences")])
@@ -40,32 +41,31 @@ export default function SavedSearches() {
       .catch(() => setError("Could not load your saved searches."));
   }, []);
 
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get("listing") ?? "";
+    if (actionPath(id, "save") === null) return;
+    fetch(`/api/listings/${id}`)
+      .then(async r => (r.ok ? (await r.json()).listing : undefined))
+      .then(l => {
+        if (l && l.status === "published") setPrefill({
+          transactionType: l.transactionType, useClass: l.useClass, jurisdiction: l.jurisdiction, propertyType: l.propertyType,
+          ...(l.suburb ? { suburb: l.suburb } : {}), ...(l.bedrooms !== undefined ? { bedrooms: l.bedrooms } : {})
+        });
+      })
+      .catch(() => undefined);
+  }, []);
+
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    const f = new FormData(e.currentTarget);
-    const text = (k: string) => String(f.get(k) ?? "");
-    const state = text("jurisdiction");
-    const type = text("propertyType");
-    const suburbs = text("suburbs").split(",").map(s => s.trim()).filter(Boolean);
-    const min = dollarsToCents(text("minPrice"));
-    const max = dollarsToCents(text("maxPrice"));
-    const beds = text("minBedrooms").trim() === "" ? undefined : Number(text("minBedrooms"));
+    const checked = savedSearchFormBody(new FormData(e.currentTarget));
+    if ("error" in checked) { setError(checked.error); return; }
     setBusy(true);
     setError("");
     try {
       const res = await fetch("/api/buyer/saved-searches", {
         method: "POST",
         headers: JSON_HEADERS,
-        body: JSON.stringify({
-          transactionType: text("transactionType"),
-          useClass: text("useClass"),
-          jurisdictions: state ? [state] : [],
-          propertyTypes: type ? [type] : [],
-          suburbs,
-          ...(min !== undefined ? { minPriceCents: min } : {}),
-          ...(max !== undefined ? { maxPriceCents: max } : {}),
-          ...(beds !== undefined ? { minBedrooms: beds } : {})
-        })
+        body: JSON.stringify(checked.body)
       });
       const d = await res.json();
       if (res.status === 401) setSignedOut(true);
@@ -97,27 +97,27 @@ export default function SavedSearches() {
     <main>
       <h1>Saved searches</h1>
       {signedOut && <p role="alert"><a href="/api/auth/google/start?as=buyer">Sign in with Google</a> to save a search.</p>}
-      <form className="stack" onSubmit={onSubmit}>
-        <select name="transactionType" aria-label="Sale or rent" defaultValue="sale">
+      <form className="stack" key={JSON.stringify(prefill)} onSubmit={onSubmit} noValidate>
+        <select name="transactionType" aria-label="Sale or rent" defaultValue={prefill.transactionType ?? "sale"}>
           <option value="sale">Buy</option>
           <option value="rent">Rent</option>
         </select>
-        <select name="useClass" aria-label="Use" defaultValue="residential">
+        <select name="useClass" aria-label="Use" defaultValue={prefill.useClass ?? "residential"}>
           <option value="residential">Residential</option>
           <option value="commercial">Commercial</option>
         </select>
-        <select name="jurisdiction" aria-label="State" defaultValue="">
+        <select name="jurisdiction" aria-label="State" defaultValue={prefill.jurisdiction ?? ""}>
           <option value="">Any state</option>
           {AU_JURISDICTIONS.map(j => <option key={j}>{j}</option>)}
         </select>
-        <select name="propertyType" aria-label="Property type" defaultValue="">
+        <select name="propertyType" aria-label="Property type" defaultValue={prefill.propertyType ?? ""}>
           <option value="">Any property type</option>
           {PROPERTY_TYPES.map(t => <option key={t}>{t}</option>)}
         </select>
-        <input name="suburbs" aria-label="Suburbs, separated by commas" placeholder="Suburbs, separated by commas" />
+        <input name="suburbs" defaultValue={prefill.suburb ?? ""} aria-label="Suburbs, separated by commas" placeholder="Suburbs, separated by commas" />
         <input name="minPrice" aria-label="Minimum price in dollars" inputMode="decimal" placeholder="Minimum price ($)" />
         <input name="maxPrice" aria-label="Maximum price in dollars" inputMode="decimal" placeholder="Maximum price ($)" />
-        <input name="minBedrooms" aria-label="Minimum bedrooms" inputMode="numeric" placeholder="Minimum bedrooms" />
+        <input name="minBedrooms" defaultValue={prefill.bedrooms ?? ""} aria-label="Minimum bedrooms" inputMode="numeric" placeholder="Minimum bedrooms" />
         <button type="submit" disabled={busy}>Save search</button>
       </form>
       {error && <p role="alert">{error}</p>}

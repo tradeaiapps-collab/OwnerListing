@@ -5,6 +5,7 @@ import { getActor } from "../../../../../src/server/context";
 import { csrfGuard } from "../../../../../src/server/csrf";
 import { getEnquiryDeps } from "../../../../../src/server/enquiry-db";
 import { failure, unauthenticated } from "../../../../../src/server/http";
+import { requireCurrentTerms } from "../../../../../src/server/terms-guard";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -28,10 +29,13 @@ export async function POST(req: Request, { params }: Ctx) {
   if (blocked) return blocked;
   const actor = await getActor(req);
   if (!actor) return unauthenticated();
+  const deps = getEnquiryDeps();
+  const noTerms = await requireCurrentTerms(deps.termsCurrentFor, actor.userId);
+  if (noTerms) return failure(noTerms);
   const { id } = await params;
   if (!isUuid(id)) return failure(notFound);
   const body = parseMessageBody(await req.json().catch(() => null));
   if (!body.ok) return failure(body);
-  const r = await reply(getEnquiryDeps(), actor, id, body.value);
+  const r = await reply(deps, actor, id, body.value);
   return r.ok ? NextResponse.json({ message: r.value }, { status: 201 }) : failure(r);
 }

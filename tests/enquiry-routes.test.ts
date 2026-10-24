@@ -28,7 +28,9 @@ const ctx = (id: string) => ({ params: Promise.resolve({ id }) });
 const json = (method: string, url: string, body: unknown, headers: Record<string, string> = {}) =>
   new Request(url, { method, headers: { "content-type": "application/json", origin: "http://test", ...headers }, body: JSON.stringify(body) });
 
+let termsOk = true;
 beforeEach(async () => {
+  termsOk = true;
   state.actor = null;
   n = 0;
   const listings = createInMemoryListingRepository();
@@ -43,7 +45,7 @@ beforeEach(async () => {
   state.deps = {
     enquiries: createInMemoryEnquiryRepository(), listings, drafts: createInMemoryDraftRepository(() => owner.userId),
     verification: async id => (id === buyer.userId ? full : { emailVerified: true, phoneVerified: false, idVerified: false }),
-    countHit: async () => 1, offerRequestUrl: id => `http://test/enquiries/${id}`, appendAudit: async () => {},
+    termsCurrentFor: async () => termsOk, countHit: async () => 1, offerRequestUrl: id => `http://test/enquiries/${id}`, appendAudit: async () => {},
     now: () => "2026-10-24T00:00:00.000Z",
     newId: () => `99999999-9999-4999-8999-${String(++n).padStart(12, "0")}`
   };
@@ -92,6 +94,20 @@ describe("enquiry routes", () => {
     expect((await threadRoute.GET(new Request("http://test/x"), ctx(id))).status).toBe(404);
     expect((await threadRoute.POST(json("POST", "http://test/x", { body: "hi" }), ctx(id))).status).toBe(404);
     expect((await threadRoute.GET(new Request("http://test/x"), ctx("nope"))).status).toBe(404);
+  });
+  it("denies starting or replying to an enquiry until the current terms are accepted, and stores nothing", async () => {
+    state.actor = buyer;
+    const started = await begin();
+    const id = ((await started.json()) as { enquiry: { id: string } }).enquiry.id;
+    termsOk = false;
+    expect((await begin()).status).toBe(403);
+    for (const a of [buyer, owner]) {
+      state.actor = a;
+      expect((await threadRoute.POST(json("POST", "http://test/x", { body: "hi" }), ctx(id))).status).toBe(403);
+    }
+    termsOk = true;
+    const read = await threadRoute.GET(new Request("http://test/x"), ctx(id));
+    expect(((await read.json()) as { messages: unknown[] }).messages).toHaveLength(1);
   });
   it("returns 429 when the buyer is over the limit", async () => {
     state.actor = buyer;
