@@ -14,6 +14,8 @@ vi.mock("../src/server/context", () => ({
 import { GET as searchRoute, POST as createRoute } from "../app/api/listings/route";
 import { POST as publishRoute } from "../app/api/listings/[id]/publish/route";
 import { GET as getRoute, PATCH as patchRoute } from "../app/api/listings/[id]/route";
+process.env["APP_URL"] = "http://test";
+
 
 const owner: Actor = { userId: "owner-1", userType: "owner" };
 const agent: Actor = { userId: "agent-1", userType: "agent" };
@@ -40,7 +42,7 @@ beforeEach(() => {
 const post = (url: string, body?: unknown) =>
   new Request(`http://test${url}`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", origin: "http://test" },
     ...(body === undefined ? {} : { body: JSON.stringify(body) })
   });
 
@@ -96,7 +98,7 @@ describe("POST /api/listings/[id]/publish", () => {
 describe("PATCH /api/listings/[id] (edit draft)", () => {
   const patch = (id: string, body: unknown) =>
     patchRoute(
-      new Request(`http://test/api/listings/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }),
+      new Request(`http://test/api/listings/${id}`, { method: "PATCH", headers: { "content-type": "application/json", origin: "http://test" }, body: JSON.stringify(body) }),
       { params: Promise.resolve({ id }) }
     );
 

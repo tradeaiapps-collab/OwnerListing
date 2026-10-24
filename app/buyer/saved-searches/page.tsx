@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import type { AlertPreference, SavedSearch } from "../../../src/domain/buyer";
 import { AU_JURISDICTIONS } from "../../../src/domain/jurisdiction";
 import { PROPERTY_TYPES } from "../../../src/domain/listing-service";
-import { JSON_HEADERS, fieldStyle } from "../../listings/ui";
+import { JSON_HEADERS } from "../../listings/ui";
 
 const dollarsToCents = (v: string): number | undefined => {
   const n = Number(v);
@@ -97,48 +97,48 @@ export default function SavedSearches() {
     <main>
       <h1>Saved searches</h1>
       {signedOut && <p role="alert"><a href="/api/auth/google/start?as=buyer">Sign in with Google</a> to save a search.</p>}
-      <form onSubmit={onSubmit} style={{ display: "grid", gap: 8 }}>
-        <select name="transactionType" aria-label="Sale or rent" style={fieldStyle} defaultValue="sale">
+      <form className="stack" onSubmit={onSubmit}>
+        <select name="transactionType" aria-label="Sale or rent" defaultValue="sale">
           <option value="sale">Buy</option>
           <option value="rent">Rent</option>
         </select>
-        <select name="useClass" aria-label="Use" style={fieldStyle} defaultValue="residential">
+        <select name="useClass" aria-label="Use" defaultValue="residential">
           <option value="residential">Residential</option>
           <option value="commercial">Commercial</option>
         </select>
-        <select name="jurisdiction" aria-label="State" style={fieldStyle} defaultValue="">
+        <select name="jurisdiction" aria-label="State" defaultValue="">
           <option value="">Any state</option>
           {AU_JURISDICTIONS.map(j => <option key={j}>{j}</option>)}
         </select>
-        <select name="propertyType" aria-label="Property type" style={fieldStyle} defaultValue="">
+        <select name="propertyType" aria-label="Property type" defaultValue="">
           <option value="">Any property type</option>
           {PROPERTY_TYPES.map(t => <option key={t}>{t}</option>)}
         </select>
-        <input name="suburbs" aria-label="Suburbs, separated by commas" placeholder="Suburbs, separated by commas" style={fieldStyle} />
-        <input name="minPrice" aria-label="Minimum price in dollars" inputMode="decimal" placeholder="Minimum price ($)" style={fieldStyle} />
-        <input name="maxPrice" aria-label="Maximum price in dollars" inputMode="decimal" placeholder="Maximum price ($)" style={fieldStyle} />
-        <input name="minBedrooms" aria-label="Minimum bedrooms" inputMode="numeric" placeholder="Minimum bedrooms" style={fieldStyle} />
-        <button type="submit" disabled={busy} style={fieldStyle}>Save search</button>
+        <input name="suburbs" aria-label="Suburbs, separated by commas" placeholder="Suburbs, separated by commas" />
+        <input name="minPrice" aria-label="Minimum price in dollars" inputMode="decimal" placeholder="Minimum price ($)" />
+        <input name="maxPrice" aria-label="Maximum price in dollars" inputMode="decimal" placeholder="Maximum price ($)" />
+        <input name="minBedrooms" aria-label="Minimum bedrooms" inputMode="numeric" placeholder="Minimum bedrooms" />
+        <button type="submit" disabled={busy}>Save search</button>
       </form>
       {error && <p role="alert">{error}</p>}
 
       <section>
         <h2>Your searches</h2>
-        {searches.length === 0 ? <p>No saved searches yet.</p> : <ul>{searches.map(s => <li key={s.id}>{summarise(s)}</li>)}</ul>}
+        {searches.length === 0 ? <p className="empty">No saved searches yet.</p> : <ul className="card-list">{searches.map(s => <li key={s.id}>{summarise(s)}</li>)}</ul>}
       </section>
 
       <section>
         <h2>Alerts</h2>
         <p>We only send alerts for new matching listings if you choose a channel below. You can turn a channel off at any time.</p>
         {(["email", "sms"] as const).map(channel => (
-          <label key={channel} style={{ display: "block", marginBottom: 8 }}>
+          <label key={channel} className="check">
             <input
               type="checkbox"
               checked={consented(prefs, channel)}
               disabled={busy || signedOut}
               onChange={e => setConsent(channel, e.target.checked)}
-            />{" "}
-            {channel === "email" ? "Email me when a matching property is listed" : "Text me when a matching property is listed"}
+            />
+            <span>{channel === "email" ? "Email me when a matching property is listed" : "Text me when a matching property is listed"}</span>
           </label>
         ))}
       </section>

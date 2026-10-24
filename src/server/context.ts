@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import pg from "pg";
 import { getRequiredDisclosureKeys } from "../config/disclosures";
 import type { Actor, ListingServiceDeps } from "../domain/listing-service";
-import { actorFromRequest } from "./auth/actor";
+import { actorFromRequestChecked } from "./auth/actor";
 import { readAuthEnv } from "./auth/config";
 import type { StaffActor } from "../domain/staff-access";
 import { staffFromRequest } from "./staff-auth";
@@ -51,9 +51,10 @@ export async function getStaff(req: Request): Promise<StaffActor | null> {
   return auth ? staffFromRequest(getDb(), req, auth.secret, Math.floor(Date.now() / 1000)) : null;
 }
 
-export function getActor(req: Request): Actor | null {
+/** Signed-in owner/agent/buyer, confirmed against the database now (exists, active, same type as the cookie), or null. */
+export async function getActor(req: Request): Promise<Actor | null> {
   const auth = readAuthEnv();
-  return auth ? actorFromRequest(req, auth.secret, Math.floor(Date.now() / 1000)) : null;
+  return auth ? actorFromRequestChecked(getDb(), req, auth.secret, Math.floor(Date.now() / 1000)) : null;
 }
 
 /** File storage and malware scanner. Both fail closed (uploads refused) until real providers are configured. */

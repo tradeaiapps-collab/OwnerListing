@@ -174,8 +174,9 @@ describe("a signed-in buyer on existing owner-only and agent-only routes", () =>
     draftId = (await createDraft(state.deps, owner, input)).id;
     state.actor = buyer;
   });
+  beforeEach(() => { process.env["APP_URL"] = "http://test"; });
   const json = (url: string, method: string, body?: unknown) =>
-    new Request(`http://test${url}`, { method, headers: { "content-type": "application/json" }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
+    new Request(`http://test${url}`, { method, headers: { "content-type": "application/json", origin: "http://test" }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
   const ctx = (id: string) => ({ params: Promise.resolve({ id }) });
 
   it("cannot create a listing (403)", async () => {

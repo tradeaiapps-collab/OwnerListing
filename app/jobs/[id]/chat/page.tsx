@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import { JSON_HEADERS, fieldStyle } from "../../../listings/ui";
+import { JSON_HEADERS } from "../../../listings/ui";
 
 type Message = { id: string; senderId: string; body: string; sentAt: string };
 
@@ -48,22 +48,22 @@ export default function JobChat() {
   return (
     <main>
       <h1>Job chat</h1>
-      <p style={{ color: "#555" }}>Messages are a permanent record and cannot be edited or deleted.</p>
+      <p className="muted">Messages are a permanent record and cannot be edited or deleted.</p>
       {loadError && <p role="alert">{loadError}</p>}
-      {!loadError && messages === null && <p>Loading…</p>}
-      {messages && messages.length === 0 && <p>No messages yet.</p>}
-      <ul style={{ listStyle: "none", padding: 0 }}>
+      {!loadError && messages === null && <p className="muted" role="status">Loading…</p>}
+      {messages && messages.length === 0 && <p className="empty">No messages yet.</p>}
+      <ul className="card-list">
         {messages?.map(m => (
-          <li key={m.id} style={{ margin: "8px 0", overflowWrap: "anywhere" }}>
-            <small>{new Date(m.sentAt).toLocaleString("en-AU")}</small>
-            <div style={{ whiteSpace: "pre-wrap" }}>{m.body}</div>
+          <li key={m.id}>
+            <small className="muted">{new Date(m.sentAt).toLocaleString("en-AU")}</small>
+            <div className="pre">{m.body}</div>
           </li>
         ))}
       </ul>
       {messages && (
-        <form onSubmit={onSend}>
-          <textarea value={draft} onChange={e => setDraft(e.target.value)} rows={3} maxLength={5000} required aria-label="Message" style={fieldStyle} />
-          <button type="submit" disabled={busy} style={{ marginTop: 8, padding: "8px 16px", fontSize: 16 }}>{busy ? "Sending…" : "Send"}</button>
+        <form className="stack" onSubmit={onSend}>
+          <textarea value={draft} onChange={e => setDraft(e.target.value)} rows={3} maxLength={5000} required aria-label="Message" />
+          <button type="submit" disabled={busy}>{busy ? "Sending…" : "Send"}</button>
           {error && <p role="alert">{error}</p>}
         </form>
       )}

@@ -16,6 +16,8 @@ vi.mock("../src/server/assignment-db", () => {
 import * as listingRoute from "../app/api/listings/[id]/assignments/route";
 import * as mineRoute from "../app/api/assignments/route";
 import * as actRoute from "../app/api/assignments/[id]/route";
+process.env["APP_URL"] = "http://test";
+
 
 const LISTING = "55555555-5555-4555-8555-555555555555";
 const owner: Actor = { userId: "22222222-2222-4222-8222-222222222222", userType: "owner" };
@@ -23,7 +25,7 @@ const vendor: Actor = { userId: "33333333-3333-4333-8333-333333333333", userType
 const stranger: Actor = { userId: "44444444-4444-4444-8444-444444444444", userType: "owner" };
 
 const ctx = (id: string) => ({ params: Promise.resolve({ id }) });
-const post = (url: string, body: unknown) => new Request(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+const post = (url: string, body: unknown) => new Request(url, { method: "POST", headers: { "content-type": "application/json", origin: "http://test" }, body: JSON.stringify(body) });
 const inviteReq = (body: unknown) => listingRoute.POST(post(`http://test/api/listings/${LISTING}/assignments`, body), ctx(LISTING));
 const actReq = (id: string, body: unknown) => actRoute.POST(post(`http://test/api/assignments/${id}`, body), ctx(id));
 
