@@ -190,7 +190,7 @@ export async function inbox(deps: EnquiryDeps, actor: Actor): Promise<InboxItem[
 // ---- Owner-only: auto-reply preview (drafts, templates, pause switch) ----
 
 const ownerOnly = (actor: Actor): Failure | undefined =>
-  actor.userType === "buyer" ? fail("forbidden", "Only listing owners can use auto-reply drafts.") : undefined;
+  actor.userType === "buyer" || actor.userType === "vendor" ? fail("forbidden", "Only listing owners can use auto-reply drafts.") : undefined;
 
 export async function listDrafts(deps: EnquiryDeps, actor: Actor): Promise<Result<ReplyDraft[]>> {
   return ownerOnly(actor) ?? { ok: true, value: await deps.drafts.listQueued(actor.userId) };

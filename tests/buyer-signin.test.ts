@@ -52,7 +52,7 @@ describe("session claim", () => {
     expect(verifySession(signSession(payload, secret), secret, now)).toEqual(payload);
   });
   it("still rejects unknown, staff and malformed user types", () => {
-    for (const ut of ["admin", "vendor", "staff", "super_admin", "", "BUYER", 1, null, undefined]) {
+    for (const ut of ["admin", "staff", "super_admin", "", "BUYER", 1, null, undefined]) {
       expect(verifySession(signSession({ ...payload, ut: ut as unknown as "buyer" }, secret), secret, now)).toBeNull();
     }
   });

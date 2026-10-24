@@ -14,10 +14,10 @@ export async function GET(req: Request) {
   res.cookies.set("ol_state", s.state, opts);
   res.cookies.set("ol_nonce", s.nonce, opts);
   res.cookies.set("ol_verifier", s.verifier, opts);
-  // Only "buyer" and "staff" are honoured; anything else (including "agent" or "admin") means the default, owner.
-  // "staff" grants nothing by itself: the callback still requires a pre-provisioned staff account.
+  // Only "buyer", "staff" and "vendor" are honoured; anything else (including "agent" or "admin") means the default, owner.
+  // "staff" and "vendor" grant nothing by themselves: the callback still requires a pre-provisioned account of that type.
   const as = new URL(req.url).searchParams.get("as");
-  res.cookies.set("ol_role", as === "buyer" || as === "staff" ? as : "owner", opts);
+  res.cookies.set("ol_role", as === "buyer" || as === "staff" || as === "vendor" ? as : "owner", opts);
   // Optional return path; anything that is not a same-site relative path is dropped.
   const next = safeNext(new URL(req.url).searchParams.get("next"));
   if (next) res.cookies.set("ol_next", next, opts);
