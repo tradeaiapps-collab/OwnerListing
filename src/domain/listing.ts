@@ -1,4 +1,5 @@
 import type { Jurisdiction } from "./jurisdiction";
+import type { ListingDetails } from "./listing-details";
 
 export type ListingStatus = "draft" | "pending_review" | "published" | "withdrawn";
 
@@ -17,7 +18,7 @@ export type PropertyType =
 const RESIDENTIAL_ONLY: readonly PropertyType[] = ["house", "unit", "townhouse"];
 const COMMERCIAL_ONLY: readonly PropertyType[] = ["office", "retail", "industrial", "warehouse", "hospitality"];
 
-export interface PropertyListing {
+export interface PropertyListing extends ListingDetails {
   id: string;
   ownerUserId: string;
   /** Mirrors app_user.user_type for the listing's owner. Never inferred from IDs. */

@@ -2,6 +2,7 @@ import type { AuditEvent } from "../domain/audit";
 import type { ListingRecord, ListingRepository } from "../domain/listing-service";
 import type { PropertyListing } from "../domain/listing";
 import type { BondPathway } from "../domain/publish";
+import { buildSearch } from "./listing-search-sql";
 import { isJurisdiction } from "../domain/jurisdiction";
 import type { AgentLicence } from "../domain/licence";
 import type { AgentAppointment } from "../domain/access";
@@ -20,6 +21,8 @@ interface ListingRow {
   title: string; property_type: string; use_class: string; transaction_type: string; address_text: string;
   created_at: Date | string; updated_at: Date | string; listing_fee_paid: boolean; terms_accepted: boolean;
   rental_bond_pathway: string | null;
+  suburb: string | null; postcode: string | null; price_cents: string | number | null;
+  bedrooms: number | null; bathrooms: number | null; parking: number | null;
 }
 interface DisclosureRow { listing_id: string; jurisdiction: string; disclosure_key: string; satisfied: boolean; evidence_reference: string | null }
 
@@ -27,7 +30,8 @@ const iso = (v: Date | string) => (v instanceof Date ? v.toISOString() : new Dat
 
 const SELECT = `SELECT l.id, l.owner_user_id, u.user_type AS owner_user_type, l.jurisdiction, l.status, l.title,
   l.property_type, l.use_class, l.transaction_type, l.address_text, l.created_at, l.updated_at,
-  l.listing_fee_paid, l.terms_accepted, l.rental_bond_pathway
+  l.listing_fee_paid, l.terms_accepted, l.rental_bond_pathway,
+  l.suburb, l.postcode, l.price_cents, l.bedrooms, l.bathrooms, l.parking
   FROM property_listing l JOIN app_user u ON u.id = l.owner_user_id`;
 
 function toRecord(r: ListingRow, disclosures: DisclosureRow[]): ListingRecord {
@@ -35,6 +39,12 @@ function toRecord(r: ListingRow, disclosures: DisclosureRow[]): ListingRecord {
     id: r.id, ownerUserId: r.owner_user_id, ownerUserType: r.owner_user_type, jurisdiction: r.jurisdiction.trim(),
     status: r.status, title: r.title, propertyType: r.property_type, useClass: r.use_class,
     transactionType: r.transaction_type, address: r.address_text,
+    ...(r.suburb !== null ? { suburb: r.suburb } : {}),
+    ...(r.postcode !== null ? { postcode: r.postcode.trim() } : {}),
+    ...(r.price_cents !== null ? { priceCents: Number(r.price_cents) } : {}), // BIGINT arrives as a string
+    ...(r.bedrooms !== null ? { bedrooms: r.bedrooms } : {}),
+    ...(r.bathrooms !== null ? { bathrooms: r.bathrooms } : {}),
+    ...(r.parking !== null ? { parking: r.parking } : {}),
     disclosures: disclosures.map(d => ({
       key: d.disclosure_key, jurisdiction: d.jurisdiction.trim(), satisfied: d.satisfied,
       ...(d.evidence_reference ? { evidenceReference: d.evidence_reference } : {})
@@ -47,11 +57,12 @@ function toRecord(r: ListingRow, disclosures: DisclosureRow[]): ListingRecord {
   };
 }
 
-const COLS = "(id, owner_user_id, jurisdiction, transaction_type, use_class, property_type, title, address_text, status, created_at, updated_at, listing_fee_paid, terms_accepted, rental_bond_pathway)";
+const COLS = "(id, owner_user_id, jurisdiction, transaction_type, use_class, property_type, title, address_text, status, created_at, updated_at, listing_fee_paid, terms_accepted, rental_bond_pathway, suburb, postcode, price_cents, bedrooms, bathrooms, parking)";
 const params = (r: ListingRecord) => {
   const l = r.listing;
   return [l.id, l.ownerUserId, l.jurisdiction, l.transactionType, l.useClass, l.propertyType, l.title, l.address,
-    l.status, l.createdAt, l.updatedAt, r.listingFeePaid, r.termsAccepted, r.rentalBondPathway ?? null];
+    l.status, l.createdAt, l.updatedAt, r.listingFeePaid, r.termsAccepted, r.rentalBondPathway ?? null,
+    l.suburb ?? null, l.postcode ?? null, l.priceCents ?? null, l.bedrooms ?? null, l.bathrooms ?? null, l.parking ?? null];
 };
 
 /**
@@ -76,15 +87,17 @@ export function createPgListingRepository(db: Queryable): ListingRepository {
 
   return {
     async insert(r) {
-      await db.query(`INSERT INTO property_listing ${COLS} VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`, params(r));
+      await db.query(`INSERT INTO property_listing ${COLS} VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`, params(r));
     },
     async save(r) {
       const l = r.listing;
       await db.query(
         `UPDATE property_listing SET jurisdiction=$3, transaction_type=$4, use_class=$5, property_type=$6, title=$7,
-         address_text=$8, status=$9, updated_at=$10, listing_fee_paid=$11, terms_accepted=$12, rental_bond_pathway=$13 WHERE id=$1 AND owner_user_id=$2`,
+         address_text=$8, status=$9, updated_at=$10, listing_fee_paid=$11, terms_accepted=$12, rental_bond_pathway=$13,
+         suburb=$14, postcode=$15, price_cents=$16, bedrooms=$17, bathrooms=$18, parking=$19 WHERE id=$1 AND owner_user_id=$2`,
         [l.id, l.ownerUserId, l.jurisdiction, l.transactionType, l.useClass, l.propertyType, l.title, l.address,
-          l.status, l.updatedAt, r.listingFeePaid, r.termsAccepted, r.rentalBondPathway ?? null]
+          l.status, l.updatedAt, r.listingFeePaid, r.termsAccepted, r.rentalBondPathway ?? null,
+          l.suburb ?? null, l.postcode ?? null, l.priceCents ?? null, l.bedrooms ?? null, l.bathrooms ?? null, l.parking ?? null]
       );
     },
     async get(id) {
@@ -95,11 +108,17 @@ export function createPgListingRepository(db: Queryable): ListingRepository {
       if (!row) return undefined;
       return toRecord(row, (await disclosuresFor([row.id])).get(row.id) ?? []);
     },
-    async list() {
-      const res = await db.query(`${SELECT} ORDER BY l.created_at DESC`);
+    async search(q) {
+      const { where, params: p, orderBy } = buildSearch(q);
+      const count = await db.query(`SELECT count(*) AS n FROM property_listing l WHERE ${where}`, p);
+      const total = Number((count.rows[0] as { n: string | number }).n);
+      const res = await db.query(
+        `${SELECT} WHERE ${where} ORDER BY ${orderBy} LIMIT $${p.length + 1} OFFSET $${p.length + 2}`,
+        [...p, q.pageSize, (q.page - 1) * q.pageSize]
+      );
       const rows = res.rows as unknown as ListingRow[];
       const ds = await disclosuresFor(rows.map(r => r.id));
-      return rows.map(r => toRecord(r, ds.get(r.id) ?? []));
+      return { items: rows.map(r => toRecord(r, ds.get(r.id) ?? [])), total, page: q.page, pageSize: q.pageSize };
     },
     async listByOwner(ownerUserId) {
       const res = await db.query(`${SELECT} WHERE l.owner_user_id = $1 ORDER BY l.created_at DESC`, [ownerUserId]);

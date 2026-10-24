@@ -1,4 +1,6 @@
-import { BOND_PATHWAY_LABELS } from "./ui";
+import { useState } from "react";
+import "../styles/search.css";
+import { BOND_PATHWAY_LABELS, centsToInput } from "./ui";
 
 export type BondState = "idle" | "saving" | "saved" | "error";
 
@@ -9,10 +11,22 @@ export interface ListingDefaults {
   transactionType?: string;
   useClass?: string;
   propertyType?: string;
+  suburb?: string;
+  postcode?: string;
+  priceCents?: number;
+  bedrooms?: number;
+  bathrooms?: number;
+  parking?: number;
 }
 
-/** The six draft fields, shared by the create and edit pages. Read the values with FormData. */
+/** The draft fields, shared by the create and edit pages. Read the values with listingFormBody(FormData). */
 export function ListingFields({ defaults = {} }: { defaults?: ListingDefaults }) {
+  const [tx, setTx] = useState(defaults.transactionType ?? "sale");
+  const num = (name: string, label: string, v: number | undefined) => (
+    <label className="field">{label}
+      <input name={name} type="number" inputMode="numeric" min={0} max={20} step={1} defaultValue={v ?? ""} />
+    </label>
+  );
   return (
     <>
       <input name="title" placeholder="Title" maxLength={200} required defaultValue={defaults.title ?? ""} />
@@ -20,7 +34,7 @@ export function ListingFields({ defaults = {} }: { defaults?: ListingDefaults })
       <select name="jurisdiction" defaultValue={defaults.jurisdiction ?? "QLD"} aria-label="State">
         {["NSW", "VIC", "QLD", "WA", "SA", "TAS", "ACT", "NT"].map(j => <option key={j}>{j}</option>)}
       </select>
-      <select name="transactionType" defaultValue={defaults.transactionType ?? "sale"} aria-label="Sale or rent">
+      <select name="transactionType" value={tx} onChange={e => setTx(e.target.value)} aria-label="Sale or rent">
         <option value="sale">Sale</option>
         <option value="rent">Rental</option>
       </select>
@@ -31,6 +45,16 @@ export function ListingFields({ defaults = {} }: { defaults?: ListingDefaults })
       <select name="propertyType" defaultValue={defaults.propertyType ?? "house"} aria-label="Property type">
         {["house", "unit", "townhouse", "land", "office", "retail", "industrial", "warehouse", "hospitality", "other"].map(t => <option key={t}>{t}</option>)}
       </select>
+      <div className="listing-details">
+        <input name="suburb" placeholder="Suburb" maxLength={80} defaultValue={defaults.suburb ?? ""} aria-label="Suburb" autoComplete="address-level2" />
+        <input name="postcode" placeholder="Postcode" inputMode="numeric" pattern="[0-9]{4}" maxLength={4} defaultValue={defaults.postcode ?? ""} aria-label="Postcode" autoComplete="postal-code" />
+        <label className="field price-field">{tx === "rent" ? "Rent per week (AUD)" : "Asking price (AUD)"}
+          <input name="price" inputMode="decimal" placeholder={tx === "rent" ? "650" : "850000"} defaultValue={defaults.priceCents !== undefined ? centsToInput(defaults.priceCents) : ""} />
+        </label>
+        {num("bedrooms", "Bedrooms", defaults.bedrooms)}
+        {num("bathrooms", "Bathrooms", defaults.bathrooms)}
+        {num("parking", "Parking", defaults.parking)}
+      </div>
     </>
   );
 }

@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { BondPathwayField, ListingFields, type BondState, type ListingDefaults } from "../../fields";
-import { JSON_HEADERS } from "../../ui";
+import { JSON_HEADERS, listingFormBody } from "../../ui";
 
 type Loaded = ListingDefaults & { id: string; status: string };
 type Check = { allowed: boolean; reasons: string[] };
@@ -35,7 +35,9 @@ export default function EditListing() {
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    const body = Object.fromEntries(new FormData(e.currentTarget).entries());
+    const parsed = listingFormBody(new FormData(e.currentTarget));
+    if ("error" in parsed) { setError(parsed.error); return; }
+    const body = parsed.body;
     setBusy(true);
     setError("");
     setSaved(false);
