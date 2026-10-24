@@ -1,6 +1,8 @@
 import type { CaseKind, CaseState, TrustCheckState } from "../domain/staff-admin";
 import type { IdSubmission, IdStatus } from "../domain/id-verification";
 import type { StaffRole } from "../domain/staff-access";
+import type { TrustAccountDecision, TrustAccountEvidence } from "../domain/trust-account";
+import { checksToPerform } from "../domain/trust-verification";
 import type { Queryable } from "./db";
 
 const ROLES: readonly string[] = ["super_admin", "compliance", "accountant", "support", "technical", "reporting"];
@@ -80,6 +82,8 @@ export async function resolveCase(
 
 export interface TrustQueueRow {
   checkId: string; listingId: string; checkedAt: string; evidence: unknown; reasons: unknown;
+  /** awaiting_human_approval can be approved or rejected; needs_more_evidence and flagged_for_admin are to-do lists only. */
+  decision: string; checksToPerform: string[];
   firmName: string; tier: string; jurisdiction: string; accountName: string; bsb: string;
   newOrChanged: boolean; approvals: { staffId: string; outcome: "approve" | "reject" }[];
 }
@@ -94,12 +98,14 @@ export async function listTrustQueue(db: Queryable): Promise<TrustQueueRow[]> {
     `SELECT c.id, c.listing_id, c.checked_at, c.evidence, c.reasons, f.name AS firm_name, f.tier, f.jurisdiction,
             a.account_name, a.bsb, a.details_fingerprint, a.last_human_approved_fingerprint
        FROM trust_account_check c JOIN trust_account a ON a.id = c.trust_account_id JOIN law_firm f ON f.id = a.firm_id
-      WHERE c.decision = 'awaiting_human_approval' AND ${NOT_SUPERSEDED} ORDER BY c.checked_at LIMIT 100`
+      WHERE c.decision IN ('awaiting_human_approval','needs_more_evidence','flagged_for_admin') AND ${NOT_SUPERSEDED} ORDER BY c.checked_at LIMIT 100`
   );
   const ids = res.rows.map(r => String(r["id"]));
   const ap = ids.length ? await db.query(`SELECT check_id, staff_user_id, outcome FROM trust_account_approval WHERE check_id = ANY($1::uuid[])`, [ids]) : { rows: [] };
   return res.rows.map(r => ({
     checkId: String(r["id"]), listingId: String(r["listing_id"]), checkedAt: iso(r["checked_at"]), evidence: r["evidence"], reasons: r["reasons"],
+    decision: String(r["decision"]),
+    checksToPerform: checksToPerform(r["decision"] as TrustAccountDecision["kind"], (r["evidence"] ?? {}) as Partial<TrustAccountEvidence>),
     firmName: String(r["firm_name"]), tier: String(r["tier"]), jurisdiction: String(r["jurisdiction"]),
     accountName: String(r["account_name"]), bsb: String(r["bsb"]),
     newOrChanged: r["last_human_approved_fingerprint"] == null || r["last_human_approved_fingerprint"] !== r["details_fingerprint"],

@@ -7,7 +7,7 @@ export type ListingAction = "enquire" | "save";
 /** Where a listing action leads once the visitor is signed in. Null for a malformed listing id. */
 export function actionPath(listingId: string, action: ListingAction): string | null {
   if (!UUID.test(listingId)) return null;
-  return action === "enquire" ? `/listings/${listingId}/enquire` : `/buyer/saved-searches?listing=${listingId}`;
+  return action === "enquire" ? `/listings/${listingId}/enquire` : `/listings/${listingId}`;
 }
 
 /**

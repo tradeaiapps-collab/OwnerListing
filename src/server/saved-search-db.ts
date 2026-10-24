@@ -15,7 +15,7 @@ const criteriaOf = (i: SavedSearchInput): string => JSON.stringify({
 });
 
 /** Re-validates stored criteria with the same parser, so a malformed row is skipped rather than trusted. */
-function toSearch(row: Record<string, unknown>): SavedSearch | undefined {
+export function toSearch(row: Record<string, unknown>): SavedSearch | undefined {
   const parsed = parseSavedSearchInput(row["criteria"]);
   if (!parsed.ok || typeof row["id"] !== "string" || typeof row["buyer_user_id"] !== "string") return undefined;
   return { id: row["id"], buyerUserId: row["buyer_user_id"], active: row["active"] === true, ...parsed.value };
