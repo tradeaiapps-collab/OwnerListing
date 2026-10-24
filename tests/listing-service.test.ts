@@ -5,6 +5,7 @@ import {
   publishListing, searchPublished, updateDraft,
   type Actor, type DraftInput, type ListingServiceDeps
 } from "../src/domain/listing-service";
+import type { SearchQuery } from "../src/domain/listing-search";
 
 const owner: Actor = { userId: "owner-1", userType: "owner" };
 const other: Actor = { userId: "owner-2", userType: "owner" };
@@ -120,6 +121,8 @@ describe("publishing", () => {
   });
 });
 
+const q = (over: Partial<SearchQuery> = {}): SearchQuery => ({ sort: "newest", page: 1, pageSize: 12, ...over });
+
 describe("searchPublished", () => {
   it("returns only published listings, filtered, newest first", async () => {
     const a = await createDraft(deps, owner, input);
@@ -129,9 +132,9 @@ describe("searchPublished", () => {
       const rec = await repo.get(l.id);
       await repo.save({ ...rec!, listing: { ...rec!.listing, status: "published" } });
     }
-    expect((await searchPublished(deps, {})).map(l => l.title)).toEqual(["Shop", "Family home"]);
-    expect((await searchPublished(deps, { useClass: "commercial" })).map(l => l.title)).toEqual(["Shop"]);
-    expect(await searchPublished(deps, { jurisdiction: "NSW" })).toEqual([]);
+    expect((await searchPublished(deps, q())).items.map(l => l.title)).toEqual(["Shop", "Family home"]);
+    expect((await searchPublished(deps, q({ useClass: "commercial" }))).items.map(l => l.title)).toEqual(["Shop"]);
+    expect((await searchPublished(deps, q({ jurisdiction: "NSW" }))).items).toEqual([]);
   });
 });
 

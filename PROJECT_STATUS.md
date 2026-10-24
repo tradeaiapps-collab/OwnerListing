@@ -153,3 +153,6 @@ Built 24 Oct 2026 (feat/plans-checkout): public /plans, staff /staff/pricing (pr
 16. SECURITY REVIEW: independent review done 24 Oct 2026, no critical or high findings. Open: staff first-login linking by email match needs the Google Workspace domain (hd claim) from the owner.
 17. KNOWN GAPS: upload memory use; large video upload needs streaming or presigned upload; file download not built; browser check of pages at 375, 768 and 1280 px not done (see item 10).
 18. REMAINING QUEUE: (a) choose storage and malware scanner providers (upload returns 503 until then); (b) choose an email/SMS provider so alerts can send; (c) payments (blocked on Westpac PayWay, no live keys); (d) owner to supply the Workspace domain for staff linking; (e) file download; (f) browser check (see item 10).
+
+## Listing price, rooms and browse (24 Oct 2026)
+Listings now carry optional suburb, postcode, priceCents (sale price, or rent per week, AUD cents), bedrooms, bathrooms and parking (db/20261024150000_listing_price_beds.sql; src/domain/listing-details.ts). Browse is filtered, sorted and paged in the repository (src/domain/listing-search.ts, SQL in src/server/listing-search-sql.ts, parameters only). Price filters need sale or rent chosen. Open: price is not yet required to publish (compliance/product decision); Postgres-backed tests need CI to run the new migration.

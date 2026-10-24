@@ -1,7 +1,9 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
+import { formatPrice } from "../../../src/domain/listing-details";
 import "../../styles/documents.css";
+import "../../styles/search.css";
 
 interface Listing {
   id: string;
@@ -11,6 +13,12 @@ interface Listing {
   transactionType: string;
   useClass: string;
   propertyType: string;
+  suburb?: string;
+  postcode?: string;
+  priceCents?: number;
+  bedrooms?: number;
+  bathrooms?: number;
+  parking?: number;
   status: string;
   disclosures: { key: string; satisfied: boolean }[];
   updatedAt: string;
@@ -92,12 +100,17 @@ export default function ListingDetail() {
     <main>
       {back}
       <h1>{listing.title}</h1>
+      {listing.priceCents !== undefined && <p className="detail-price">{formatPrice(listing.priceCents, listing.transactionType as "sale" | "rent")}</p>}
       <p>{listing.address}</p>
       <dl className="details">
         <dt>State</dt><dd>{listing.jurisdiction}</dd>
         <dt>Offer</dt><dd>{listing.transactionType === "sale" ? "For sale" : "For rent"}</dd>
         <dt>Use</dt><dd>{cap(listing.useClass)}</dd>
         <dt>Property</dt><dd>{cap(listing.propertyType)}</dd>
+        {listing.suburb && <><dt>Suburb</dt><dd>{listing.suburb}{listing.postcode ? ` ${listing.postcode}` : ""}</dd></>}
+        {listing.bedrooms !== undefined && <><dt>Bedrooms</dt><dd>{listing.bedrooms}</dd></>}
+        {listing.bathrooms !== undefined && <><dt>Bathrooms</dt><dd>{listing.bathrooms}</dd></>}
+        {listing.parking !== undefined && <><dt>Parking</dt><dd>{listing.parking}</dd></>}
       </dl>
       {provided.length > 0 && (
         <section aria-label="Disclosures">

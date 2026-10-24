@@ -1,6 +1,7 @@
 import pg from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createDraft, publishListing, searchPublished, updateDraft, type ListingServiceDeps } from "../src/domain/listing-service";
+import { parseSearchQuery } from "../src/domain/listing-search";
 import { appendAuditPg, createPgListingRepository, type Queryable } from "../src/server/db";
 import { upsertGoogleUser } from "../src/server/users";
 
@@ -77,8 +78,8 @@ describe.skipIf(!url)("Postgres listing repository", () => {
     const ready = { ...deps, trustAccountFor: async () => ({ kind: "approved" as const, reasons: [] }) };
     const live = await publishListing(ready, actor, l.id, false);
     expect(live.ok && live.value.listing.status).toBe("published");
-    const found = await searchPublished(deps, { jurisdiction: "NT" });
-    expect(found.some(x => x.id === l.id)).toBe(true);
+    const found = await searchPublished(deps, parseSearchQuery(new URLSearchParams({ jurisdiction: "NT" })));
+    expect(found.items.some(x => x.id === l.id)).toBe(true);
     const events = await db.query("SELECT event_type FROM audit_event WHERE aggregate_id = $1 ORDER BY occurred_at", [l.id]);
     expect(events.rows.map(r => r["event_type"])).toContain("listing.published");
   });
