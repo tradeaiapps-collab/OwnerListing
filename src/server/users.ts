@@ -1,7 +1,8 @@
-import type { Queryable } from "./db";
+import { randomUUID } from "node:crypto";
+import { appendAuditPg, type Queryable } from "./db";
 import type { GoogleIdentity } from "./auth/google";
 
-export interface SignedInUser { id: string; userType: "owner" | "agent" | "buyer" }
+export interface SignedInUser { id: string; userType: "owner" | "agent" | "buyer" | "vendor" }
 
 /**
  * Finds or creates the user for a verified Google identity, keyed on the Google subject id (not email).
@@ -23,4 +24,32 @@ export async function upsertGoogleUser(db: Queryable, who: GoogleIdentity, reque
   const type = row["user_type"];
   if ((type !== "owner" && type !== "agent" && type !== "buyer") || typeof row["id"] !== "string") return null;
   return { id: row["id"], userType: type };
+}
+
+/**
+ * Contractor (vendor) sign-in for a verified Google identity. Vendor accounts are pre-registered; this never creates an account and
+ * never sets a role. A known Google subject signs in directly. An account not yet linked to Google is linked once, by its
+ * pre-registered email (Google has verified it), only while google_sub is empty and the account is an active vendor. Anything else is denied.
+ */
+export async function vendorSignIn(db: Queryable, who: GoogleIdentity): Promise<{ id: string } | null> {
+  const bySub = await db.query(`SELECT id FROM app_user WHERE google_sub = $1 AND user_type = 'vendor' AND status = 'active'`, [who.sub]);
+  let row = bySub.rows[0];
+  if (!row) {
+    const linked = await db.query(
+      `UPDATE app_user SET google_sub = $1
+        WHERE email = $2 AND google_sub IS NULL AND user_type = 'vendor' AND status = 'active'
+        RETURNING id`,
+      [who.sub, who.email]
+    );
+    row = linked.rows[0];
+  }
+  const id = row?.["id"];
+  const ok = typeof id === "string";
+  const who_ = ok ? id : "anonymous";
+  await appendAuditPg(db, {
+    id: randomUUID(), occurredAt: new Date().toISOString(), actorType: ok ? "user" : "system", actorId: who_,
+    aggregateType: "vendor_session", aggregateId: who_, eventType: ok ? "vendor.signed_in" : "vendor.signin_denied",
+    correlationId: randomUUID(), payload: ok ? {} : { reason: "not_vendor" }
+  });
+  return ok ? { id } : null;
 }
