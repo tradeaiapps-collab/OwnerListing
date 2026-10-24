@@ -16,11 +16,12 @@ CREATE TABLE offer_link_request (
   decided_at TIMESTAMPTZ,
   -- Set when issued. The link row itself (offer_link) keeps only the hash.
   token_hash CHAR(64),
-  -- SECURITY REVIEW: the raw token is held here, in plaintext, so the buyer can open the link from the thread later.
-  -- It is single-use, expires in 24 hours, and only works for this buyer signed in. It is returned only while the
-  -- offer_link row is unused and unexpired. Review whether to encrypt it or shorten its life.
-  delivered_token TEXT,
-  CHECK ((status = 'issued') = (token_hash IS NOT NULL AND delivered_token IS NOT NULL)),
+  -- The raw token is never stored. This is AES-256-GCM ciphertext ("v1." + base64(iv | ciphertext+tag)), sealed with
+  -- the server key OFFER_LINK_TOKEN_KEY and bound to this row's id. Random IV per row. Set to NULL as soon as the link
+  -- is used or has expired, and the app refuses to issue or show a link when the key is unset.
+  link_ciphertext TEXT,
+  CHECK ((status = 'issued') = (token_hash IS NOT NULL)),
+  CHECK (link_ciphertext IS NULL OR status = 'issued'),
   CHECK ((status = 'requested') = (decided_at IS NULL))
 );
 -- One open request per thread.

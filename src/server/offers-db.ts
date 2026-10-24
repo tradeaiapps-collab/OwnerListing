@@ -41,6 +41,8 @@ export async function submitOfferPg(db: Queryable, o: NewOffer): Promise<{ id: s
        UPDATE offer_link SET used_at = $2
        WHERE token_hash = $1 AND listing_id = $3 AND used_at IS NULL AND expires_at > $2
        RETURNING token_hash, buyer_user_id
+     ), wipe AS (
+       UPDATE offer_link_request SET link_ciphertext = NULL WHERE token_hash IN (SELECT token_hash FROM spent)
      )
      INSERT INTO formal_offer (listing_id, buyer_user_id, price_cents, conditions, settlement_days, deposit_cents, confirmed_final, link_token_hash)
      SELECT $3, buyer_user_id, $4, $5::jsonb, $6, $7, TRUE, token_hash FROM spent

@@ -11,6 +11,7 @@ import {
 } from "../src/domain/offer-link-request";
 import { hashToken } from "../src/domain/offer-intake";
 
+const KEY = Buffer.alloc(32, 7).toString("base64");
 const state = vi.hoisted(() => ({ actor: null as Actor | null, deps: null as OfferLinkDeps | null }));
 vi.mock("../src/server/context", () => ({ getActor: async () => state.actor }));
 vi.mock("../src/server/enquiry-db", () => ({ getOfferLinkDeps: () => state.deps }));
@@ -57,7 +58,7 @@ beforeEach(async () => {
     appendAudit: async e => { audit.push(e); },
     now: () => new Date(clock).toISOString(),
     newId: () => `99999999-9999-4999-8999-${String(++n).padStart(12, "0")}`,
-    offerLinks: createInMemoryOfferLinkRepository(),
+    offerLinks: createInMemoryOfferLinkRepository(KEY),
     eligibleBuyer: async b => eligible.has(b)
   };
   state.deps = deps;
@@ -92,6 +93,12 @@ describe("buyer requests, owner issues", () => {
     expect(msgs.some(m => /accept/i.test(m.body.replace(/approved your request/i, "")))).toBe(false);
     expect(audit.map(e => e.eventType)).toEqual(expect.arrayContaining(["offer_link.requested", "offer_link.issued"]));
     expect(JSON.stringify(audit)).not.toMatch(/"token"/);
+  });
+  it("refuses to issue when the server key is unset, and stores nothing", async () => {
+    const keyless = { ...deps, offerLinks: createInMemoryOfferLinkRepository(undefined) };
+    await requestOfferLink(keyless, buyer, enquiryId);
+    expect(await issueOfferLinkFromThread(keyless, owner, enquiryId)).toMatchObject({ ok: false, code: "unavailable" });
+    expect((await keyless.offerLinks.latest(enquiryId))?.status).toBe("requested");
   });
   it("stops showing the link once it expires", async () => {
     await requestOfferLink(deps, buyer, enquiryId);

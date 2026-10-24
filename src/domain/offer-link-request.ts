@@ -2,6 +2,7 @@ import { forbiddenFor } from "./access";
 import { canContactSeller, nextVerificationStep } from "./buyer";
 import { participantEnquiry, type Enquiry, type EnquiryDeps, type EnquiryMessage } from "./enquiry-service";
 import type { Actor, Failure, Result } from "./listing-service";
+import { OfferLinkKeyError, openOfferToken, sealOfferToken } from "./offer-link-crypto";
 import { createOfferLink, type OfferLinkRecord } from "./offer-intake";
 import { OFFER_LINK_ISSUE_RATE, OFFER_LINK_REQUEST_RATE, withinLimit } from "./rate-limit";
 
@@ -15,9 +16,9 @@ export interface OfferLinkRequestRepository {
   latest(enquiryId: string): Promise<OfferLinkRequest | undefined>;
   /** Guarded: only an open request can be declined. False means it changed under us. */
   decline(id: string, at: string): Promise<boolean>;
-  /** Guarded and atomic: marks the open request issued and stores the link (hash) together, or does neither. */
+  /** Guarded and atomic: marks the open request issued and stores the link (hash) and the sealed token together, or does neither. Throws OfferLinkKeyError, storing nothing, when the key is unusable. */
   issue(id: string, link: OfferLinkRecord, token: string, at: string): Promise<boolean>;
-  /** The delivered link only while it is unused and unexpired. */
+  /** The delivered link only while it is unused and unexpired. Undefined (never the token) when the server key is unusable or the data fails its integrity check. */
   liveLink(enquiryId: string, now: string): Promise<{ token: string; listingId: string; expiresAt: string } | undefined>;
 }
 
@@ -106,7 +107,13 @@ export async function issueOfferLinkFromThread(deps: OfferLinkDeps, actor: Actor
   }
   const now = deps.now();
   const { token, record } = await createOfferLink(enquiry.listingId, enquiry.buyerUserId, now);
-  if (!(await deps.offerLinks.issue(request.id, record, token, now))) return fail("conflict", "That request was already answered.");
+  try {
+    if (!(await deps.offerLinks.issue(request.id, record, token, now))) return fail("conflict", "That request was already answered.");
+  } catch (e) {
+    // No key, no link: nothing was stored or issued.
+    if (e instanceof OfferLinkKeyError) return fail("unavailable", "Offer links are temporarily unavailable.");
+    throw e;
+  }
   const m = await say(deps, enquiry, actor.userId, ISSUED_TEXT);
   await audit(deps, actor.userId, enquiryId, "offer_link.issued", { requestId: request.id, messageId: m.id, expiresAt: record.expiresAt });
   return { ok: true, value: { expiresAt: record.expiresAt } };
@@ -144,9 +151,9 @@ export async function offerLinkState(deps: OfferLinkDeps, actor: Actor, enquiryI
   return { ok: true, value: state };
 }
 
-export function createInMemoryOfferLinkRepository(): OfferLinkRequestRepository {
+export function createInMemoryOfferLinkRepository(key?: string): OfferLinkRequestRepository {
   const rows: OfferLinkRequest[] = [];
-  const links = new Map<string, { link: OfferLinkRecord; token: string }>();
+  const links = new Map<string, { link: OfferLinkRecord; sealed: string | null }>();
   const byEnquiry = new Map<string, string>();
   return {
     async open(r) {
@@ -165,17 +172,22 @@ export function createInMemoryOfferLinkRepository(): OfferLinkRequestRepository 
     async issue(id, link, token, at) {
       const r = rows.find(x => x.id === id && x.status === "requested");
       if (!r) return false;
+      const sealed = await sealOfferToken(token, key, id);
       r.status = "issued";
       r.decidedAt = at;
-      links.set(link.tokenHash, { link, token });
+      links.set(link.tokenHash, { link, sealed });
       byEnquiry.set(r.enquiryId, link.tokenHash);
       return true;
     },
     async liveLink(enquiryId, now) {
       const h = byEnquiry.get(enquiryId);
       const x = h ? links.get(h) : undefined;
-      if (!x || x.link.usedAt !== undefined || x.link.expiresAt <= now) return undefined;
-      return { token: x.token, listingId: x.link.listingId, expiresAt: x.link.expiresAt };
+      if (!x) return undefined;
+      if (x.link.usedAt !== undefined || x.link.expiresAt <= now) { x.sealed = null; return undefined; }
+      const reqId = rows.find(r => r.enquiryId === enquiryId && r.status === "issued")?.id;
+      const token = x.sealed && reqId ? await openOfferToken(x.sealed, key, reqId).catch(() => undefined) : undefined;
+      if (token === undefined) return undefined;
+      return { token, listingId: x.link.listingId, expiresAt: x.link.expiresAt };
     }
   };
 }
