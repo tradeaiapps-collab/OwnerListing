@@ -40,6 +40,7 @@ const EXE = Uint8Array.from([0x4d, 0x5a, 0x90, 0, 3, 0, 0, 0, 4, 0, 0, 0]); // "
 let listingId: string;
 let stored: { key: string; type: string }[];
 let scanned: number;
+let hasProperty: boolean;
 let added: { doc: NewDocument; supersede?: DocumentRecord }[];
 let storage: ObjectStoragePort;
 let scanner: MalwareScanPort;
@@ -59,7 +60,11 @@ beforeEach(async () => {
     assignments: [{ id: uid(50), listingId, ownerUserId: owner.userId, contractorUserId: inspector.userId, kind: "inspector", status: "approved" }]
   });
   added = [];
-  const store: UploadStore = { ...mem.store, async addDocument(doc, supersede) { added.push({ doc, ...(supersede ? { supersede } : {}) }); } };
+  hasProperty = true;
+  const store: UploadStore = {
+    ...mem.store, async listingHasProperty() { return hasProperty; },
+    async addDocument(doc, supersede) { added.push({ doc, ...(supersede ? { supersede } : {}) }); }
+  };
   state.store = store;
   stored = []; scanned = 0;
   storage = { configured: true, async put(key, _b, type) { stored.push({ key, type }); } };
@@ -247,5 +252,58 @@ describe("POST /api/listings/[id]/documents", () => {
     expect(mod["DELETE"]).toBeUndefined();
     expect(mod["PUT"]).toBeUndefined();
     expect(mod["PATCH"]).toBeUndefined();
+  });
+});
+
+describe("follow-ups: no body read before cheap checks, missing property, orphaned object", () => {
+  const spyUpload = () => {
+    const form = new FormData();
+    form.set("file", new File([PDF as Uint8Array<ArrayBuffer>], "scan.pdf", { type: "application/pdf" }));
+    form.set("kind", "contract"); form.set("visibility", "owner_only");
+    const req = new Request("http://x/api", { method: "POST", body: form, headers: { "content-length": "100000", origin: "http://test" } });
+    const spy = vi.spyOn(req, "formData");
+    return { spy, res: POST(req, { params: Promise.resolve({ id: listingId }) }) };
+  };
+
+  it("never reads the body for a wrong-role user", async () => {
+    state.actor = stranger;
+    const { spy, res } = spyUpload();
+    expect((await res).status).toBe(403);
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it("never reads the body when storage is not configured", async () => {
+    state.ports = { storage: createUnconfiguredStorage(), scanner };
+    const { spy, res } = spyUpload();
+    expect((await res).status).toBe(503);
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it("never reads the body when the scanner is not configured", async () => {
+    state.ports = { storage, scanner: createUnconfiguredScanner() };
+    const { spy, res } = spyUpload();
+    expect((await res).status).toBe(503);
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it("returns 409 when the listing has no property record, storing nothing", async () => {
+    hasProperty = false;
+    const res = await upload(PDF);
+    expect(res.status).toBe(409);
+    expect((await res.json()).error).toMatch(/no property record/i);
+    expect(stored).toHaveLength(0);
+    expect(added).toHaveLength(0);
+  });
+
+  it("logs the orphaned key (no delete) when the record insert fails", async () => {
+    const base = state.store as UploadStore;
+    state.store = { ...base, async addDocument() { throw new Error("db down"); } };
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    const res = await upload(PDF);
+    expect(res.status).toBe(503);
+    expect(stored).toHaveLength(1);
+    expect(log).toHaveBeenCalledWith(expect.stringContaining(stored[0]!.key));
+    expect("delete" in storage).toBe(false);
+    log.mockRestore();
   });
 });

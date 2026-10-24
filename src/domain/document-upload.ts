@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import type { MalwareScanPort } from "../adapters/malware-scan";
 import type { ObjectStoragePort } from "../adapters/object-storage";
 import type { DocumentStore } from "./document-service";
-import { amendDocument, canUploadDocument, validateUpload, type DocumentKind, type DocumentRecord, type Visibility } from "./documents";
+import { amendDocument, canUploadAnyDocument, canUploadDocument, validateUpload, type DocumentKind, type DocumentRecord, type Visibility } from "./documents";
 import { sniffMime } from "./file-sniff";
 import type { Actor, ListingServiceDeps, Result } from "./listing-service";
 
@@ -21,11 +21,35 @@ export interface UploadInput {
 export interface NewDocument { record: DocumentRecord; storageKey: string; sha256: string; declaredMime: string; sizeBytes: number }
 
 /** Insert and supersede only. There is no delete here. */
-export type UploadStore = DocumentStore & { addDocument(d: NewDocument, supersede?: DocumentRecord): Promise<void> };
+export type UploadStore = DocumentStore & {
+  addDocument(d: NewDocument, supersede?: DocumentRecord): Promise<void>;
+  /** False when the listing has no property record (property_document.property_id is required). */
+  listingHasProperty(listingId: string): Promise<boolean>;
+};
 
 const VISIBILITIES: readonly Visibility[] = ["public", "parties", "owner_only"];
 const bad = (message: string): UploadResult => ({ ok: false, code: "invalid", message });
 const unavailable = (message = "File upload is not available right now."): UploadResult => ({ ok: false, code: "unavailable", message });
+
+/**
+ * Cheap checks that run BEFORE the request body is read: providers configured, listing exists, actor has an upload role on it.
+ * Returns undefined when the upload may proceed to reading the body.
+ */
+export async function precheckUpload(
+  deps: ListingServiceDeps, store: UploadStore,
+  ports: { storage: ObjectStoragePort; scanner: MalwareScanPort },
+  actor: Actor, listingId: string
+): Promise<UploadResult | undefined> {
+  if (!ports.storage.configured || !ports.scanner.configured) return unavailable("File upload is not available yet.");
+  const rec = await deps.repo.get(listingId);
+  if (!rec) return { ok: false, code: "not_found", message: "Listing not found." };
+  const ownerUserId = rec.listing.ownerUserId;
+  const assignments = actor.userId === ownerUserId ? [] : await store.assignmentsFor(listingId, actor.userId);
+  if (!canUploadAnyDocument(actor.userId, ownerUserId, listingId, assignments)) {
+    return { ok: false, code: "forbidden", message: "You cannot add files to this listing." };
+  }
+  return undefined;
+}
 
 /**
  * Order: role, provider readiness, content checks, malware scan, store bytes, record.
@@ -45,6 +69,7 @@ export async function uploadDocument(
     return { ok: false, code: "forbidden", message: "You cannot add this kind of file to this listing." };
   }
   if (!ports.storage.configured || !ports.scanner.configured) return unavailable("File upload is not available yet.");
+  if (!(await store.listingHasProperty(listingId))) return { ok: false, code: "conflict", message: "This listing has no property record." };
   if (!VISIBILITIES.includes(input.visibility)) return bad("Unknown visibility.");
   if (actor.userId !== ownerUserId && input.visibility !== "parties") return bad("Files added by contractors are shared with the parties only.");
 
@@ -84,6 +109,13 @@ export async function uploadDocument(
   const record: DocumentRecord = amended
     ? { ...amended.next, visibility: input.visibility }
     : { id, listingId, ownerUserId, kind: input.kind, uploadedBy: actor.userId, visibility: input.visibility, status: "active" };
-  await store.addDocument({ record, storageKey, sha256, declaredMime: real, sizeBytes: input.bytes.length }, amended?.previous);
+  try {
+    await store.addDocument({ record, storageKey, sha256, declaredMime: real, sizeBytes: input.bytes.length }, amended?.previous);
+  } catch {
+    // The storage port has no delete (and must not gain one for published files), so the written object is left in place.
+    // Log the key only so the orphan can be reviewed; it is not referenced by any record and is never served.
+    console.error(`document upload: record insert failed, orphaned storage key ${storageKey}`);
+    return unavailable();
+  }
   return { ok: true, value: { id } };
 }
