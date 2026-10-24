@@ -354,7 +354,8 @@ function colourVars(c: ModeColours): string {
  * object that does not pass is replaced by the defaults, so even a corrupted database row cannot put text into the stylesheet.
  */
 export function buildThemeCss(settings: ThemeSettings): string {
-  const t = validateTheme(settings).ok ? settings : DEFAULT_THEME;
+  const checked = validateTheme(settings);
+  const t = checked.ok ? checked.value : DEFAULT_THEME; // the normalised copy (trimmed, lower-case hex), never the raw input
   const f = DENSITY_FACTOR[t.layout.density];
   const body = FONT_BY_ID.get(t.typography.bodyFont)!, head = FONT_BY_ID.get(t.typography.headingFont)!;
   const btn = BUTTON[t.layout.buttonSize];

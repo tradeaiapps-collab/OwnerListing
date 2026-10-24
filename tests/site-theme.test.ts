@@ -45,6 +45,13 @@ describe("colours accept hex only", () => {
     expect(css).not.toContain("display:none");
     expect(css).toBe(buildThemeCss(DEFAULT_THEME));
   });
+  it("the CSS is built from the normalised copy, not the raw input (padding and upper-case hex are cleaned)", () => {
+    const padded = mutate(t => { t.colours.light.bg = " #FFFFFF\n"; });
+    expect(validateTheme(padded).ok).toBe(true);
+    const css = buildThemeCss(padded as ThemeSettings);
+    expect(css).toContain("--bg:#ffffff;");
+    expect(css).not.toMatch(/[A-F]{6}|\n/);
+  });
 });
 
 describe("contrast (WCAG AA)", () => {
