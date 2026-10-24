@@ -33,8 +33,12 @@ export interface IdImageStore {
   /** Atomic: true only if the claim rules still hold at write time. */
   claim(submissionId: string, staffId: string, ttlMs: number): Promise<boolean>;
   image(submissionId: string, part: IdImagePart): Promise<StoredImage | null>;
-  /** Audit row in id_review_access. Must succeed before any byte is shown. */
-  recordView(submissionId: string, staffId: string, part: IdImagePart): Promise<void>;
+  /**
+   * Audit row in id_review_access: "view" is written before storage is read (must succeed before any byte is shown);
+   * "shown" after the image decrypted and passed its hash check, just before it is sent.
+   */
+  recordView(submissionId: string, staffId: string, part: IdImagePart, stage: "view" | "shown"): Promise<void>;
+  /** Parts actually shown (stage "shown") to this reviewer since the time given. A view that failed does not count. */
   viewedParts(submissionId: string, staffId: string, sinceIso: string): Promise<IdImagePart[]>;
   dueForDeletion(approvedBeforeIso: string, rejectedBeforeIso: string, limit: number): Promise<{ id: string; userId: string; keys: string[] }[]>;
   /** Clears keys and hashes and sets images_deleted_at; logs images_deleted. */
@@ -194,7 +198,7 @@ export async function viewIdImage(d: IdImageDeps, staffId: string, submissionId:
   if (!s || s.deleted || !s.parts.includes(p) || !holdsClaim(s, staffId, nowMs(d))) return NOT_FOUND;
   const img = await d.store.image(submissionId, p);
   if (!img) return NOT_FOUND;
-  try { await d.store.recordView(submissionId, staffId, p); } catch { return fail("unavailable", "Could not record the view, so the image is not shown."); }
+  try { await d.store.recordView(submissionId, staffId, p, "view"); } catch { return fail("unavailable", "Could not record the view, so the image is not shown."); }
   let sealed: Uint8Array;
   try { sealed = await d.storage.get(img.key); } catch { return fail("unavailable", "The image could not be read."); }
   const plain = openIdImage(sealed, d.key, submissionId, p, img.key);
@@ -202,6 +206,7 @@ export async function viewIdImage(d: IdImageDeps, staffId: string, submissionId:
     await d.store.log({ event: "integrity_failed", submissionId, staffId });
     return fail("unavailable", "The image failed its integrity check and is not shown.");
   }
+  try { await d.store.recordView(submissionId, staffId, p, "shown"); } catch { plain.fill(0); return fail("unavailable", "Could not record the view, so the image is not shown."); }
   return { ok: true, value: { bytes: plain, mime: img.mime } };
 }
 

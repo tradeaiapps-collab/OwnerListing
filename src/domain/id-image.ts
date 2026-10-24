@@ -102,34 +102,69 @@ const concat = (parts: Uint8Array[]) => {
 };
 const find = (hay: Uint8Array, needle: string) => Buffer.from(hay).indexOf(Buffer.from(needle, "latin1")) !== -1;
 
-/** JPEG: drop every APPn except JFIF (APP0), ICC profile (APP2) and Adobe (APP14), and all comments. Lossless (no re-encode). */
+/** Largest image a reviewer's browser is asked to decode (a tiny file can declare a huge canvas: decompression bomb). */
+export const MAX_ID_IMAGE_SIDE = 16_384;
+export const MAX_ID_IMAGE_PIXELS = 120_000_000;
+const tooBig = (w: number, h: number) => w > MAX_ID_IMAGE_SIDE || h > MAX_ID_IMAGE_SIDE || w * h > MAX_ID_IMAGE_PIXELS;
+const DAMAGED = "The photo file is damaged.";
+const TOO_BIG = "This photo is too large. Take a new photo from this page.";
+
+/** Image-structure markers (SOFn, DHT, DAC, DQT, DRI, DNL, DHP, EXP, SOS) plus JFIF, ICC and Adobe. Every other APPn, COM and JPGn is dropped. */
+function keepJpegSegment(marker: number, body: Uint8Array): boolean {
+  if (marker === 0xe0) return ascii(body, 0, 5) === "JFIF\0" || ascii(body, 0, 5) === "JFXX\0";
+  if (marker === 0xe2) return ascii(body, 0, 12) === "ICC_PROFILE\0";
+  if (marker === 0xee) return ascii(body, 0, 5) === "Adobe";
+  return marker >= 0xc0 && marker <= 0xdf;
+}
+const isSof = (m: number) => m >= 0xc0 && m <= 0xcf && m !== 0xc4 && m !== 0xc8 && m !== 0xcc;
+
+/**
+ * JPEG: walks every segment, including those between and after scans (progressive files), keeps image segments only and
+ * stops at EOI, so anything after it (a motion-photo video, a second image, an appended ZIP or PDF) is dropped. Lossless.
+ */
 function cleanJpeg(b: Uint8Array): CleanResult {
   const out: Uint8Array[] = [b.subarray(0, 2)];
-  let i = 2;
+  let i = 2, scans = 0;
   for (;;) {
-    if (i + 4 > b.length || b[i] !== 0xff) return bad("The photo file is damaged.");
+    if (i + 2 > b.length || b[i] !== 0xff) return bad(DAMAGED);
     let m = i + 1;
     while (m < b.length && b[m] === 0xff) m++;
+    if (m >= b.length) return bad(DAMAGED);
     const marker = b[m]!;
-    const lenAt = m + 1;
-    if (marker === 0xd8 || marker === 0xd9 || (marker >= 0xd0 && marker <= 0xd7) || marker === 0x01 || lenAt + 2 > b.length) {
-      return bad("The photo file is damaged.");
+    if (marker === 0xd9) {
+      if (scans === 0) return bad(DAMAGED);
+      out.push(new Uint8Array([0xff, 0xd9]));
+      break;
     }
+    const lenAt = m + 1;
+    if (marker === 0xd8 || (marker >= 0xd0 && marker <= 0xd7) || marker === 0x01 || marker === 0x00 || lenAt + 2 > b.length) return bad(DAMAGED);
     const len = (b[lenAt]! << 8) | b[lenAt + 1]!;
-    if (len < 2 || lenAt + len > b.length) return bad("The photo file is damaged.");
-    if (marker === 0xda) { out.push(new Uint8Array([0xff, 0xda]), b.subarray(lenAt)); break; }
+    if (len < 2 || lenAt + len > b.length) return bad(DAMAGED);
     const body = b.subarray(lenAt + 2, lenAt + len);
-    const keep =
-      (marker < 0xe0 || marker > 0xef) && marker !== 0xfe
-        ? true
-        : (marker === 0xe0 && (ascii(body, 0, 5) === "JFIF\0" || ascii(body, 0, 5) === "JFXX\0"))
-          || (marker === 0xe2 && ascii(body, 0, 12) === "ICC_PROFILE\0")
-          || (marker === 0xee && ascii(body, 0, 5) === "Adobe");
-    if (keep) out.push(new Uint8Array([0xff, marker]), b.subarray(lenAt, lenAt + len));
+    if (isSof(marker)) {
+      if (body.length < 5) return bad(DAMAGED);
+      if (tooBig((body[3]! << 8) | body[4]!, (body[1]! << 8) | body[2]!)) return bad(TOO_BIG);
+    }
+    if (keepJpegSegment(marker, body)) out.push(new Uint8Array([0xff, marker]), b.subarray(lenAt, lenAt + len));
     i = lenAt + len;
+    if (marker === 0xda) {
+      scans++;
+      // Entropy-coded data runs to the next real marker (0xFF00 is a stuffed byte, 0xFFD0-D7 are restart markers).
+      let k = i;
+      for (;;) {
+        if (k + 1 >= b.length) return bad(DAMAGED);
+        if (b[k] === 0xff) {
+          const n = b[k + 1]!;
+          if (n === 0x00 || (n >= 0xd0 && n <= 0xd7)) { k += 2; continue; }
+          break;
+        }
+        k++;
+      }
+      out.push(b.subarray(i, k));
+      i = k;
+    }
   }
   const clean = concat(out);
-  // Metadata segments after the first scan are not expected; refuse rather than keep them.
   if (find(clean, "Exif\0\0") || find(clean, "http://ns.adobe.com/xap/")) return bad("This photo has location or camera data we cannot remove. Take a new photo from this page.");
   return { ok: true, mime: "image/jpeg", bytes: clean };
 }
@@ -144,6 +179,8 @@ function cleanPng(b: Uint8Array): CleanResult {
     const len = Buffer.from(b.subarray(i, i + 4)).readUInt32BE(0);
     const type = ascii(b, i + 4, 4);
     if (!/^[A-Za-z]{4}$/.test(type) || i + 12 + len > b.length) return bad("The photo file is damaged.");
+    if ((i === 8) !== (type === "IHDR") || (type === "IHDR" && len !== 13)) return bad(DAMAGED);
+    if (type === "IHDR" && tooBig(Buffer.from(b.subarray(i + 8, i + 12)).readUInt32BE(0), Buffer.from(b.subarray(i + 12, i + 16)).readUInt32BE(0))) return bad(TOO_BIG);
     if (PNG_KEEP.has(type)) out.push(b.subarray(i, i + 12 + len));
     else if (type[0]! >= "A" && type[0]! <= "Z") return bad("The photo file is damaged.");
     i += 12 + len;
@@ -153,7 +190,10 @@ function cleanPng(b: Uint8Array): CleanResult {
   return { ok: true, mime: "image/png", bytes: concat(out) };
 }
 
-/** WebP: drop EXIF and XMP chunks, clear their VP8X flags and fix the RIFF size. Animated WebP is refused. */
+/** Image chunks of a still WebP. EXIF, XMP and any unknown chunk (which could carry anything) are dropped. */
+const WEBP_KEEP = new Set(["VP8X", "VP8 ", "VP8L", "ALPH", "ICCP"]);
+
+/** WebP: keep image chunks only, clear the EXIF/XMP VP8X flags and fix the RIFF size; data after the RIFF size is dropped. Animated WebP is refused. */
 function cleanWebp(b: Uint8Array): CleanResult {
   const total = Buffer.from(b.subarray(4, 8)).readUInt32LE(0) + 8;
   if (total > b.length || total < 12) return bad("The photo file is damaged.");
@@ -166,9 +206,12 @@ function cleanWebp(b: Uint8Array): CleanResult {
     if (end > total) return bad("The photo file is damaged.");
     if (type === "ANIM" || type === "ANMF") return bad(TYPE_ERROR);
     if (type === "VP8 " || type === "VP8L") image = true;
-    if (type !== "EXIF" && type !== "XMP ") {
+    if (type === "VP8X" && (size < 10 || tooBig(b[i + 12]! + (b[i + 13]! << 8) + (b[i + 14]! << 16) + 1, b[i + 15]! + (b[i + 16]! << 8) + (b[i + 17]! << 16) + 1))) {
+      return bad(size < 10 ? DAMAGED : TOO_BIG);
+    }
+    if (WEBP_KEEP.has(type)) {
       const chunk = new Uint8Array(b.subarray(i, end));
-      if (type === "VP8X" && size >= 1) chunk[8] = chunk[8]! & ~0x0c;
+      if (type === "VP8X") chunk[8] = chunk[8]! & ~0x0c;
       out.push(chunk);
     }
     i = end;

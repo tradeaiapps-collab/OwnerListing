@@ -81,14 +81,14 @@ export function createPgIdImageStore(db: Queryable): IdImageStore {
       if (!r || typeof r["k"] !== "string" || typeof r["h"] !== "string" || typeof r["m"] !== "string") return null;
       return { key: r["k"], sha256: r["h"].trim(), mime: r["m"] as IdImageMime };
     },
-    async recordView(id, staffId, part) {
-      await db.query("INSERT INTO id_review_access (submission_id, staff_user_id, purpose) VALUES ($1::uuid, $2::uuid, $3)", [id, staffId, `view:${part}`]);
+    async recordView(id, staffId, part, stage) {
+      await db.query("INSERT INTO id_review_access (submission_id, staff_user_id, purpose) VALUES ($1::uuid, $2::uuid, $3)", [id, staffId, `${stage}:${part}`]);
     },
     async viewedParts(id, staffId, since) {
       const r = await db.query(
-        "SELECT DISTINCT purpose FROM id_review_access WHERE submission_id = $1::uuid AND staff_user_id = $2::uuid AND viewed_at >= $3::timestamptz",
+        "SELECT DISTINCT purpose FROM id_review_access WHERE submission_id = $1::uuid AND staff_user_id = $2::uuid AND viewed_at >= $3::timestamptz AND purpose LIKE 'shown:%'",
         [id, staffId, since]);
-      return r.rows.map(x => String(x["purpose"]).replace(/^view:/, "")).filter((p): p is IdImagePart => p === "front" || p === "back" || p === "selfie");
+      return r.rows.map(x => String(x["purpose"]).replace(/^shown:/, "")).filter((p): p is IdImagePart => p === "front" || p === "back" || p === "selfie");
     },
     async dueForDeletion(approvedBefore, rejectedBefore, limit) {
       const r = await db.query(

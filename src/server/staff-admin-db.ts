@@ -207,16 +207,24 @@ export async function getIdSubmission(db: Queryable, id: string): Promise<IdSubm
 /**
  * Saves a reviewed submission only if nobody else changed it meanwhile. Approval also marks the buyer as manually verified.
  * Every decision ends the current claim, so a first approval leaves the check free for a different second reviewer.
+ * Checked again in the same statement: an approval needs the reviewer's claim to be live at write time (not only when
+ * approvalBlocker ran), and no decision may land on a check another reviewer holds now.
  */
-export async function saveIdReview(db: Queryable, before: IdSubmission, after: IdSubmission): Promise<boolean> {
+export async function saveIdReview(db: Queryable, before: IdSubmission, after: IdSubmission, reviewer: { staffId: string; claimTtlMs: number }): Promise<boolean> {
+  const approving = after.approvals.length > before.approvals.length;
   const res = await db.query(
     `WITH upd AS (UPDATE id_submission SET status = $3, approvals = $4::jsonb, decided_at = $5, assigned_reviewer = NULL, assigned_at = NULL
-                   WHERE id = $1 AND status = 'pending' AND approvals = $2::jsonb RETURNING user_id, status),
+                   WHERE id = $1 AND status = 'pending' AND approvals = $2::jsonb
+                     AND CASE WHEN $8::boolean
+                              THEN assigned_reviewer = $6::uuid AND assigned_at > now() - $7::int * interval '1 millisecond'
+                              ELSE assigned_reviewer IS NULL OR assigned_reviewer = $6::uuid OR assigned_at <= now() - $7::int * interval '1 millisecond' END
+                   RETURNING user_id, status),
           ver AS (INSERT INTO buyer_verification (user_id, id_verified_at, id_method)
                   SELECT user_id, now(), 'manual_review' FROM upd WHERE status = 'approved'
                   ON CONFLICT (user_id) DO UPDATE SET id_verified_at = now(), id_method = 'manual_review' RETURNING user_id)
      SELECT user_id FROM upd`,
-    [before.id, JSON.stringify(before.approvals), after.status, JSON.stringify(after.approvals), after.decidedAt ?? null]
+    [before.id, JSON.stringify(before.approvals), after.status, JSON.stringify(after.approvals), after.decidedAt ?? null,
+      reviewer.staffId, reviewer.claimTtlMs, approving]
   );
   return res.rows.length > 0;
 }

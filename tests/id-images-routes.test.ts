@@ -124,7 +124,7 @@ describe("staff claim and image routes", () => {
     expect(r.headers.get("content-security-policy")).toMatch(/sandbox/);
     const body = new Uint8Array(await r.arrayBuffer());
     expect([body[0], body[1]]).toEqual([0xff, 0xd8]);
-    expect(m.views.map(v => v.staffId)).toEqual([comp.id]);
+    expect(m.views.map(v => [v.staffId, v.stage])).toEqual([[comp.id, "view"], [comp.id, "shown"]]);
     expect((await view("not-a-uuid", "front")).status).toBe(404);
     expect((await view(pendingId(), "passport")).status).toBe(404);
   });

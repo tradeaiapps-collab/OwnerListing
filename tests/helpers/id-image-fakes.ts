@@ -31,7 +31,7 @@ const chunk = (type: string, data: Buffer) => {
 export function pngWithText(): Uint8Array {
   return new Uint8Array(Buffer.concat([
     Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
-    chunk("IHDR", Buffer.alloc(13, 1)), chunk("tEXt", Buffer.from(`Comment\0${GPS_TEXT}`, "latin1")),
+    chunk("IHDR", Buffer.from([0, 0, 0, 4, 0, 0, 0, 3, 8, 2, 0, 0, 0])), chunk("tEXt", Buffer.from(`Comment\0${GPS_TEXT}`, "latin1")),
     chunk("eXIf", Buffer.from(`MM${GPS_TEXT}`, "latin1")), chunk("IDAT", Buffer.from([1, 2, 3])), chunk("IEND", Buffer.alloc(0))
   ]));
 }
@@ -79,7 +79,7 @@ export function memStore(clock: { now: number }, opts: { email?: boolean; phone?
   const hits = new Map<string, number>();
   const log: { event: IdImageEvent; userId?: string; submissionId?: string; staffId?: string; ipHash?: string }[] = [];
   const consents: { userId: string; version: string }[] = [];
-  const views: { submissionId: string; staffId: string; part: IdImagePart; at: number }[] = [];
+  const views: { submissionId: string; staffId: string; part: IdImagePart; stage: "view" | "shown"; at: number }[] = [];
   const st = { failView: false, useOverride: "hitsOverride" in opts };
   const store: IdImageStore = {
     async hit(b) { if (st.useOverride) return opts.hitsOverride; const n = (hits.get(b) ?? 0) + 1; hits.set(b, n); return n; },
@@ -116,8 +116,8 @@ export function memStore(clock: { now: number }, opts: { email?: boolean; phone?
       return true;
     },
     async image(id, part) { const r = rows.get(id); return r && r.deletedAt === null ? r.images[part] ?? null : null; },
-    async recordView(submissionId, staffId, part) { if (st.failView) throw new Error("db down"); views.push({ submissionId, staffId, part, at: clock.now }); },
-    async viewedParts(id, staffId, since) { return views.filter(v => v.submissionId === id && v.staffId === staffId && v.at >= Date.parse(since)).map(v => v.part); },
+    async recordView(submissionId, staffId, part, stage) { if (st.failView) throw new Error("db down"); views.push({ submissionId, staffId, part, stage, at: clock.now }); },
+    async viewedParts(id, staffId, since) { return views.filter(v => v.submissionId === id && v.staffId === staffId && v.stage === "shown" && v.at >= Date.parse(since)).map(v => v.part); },
     async dueForDeletion(a, rj, limit) {
       return [...rows.values()].filter(r => r.deletedAt === null && r.decidedAt !== null && (
         (r.status === "approved" && r.decidedAt <= Date.parse(a)) || ((r.status === "rejected" || r.status === "needs_more") && r.decidedAt <= Date.parse(rj))

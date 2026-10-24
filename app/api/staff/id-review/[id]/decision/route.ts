@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { ID_CLAIM_TTL_MS } from "../../../../../../src/domain/id-image";
 import { reviewSubmission, type ReviewChecklist, type ReviewOutcome } from "../../../../../../src/domain/id-verification";
 import { REASON_ERROR, reasonOk } from "../../../../../../src/domain/staff-admin";
 import { approvalBlocker } from "../../../../../../src/server/id-image";
@@ -48,7 +49,9 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   } catch (e) {
     return fail(409, e instanceof Error ? e.message : "Review not allowed.");
   }
-  if (!(await saveIdReview(db, before, after))) return fail(409, "This submission changed; reload it.");
+  if (!(await saveIdReview(db, before, after, { staffId: staff.id, claimTtlMs: ID_CLAIM_TTL_MS }))) {
+    return fail(409, "This submission changed, your claim ended or another reviewer holds it; reload it.");
+  }
   await staffAudit(staff, "id_submission", id, "staff.id_reviewed", { outcome, resultingStatus: after.status, checklist, reason: (body["reason"] as string).trim() });
   return NextResponse.json({ ok: true, status: after.status });
 }

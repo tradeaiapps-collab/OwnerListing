@@ -77,6 +77,42 @@ describe("type check and metadata stripping (from bytes, no re-encode)", () => {
   it("refuses damaged JPEG and PNG structures", () => {
     expect(cleanIdImage(jpegWithExif().slice(0, 30)).ok).toBe(false);
     expect(cleanIdImage(pngWithText().slice(0, 40)).ok).toBe(false);
+    const j = jpegWithExif();
+    expect(cleanIdImage(j.slice(0, j.length - 2)).ok).toBe(false); // no EOI
+  });
+  it("JPEG: drops everything after EOI (motion-photo video, appended ZIP/PDF) and metadata segments between scans", () => {
+    const j = Buffer.from(jpegWithExif());
+    const scan = Buffer.from([0xff, 0xda, 0, 8, 1, 1, 0, 0, 0x3f, 0, 0x55, 0xff, 0x00, 0x66, 0xff, 0xd0, 0x77]);
+    const between = Buffer.concat([Buffer.from([0xff, 0xfe, 0, 2 + GPS_TEXT.length]), Buffer.from(GPS_TEXT, "latin1"),
+      Buffer.from([0xff, 0xe1, 0, 9]), Buffer.from("MPF\0abc", "latin1")]);
+    const trailer = Buffer.from(`PK\x03\x04${GPS_TEXT}ftypmp42%PDF-1.7`, "latin1");
+    // progressive-style: first scan, then COM + APP1 + a second scan, then EOI, then trailing data
+    const prog = Buffer.concat([j.subarray(0, j.length - 2), between, scan, Buffer.from([0xff, 0xd9]), trailer]);
+    const r = cleanIdImage(new Uint8Array(prog));
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    for (const s of [GPS_TEXT, "PK\x03\x04", "ftyp", "%PDF", "MPF"]) expect(has(r.bytes, s)).toBe(false);
+    expect(has(r.bytes, "\x55\xff\x00\x66\xff\xd0\x77")).toBe(true);
+    expect([...r.bytes.slice(-2)]).toEqual([0xff, 0xd9]);
+  });
+  it("WebP: unknown chunks are dropped (allow-list), and data after the RIFF size never survives", () => {
+    const w = Buffer.from(webpWithExif());
+    const extra = Buffer.concat([Buffer.from("META"), Buffer.from([GPS_TEXT.length + 1, 0, 0, 0]), Buffer.from(GPS_TEXT + "!", "latin1")]);
+    const body = Buffer.concat([w.subarray(12), extra]);
+    const size = Buffer.alloc(4); size.writeUInt32LE(body.length + 4);
+    const r = cleanIdImage(new Uint8Array(Buffer.concat([w.subarray(0, 4), size, w.subarray(8, 12), body, Buffer.from(GPS_TEXT, "latin1")])));
+    expect(r.ok).toBe(true);
+    if (r.ok) { expect(has(r.bytes, GPS_TEXT)).toBe(false); expect(has(r.bytes, "META")).toBe(false); }
+  });
+  it("refuses a declared canvas too large for a reviewer's browser to decode (decompression bomb)", () => {
+    const p = Buffer.from(pngWithText()); p.writeUInt32BE(100_000, 16); p.writeUInt32BE(100_000, 20);
+    expect(cleanIdImage(new Uint8Array(p))).toMatchObject({ ok: false, error: expect.stringMatching(/too large/) });
+    const j = Buffer.from(jpegWithExif());
+    const sof = Buffer.from([0xff, 0xc0, 0, 11, 8, 0xff, 0xff, 0xff, 0xff, 1, 1, 0x11, 0]);
+    const at = j.indexOf(Buffer.from([0xff, 0xda]));
+    expect(cleanIdImage(new Uint8Array(Buffer.concat([j.subarray(0, at), sof, j.subarray(at)])))).toMatchObject({ ok: false, error: expect.stringMatching(/too large/) });
+    const w = Buffer.from(webpWithExif()); w[24] = 0xff; w[25] = 0xff; w[26] = 0x0f; // VP8X canvas width ~1M
+    expect(cleanIdImage(new Uint8Array(w))).toMatchObject({ ok: false, error: expect.stringMatching(/too large/) });
   });
 });
 
@@ -236,7 +272,7 @@ describe("reviewer claim and the decrypt view", () => {
     const r = await viewIdImage(w.d, REV1, w.id, "front");
     expect(r.ok).toBe(true);
     if (r.ok) { expect(r.value.mime).toBe("image/jpeg"); expect(has(r.value.bytes, GPS_TEXT)).toBe(false); }
-    expect(w.m.views).toEqual([expect.objectContaining({ submissionId: w.id, staffId: REV1, part: "front" })]);
+    expect(w.m.views).toEqual(["view", "shown"].map(stage => expect.objectContaining({ submissionId: w.id, staffId: REV1, part: "front", stage })));
     expect(await viewIdImage(w.d, REV1, w.id, "../etc")).toMatchObject({ ok: false, code: "not_found" });
   });
   it("access is short-lived: after 30 minutes the claim no longer opens images and another reviewer may take it", async () => {
@@ -253,6 +289,11 @@ describe("reviewer claim and the decrypt view", () => {
     const b = w.s.objects.get(key)!; b[b.length - 2]! ^= 0xff;
     expect(await viewIdImage(w.d, REV1, w.id, "front")).toMatchObject({ ok: false, code: "unavailable" });
     expect(w.m.log.map(e => e.event)).toContain("integrity_failed");
+    // The view was audited but nothing was shown, so it cannot count towards approval.
+    await viewIdImage(w.d, REV1, w.id, "back");
+    await viewIdImage(w.d, REV1, w.id, "selfie");
+    expect(w.m.views.filter(v => v.part === "front").map(v => v.stage)).toEqual(["view"]);
+    expect(await approvalBlocker(w.d, REV1, w.id)).toMatch(/every image/);
   });
   it("a swapped image (another part's ciphertext under this key) fails the AAD check", async () => {
     const w = await submitted();

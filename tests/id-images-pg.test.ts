@@ -48,14 +48,23 @@ describe.skipIf(!DATABASE_URL)("ID images on Postgres", () => {
     expect((await viewIdImage(d, rev2, id, "front")).ok).toBe(false);
     expect((await viewIdImage(d, rev1, id, "front")).ok).toBe(true);
     const views = (await t.db.query("SELECT staff_user_id, purpose FROM id_review_access WHERE submission_id = $1", [id])).rows;
-    expect(views).toEqual([{ staff_user_id: rev1, purpose: "view:front" }]);
+    expect(views).toEqual(expect.arrayContaining([{ staff_user_id: rev1, purpose: "view:front" }, { staff_user_id: rev1, purpose: "shown:front" }]));
+    expect(views).toHaveLength(2);
     expect((await d.store.viewedParts(id, rev1, new Date(Date.now() - 60_000).toISOString()))).toEqual(["front"]);
   });
   it("approval marks the buyer verified with the manual method and ends the claim", async () => {
     const before = (await getIdSubmission(t.db, id))!;
     const ticks = { documentLooksGenuine: true, photoMatchesSelfie: true, nameMatchesAccount: true, notExpired: true, officialStatusCheck: "done" as const };
     const after = reviewSubmission(before, { id: rev1, role: "compliance" }, "approve", ticks, new Date().toISOString());
-    expect(await saveIdReview(t.db, before, after)).toBe(true);
+    const asRev2 = reviewSubmission(before, { id: rev2, role: "compliance" }, "approve", ticks, new Date().toISOString());
+    const rejectByRev2 = reviewSubmission(before, { id: rev2, role: "compliance" }, "reject", ticks, new Date().toISOString());
+    // Re-checked at write time: no approval without the live claim, no decision on a check someone else holds.
+    expect(await saveIdReview(t.db, before, asRev2, { staffId: rev2, claimTtlMs: ID_CLAIM_TTL_MS })).toBe(false);
+    expect(await saveIdReview(t.db, before, rejectByRev2, { staffId: rev2, claimTtlMs: ID_CLAIM_TTL_MS })).toBe(false);
+    await t.db.query("UPDATE id_submission SET assigned_at = now() - interval '31 minutes' WHERE id = $1", [id]);
+    expect(await saveIdReview(t.db, before, after, { staffId: rev1, claimTtlMs: ID_CLAIM_TTL_MS })).toBe(false);
+    await t.db.query("UPDATE id_submission SET assigned_at = now() WHERE id = $1", [id]);
+    expect(await saveIdReview(t.db, before, after, { staffId: rev1, claimTtlMs: ID_CLAIM_TTL_MS })).toBe(true);
     const v = (await t.db.query("SELECT id_verified_at IS NOT NULL AS ok, id_method FROM buyer_verification WHERE user_id = $1", [buyer])).rows[0];
     expect(v).toEqual({ ok: true, id_method: "manual_review" });
     expect((await t.db.query("SELECT assigned_reviewer FROM id_submission WHERE id = $1", [id])).rows[0]).toEqual({ assigned_reviewer: null });
