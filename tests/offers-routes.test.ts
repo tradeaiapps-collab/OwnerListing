@@ -19,6 +19,8 @@ vi.mock("../src/server/context", () => ({
 }));
 
 import { GET as offersGet, POST as offersPost } from "../app/api/listings/[id]/offers/route";
+process.env["APP_URL"] = "http://test";
+
 
 const owner: Actor = { userId: "owner-1", userType: "owner" };
 const agent: Actor = { userId: "agent-1", userType: "agent" };
@@ -83,7 +85,7 @@ beforeEach(async () => {
 
 const submit = (id: string, body: unknown) =>
   offersPost(
-    new Request(`http://test/api/listings/${id}/offers`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }),
+    new Request(`http://test/api/listings/${id}/offers`, { method: "POST", headers: { "content-type": "application/json", origin: "http://test" }, body: JSON.stringify(body) }),
     { params: Promise.resolve({ id }) }
   );
 const review = (id: string) =>

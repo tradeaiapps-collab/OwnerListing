@@ -3,6 +3,7 @@ import { postChatMessage, readChat } from "../../../../../src/domain/job-chat-se
 import { getActor } from "../../../../../src/server/context";
 import { chatIds, getChatRepo } from "../../../../../src/server/job-chat-db";
 import { failure, unauthenticated } from "../../../../../src/server/http";
+import { csrfGuard } from "../../../../../src/server/csrf";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -19,6 +20,8 @@ export async function GET(req: Request, { params }: Ctx) {
 
 /** Posts a message while the assignment is approved. Body: { "body": "text" }. */
 export async function POST(req: Request, { params }: Ctx) {
+  const blocked = csrfGuard(req);
+  if (blocked) return blocked;
   const actor = getActor(req);
   if (!actor) return unauthenticated();
   const { id } = await params;

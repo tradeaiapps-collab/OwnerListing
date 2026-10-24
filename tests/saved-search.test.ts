@@ -15,6 +15,8 @@ vi.mock("../src/server/saved-search-context", () => ({ getSavedSearchRepo: () =>
 
 import { GET as listRoute, POST as createRoute } from "../app/api/buyer/saved-searches/route";
 import { GET as prefsGet, PUT as prefsPut } from "../app/api/buyer/alert-preferences/route";
+process.env["APP_URL"] = "http://test";
+
 
 const valid = { transactionType: "sale", useClass: "residential" };
 
@@ -152,7 +154,7 @@ describe("createPgSavedSearchRepository", () => {
 describe("buyer routes", () => {
   const req = (method: string, body?: unknown) =>
     new Request("http://test/api/buyer", {
-      method, headers: { "content-type": "application/json" },
+      method, headers: { "content-type": "application/json", origin: "http://test" },
       ...(body === undefined ? {} : { body: JSON.stringify(body) })
     });
 
