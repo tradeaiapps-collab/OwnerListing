@@ -119,3 +119,36 @@ Scope: PR #68 (mobile-number SMS verification, provider ID-check and its webhook
 1. **Info: `/_next/data/...` URLs** are rewritten by `NextURL` to the underlying page path, so they are judged like the page itself (correct today, and the App Router does not use them).
 2. **Low: a new route is allowed in public by default** (deny-list for staff). A future staff-only route must live under `/staff` or `/api/staff`; consider a test that fails if a route file name contains "staff" elsewhere.
 3. **Low: admin `/` redirect and `failed()` redirect use `req.url`/`appUrl`**; behind Vercel these are the real host, but check if a custom proxy rewrites Host.
+# Security review addendum, October 2026 (PR #77: messaging settings, SMTP and SMS adapters, outbox)
+
+Independent review of `feat/messaging-settings`. Fixes are on the same branch.
+
+## Fixed in PR #77
+
+| Severity | Finding | Fix |
+|---|---|---|
+| High | SSRF through the admin-entered SMTP host: any host (`localhost`, `169.254.169.254`, `10.x`, decimal IPs such as `2130706433`) and any port 1-65535 was accepted, and nodemailer resolved the name itself. A compromised or malicious super admin could probe the internal network and metadata service, and the "Send test" button would return distinguishable results. | `src/domain/net-guard.ts`. Save time: public DNS names only (no IP literals, numeric last label, `localhost`, `.internal`/`.local`/`.lan` and similar); ports 25, 465, 587, 2525 only; the same rules apply to values already stored or set in the environment (invalid = email off). Send time: the host is resolved once, every answer must be public (loopback, private, CGNAT, link-local incl. metadata, documentation, multicast, reserved, IPv4-mapped, NAT64, 6to4, Teredo, ULA all refused), and the connection goes to that address with `tls.servername` set to the name and certificate verification on, so DNS rebinding between check and connect is closed. Outbox code `blocked_host`. |
+| High | nodemailer 8.0.11 (the pinned range `^8.0.11`) has 12 published advisories (`npm` bulk advisory API): addressparser DoS (high, fixed <=10.0.5), file read / SSRF through `raw` (high, <=9.0.0), recipient-domain parsing bypasses (<10.1.4), process-global DNS cache reusing TLS `servername` across transports, i.e. cross-tenant credential disclosure (<10.0.2). Several are mitigated by our strict single-recipient regex, but not all. | Bumped to `^10.2.1` (latest, no advisories at review time); `@types/nodemailer` dropped (v10 ships its own types). Typecheck and tests pass on 10.2.1. `package-lock.json` is not committed here: regenerate it with `npm install`. |
+| Medium | Test SMS could be sent to any E.164 number worldwide (5 per hour per admin), so a hijacked admin session could pump premium-rate or international numbers. | Test SMS accepts only Australian mobiles (`+614XXXXXXXX`), the only numbers the platform texts, plus an overall cap of 20 per hour across all staff. Both counters fail closed (a counter error or missing row refuses). |
+| Low | `messaging_outbox` was insert-only through row triggers, which TRUNCATE bypasses. | `BEFORE TRUNCATE` statement trigger added to the (unreleased) migration, and the table named in the REVOKE TRUNCATE list in `docs/DEPLOYMENT.md` section 1 (with `messaging_setting`, TRUNCATE only). |
+| Low | Email address regex allowed control characters other than CR/LF/space in the local part. | Control characters excluded. |
+
+## Not fixed
+
+1. **Low: one key, no version or rotation.** `MESSAGING_SETTINGS_KEY` has no key id; rotating it makes saved secrets unreadable until re-entered (documented). Do not reuse `OFFER_LINK_TOKEN_KEY` (not enforced).
+2. **Low: AAD binds the field name only**, not a row version, so a database writer could swap an older sealed value into the same field. A database writer can also just overwrite it, so no new capability.
+3. **Low: the outbox write is best-effort** (a failed insert is swallowed so a sent message is not re-sent). A database outage can therefore lose an outbox row. Acceptable; the send itself is the risk being avoided.
+4. **Low: the shared "msg-test:all" bucket lets one admin exhaust test sends for others for an hour.** Test sends only.
+5. **Info: network egress.** Application-level SSRF guards are in place; also deny egress from the app to internal ranges and the metadata address at the network level.
+6. **Info: the test-send audit row is written after the send, outside any transaction**; a crash between them loses the audit row for that test message (the outbox row, written first, still shows it).
+
+## Checked and found sound
+
+- Secrets: SMS auth token and SMTP password are write-only. They are sealed before the transaction, never selected into a response (GET returns set/not set; display values only for non-secret fields, masked for ids, numbers, addresses), never in the audit payload (field name, role, set/cleared), never in error output (adapters map to a fixed code vocabulary; SMTP/Twilio error text is discarded; `SmsSendError` carries a code only), and not logged (no `console`, `logger: false`, `debug: false`). The outbox stores template, status, provider reference and fixed code only; recipient is HMAC-SHA-256 under `SESSION_SECRET` (32+ characters, else null, never a plain hash).
+- AES-256-GCM: reuses the reviewed offer-link primitive: random 12-byte IV per seal, tag verified, AAD `messaging-setting:<field>` so a value cannot be moved to another field, key strictly 32 bytes of base64 (checked before any write; the PUT returns 503 and saves nothing without it, and stored secrets stop resolving when the key is missing or wrong, so the channel fails closed). Tampered or wrong-field ciphertext opens to `undefined`.
+- Routes: all three call `staffGate` first (csrfGuard, awaited `getStaff`, `staff.manage` from the role read from the database); owners and buyers have no staff session (401). Unknown settings are rejected, values validated server-side, responses `no-store`.
+- Header injection: recipient must match a strict address pattern (no whitespace, quotes, commas, angle brackets), `from` is validated the same way at save time, subject rejects CR/LF and is length-capped, plain text only, `disableFileAccess`/`disableUrlAccess` on, no attachments or `raw`.
+- SMTP TLS: TLS 1.2 minimum, certificate verification on, implicit TLS on 465, STARTTLS required otherwise (no clear-text credentials), 10 s timeouts, no automatic retry.
+- Twilio: fixed host `api.twilio.com`, HTTPS, `redirect: "error"`, 10 s timeout, SID URL-encoded, form-encoded body, E.164 check before any request, credentials sent only to that host.
+- SQL: all parameterised or constant. Migration: field whitelist and secret-must-be-encrypted CHECKs, `template` and `error_code` CHECKs keep free text out of the outbox, update/delete triggers.
+- Atomicity: setting upserts and their audit rows share one transaction (test forces the audit insert to fail and checks nothing is saved).

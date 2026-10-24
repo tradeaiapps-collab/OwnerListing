@@ -1,8 +1,8 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
-import { alertDeliveryFromEnv } from "../../../../../src/adapters/alert-delivery";
 import { runAlertOutbox } from "../../../../../src/server/alert-outbox-db";
 import { getDb } from "../../../../../src/server/context";
+import { alertDeliveryFor } from "../../../../../src/server/messaging";
 
 /**
  * Worker tick for the alert outbox, called by a scheduler (not by browsers) with header x-cron-secret.
@@ -14,6 +14,6 @@ export async function POST(req: Request) {
   const secret = process.env["ALERT_CRON_SECRET"];
   if (!secret || secret.length < 32) return NextResponse.json({ error: "Alert worker is not configured." }, { status: 503 });
   if (!timingSafeEqual(digest(req.headers.get("x-cron-secret") ?? ""), digest(secret))) return NextResponse.json({ error: "Not allowed." }, { status: 401 });
-  const counts = await runAlertOutbox(getDb(), alertDeliveryFromEnv(process.env), process.env, new Date().toISOString());
+  const counts = await runAlertOutbox(getDb(), alertDeliveryFor(getDb(), process.env), process.env, new Date().toISOString());
   return NextResponse.json({ counts });
 }
