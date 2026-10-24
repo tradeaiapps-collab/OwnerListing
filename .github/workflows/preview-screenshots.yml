@@ -1,0 +1,136 @@
+name: Preview screenshots
+# Separate from CI: never part of the `gate` check. Builds the app, serves it against a throwaway
+# Postgres, and screenshots the main pages at phone, tablet and desktop widths in light and dark.
+# No real credentials: the Google values and the session secret below are throwaway and exist only in this run.
+on:
+  workflow_dispatch:
+  pull_request:
+jobs:
+  screenshots:
+    if: github.event_name == 'workflow_dispatch' || github.head_ref == 'ci/preview-screenshots'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: ownerlisting
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/ownerlisting
+      APP_URL: http://localhost:3004
+      GOOGLE_CLIENT_ID: throwaway-client-id
+      GOOGLE_CLIENT_SECRET: throwaway-client-secret
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --no-audit --no-fund
+      - run: npm run migrate
+      - name: Throwaway session secret
+        run: |
+          S=$(openssl rand -hex 32)
+          echo "::add-mask::$S"
+          echo "SESSION_SECRET=$S" >> "$GITHUB_ENV"
+      - run: npm run build
+      - name: Start the app
+        run: |
+          nohup npm start > "$RUNNER_TEMP/app.log" 2>&1 &
+          for i in $(seq 1 60); do
+            curl -fsS http://localhost:3004/ > /dev/null && exit 0
+            sleep 1
+          done
+          cat "$RUNNER_TEMP/app.log"
+          exit 1
+      - name: Seed a throwaway owner and a rental draft
+        run: |
+          cat > "$RUNNER_TEMP/seed.mjs" <<'EOF'
+          import { createHmac } from "node:crypto";
+          import { writeFileSync } from "node:fs";
+          import pg from "pg";
+          const dir = process.env.RUNNER_TEMP;
+          const client = new pg.Client({ connectionString: process.env.DATABASE_URL });
+          await client.connect();
+          const { rows } = await client.query(
+            "INSERT INTO app_user (email, display_name, user_type, status) VALUES ('preview@example.invalid', 'Preview Owner', 'owner', 'active') RETURNING id");
+          await client.end();
+          const b64 = b => Buffer.from(b).toString("base64url");
+          const body = b64(JSON.stringify({ uid: rows[0].id, ut: "owner", exp: Math.floor(Date.now() / 1000) + 3600 }));
+          const sig = createHmac("sha256", process.env.SESSION_SECRET).update(body).digest().toString("base64url");
+          const cookie = `${body}.${sig}`;
+          const res = await fetch("http://localhost:3004/api/listings", {
+            method: "POST",
+            headers: { "content-type": "application/json", cookie: `ol_session=${cookie}` },
+            body: JSON.stringify({
+              title: "Two-bedroom unit for rent", address: "12 Example St, Brisbane QLD", jurisdiction: "QLD",
+              transactionType: "rent", useClass: "residential", propertyType: "unit"
+            })
+          });
+          if (res.status !== 201) throw new Error(`create draft failed: ${res.status} ${await res.text()}`);
+          const { listing } = await res.json();
+          writeFileSync(`${dir}/session.txt`, cookie);
+          writeFileSync(`${dir}/draft-id.txt`, listing.id);
+          EOF
+          cp "$RUNNER_TEMP/seed.mjs" ./seed-preview.mjs
+          node ./seed-preview.mjs
+          rm ./seed-preview.mjs
+      - name: Install Playwright
+        run: |
+          mkdir -p "$RUNNER_TEMP/pw"
+          npm install --prefix "$RUNNER_TEMP/pw" --no-audit --no-fund playwright@1.55.0
+          "$RUNNER_TEMP/pw/node_modules/.bin/playwright" install --with-deps chromium
+      - name: Take screenshots
+        run: |
+          mkdir -p screenshots
+          cat > "$RUNNER_TEMP/shots.mjs" <<'EOF'
+          import { readFileSync } from "node:fs";
+          import { createRequire } from "node:module";
+          const dir = process.env.RUNNER_TEMP;
+          const { chromium } = createRequire(`${dir}/pw/`)("playwright");
+          const cookie = readFileSync(`${dir}/session.txt`, "utf8");
+          const draftId = readFileSync(`${dir}/draft-id.txt`, "utf8");
+          const base = "http://localhost:3004";
+          // The Google sign-in page itself needs real credentials, so it is skipped; the home page links to it.
+          const pages = [
+            { name: "home", path: "/", signedIn: false },
+            { name: "listings", path: "/listings", signedIn: false },
+            { name: "new-listing", path: "/listings/new", signedIn: true },
+            { name: "edit-draft", path: `/listings/${draftId}/edit`, signedIn: true }
+          ];
+          const widths = [375, 768, 1280];
+          const schemes = ["light", "dark"];
+          const browser = await chromium.launch();
+          const failures = [];
+          for (const scheme of schemes) for (const width of widths) {
+            const ctx = await browser.newContext({ viewport: { width, height: 900 }, colorScheme: scheme });
+            await ctx.addCookies([{ name: "ol_session", value: cookie, url: base }]);
+            for (const p of pages) {
+              const unsigned = await browser.newContext({ viewport: { width, height: 900 }, colorScheme: scheme });
+              const page = await (p.signedIn ? ctx : unsigned).newPage();
+              try {
+                await page.goto(base + p.path, { waitUntil: "networkidle" });
+                const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
+                if (overflow) failures.push(`${p.name} ${width} ${scheme}: horizontal scroll`);
+                await page.screenshot({ path: `screenshots/${p.name}-${width}-${scheme}.png`, fullPage: true });
+              } catch (e) {
+                failures.push(`${p.name} ${width} ${scheme}: ${e.message}`);
+              }
+              await unsigned.close();
+            }
+            await ctx.close();
+          }
+          await browser.close();
+          if (failures.length) console.log("NOTES:\n" + failures.join("\n"));
+          EOF
+          node "$RUNNER_TEMP/shots.mjs" | tee screenshots/NOTES.txt
+          ls screenshots | wc -l
+      - uses: actions/upload-artifact@v4
+        with:
+          name: website-screenshots
+          path: screenshots/
+          retention-days: 14
