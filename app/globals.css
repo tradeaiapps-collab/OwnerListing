@@ -71,6 +71,10 @@ main p { margin: 0 0 var(--space-3); overflow-wrap: anywhere; }
 a { color: var(--brand); }
 
 input, select, textarea, button { font: inherit; color: inherit; }
+input:not([type="checkbox"]), select, textarea {
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+}
 input, select, textarea {
   background: var(--bg);
   border: 1px solid var(--border);
@@ -100,8 +104,6 @@ button.secondary, .button.secondary { background: transparent; color: var(--text
 
 [role="alert"] { color: var(--danger); font-weight: 600; }
 
-main ul > li { background: var(--surface); }
-
 .hero { padding: var(--space-6) 0; }
 .hero p.lead { color: var(--muted); font-size: 1.125rem; max-width: 40rem; }
 .actions { display: flex; flex-wrap: wrap; gap: var(--space-3); margin: var(--space-4) 0; }
@@ -109,6 +111,41 @@ main ul > li { background: var(--surface); }
 
 table { width: 100%; border-collapse: collapse; }
 th, td { text-align: left; padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--border); overflow-wrap: anywhere; }
+
+.muted { color: var(--muted); }
+.empty { color: var(--muted); padding: var(--space-4); border: 1px dashed var(--border); border-radius: var(--radius); }
+small { overflow-wrap: anywhere; }
+code { overflow-wrap: anywhere; }
+.pre { white-space: pre-wrap; }
+
+.stack { display: grid; gap: var(--space-2); margin-bottom: var(--space-4); }
+.stack label { display: grid; gap: var(--space-1); }
+.field-group { gap: var(--space-2); }
+.filters { margin-bottom: var(--space-4); }
+.grow { flex: 1 1 200px; width: auto; }
+
+.card-list { list-style: none; padding: 0; margin: 0 0 var(--space-4); display: grid; gap: var(--space-3); }
+.card-list > li, .panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--space-3) var(--space-4);
+  overflow-wrap: anywhere;
+}
+.panel { margin-bottom: var(--space-4); }
+.panel h2 { margin-top: 0; }
+.card-list .actions { margin: var(--space-2) 0 0; }
+.plain-list { padding-left: var(--space-6); }
+
+.check { display: flex; align-items: center; gap: var(--space-3); min-height: 44px; }
+.check input { width: 24px; height: 24px; flex: none; }
+
+.details { display: grid; grid-template-columns: max-content 1fr; gap: var(--space-1) var(--space-4); margin: var(--space-4) 0; }
+.details dt { color: var(--muted); }
+.details dd { margin: 0; }
+
+.table-wrap { overflow-x: auto; margin-bottom: var(--space-4); }
+.table-wrap td code { white-space: pre-wrap; }
 
 @media (min-width: 768px) {
   .page { padding-top: var(--space-8); }

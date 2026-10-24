@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
 import { BondPathwayField, ListingFields, type BondState } from "../fields";
-import { JSON_HEADERS, fieldStyle } from "../ui";
+import { JSON_HEADERS } from "../ui";
 
 type Check = { allowed: boolean; reasons: string[] };
 
@@ -70,9 +70,9 @@ export default function NewListing() {
   return (
     <main>
       <h1>Create a listing</h1>
-      <form onSubmit={onSubmit} style={{ display: "grid", gap: 8 }}>
+      <form className="stack" onSubmit={onSubmit}>
         <ListingFields />
-        <button type="submit" disabled={busy} style={fieldStyle}>Save draft</button>
+        <button type="submit" disabled={busy}>Save draft</button>
       </form>
       {signedOut && <p role="alert"><a href="/api/auth/google/start">Sign in with Google</a> to save a listing.</p>}
       {error && <p role="alert">{error}</p>}
@@ -83,16 +83,16 @@ export default function NewListing() {
           {isRent && (
             <BondPathwayField value={bond} state={bondState} onChange={saveBond} />
           )}
-          <button type="button" disabled={busy} style={fieldStyle} onClick={runCheck}>Check if it can be published</button>
+          <button type="button" className="secondary" disabled={busy} onClick={runCheck}>Check if it can be published</button>
           {check && (
             <div>
               <h3>{check.allowed ? "Can be published" : "Blocked"}</h3>
-              <ul>{check.reasons.map(r => <li key={r}>{r}</li>)}</ul>
+              <ul className="plain-list">{check.reasons.map(r => <li key={r}>{r}</li>)}</ul>
             </div>
           )}
         </section>
       )}
-      <p><a href="/listings">View listings</a></p>
+      <p><a className="button secondary" href="/listings">View listings</a></p>
     </main>
   );
 }
