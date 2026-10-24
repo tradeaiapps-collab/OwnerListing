@@ -13,7 +13,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export async function POST(req: Request, { params }: Ctx) {
   const blocked = csrfGuard(req, { json: false });
   if (blocked) return blocked;
-  const actor = getActor(req);
+  const actor = await getActor(req);
   if (!actor) return unauthenticated();
   const { id } = await params;
   if (!UUID.test(id)) return failure({ ok: false, code: "not_found", message: "Document not found." });

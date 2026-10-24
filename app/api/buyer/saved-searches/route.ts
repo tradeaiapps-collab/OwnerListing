@@ -7,7 +7,7 @@ import { csrfGuard } from "../../../../src/server/csrf";
 
 /** The signed-in user's own saved searches. */
 export async function GET(req: Request) {
-  const actor = getActor(req);
+  const actor = await getActor(req);
   if (!actor) return unauthenticated();
   return NextResponse.json({ searches: await getSavedSearchRepo().list(actor.userId) });
 }
@@ -16,7 +16,7 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   const blocked = csrfGuard(req);
   if (blocked) return blocked;
-  const actor = getActor(req);
+  const actor = await getActor(req);
   if (!actor) return unauthenticated();
   const parsed = parseSavedSearchInput(await req.json().catch(() => null));
   if (!parsed.ok) return failure(parsed);

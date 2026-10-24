@@ -8,7 +8,7 @@ type Ctx = { params: Promise<{ id: string }> };
 
 export async function GET(req: Request, { params }: Ctx) {
   const { id } = await params;
-  const actor = getActor(req);
+  const actor = await getActor(req);
   const deps = getDeps();
   const r = await getListing(deps, actor, id);
   if (!r.ok) return failure(r);
@@ -27,7 +27,7 @@ export async function GET(req: Request, { params }: Ctx) {
 export async function PATCH(req: Request, { params }: Ctx) {
   const blocked = csrfGuard(req);
   if (blocked) return blocked;
-  const actor = getActor(req);
+  const actor = await getActor(req);
   if (!actor) return unauthenticated();
   const parsed = parseDraftPatch(await req.json().catch(() => null));
   if (!parsed.ok) return failure(parsed);

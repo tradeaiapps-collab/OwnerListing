@@ -7,7 +7,7 @@ import { csrfGuard } from "../../../../src/server/csrf";
 
 /** The signed-in user's alert consent per channel. */
 export async function GET(req: Request) {
-  const actor = getActor(req);
+  const actor = await getActor(req);
   if (!actor) return unauthenticated();
   return NextResponse.json({ preferences: await getSavedSearchRepo().listPreferences(actor.userId) });
 }
@@ -16,7 +16,7 @@ export async function GET(req: Request) {
 export async function PUT(req: Request) {
   const blocked = csrfGuard(req);
   if (blocked) return blocked;
-  const actor = getActor(req);
+  const actor = await getActor(req);
   if (!actor) return unauthenticated();
   const parsed = parseAlertConsentInput(await req.json().catch(() => null));
   if (!parsed.ok) return failure(parsed);

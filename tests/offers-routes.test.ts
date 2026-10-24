@@ -23,6 +23,7 @@ process.env["APP_URL"] = "http://test";
 
 
 const owner: Actor = { userId: "owner-1", userType: "owner" };
+const buyer: Actor = { userId: "buyer-9", userType: "buyer" };
 const agent: Actor = { userId: "agent-1", userType: "agent" };
 const vendor = { userId: "vendor-1", userType: "vendor" } as unknown as Actor;
 const input: DraftInput = {
@@ -39,6 +40,7 @@ let linkRow: Record<string, unknown> | undefined;
 let spendRows: Record<string, unknown>[];
 let offerRows: Record<string, unknown>[];
 let listingId: string;
+let buyerEligible = true;
 
 const goodLink = () => ({
   token_hash: "h".repeat(64), listing_id: listingId, buyer_user_id: "buyer-9",
@@ -57,6 +59,7 @@ async function publishedListing(): Promise<string> {
 
 beforeEach(async () => {
   n = 0;
+  buyerEligible = true;
   audit = [];
   calls = [];
   state.actor = null;
@@ -71,6 +74,7 @@ beforeEach(async () => {
     async query(text, params) {
       calls.push({ text, params: params ?? [] });
       if (text.includes("offer_submit_attempt")) return { rows: [{ hits: 1 }] };
+      if (text.includes("FROM app_user u JOIN buyer_verification")) return { rows: buyerEligible ? [{ id: "buyer-9" }] : [] };
       if (text.includes("FROM offer_link WHERE")) return { rows: linkRow ? [linkRow] : [] };
       if (text.includes("WITH spent")) return { rows: spendRows };
       if (text.includes("FROM formal_offer o")) return { rows: offerRows };
@@ -92,6 +96,27 @@ const review = (id: string) =>
   offersGet(new Request(`http://test/api/listings/${id}/offers`), { params: Promise.resolve({ id }) });
 
 describe("POST /api/listings/[id]/offers (buyer submits)", () => {
+  beforeEach(() => { state.actor = buyer; });
+  it("returns 401 with no session, without looking up the link", async () => {
+    state.actor = null;
+    expect((await submit(listingId, goodBody())).status).toBe(401);
+    expect(calls.filter(c => c.text.includes("FROM offer_link WHERE"))).toHaveLength(0);
+    expect(calls.filter(c => c.text.includes("WITH spent"))).toHaveLength(0);
+  });
+  it("rejects a session that is not the buyer the link was issued to, even with the valid token", async () => {
+    for (const a of [{ userId: "buyer-8", userType: "buyer" } as Actor, owner, agent]) {
+      state.actor = a;
+      expect((await submit(listingId, goodBody())).status).toBe(400);
+    }
+    expect(calls.filter(c => c.text.includes("WITH spent"))).toHaveLength(0);
+    expect(audit.filter(a => a.eventType === "offer.submitted")).toHaveLength(0);
+  });
+  it("returns 403 when the buyer is no longer active or verified, and does not spend the link", async () => {
+    buyerEligible = false;
+    expect((await submit(listingId, goodBody())).status).toBe(403);
+    expect(calls.filter(c => c.text.includes("WITH spent"))).toHaveLength(0);
+    expect(audit.filter(a => a.eventType === "offer.submitted")).toHaveLength(0);
+  });
   it("returns 400 for a missing token or a non-object body", async () => {
     expect((await submit(listingId, { ...goodBody(), token: undefined })).status).toBe(400);
     expect((await submit(listingId, null)).status).toBe(400);
