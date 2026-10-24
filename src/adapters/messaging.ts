@@ -7,6 +7,6 @@ export type SendResult =
 /** Failure reasons the adapters can report (also what the outbox stores in error_code). */
 export type SendErrorCode =
   | "auth_failed" | "invalid_recipient" | "recipient_opted_out" | "rate_limited" | "provider_unavailable"
-  | "timeout" | "network" | "tls_failed" | "rejected" | "invalid_message" | "no_recipient" | "unknown";
+  | "timeout" | "network" | "tls_failed" | "blocked_host" | "rejected" | "invalid_message" | "no_recipient" | "unknown";
 
 export const failed = (errorCode: SendErrorCode, retryable: boolean): SendResult => ({ status: "failed", errorCode, retryable });

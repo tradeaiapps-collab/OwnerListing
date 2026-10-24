@@ -12,7 +12,7 @@ const SMS_FIELDS: [Field, string, boolean][] = [
   ["sms.apiKeySid", "API key SID (optional, if the secret above is an API key secret)", false], ["sms.sender", "Sender phone number (+61...), sender ID or messaging service SID (MG...)", false]
 ];
 const EMAIL_FIELDS: [Field, string, boolean][] = [
-  ["email.host", "SMTP host", false], ["email.port", "SMTP port (465 or 587)", false], ["email.user", "SMTP user", false], ["email.password", "SMTP password", true], ["email.from", "From address", false]
+  ["email.host", "SMTP host", false], ["email.port", "SMTP port (465, 587, 25 or 2525)", false], ["email.user", "SMTP user", false], ["email.password", "SMTP password", true], ["email.from", "From address", false]
 ];
 
 function status(v: FieldView): string {

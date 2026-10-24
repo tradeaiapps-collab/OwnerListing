@@ -36,3 +36,14 @@ $$ LANGUAGE plpgsql;
 CREATE TRIGGER messaging_outbox_no_update
   BEFORE UPDATE OR DELETE ON messaging_outbox
   FOR EACH ROW EXECUTE FUNCTION reject_messaging_outbox_mutation();
+
+-- Row triggers do not fire for TRUNCATE; refuse it too (the app role should also have TRUNCATE revoked, docs/DEPLOYMENT.md).
+CREATE OR REPLACE FUNCTION reject_messaging_outbox_truncate() RETURNS trigger AS $$
+BEGIN
+  RAISE EXCEPTION 'messaging_outbox is insert-only';
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER messaging_outbox_no_truncate
+  BEFORE TRUNCATE ON messaging_outbox
+  FOR EACH STATEMENT EXECUTE FUNCTION reject_messaging_outbox_truncate();

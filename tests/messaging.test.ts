@@ -4,9 +4,10 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createSmtpEmail, emailFromEnv, mapSmtpError, type MailTransport } from "../src/adapters/email";
 import { SmsSendError, createTwilioSms, createUnconfiguredSms, mapTwilioError, smsFromEnv } from "../src/adapters/sms";
+import { isPublicAddress } from "../src/domain/net-guard";
 import { MessagingKeyError, openSetting, sealSetting } from "../src/domain/messaging-crypto";
 import {
-  ENV_NAMES, FIELDS, displayValue, isE164, resolveMessaging, validateField, type SmsConfig, type SmtpConfig
+  ENV_NAMES, FIELDS, displayValue, isE164, isEmailAddress, resolveMessaging, validateField, type SmsConfig, type SmtpConfig
 } from "../src/domain/messaging-settings";
 import type { StaffActor } from "../src/domain/staff-access";
 
@@ -30,6 +31,7 @@ const KEY = randomBytes(32).toString("base64");
 const SID = "AC" + "a".repeat(32);
 const TOKEN = "t0ken-secret-value-1234567890abcd";
 const smsCfg: SmsConfig = { provider: "twilio", accountSid: SID, authToken: TOKEN, sender: "+61400000001" };
+const PUBLIC = async () => ["93.184.216.34"];
 const smtpCfg: SmtpConfig = { host: "smtp.example.test", port: 587, user: "mailer", password: "smtp-pass-secret", from: "no-reply@example.test" };
 
 describe("setting validation", () => {
@@ -189,16 +191,16 @@ describe("SMTP email adapter", () => {
   it("builds a TLS-required transport and sends a plain-text message", async () => {
     const sendMail = vi.fn(async () => ({ messageId: "<abc@example.test>" }));
     const t = transportFor(sendMail);
-    const r = await createSmtpEmail(smtpCfg, { createTransport: t.factory }).send({ to: "buyer@example.test", subject: "Hi", text: "Body" });
+    const r = await createSmtpEmail(smtpCfg, { createTransport: t.factory, resolve: PUBLIC }).send({ to: "buyer@example.test", subject: "Hi", text: "Body" });
     expect(r).toEqual({ status: "sent", providerRef: "<abc@example.test>" });
-    expect(t.made[0]).toMatchObject({ host: "smtp.example.test", port: 587, secure: false, requireTLS: true, auth: { user: "mailer", pass: "smtp-pass-secret" }, disableFileAccess: true, disableUrlAccess: true });
+    expect(t.made[0]).toMatchObject({ host: "93.184.216.34", port: 587, secure: false, tls: { servername: "smtp.example.test" }, requireTLS: true, auth: { user: "mailer", pass: "smtp-pass-secret" }, disableFileAccess: true, disableUrlAccess: true });
     expect(t.made[0]!["connectionTimeout"]).toBeGreaterThan(0);
     expect(sendMail).toHaveBeenCalledWith({ from: "no-reply@example.test", to: "buyer@example.test", subject: "Hi", text: "Body" });
     expect(t.close).toHaveBeenCalled();
   });
   it("uses implicit TLS on 465 and no auth when none is configured", async () => {
     const t = transportFor(async () => ({}));
-    await createSmtpEmail({ host: "h.test", port: 465, from: "a@b.test" }, { createTransport: t.factory }).send({ to: "buyer@example.test", subject: "Hi", text: "x" });
+    await createSmtpEmail({ host: "h.test", port: 465, from: "a@b.test" }, { createTransport: t.factory, resolve: PUBLIC }).send({ to: "buyer@example.test", subject: "Hi", text: "x" });
     expect(t.made[0]).toMatchObject({ secure: true, requireTLS: false });
     expect(t.made[0]).not.toHaveProperty("auth");
   });
@@ -209,14 +211,14 @@ describe("SMTP email adapter", () => {
     expect(mapSmtpError({ responseCode: 451 })).toEqual({ code: "provider_unavailable", retryable: true });
     expect(mapSmtpError({ responseCode: 550 })).toEqual({ code: "invalid_recipient", retryable: false });
     const t = transportFor(async () => { throw Object.assign(new Error("550 buyer@example.test rejected; pass smtp-pass-secret"), { code: "EENVELOPE" }); });
-    const r = await createSmtpEmail(smtpCfg, { createTransport: t.factory }).send({ to: "buyer@example.test", subject: "Hi", text: "x" });
+    const r = await createSmtpEmail(smtpCfg, { createTransport: t.factory, resolve: PUBLIC }).send({ to: "buyer@example.test", subject: "Hi", text: "x" });
     expect(r).toEqual({ status: "failed", errorCode: "invalid_recipient", retryable: false });
     expect(JSON.stringify(r)).not.toMatch(/buyer@|smtp-pass/);
     expect(t.close).toHaveBeenCalled();
   });
   it("refuses header injection and bad recipients before connecting", async () => {
     const t = transportFor(async () => ({}));
-    const p = createSmtpEmail(smtpCfg, { createTransport: t.factory });
+    const p = createSmtpEmail(smtpCfg, { createTransport: t.factory, resolve: PUBLIC });
     expect(await p.send({ to: "a@b.test\r\nBcc: x@y.test", subject: "Hi", text: "x" })).toMatchObject({ errorCode: "invalid_recipient" });
     expect(await p.send({ to: "a@b.test", subject: "Hi\r\nBcc: x@y.test", text: "x" })).toMatchObject({ errorCode: "invalid_message" });
     expect(t.made).toHaveLength(0);
@@ -294,6 +296,45 @@ describe("staff messaging routes: who may use them", () => {
     state.staff = { id: "00000000-0000-4000-8000-000000000001", role: "super_admin" };
     expect((await sendTest({ channel: "fax" })).status).toBe(400);
     expect((await sendTest({ channel: "sms", phone: "0400000001" })).status).toBe(400);
+    for (const phone of ["+14155550100", "+61255550100", "+61190012345", "+6140000000", "+614000000011"]) expect((await sendTest({ channel: "sms", phone })).status, phone).toBe(400); // not an Australian mobile
     expect((await sendTest({ channel: "sms" })).status).toBe(400);
+  });
+});
+
+describe("SSRF guard for the admin-entered SMTP host", () => {
+  it("classifies addresses: only public ones pass", () => {
+    for (const ip of ["127.0.0.1", "10.1.2.3", "172.16.0.1", "172.31.255.255", "192.168.1.1", "169.254.169.254", "100.100.100.200", "0.0.0.0", "224.0.0.1", "255.255.255.255", "198.18.0.1", "192.0.2.1",
+      "::1", "::", "fe80::1", "fd00:ec2::254", "fc00::1", "ff02::1", "::ffff:127.0.0.1", "::ffff:7f00:1", "::ffff:169.254.169.254", "64:ff9b::7f00:1", "2002:7f00:1::", "2001:db8::1", "not-an-ip", ""]) {
+      expect(isPublicAddress(ip), ip).toBe(false);
+    }
+    for (const ip of ["93.184.216.34", "8.8.8.8", "172.32.0.1", "100.63.255.255", "2606:2800:220:1:248:1893:25c8:1946", "::ffff:8.8.8.8"]) expect(isPublicAddress(ip), ip).toBe(true);
+  });
+  it("refuses internal or numeric host names and unusual ports when saving", () => {
+    for (const h of ["localhost", "db.internal", "mail.local", "intranet", "127.0.0.1", "2130706433", "0x7f.1", "169.254.169.254", "[::1]", "metadata.google.internal", "x.localhost"]) {
+      expect(validateField("email.host", h).ok, h).toBe(false);
+    }
+    expect(validateField("email.host", "SMTP.Example.com")).toEqual({ ok: true, value: "smtp.example.com" });
+    for (const port of ["22", "3306", "5432", "6379", "80", "0", "65535"]) expect(validateField("email.port", port).ok, port).toBe(false);
+    for (const port of ["25", "465", "587", "2525"]) expect(validateField("email.port", port).ok, port).toBe(true);
+    expect(isEmailAddress("a\x00b@example.test")).toBe(false);
+  });
+  it("send time: connects to the resolved public address, and never when any answer is internal (rebinding)", async () => {
+    const t = (() => { const made: Record<string, unknown>[] = []; return { made, factory: (o: Record<string, unknown>): MailTransport => { made.push(o); return { sendMail: async () => ({}), close() { /* none */ } }; } }; })();
+    const msg = { to: "buyer@example.test", subject: "Hi", text: "x" };
+    const ok = await createSmtpEmail(smtpCfg, { createTransport: t.factory, resolve: async () => ["93.184.216.34"] }).send(msg);
+    expect(ok.status).toBe("sent");
+    expect(t.made[0]).toMatchObject({ host: "93.184.216.34", tls: { servername: "smtp.example.test", rejectUnauthorized: true } });
+    for (const answers of [["127.0.0.1"], ["93.184.216.34", "169.254.169.254"], ["::1"], ["fd00:ec2::254"]]) {
+      const r = await createSmtpEmail(smtpCfg, { createTransport: t.factory, resolve: async () => answers }).send(msg);
+      expect(r).toEqual({ status: "failed", errorCode: "blocked_host", retryable: false });
+    }
+    expect(await createSmtpEmail(smtpCfg, { createTransport: t.factory, resolve: async () => { throw new Error("ENOTFOUND smtp.example.test"); } }).send(msg)).toEqual({ status: "failed", errorCode: "network", retryable: true });
+    expect(await createSmtpEmail(smtpCfg, { createTransport: t.factory, resolve: async () => [] }).send(msg)).toMatchObject({ errorCode: "network" });
+    expect(t.made).toHaveLength(1); // only the good one connected
+  });
+  it("an internal host already in the database or environment resolves to not configured", () => {
+    expect(resolveMessaging({ "email.host": "localhost", "email.port": "587", "email.from": "a@b.test" }, {}).email).toBeNull();
+    expect(resolveMessaging({}, { SMTP_HOST: "10.0.0.5", SMTP_PORT: "587", SMTP_FROM: "a@b.test" }).email).toBeNull();
+    expect(resolveMessaging({ "email.host": "h.test", "email.port": "22", "email.from": "a@b.test" }, {}).email).toBeNull();
   });
 });

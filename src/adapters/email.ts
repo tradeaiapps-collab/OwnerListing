@@ -1,4 +1,6 @@
+import { lookup } from "node:dns/promises";
 import nodemailer from "nodemailer";
+import { isPublicAddress } from "../domain/net-guard";
 import { isEmailAddress, resolveMessaging, type SmtpConfig } from "../domain/messaging-settings";
 import { failed, type SendErrorCode, type SendResult } from "./messaging";
 
@@ -40,12 +42,33 @@ export function mapSmtpError(e: unknown): { code: SendErrorCode; retryable: bool
 
 export const SMTP_TIMEOUT_MS = 10_000;
 
+/** Resolves a host to its addresses (all of them). Injectable for tests. */
+export type HostResolver = (host: string) => Promise<string[]>;
+const defaultResolver: HostResolver = async host => (await lookup(host, { all: true, verbatim: true })).map(a => a.address);
+
+/**
+ * SSRF guard: the admin-entered host is resolved here and EVERY address must be public. The connection is then made to that address
+ * (not the name), so a second DNS answer (rebinding) cannot redirect it; the certificate is still checked against the name.
+ * Returns the address to connect to, "blocked" or "unresolved".
+ */
+export async function pinPublicAddress(host: string, resolve: HostResolver, timeoutMs: number): Promise<string | "blocked" | "unresolved"> {
+  let addrs: string[];
+  try {
+    addrs = await Promise.race([resolve(host), new Promise<never>((_, rej) => setTimeout(() => rej(new Error("dns timeout")), timeoutMs).unref())]);
+  } catch {
+    return "unresolved";
+  }
+  if (addrs.length === 0) return "unresolved";
+  if (!addrs.every(isPublicAddress)) return "blocked";
+  return addrs[0]!;
+}
+
 /**
  * SMTP adapter (nodemailer). TLS is mandatory: port 465 uses implicit TLS, any other port must upgrade with STARTTLS or the send fails
  * (credentials are never sent in clear). Timeouts on connect, greeting and socket. No automatic retry (see the SMS adapter).
  * Nothing is logged here; errors map to a fixed code.
  */
-export function createSmtpEmail(cfg: SmtpConfig, deps: { createTransport?: TransportFactory; timeoutMs?: number } = {}): EmailPort {
+export function createSmtpEmail(cfg: SmtpConfig, deps: { createTransport?: TransportFactory; timeoutMs?: number; resolve?: HostResolver } = {}): EmailPort {
   const make = deps.createTransport ?? defaultFactory;
   const timeout = deps.timeoutMs ?? SMTP_TIMEOUT_MS;
   return {
@@ -53,10 +76,13 @@ export function createSmtpEmail(cfg: SmtpConfig, deps: { createTransport?: Trans
     async send(msg) {
       if (!isEmailAddress(msg.to)) return failed("invalid_recipient", false);
       if (/[\r\n]/.test(msg.subject) || msg.subject.length === 0 || msg.subject.length > 200 || msg.text.length === 0 || msg.text.length > 20_000) return failed("invalid_message", false);
+      const pinned = await pinPublicAddress(cfg.host, deps.resolve ?? defaultResolver, timeout);
+      if (pinned === "blocked") return failed("blocked_host", false);
+      if (pinned === "unresolved") return failed("network", true);
       const transport = make({
-        host: cfg.host, port: cfg.port, secure: cfg.port === 465, requireTLS: cfg.port !== 465,
+        host: pinned, port: cfg.port, secure: cfg.port === 465, requireTLS: cfg.port !== 465,
         ...(cfg.user !== undefined && cfg.password !== undefined ? { auth: { user: cfg.user, pass: cfg.password } } : {}),
-        tls: { minVersion: "TLSv1.2" },
+        tls: { minVersion: "TLSv1.2", servername: cfg.host, rejectUnauthorized: true },
         connectionTimeout: timeout, greetingTimeout: timeout, socketTimeout: timeout * 2,
         disableFileAccess: true, disableUrlAccess: true, logger: false, debug: false
       });

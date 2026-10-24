@@ -1,3 +1,5 @@
+import { SMTP_PORTS, hostProblem } from "./net-guard";
+
 /**
  * Messaging settings (SMS and email): field list, validation and how DB values and environment variables combine.
  * Pure. Environment variables override the database per field. Anything invalid or incomplete resolves to "not configured".
@@ -25,7 +27,7 @@ const ALPHA_SENDER_RE = /^(?=.*[A-Za-z])[A-Za-z0-9 ]{1,11}$/;
 const MESSAGING_SERVICE_RE = /^MG[0-9a-fA-F]{32}$/;
 export const isMessagingServiceSid = (v: string): boolean => MESSAGING_SERVICE_RE.test(v);
 const HOST_RE = /^[A-Za-z0-9](?:[A-Za-z0-9.-]{0,251}[A-Za-z0-9])?$/;
-const EMAIL_RE = /^[^\s<>"',;()\\@]{1,64}@[A-Za-z0-9](?:[A-Za-z0-9.-]{0,251}[A-Za-z0-9])?\.[A-Za-z]{2,}$/;
+const EMAIL_RE = /^[^\s\x00-\x1f\x7f<>"',;()\\@]{1,64}@[A-Za-z0-9](?:[A-Za-z0-9.-]{0,251}[A-Za-z0-9])?\.[A-Za-z]{2,}$/;
 const PRINTABLE = /^[\x21-\x7e]+$/;
 export const isEmailAddress = (v: unknown): v is string => typeof v === "string" && v.length <= 254 && EMAIL_RE.test(v);
 
@@ -42,8 +44,8 @@ export function validateField(field: MessagingField, raw: unknown): { ok: true; 
     case "sms.sender":
       return E164_RE.test(v) || ALPHA_SENDER_RE.test(v) || MESSAGING_SERVICE_RE.test(v)
         ? { ok: true, value: v } : bad("Use a phone number like +61400000000, a sender ID (1 to 11 letters or digits, at least one letter) or a messaging service SID (MG...).");
-    case "email.host": return HOST_RE.test(v) ? { ok: true, value: v } : bad("Enter a host name such as smtp.example.com.");
-    case "email.port": return /^\d{1,5}$/.test(v) && Number(v) >= 1 && Number(v) <= 65535 ? { ok: true, value: String(Number(v)) } : bad("Port must be 1 to 65535.");
+    case "email.host": return !HOST_RE.test(v) ? bad("Enter a host name such as smtp.example.com.") : hostProblem(v) ? bad(hostProblem(v)!) : { ok: true, value: v.toLowerCase() };
+    case "email.port": return /^\d{1,5}$/.test(v) && SMTP_PORTS.includes(Number(v)) ? { ok: true, value: String(Number(v)) } : bad("Port must be 25, 465, 587 or 2525.");
     case "email.user": return v.length >= 1 && v.length <= 255 && /^[^\x00-\x1f\x7f]+$/.test(v) ? { ok: true, value: v } : bad("User must be 1 to 255 characters.");
     case "email.password": return v.length >= 1 && v.length <= 255 && /^[^\x00-\x1f\x7f]+$/.test(v) ? { ok: true, value: v } : bad("Password must be 1 to 255 characters.");
     case "email.from": return isEmailAddress(v) ? { ok: true, value: v } : bad("Enter a from address such as no-reply@example.com.");
@@ -99,4 +101,7 @@ export function displayValue(field: MessagingField, value: string): string | und
 }
 
 /** "Send test" is limited per staff member (a refused attempt still counts). */
-export const MESSAGING_TEST_RATE = { windowMs: 60 * 60 * 1000, perStaff: 5 } as const;
+export const MESSAGING_TEST_RATE = { windowMs: 60 * 60 * 1000, perStaff: 5, allStaff: 20 } as const;
+
+/** Test SMS goes only to Australian mobiles (+614XXXXXXXX), the only numbers the platform texts; stops premium-rate and international pumping. */
+export const isAuMobile = (v: unknown): v is string => typeof v === "string" && /^\+614\d{8}$/.test(v);

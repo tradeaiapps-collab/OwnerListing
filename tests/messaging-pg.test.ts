@@ -57,6 +57,7 @@ describe.skipIf(!DATABASE_URL)("messaging settings and outbox on Postgres", () =
     await db.query("INSERT INTO messaging_outbox (channel, template, status) VALUES ('sms','unit_test','sent')");
     await expect(db.query("UPDATE messaging_outbox SET status = 'failed'")).rejects.toThrow(/insert-only/);
     await expect(db.query("DELETE FROM messaging_outbox")).rejects.toThrow(/insert-only/);
+    await expect(db.query("TRUNCATE messaging_outbox")).rejects.toThrow(/insert-only/);
     await expect(db.query("INSERT INTO messaging_outbox (channel, template, status) VALUES ('fax','x','sent')")).rejects.toThrow();
     await expect(db.query("INSERT INTO messaging_outbox (channel, template, status, error_code) VALUES ('sms','x','failed','Bad Text +61400')")).rejects.toThrow();
   });
@@ -92,6 +93,15 @@ describe.skipIf(!DATABASE_URL)("messaging settings and outbox on Postgres", () =
     const clear = await put({ "sms.authToken": "" });
     expect((await clear.json()).fields["sms.authToken"]).toEqual({ set: false, source: "none" });
     expect((await db.query("SELECT 1 FROM audit_event WHERE aggregate_id = 'sms.authToken' AND payload->>'action' = 'cleared'")).rows).toHaveLength(1);
+  });
+
+  it("saving a setting and its audit row are one transaction: if the audit write fails, the setting is not saved", async () => {
+    const failingAudit: Queryable = {
+      query: (text, params) => db.query(text, params),
+      transaction: fn => db.transaction!(tx => fn({ query: (text, params) => (/audit_event/.test(text) ? Promise.reject(new Error("audit down")) : tx.query(text, params)) }))
+    };
+    await expect(saveSettings(failingAudit, admin, { "sms.sender": "+61400000009", "sms.authToken": TOKEN }, process.env)).rejects.toThrow(/audit down/);
+    expect((await db.query("SELECT 1 FROM messaging_setting")).rows).toHaveLength(0);
   });
 
   it("fails closed without the key: nothing saved, nothing audited, and stored secrets stop resolving", async () => {
@@ -134,7 +144,7 @@ describe.skipIf(!DATABASE_URL)("messaging settings and outbox on Postgres", () =
     expect(sms.configured).toBe(false);
     expect(await sms.sendText("+61400000002", "x")).toEqual({ status: "not_configured" });
     const make = vi.fn();
-    const delivery = createDbAlertDelivery(db, process.env, { createTransport: make as never });
+    const delivery = createDbAlertDelivery(db, process.env, { createTransport: make as never, resolve: async () => ["93.184.216.34"] });
     const msg = (channel: "email" | "sms"): AlertMessage => ({ buyerUserId: randomUUID(), channel, listingId: randomUUID(), searchId: randomUUID(), unsubscribeUrl: "http://test/u?t=1" });
     expect(await delivery.send(msg("email"))).toBe("not_configured");
     expect(await delivery.send(msg("sms"))).toBe("not_configured");
@@ -153,7 +163,7 @@ describe.skipIf(!DATABASE_URL)("messaging settings and outbox on Postgres", () =
     const made: Record<string, unknown>[] = [];
     const f = vi.fn(async () => new Response(JSON.stringify({ sid: "SM" + "c".repeat(32) }), { status: 201 }));
     vi.stubGlobal("fetch", f);
-    const delivery = createDbAlertDelivery(db, process.env, { createTransport: ((o: Record<string, unknown>) => { made.push(o); return { sendMail, close() { /* none */ } } satisfies MailTransport; }) as never });
+    const delivery = createDbAlertDelivery(db, process.env, { resolve: async () => ["93.184.216.34"], createTransport: ((o: Record<string, unknown>) => { made.push(o); return { sendMail, close() { /* none */ } } satisfies MailTransport; }) as never });
     const listingId = randomUUID();
     const base = { buyerUserId: buyer, listingId, searchId: randomUUID(), unsubscribeUrl: "http://test/api/alerts/unsubscribe?t=abc" };
     const before = (await outbox()).length;
@@ -219,6 +229,14 @@ describe.skipIf(!DATABASE_URL)("messaging settings and outbox on Postgres", () =
     expect((await send({ channel: "sms", phone: "+61400000003" })).status).toBe(429);
     expect(f).toHaveBeenCalledTimes(3);
     expect(MESSAGING_TEST_RATE.perStaff).toBe(5);
+    // the overall cap also holds: another admin is refused once the shared bucket is used up
+    await db.query("UPDATE offer_submit_attempt SET hits = $1 WHERE bucket = 'msg-test:all'", [MESSAGING_TEST_RATE.allStaff]);
+    const third = await addUser(db, "admin");
+    await db.query("UPDATE app_user SET staff_role = 'super_admin' WHERE id = $1", [third]);
+    state.staff = { id: third, role: "super_admin" };
+    expect((await send({ channel: "sms", phone: "+61400000003" })).status).toBe(429);
+    expect(f).toHaveBeenCalledTimes(3);
+    state.staff = { id: other, role: "super_admin" };
     const audit = (await db.query("SELECT payload FROM audit_event WHERE event_type = 'messaging.test_sent' AND actor_id = $1", [other])).rows;
     expect(audit.length).toBe(5);
     expect(JSON.stringify(audit)).not.toContain("61400000003");

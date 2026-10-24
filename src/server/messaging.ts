@@ -1,6 +1,6 @@
 import { createHmac } from "node:crypto";
 import { alertDeliveryFromEnv } from "../adapters/alert-delivery";
-import { emailFromConfig, type EmailPort, type TransportFactory } from "../adapters/email";
+import { emailFromConfig, type EmailPort, type HostResolver, type TransportFactory } from "../adapters/email";
 import { failed, type SendResult } from "../adapters/messaging";
 import { SmsSendError, smsFromConfig, verificationCodeText, type SmsTextPort } from "../adapters/sms";
 import type { AlertDeliveryPort, AlertMessage } from "../domain/alerts";
@@ -8,7 +8,7 @@ import type { Queryable } from "./db";
 import { loadResolved } from "./messaging-settings-db";
 
 type Env = Readonly<Record<string, string | undefined>>;
-export interface MessagingDeps { fetch?: typeof fetch; createTransport?: TransportFactory }
+export interface MessagingDeps { fetch?: typeof fetch; createTransport?: TransportFactory; resolve?: HostResolver }
 
 /** Keyed hash of the recipient for the outbox (a plain hash of a phone number can be reversed by enumeration). Null if no server secret. */
 export function recipientHash(env: Env, channel: "email" | "sms", recipient: string): string | null {
@@ -55,7 +55,7 @@ export async function getSmsPort(db: Queryable, env: Env, template: string, deps
 /** The email port for the settings in force now, with every attempt recorded in the outbox. */
 export async function getEmailPort(db: Queryable, env: Env, template: string, deps: MessagingDeps = {}): Promise<EmailPort> {
   const cfg = (await loadResolved(db, env)).email;
-  const inner = emailFromConfig(cfg, deps.createTransport ? { createTransport: deps.createTransport } : {});
+  const inner = emailFromConfig(cfg, { ...(deps.createTransport ? { createTransport: deps.createTransport } : {}), ...(deps.resolve ? { resolve: deps.resolve } : {}) });
   return {
     configured: inner.configured,
     async send(msg) {
