@@ -2,7 +2,6 @@
 import { useEffect, useState } from "react";
 import { Icon } from "./icons";
 import { NAV_CATALOG, type IconStyle, type NavItem } from "../src/domain/site-theme";
-import "./styles/nav.css";
 
 type Who = "loading" | "out" | "staff" | "owner" | "buyer";
 

@@ -4,6 +4,7 @@ import { formatPrice } from "../src/domain/listing-details";
 import { parseSearchQuery } from "../src/domain/listing-search";
 import { searchPublished, toPublicListing } from "../src/domain/listing-service";
 import { getDeps } from "../src/server/context";
+import "./styles/cards.css";
 import "./styles/home.css";
 
 export const dynamic = "force-dynamic";
@@ -107,21 +108,20 @@ export default async function Home() {
               <a className="button" href="/listings/new">List your property</a>
             </div>
           ) : (
-            <ul className="home-strip">
+            <ul className="lcards">
               {latest.map(l => (
-                <li key={l.id}>
-                  <a className="home-card" href={`/listings/${l.id}`}>
-                    <span className="home-thumb" aria-hidden="true" />
-                    <span className="home-tag">{l.transactionType === "sale" ? "For sale" : "For rent"}</span>
-                    <strong>{l.title}</strong>
-                    {l.priceCents !== undefined && <span className="home-price">{formatPrice(l.priceCents, l.transactionType)}</span>}
-                    <span className="muted">{l.suburb ? `${l.suburb} ${l.postcode ?? ""} ` : ""}{l.jurisdiction}</span>
-                    <span className="home-facts">
-                      {l.bedrooms !== undefined && <span>{l.bedrooms} bed</span>}
-                      {l.bathrooms !== undefined && <span>{l.bathrooms} bath</span>}
-                      {l.parking !== undefined && <span>{l.parking} car</span>}
-                    </span>
-                  </a>
+                <li key={l.id} className="lcard">
+                  <div className="lcard-media"><span className="lcard-tag">{l.transactionType === "sale" ? "For sale" : "For rent"}</span></div>
+                  <div className="lcard-body">
+                    {l.priceCents !== undefined && <p className="lcard-price">{formatPrice(l.priceCents, l.transactionType)}</p>}
+                    <h3 className="lcard-title"><a href={`/listings/${l.id}`}>{l.title}</a></h3>
+                    <p className="lcard-addr">{l.suburb ? `${l.suburb} ${l.postcode ?? ""} ` : ""}{l.jurisdiction}</p>
+                    <ul className="chips" aria-label="Features">
+                      {l.bedrooms !== undefined && <li className="chip chip-bed">{l.bedrooms} bed</li>}
+                      {l.bathrooms !== undefined && <li className="chip chip-bath">{l.bathrooms} bath</li>}
+                      {l.parking !== undefined && <li className="chip chip-car">{l.parking} car</li>}
+                    </ul>
+                  </div>
                 </li>
               ))}
             </ul>

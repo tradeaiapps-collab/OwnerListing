@@ -1,20 +1,21 @@
-.staff-links { display: grid; gap: 0.75rem; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); }
-.staff-links a { display: block; padding: 1rem; border: 1px solid currentColor; border-radius: 0.5rem; text-decoration: none; }
+/* Staff and admin screens: link tiles, notices, checklists and the roles matrix. */
+.staff-links { display: grid; gap: var(--space-3); grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); }
+.staff-links a { display: block; padding: var(--space-4); border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); box-shadow: var(--shadow-1); color: var(--text); font-weight: 600; text-decoration: none; transition: border-color 0.12s ease, box-shadow 0.12s ease; }
+.staff-links a:hover { border-color: var(--brand); box-shadow: var(--shadow-2); color: var(--text); }
 .staff-reason { width: 100%; min-height: 4rem; }
-.staff-notice { padding: 0.75rem 1rem; border-left: 4px solid currentColor; }
-.staff-checks { display: grid; gap: 0.25rem; margin: 0.5rem 0; }
+.staff-notice { padding: var(--space-3) var(--space-4); border: 1px solid var(--border); border-left: 4px solid var(--brand); border-radius: var(--radius-sm, 8px); background: var(--tint); }
+.staff-checks { display: grid; gap: var(--space-1); margin: var(--space-2) 0; }
+.stack-tight { display: grid; gap: var(--space-1); }
+.role-summary { margin: var(--space-6) 0; }
+.access-detail { margin: var(--space-1) 0 var(--space-3); }
+
 main.roles-page { max-width: 1280px; }
 .roles-matrix th, .roles-matrix td { vertical-align: top; overflow-wrap: normal; word-break: normal; }
 .roles-matrix thead th { min-width: 6.5rem; }
 .roles-matrix tbody th[scope="row"], .roles-matrix thead th:first-child { position: sticky; left: 0; background: var(--bg); z-index: 1; }
+.roles-matrix thead th:first-child { background: var(--surface); }
 .roles-matrix thead th small, .roles-matrix .perm-desc { display: block; font-weight: normal; }
 .roles-matrix tbody th[scope="row"] { text-align: left; min-width: 14rem; max-width: 22rem; }
-.roles-matrix .area-row th { text-align: left; padding-top: 1rem; border-bottom: 2px solid currentColor; }
+.roles-matrix .area-row th { text-align: left; padding-top: var(--space-4); background: var(--tint); border-bottom: 1px solid var(--border); color: var(--heading, var(--text)); }
 .roles-matrix .cell { text-align: center; min-width: 6rem; }
 .roles-matrix .role-disabled { opacity: 0.6; }
-.badge { display: inline-block; margin-left: 0.4rem; padding: 0 0.4rem; border: 1px solid currentColor; border-radius: 0.25rem; font-size: 0.75em; }
-.badge.sensitive { color: #b45309; }
-.linklike { background: none; border: 0; padding: 0; font: inherit; font-weight: bold; text-decoration: underline; cursor: pointer; color: inherit; }
-.stack-tight { display: grid; gap: 0.25rem; }
-.role-summary { margin: 1.5rem 0; }
-.access-detail { margin: 0.25rem 0 0.75rem; }

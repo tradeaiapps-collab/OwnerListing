@@ -3,13 +3,13 @@ import "./globals.css";
 import SiteNav from "./site-nav";
 import ThemePreviewBridge from "./theme-preview-bridge";
 import "./styles/a11y.css";
-import "./styles/theme.css";
 import { appOriginFor, readAppMode } from "../src/config/app-mode";
 import { assetUrl, buildThemeCss, fontStylesheetUrl } from "../src/domain/site-theme";
 import { getRequestTheme } from "../src/server/request-theme";
 import { brandFor } from "../src/server/site-theme";
 
 const admin = readAppMode() === "admin";
+const DEFAULT_FOOTER_LINKS = [{ label: "Browse", href: "/listings" }, { label: "Plans and fees", href: "/plans" }, { label: "List a property", href: "/listings/new" }, { label: "Terms", href: "/terms" }];
 
 const getTheme = getRequestTheme;
 
@@ -21,7 +21,7 @@ export async function generateMetadata() {
   const robots = admin || t.source === "draft" ? { robots: { index: false, follow: false } } : {};
   return admin
     ? { title: { default: `${brand.name} Admin`, template: `%s | ${brand.name} Admin` }, description: "Staff only", ...robots, ...icons }
-    : { title: { default: brand.name, template: `%s | ${brand.name}` }, description: "Internal build: not for public use", ...robots, ...icons };
+    : { title: { default: brand.name, template: `%s | ${brand.name}` }, description: `${brand.tagline}. List your own property, meet verified buyers and decide on every offer yourself.`, ...robots, ...icons };
 }
 export const viewport = { width: "device-width", initialScale: 1 };
 
@@ -51,7 +51,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
       </head>
       <body>
         <a className="skip-link" href="#main-content">Skip to content</a>
-        {admin && <div className="admin-banner" role="note"><strong>Admin</strong> · staff only · {brand.name}</div>}
+        {admin && <div className="admin-banner" role="note"><strong>Admin</strong>, staff only, {brand.name}</div>}
         <header className="site-header">
           <div className="site-header-inner">
             {admin ? (
@@ -71,16 +71,18 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
           </div>
         </header>
         <div className="page" id="main-content" tabIndex={-1}>{children}</div>
-        {(footer.text || footer.links.length > 0) && (
-          <footer className="site-footer">
-            <div className="site-footer-inner">
-              {footer.text && <p>{footer.text}</p>}
-              {footer.links.length > 0 && (
-                <nav aria-label="Footer"><ul>{footer.links.map(l => <li key={`${l.label}|${l.href}`}><a href={l.href}>{l.label}</a></li>)}</ul></nav>
-              )}
-            </div>
-          </footer>
-        )}
+        <footer className="site-footer">
+          <div className="site-footer-inner">
+            <p>{footer.text || `© ${new Date().getFullYear()} ${brand.name}`}</p>
+            {(footer.links.length > 0 || !admin) && (
+              <nav aria-label="Footer">
+                <ul>
+                  {(footer.links.length > 0 ? footer.links : DEFAULT_FOOTER_LINKS).map(l => <li key={`${l.label}|${l.href}`}><a href={l.href}>{l.label}</a></li>)}
+                </ul>
+              </nav>
+            )}
+          </div>
+        </footer>
         {bridgeOrigin && <ThemePreviewBridge allowedOrigin={bridgeOrigin} />}
       </body>
     </html>

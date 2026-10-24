@@ -1,0 +1,80 @@
+/* Listing cards (home, browse, saved, my listings) and the shared feature chips. Colours come from theme variables only. */
+.lcards { list-style: none; margin: 0 0 var(--space-6); padding: 0; display: grid; gap: var(--space-4); grid-template-columns: 1fr; }
+@media (min-width: 600px) { .lcards { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (min-width: 960px) { .lcards { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-6); } }
+
+.lcard {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  box-shadow: var(--shadow-1);
+  transition: box-shadow 0.15s ease, border-color 0.15s ease;
+}
+.lcard:hover, .lcard:focus-within { box-shadow: var(--shadow-2); border-color: color-mix(in srgb, var(--brand) 40%, var(--border)); }
+.lcard-media { position: relative; aspect-ratio: 16 / 10; background: linear-gradient(160deg, var(--tint-2), var(--tint)); overflow: hidden; }
+.lcard-media::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: color-mix(in srgb, var(--brand) 38%, var(--bg));
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 11 12 4l9 7M5 10v10h14V10M10 20v-6h4v6'/%3E%3C/svg%3E") center / 34% no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 11 12 4l9 7M5 10v10h14V10M10 20v-6h4v6'/%3E%3C/svg%3E") center / 34% no-repeat;
+}
+.lcard-tag {
+  position: absolute;
+  left: var(--space-3);
+  top: var(--space-3);
+  padding: 2px var(--space-3);
+  border-radius: 999px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 0.8125rem;
+  font-weight: 700;
+  box-shadow: var(--shadow-1);
+}
+.lcard-body { display: flex; flex-direction: column; gap: var(--space-1); padding: var(--space-4); flex: 1; }
+.lcard-price { margin: 0; font-size: 1.375rem; font-weight: 800; letter-spacing: -0.01em; color: var(--heading, var(--text)); }
+main .lcard-title { margin: 0; font-size: 1rem; line-height: 1.35; font-weight: 600; }
+.lcard-title a { color: var(--text); text-decoration: none; }
+.lcard-title a::after { content: ""; position: absolute; inset: 0; }
+.lcard-title a:hover { color: var(--text); text-decoration: underline; }
+.lcard-title a:focus-visible { outline: none; }
+.lcard:focus-within { outline: 3px solid var(--focus); outline-offset: 2px; }
+.lcard-addr { margin: 0; color: var(--muted); font-size: 0.9375rem; }
+.lcard-meta { margin: auto 0 0; padding-top: var(--space-2); color: var(--muted); font-size: 0.875rem; }
+.lcard-actions { position: relative; z-index: 1; display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-4); margin-top: var(--space-2); }
+.lcard-actions a { display: inline-flex; align-items: center; min-height: 44px; font-weight: 600; }
+
+/* Bed, bath and car chips */
+.chips { list-style: none; margin: var(--space-2) 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px var(--space-3); border-radius: 999px; background: var(--surface); border: 1px solid var(--line); color: var(--text); font-size: 0.875rem; font-weight: 600; }
+.chip::before { content: ""; width: 16px; height: 16px; flex: none; background: var(--muted); -webkit-mask: var(--chip-icon) center / contain no-repeat; mask: var(--chip-icon) center / contain no-repeat; }
+.chip-bed { --chip-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2 19V6M2 15h20v4M22 15v-3a3 3 0 0 0-3-3h-8v6M6 12h.01'/%3E%3C/svg%3E"); }
+.chip-bath { --chip-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 12h18v3a5 5 0 0 1-5 5H8a5 5 0 0 1-5-5zM6 12V6a2 2 0 0 1 4 0M7 20l-1 2M17 20l1 2'/%3E%3C/svg%3E"); }
+.chip-car { --chip-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 17H3v-5l2-5h14l2 5v5h-2M5 17a2 2 0 1 0 4 0h6a2 2 0 1 0 4 0M3 12h18'/%3E%3C/svg%3E"); }
+
+/* Browse page: filters panel, result bar, pager */
+.browse-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: var(--space-2) var(--space-4); margin-bottom: var(--space-3); }
+.browse-head h1 { margin: 0; }
+.search-form { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); margin-bottom: var(--space-4); padding: var(--space-4); background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow-1); }
+.search-form .wide { grid-column: 1 / -1; }
+.search-form .actions { grid-column: 1 / -1; display: flex; gap: var(--space-3); margin: 0; }
+.search-form .actions button { flex: 1; }
+.result-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2) var(--space-4); margin-bottom: var(--space-3); }
+.result-bar select { width: auto; min-width: 11rem; }
+.pager { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); margin: var(--space-4) 0; }
+.pager button { min-width: 96px; }
+@media (min-width: 720px) {
+  .search-form { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .search-form .wide { grid-column: span 2; }
+  .search-form .actions { grid-column: span 2; justify-self: end; width: 100%; }
+}
+
+/* Skeleton rows while listings load */
+.lcard-skel .lcard-media::before { display: none; }
+@media (prefers-reduced-motion: no-preference) { .lcard-skel .lcard-media { animation: skel 1.4s ease-in-out infinite alternate; } }
+@keyframes skel { from { opacity: 0.55; } to { opacity: 1; } }

@@ -70,16 +70,17 @@ export default function NewListing() {
   }
 
   return (
-    <main>
+    <main className="narrow">
       <h1>Create a listing</h1>
+      <p className="muted">Start with the basics. You can save a draft and finish later. Nothing is public until you publish.</p>
       <form className="stack" onSubmit={onSubmit}>
         <ListingFields />
-        <button type="submit" disabled={busy}>Save draft</button>
+        <div className="form-bar"><button type="submit" disabled={busy}>Save draft</button></div>
       </form>
       {signedOut && <p role="alert"><a href="/api/auth/google/start">Sign in with Google</a> to save a listing.</p>}
       {error && <p role="alert">{error}</p>}
       {draftId && (
-        <section role="status">
+        <section role="status" className="panel">
           <h2>Draft saved</h2>
           <p><a href={`/listings/${draftId}/edit`}>Edit this draft</a></p>
           {isRent && (
@@ -94,7 +95,7 @@ export default function NewListing() {
           )}
         </section>
       )}
-      <p><a className="button secondary" href="/listings">View listings</a></p>
+      <p><a className="button secondary" href="/listings/mine">Back to my listings</a></p>
     </main>
   );
 }

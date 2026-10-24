@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { dollarsToCents, formatPrice } from "../../src/domain/listing-details";
 import { filtersFromParams } from "./url-params";
-import "../styles/search.css";
+import "../styles/cards.css";
 
 interface Row {
   id: string; title: string; address: string; jurisdiction: string; transactionType: "sale" | "rent"; useClass: string;
@@ -73,8 +73,11 @@ export default function Listings() {
 
   return (
     <main>
-      <h1>Listings</h1>
-      <form className="search-form" onSubmit={e => { e.preventDefault(); setPage(1); setApplied(form); }}>
+      <div className="browse-head">
+        <h1>Find a property</h1>
+        <a className="button secondary" href="/listings/new">List your property</a>
+      </div>
+      <form className="search-form" aria-label="Search listings" onSubmit={e => { e.preventDefault(); setPage(1); setApplied(form); }}>
         <select aria-label="Sale or rent" value={form.transactionType} onChange={e => setForm(f => ({ ...f, transactionType: e.target.value, minPrice: "", maxPrice: "" }))}>
           <option value="">Sale or rent</option>
           <option value="sale">Sale</option>
@@ -114,20 +117,24 @@ export default function Listings() {
         </select>
       </div>
       {error && <p role="alert">{error}</p>}
-      {rows && rows.length === 0 && <p className="empty">No published listings match.</p>}
+      {rows === null && !error && <ul className="lcards" aria-hidden="true">{[0, 1, 2].map(i => <li key={i} className="lcard lcard-skel"><div className="lcard-media" /><div className="lcard-body"><p className="lcard-price">&nbsp;</p></div></li>)}</ul>}
+      {rows && rows.length === 0 && <p className="empty">No published listings match. Try fewer filters or a nearby suburb.</p>}
       {rows && rows.length > 0 && (
-        <ul className="card-list">
+        <ul className="lcards">
           {rows.map(r => (
-            <li key={r.id}>
-              <a href={`/listings/${r.id}`}><strong>{r.title}</strong></a>
-              {r.priceCents !== undefined && <div className="price">{formatPrice(r.priceCents, r.transactionType)}</div>}
-              <div>{r.address}</div>
-              <ul className="facts" aria-label="Features">
-                {r.bedrooms !== undefined && <li>{r.bedrooms} bed</li>}
-                {r.bathrooms !== undefined && <li>{r.bathrooms} bath</li>}
-                {r.parking !== undefined && <li>{r.parking} car</li>}
-              </ul>
-              <small className="muted">{r.suburb ? `${r.suburb} ${r.postcode ?? ""} · ` : ""}{r.jurisdiction} · {r.transactionType === "sale" ? "Sale" : "Rent"} · {r.propertyType}</small>
+            <li key={r.id} className="lcard">
+              <div className="lcard-media"><span className="lcard-tag">{r.transactionType === "sale" ? "For sale" : "For rent"}</span></div>
+              <div className="lcard-body">
+                {r.priceCents !== undefined && <p className="lcard-price">{formatPrice(r.priceCents, r.transactionType)}</p>}
+                <h2 className="lcard-title"><a href={`/listings/${r.id}`}>{r.title}</a></h2>
+                <p className="lcard-addr">{r.address}</p>
+                <ul className="chips" aria-label="Features">
+                  {r.bedrooms !== undefined && <li className="chip chip-bed">{r.bedrooms} bed</li>}
+                  {r.bathrooms !== undefined && <li className="chip chip-bath">{r.bathrooms} bath</li>}
+                  {r.parking !== undefined && <li className="chip chip-car">{r.parking} car</li>}
+                </ul>
+                <p className="lcard-meta">{r.suburb ? `${r.suburb} ${r.postcode ?? ""} · ` : ""}{r.jurisdiction} · {r.propertyType.charAt(0).toUpperCase() + r.propertyType.slice(1)}</p>
+              </div>
             </li>
           ))}
         </ul>
@@ -139,7 +146,6 @@ export default function Listings() {
           <button type="button" className="secondary" disabled={page >= pages} onClick={() => setPage(p => p + 1)}>Next</button>
         </nav>
       )}
-      <p><a className="button" href="/listings/new">Create a listing</a></p>
     </main>
   );
 }

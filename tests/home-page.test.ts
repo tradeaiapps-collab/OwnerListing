@@ -5,6 +5,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import Home from "../app/page";
 import { filtersFromParams } from "../app/listings/url-params";
 
+// The home page reads the request theme (needs a request scope); give it the default theme.
+vi.mock("../src/server/request-theme", async () => {
+  const { DEFAULT_THEME } = await import("../src/domain/site-theme");
+  return { getRequestTheme: async () => ({ settings: DEFAULT_THEME, source: "published", previewToken: null }) };
+});
+
 const root = path.join(__dirname, "..");
 const params = (s: string) => new URLSearchParams(s);
 
