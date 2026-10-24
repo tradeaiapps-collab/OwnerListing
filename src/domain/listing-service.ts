@@ -17,7 +17,7 @@ export const BOND_PATHWAYS = ["state_bond_authority", "solicitor_trust", "bank_g
 
 export interface Actor {
   userId: string;
-  userType: "owner" | "agent";
+  userType: "owner" | "agent" | "buyer";
 }
 
 /** A listing plus the platform facts that gate publishing. Fee and terms come from billing and terms modules. */

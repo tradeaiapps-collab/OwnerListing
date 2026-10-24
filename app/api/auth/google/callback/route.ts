@@ -11,7 +11,7 @@ export async function GET(req: Request) {
   if (!auth) return NextResponse.json({ error: "Sign-in is not configured." }, { status: 503 });
   const failed = () => {
     const r = NextResponse.redirect(`${auth.appUrl}/?login=failed`);
-    for (const c of ["ol_state", "ol_nonce", "ol_verifier"]) r.cookies.set(c, "", { path: "/api/auth/google", maxAge: 0 });
+    for (const c of ["ol_state", "ol_nonce", "ol_verifier", "ol_role"]) r.cookies.set(c, "", { path: "/api/auth/google", maxAge: 0 });
     return r;
   };
 
@@ -27,14 +27,14 @@ export async function GET(req: Request) {
     const now = Math.floor(Date.now() / 1000);
     const who = claims && readIdentity(claims, { clientId: auth.google.clientId, nonce, nowSeconds: now });
     if (!who) return failed();
-    const user = await upsertGoogleUser(getDb(), who);
+    const user = await upsertGoogleUser(getDb(), who, readCookie(req, "ol_role") === "buyer" ? "buyer" : "owner");
     if (!user) return failed();
 
-    const res = NextResponse.redirect(`${auth.appUrl}/listings/new`);
+    const res = NextResponse.redirect(`${auth.appUrl}${user.userType === "buyer" ? "/buyer/saved-searches" : "/listings/new"}`);
     res.cookies.set(SESSION_COOKIE, signSession({ uid: user.id, ut: user.userType, exp: now + SESSION_TTL_SECONDS }, auth.secret), {
       httpOnly: true, sameSite: "lax", secure: auth.secureCookies, path: "/", maxAge: SESSION_TTL_SECONDS
     });
-    for (const c of ["ol_state", "ol_nonce", "ol_verifier"]) res.cookies.set(c, "", { path: "/api/auth/google", maxAge: 0 });
+    for (const c of ["ol_state", "ol_nonce", "ol_verifier", "ol_role"]) res.cookies.set(c, "", { path: "/api/auth/google", maxAge: 0 });
     return res;
   } catch {
     return failed();
