@@ -22,6 +22,8 @@ export interface EnquiryRepository {
   listByBuyer(buyerUserId: string): Promise<Enquiry[]>;
   listByListings(listingIds: readonly string[]): Promise<Enquiry[]>;
   addMessage(m: EnquiryMessage): Promise<void>;
+  /** Inserts an automated notice unless one already exists for this thread in the same UTC hour (db unique index). False means it lost the race. */
+  addNotice(m: EnquiryMessage): Promise<boolean>;
   messages(enquiryId: string): Promise<EnquiryMessage[]>;
   lastAutomatedAt(enquiryId: string): Promise<string | undefined>;
   /** Count of messages from the other side newer than the viewer's last read, per thread. */
@@ -106,8 +108,7 @@ async function post(deps: EnquiryDeps, e: Enquiry, ownerUserId: string, senderUs
       const notice: EnquiryMessage = {
         id: deps.newId(), enquiryId: e.id, senderUserId: null, automated: true, body: buildOfferPrompt(deps.offerRequestUrl(e.id)), sentAt: now
       };
-      await deps.enquiries.addMessage(notice);
-      await audit(deps, AUTOMATED_SENDER_ID, e.id, "enquiry.offer_notice_sent", { messageId: notice.id });
+      if (await deps.enquiries.addNotice(notice)) await audit(deps, AUTOMATED_SENDER_ID, e.id, "enquiry.offer_notice_sent", { messageId: notice.id });
     } else {
       const draft = await queueReplyDraft(deps.drafts, ownerUserId, e.id, body, now, deps.newId);
       if (draft) await audit(deps, AUTOMATED_SENDER_ID, e.id, "enquiry.reply_draft_queued", { draftId: draft.id, reviewUntil: draft.reviewUntil });
@@ -139,7 +140,7 @@ export async function startEnquiry(
 }
 
 /** Non-parties get the same not_found as a missing thread, so existence is never revealed. */
-async function participantEnquiry(deps: EnquiryDeps, actor: Actor, id: string): Promise<Result<{ enquiry: Enquiry; ownerUserId: string }>> {
+export async function participantEnquiry(deps: EnquiryDeps, actor: Actor, id: string): Promise<Result<{ enquiry: Enquiry; ownerUserId: string }>> {
   const e = await deps.enquiries.get(id);
   const ownerUserId = e ? await ownerOf(deps, e.listingId) : undefined;
   if (!e || !ownerUserId || (e.buyerUserId !== actor.userId && ownerUserId !== actor.userId)) return fail("not_found", "Enquiry not found.");
@@ -259,6 +260,12 @@ export function createInMemoryEnquiryRepository(): EnquiryRepository & { message
     async listByBuyer(buyerUserId) { return [...enquiries.values()].filter(e => e.buyerUserId === buyerUserId); },
     async listByListings(ids) { return [...enquiries.values()].filter(e => ids.includes(e.listingId)); },
     async addMessage(m) { messages.push(m); },
+    async addNotice(m) {
+      const hour = (t: string) => t.slice(0, 13);
+      if (messages.some(x => x.enquiryId === m.enquiryId && x.automated && hour(x.sentAt) === hour(m.sentAt))) return false;
+      messages.push(m);
+      return true;
+    },
     async messages(enquiryId) { return messages.filter(m => m.enquiryId === enquiryId); },
     async lastAutomatedAt(enquiryId) { return messages.filter(m => m.enquiryId === enquiryId && m.automated).at(-1)?.sentAt; },
     async unreadCounts(userId, ids) {
