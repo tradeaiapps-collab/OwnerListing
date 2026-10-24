@@ -66,7 +66,7 @@ export interface DraftInput {
 /** rentalBondPathway is stored on the record, not the listing; see updateDraft. */
 export type DraftPatch = Partial<DraftInput> & { rentalBondPathway?: BondPathway };
 
-export type Failure = { ok: false; code: "invalid" | "not_found" | "forbidden" | "conflict"; message: string };
+export type Failure = { ok: false; code: "invalid" | "not_found" | "forbidden" | "conflict" | "rate_limited"; message: string };
 export type Result<T> = { ok: true; value: T } | Failure;
 
 const fail = (code: Failure["code"], message: string): Failure => ({ ok: false, code, message });
