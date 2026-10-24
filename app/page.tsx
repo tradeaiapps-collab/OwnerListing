@@ -1,9 +1,12 @@
-import { readBrand } from "../src/config/brand";
+import { getRequestTheme } from "../src/server/request-theme";
+import { brandFor } from "../src/server/site-theme";
 
-export const metadata = { title: readBrand().tagline };
+export async function generateMetadata() {
+  return { title: brandFor((await getRequestTheme()).settings).tagline };
+}
 
-export default function Home() {
-  const brand = readBrand();
+export default async function Home() {
+  const brand = brandFor((await getRequestTheme()).settings);
   return (
     <main>
       <section className="hero">
