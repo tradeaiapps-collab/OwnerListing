@@ -1,8 +1,0 @@
-/* Logo and footer for the admin-controlled theme. Sizes come from the generated custom properties (see src/domain/site-theme.ts). */
-.brand-logo { height: var(--logo-h, 28px); width: auto; max-width: 60vw; display: block; margin-right: var(--space-2); }
-.brand { gap: var(--space-2); }
-.site-footer { border-top: 1px solid var(--border); background: var(--header-bg, var(--surface)); color: var(--header-text, var(--text)); margin-top: var(--space-6); }
-.site-footer-inner { max-width: 960px; margin: 0 auto; padding: var(--space-4); display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-6); align-items: center; justify-content: space-between; }
-.site-footer p { margin: 0; overflow-wrap: anywhere; }
-.site-footer ul { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-4); }
-.site-footer a { color: var(--header-text, var(--text)); display: inline-flex; align-items: center; min-height: 44px; }

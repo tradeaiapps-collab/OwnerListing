@@ -1,5 +1,4 @@
 import { useState } from "react";
-import "../styles/search.css";
 import { BOND_PATHWAY_LABELS, centsToInput } from "./ui";
 
 export type BondState = "idle" | "saving" | "saved" | "error";
@@ -29,32 +28,64 @@ export function ListingFields({ defaults = {} }: { defaults?: ListingDefaults })
   );
   return (
     <>
-      <input name="title" aria-label="Title" placeholder="Title" maxLength={200} required defaultValue={defaults.title ?? ""} />
-      <input name="address" aria-label="Address" placeholder="Address" maxLength={300} required defaultValue={defaults.address ?? ""} />
-      <select name="jurisdiction" defaultValue={defaults.jurisdiction ?? "QLD"} aria-label="State">
-        {["NSW", "VIC", "QLD", "WA", "SA", "TAS", "ACT", "NT"].map(j => <option key={j}>{j}</option>)}
-      </select>
-      <select name="transactionType" value={tx} onChange={e => setTx(e.target.value)} aria-label="Sale or rent">
-        <option value="sale">Sale</option>
-        <option value="rent">Rental</option>
-      </select>
-      <select name="useClass" defaultValue={defaults.useClass ?? "residential"} aria-label="Use">
-        <option value="residential">Residential</option>
-        <option value="commercial">Commercial</option>
-      </select>
-      <select name="propertyType" defaultValue={defaults.propertyType ?? "house"} aria-label="Property type">
-        {["house", "unit", "townhouse", "land", "office", "retail", "industrial", "warehouse", "hospitality", "other"].map(t => <option key={t}>{t}</option>)}
-      </select>
-      <div className="listing-details">
-        <input name="suburb" placeholder="Suburb" maxLength={80} defaultValue={defaults.suburb ?? ""} aria-label="Suburb" autoComplete="address-level2" />
-        <input name="postcode" placeholder="Postcode" inputMode="numeric" pattern="[0-9]{4}" maxLength={4} defaultValue={defaults.postcode ?? ""} aria-label="Postcode" autoComplete="postal-code" />
-        <label className="field price-field">{tx === "rent" ? "Rent per week (AUD)" : "Asking price (AUD)"}
-          <input name="price" inputMode="decimal" placeholder={tx === "rent" ? "650" : "850000"} defaultValue={defaults.priceCents !== undefined ? centsToInput(defaults.priceCents) : ""} />
+      <fieldset className="form-section">
+        <legend>The basics</legend>
+        <label className="field">Title
+          <input name="title" placeholder="e.g. Renovated family home with pool" maxLength={200} required defaultValue={defaults.title ?? ""} />
         </label>
-        {num("bedrooms", "Bedrooms", defaults.bedrooms)}
-        {num("bathrooms", "Bathrooms", defaults.bathrooms)}
-        {num("parking", "Parking", defaults.parking)}
-      </div>
+        <label className="field">Street address
+          <input name="address" placeholder="12 Jacaranda St, Paddington QLD 4064" maxLength={300} required defaultValue={defaults.address ?? ""} autoComplete="street-address" />
+        </label>
+      </fieldset>
+      <fieldset className="form-section">
+        <legend>What you are listing</legend>
+        <div className="form-grid">
+          <label className="field">Sale or rent
+            <select name="transactionType" value={tx} onChange={e => setTx(e.target.value)}>
+              <option value="sale">Sale</option>
+              <option value="rent">Rental</option>
+            </select>
+          </label>
+          <label className="field">Use
+            <select name="useClass" defaultValue={defaults.useClass ?? "residential"}>
+              <option value="residential">Residential</option>
+              <option value="commercial">Commercial</option>
+            </select>
+          </label>
+          <label className="field">Property type
+            <select name="propertyType" defaultValue={defaults.propertyType ?? "house"}>
+              {["house", "unit", "townhouse", "land", "office", "retail", "industrial", "warehouse", "hospitality", "other"].map(t => <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>)}
+            </select>
+          </label>
+          <label className="field">State
+            <select name="jurisdiction" defaultValue={defaults.jurisdiction ?? "QLD"}>
+              {["NSW", "VIC", "QLD", "WA", "SA", "TAS", "ACT", "NT"].map(j => <option key={j}>{j}</option>)}
+            </select>
+          </label>
+        </div>
+      </fieldset>
+      <fieldset className="form-section">
+        <legend>Location and price</legend>
+        <div className="form-grid">
+          <label className="field">Suburb
+            <input name="suburb" maxLength={80} defaultValue={defaults.suburb ?? ""} autoComplete="address-level2" />
+          </label>
+          <label className="field">Postcode
+            <input name="postcode" inputMode="numeric" pattern="[0-9]{4}" maxLength={4} defaultValue={defaults.postcode ?? ""} autoComplete="postal-code" />
+          </label>
+          <label className="field span-all">{tx === "rent" ? "Rent per week (AUD)" : "Asking price (AUD)"}
+            <input name="price" inputMode="decimal" placeholder={tx === "rent" ? "650" : "850000"} defaultValue={defaults.priceCents !== undefined ? centsToInput(defaults.priceCents) : ""} />
+          </label>
+        </div>
+      </fieldset>
+      <fieldset className="form-section">
+        <legend>Features</legend>
+        <div className="form-grid cols-3">
+          {num("bedrooms", "Bedrooms", defaults.bedrooms)}
+          {num("bathrooms", "Bathrooms", defaults.bathrooms)}
+          {num("parking", "Parking spaces", defaults.parking)}
+        </div>
+      </fieldset>
     </>
   );
 }

@@ -75,31 +75,53 @@ export default function SavedSearches() {
   }
 
   return (
-    <main>
+    <main className="narrow">
       <h1>Saved searches</h1>
       {signedOut && <p role="alert"><a href="/api/auth/google/start?as=buyer">Sign in with Google</a> to save a search.</p>}
+      <p className="muted">Save what you are looking for and we can tell you when a matching property is listed.</p>
       <form className="stack" onSubmit={onSubmit} noValidate>
-        <select name="transactionType" aria-label="Sale or rent">
-          <option value="sale">Buy</option>
-          <option value="rent">Rent</option>
-        </select>
-        <select name="useClass" aria-label="Use">
-          <option value="residential">Residential</option>
-          <option value="commercial">Commercial</option>
-        </select>
-        <select name="jurisdiction" aria-label="State">
-          <option value="">Any state</option>
-          {AU_JURISDICTIONS.map(j => <option key={j}>{j}</option>)}
-        </select>
-        <select name="propertyType" aria-label="Property type">
-          <option value="">Any property type</option>
-          {PROPERTY_TYPES.map(t => <option key={t}>{t}</option>)}
-        </select>
-        <input name="suburbs" aria-label="Suburbs, separated by commas" placeholder="Suburbs, separated by commas" />
-        <input name="minPrice" aria-label="Minimum price in dollars" inputMode="decimal" placeholder="Minimum price ($)" />
-        <input name="maxPrice" aria-label="Maximum price in dollars" inputMode="decimal" placeholder="Maximum price ($)" />
-        <input name="minBedrooms" aria-label="Minimum bedrooms" inputMode="numeric" placeholder="Minimum bedrooms" />
-        <button type="submit" disabled={busy}>Save search</button>
+        <fieldset className="form-section">
+          <legend>What are you looking for</legend>
+          <div className="form-grid">
+            <label className="field">Buy or rent
+              <select name="transactionType">
+                <option value="sale">Buy</option>
+                <option value="rent">Rent</option>
+              </select>
+            </label>
+            <label className="field">Use
+              <select name="useClass">
+                <option value="residential">Residential</option>
+                <option value="commercial">Commercial</option>
+              </select>
+            </label>
+            <label className="field">State
+              <select name="jurisdiction">
+                <option value="">Any state</option>
+                {AU_JURISDICTIONS.map(j => <option key={j}>{j}</option>)}
+              </select>
+            </label>
+            <label className="field">Property type
+              <select name="propertyType">
+                <option value="">Any property type</option>
+                {PROPERTY_TYPES.map(t => <option key={t}>{t}</option>)}
+              </select>
+            </label>
+            <label className="field span-all">Suburbs
+              <input name="suburbs" placeholder="Separate suburbs with commas" />
+            </label>
+            <label className="field">Minimum price ($)
+              <input name="minPrice" inputMode="decimal" />
+            </label>
+            <label className="field">Maximum price ($)
+              <input name="maxPrice" inputMode="decimal" />
+            </label>
+            <label className="field">Minimum bedrooms
+              <input name="minBedrooms" inputMode="numeric" />
+            </label>
+          </div>
+        </fieldset>
+        <div className="form-bar"><button type="submit" disabled={busy}>Save search</button></div>
       </form>
       {error && <p role="alert">{error}</p>}
 
@@ -110,7 +132,7 @@ export default function SavedSearches() {
 
       <section>
         <h2>Alerts</h2>
-        <p>We only send alerts for new matching listings if you choose a channel below. You can turn a channel off at any time.</p>
+        <p className="muted">We only send alerts for new matching listings if you choose a channel below. You can turn a channel off at any time.</p>
         {(["email", "sms"] as const).map(channel => (
           <label key={channel} className="check">
             <input

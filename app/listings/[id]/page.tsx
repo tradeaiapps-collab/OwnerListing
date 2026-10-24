@@ -5,6 +5,7 @@ import { formatPrice } from "../../../src/domain/listing-details";
 import "../../styles/documents.css";
 import { actionHref, publicPhotos } from "../../../src/domain/listing-actions";
 import { JSON_HEADERS } from "../ui";
+import "../../styles/cards.css";
 import "../../styles/detail.css";
 
 interface Listing {
@@ -40,10 +41,9 @@ function Gallery({ listingId, title }: { listingId: string; title: string }) {
   }, [listingId]);
   const images = publicPhotos(docs);
   const links = [...docs.filter(d => d.kind === "floorplan").map(d => ({ d, label: "Floor plan" })), ...docs.filter(d => d.kind === "video" || d.kind === "video_360").map(d => ({ d, label: d.kind === "video" ? "Video" : "360 video" }))];
-  if (images.length === 0 && links.length === 0) return null;
   return (
     <section aria-label="Photos and plans">
-      <h2>Photos and plans</h2>
+      {images.length === 0 && <div className="detail-media" role="img" aria-label="No photos added yet"><span>No photos yet</span></div>}
       {images.length > 0 && (
         <ul className="gallery">
           {images.map((d, i) => (
@@ -139,34 +139,50 @@ export default function ListingDetail() {
   }
 
   const provided = listing.disclosures.filter(d => d.satisfied);
+  const tx = listing.transactionType as "sale" | "rent";
 
   return (
-    <main>
-      {back}
-      <h1>{listing.title}</h1>
-      <p className="detail-address">{listing.address}</p>
-      {listing.priceCents !== undefined && <p className="detail-price">{formatPrice(listing.priceCents, listing.transactionType as "sale" | "rent")}</p>}
-      <div className="detail-actions">
-        <a className="button" href={actionHref(listing.id, "enquire", userType !== null)}>Enquire</a>
-        <SaveButton listingId={listing.id} userType={userType} />
+    <main className="detail">
+      <p className="detail-back"><a href="/listings">Back to listings</a></p>
+      <div className="detail-layout">
+        <div className="detail-main">
+          <Gallery listingId={listing.id} title={listing.title} />
+          <p><span className="lcard-tag detail-tag">{tx === "sale" ? "For sale" : "For rent"}</span></p>
+          <h1>{listing.title}</h1>
+          <p className="detail-address">{listing.address}</p>
+          {listing.priceCents !== undefined && <p className="detail-price detail-price-m">{formatPrice(listing.priceCents, tx)}</p>}
+          <ul className="chips detail-chips" aria-label="Features">
+            {listing.bedrooms !== undefined && <li className="chip chip-bed">{listing.bedrooms} bed</li>}
+            {listing.bathrooms !== undefined && <li className="chip chip-bath">{listing.bathrooms} bath</li>}
+            {listing.parking !== undefined && <li className="chip chip-car">{listing.parking} car</li>}
+          </ul>
+          <h2>Property details</h2>
+          <dl className="details detail-facts">
+            <dt>State</dt><dd>{listing.jurisdiction}</dd>
+            <dt>Offer</dt><dd>{tx === "sale" ? "For sale" : "For rent"}</dd>
+            <dt>Use</dt><dd>{cap(listing.useClass)}</dd>
+            <dt>Property</dt><dd>{cap(listing.propertyType)}</dd>
+            {listing.suburb && <><dt>Suburb</dt><dd>{listing.suburb}{listing.postcode ? ` ${listing.postcode}` : ""}</dd></>}
+            {listing.bedrooms !== undefined && <><dt>Bedrooms</dt><dd>{listing.bedrooms}</dd></>}
+            {listing.bathrooms !== undefined && <><dt>Bathrooms</dt><dd>{listing.bathrooms}</dd></>}
+            {listing.parking !== undefined && <><dt>Parking</dt><dd>{listing.parking}</dd></>}
+          </dl>
+          {provided.length > 0 && (
+            <section aria-label="Disclosures">
+              <h2>Disclosures provided</h2>
+              <ul className="plain-list">{provided.map(d => <li key={d.key}>{cap(d.key)}</li>)}</ul>
+            </section>
+          )}
+        </div>
+        <aside className="detail-aside" aria-label="Contact the owner">
+          {listing.priceCents !== undefined && <p className="detail-price">{formatPrice(listing.priceCents, tx)}</p>}
+          <div className="detail-actions">
+            <a className="button" href={actionHref(listing.id, "enquire", userType !== null)}>Enquire</a>
+            <SaveButton listingId={listing.id} userType={userType} />
+          </div>
+          <p className="detail-note">You deal directly with the owner. Any deposit is paid to the owner&apos;s solicitor, never to the platform.</p>
+        </aside>
       </div>
-      <Gallery listingId={listing.id} title={listing.title} />
-      <dl className="details detail-facts">
-        <dt>State</dt><dd>{listing.jurisdiction}</dd>
-        <dt>Offer</dt><dd>{listing.transactionType === "sale" ? "For sale" : "For rent"}</dd>
-        <dt>Use</dt><dd>{cap(listing.useClass)}</dd>
-        <dt>Property</dt><dd>{cap(listing.propertyType)}</dd>
-        {listing.suburb && <><dt>Suburb</dt><dd>{listing.suburb}{listing.postcode ? ` ${listing.postcode}` : ""}</dd></>}
-        {listing.bedrooms !== undefined && <><dt>Bedrooms</dt><dd>{listing.bedrooms}</dd></>}
-        {listing.bathrooms !== undefined && <><dt>Bathrooms</dt><dd>{listing.bathrooms}</dd></>}
-        {listing.parking !== undefined && <><dt>Parking</dt><dd>{listing.parking}</dd></>}
-      </dl>
-      {provided.length > 0 && (
-        <section aria-label="Disclosures">
-          <h2>Disclosures provided</h2>
-          <ul className="plain-list">{provided.map(d => <li key={d.key}>{cap(d.key)}</li>)}</ul>
-        </section>
-      )}
     </main>
   );
 }

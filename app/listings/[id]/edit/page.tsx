@@ -87,7 +87,7 @@ export default function EditListing() {
   }
 
   return (
-    <main>
+    <main className="narrow">
       <h1>Edit draft</h1>
       {loadError && <p role="alert">{loadError}</p>}
       {!loadError && !listing && <p className="muted" role="status">Loading...</p>}
@@ -96,11 +96,11 @@ export default function EditListing() {
         <>
           <form className="stack" onSubmit={onSubmit}>
             <ListingFields defaults={listing} />
-            <button type="submit" disabled={busy}>Save changes</button>
+            <div className="form-bar"><button type="submit" disabled={busy}>Save changes</button></div>
           </form>
           {saved && <p role="status">Changes saved.</p>}
           {error && <p role="alert">{error}</p>}
-          <section>
+          <section className="panel">
             {listing.transactionType === "rent" && <BondPathwayField value={bond} state={bondState} onChange={saveBond} />}
             <button type="button" className="secondary" disabled={busy} onClick={runCheck}>Check if it can be published</button>
             {check && (
@@ -112,7 +112,7 @@ export default function EditListing() {
           </section>
         </>
       )}
-      <p><a className="button secondary" href="/listings">View listings</a></p>
+      <p><a className="button secondary" href="/listings/mine">Back to my listings</a></p>
     </main>
   );
 }

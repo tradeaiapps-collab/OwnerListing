@@ -30,8 +30,8 @@ export default function MyListings() {
           {rows.map(r => (
             <li key={r.id}>
               <strong>{r.title}</strong>
-              <div>{r.address}</div>
-              <small className="muted">{STATUS_LABELS[r.status] ?? r.status} · {r.transactionType === "sale" ? "Sale" : "Rent"}</small>
+              <div className="muted">{r.address}</div>
+              <div><span className={`badge${r.status === "published" ? " badge-accepted" : ""}`}>{STATUS_LABELS[r.status] ?? r.status}</span><span className="badge">{r.transactionType === "sale" ? "For sale" : "For rent"}</span></div>
               {r.status === "draft" && <div><a href={`/listings/${r.id}/edit`}>Edit this draft</a> · <a href={`/listings/${r.id}/checkout`}>Pay and publish</a></div>}
             </li>
           ))}
