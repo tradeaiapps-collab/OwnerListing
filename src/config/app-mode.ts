@@ -43,6 +43,8 @@ export function normalizePath(raw: string): string | null {
 }
 const AUTH_START = "/api/auth/google/start";
 const AUTH_CALLBACK = "/api/auth/google/callback";
+// DEV-ONLY test sign-in. Passes the proxy on both instances; the page and route answer 404 unless devLoginAllowed() (src/server/dev-login.ts).
+const DEV_LOGIN_PATHS = new Set(["/dev-login", "/api/dev/login"]);
 
 /**
  * Whether a request may be served in this mode. `as` is the ?as= query value; `role` is the ol_role cookie that sign-in start sets.
@@ -55,5 +57,5 @@ export function isAllowed(mode: AppMode, rawPathname: string, as: string | null,
   if (STATIC.test(pathname) || pathname === "/api/health") return true;
   const staffSignIn = (pathname === AUTH_START && as === "staff") || (pathname === AUTH_CALLBACK && role === "staff");
   if (mode === "public") return !isStaffPath(pathname) && !staffSignIn;
-  return isStaffPath(pathname) || staffSignIn || pathname === "/api/auth/logout";
+  return isStaffPath(pathname) || staffSignIn || pathname === "/api/auth/logout" || DEV_LOGIN_PATHS.has(pathname);
 }
