@@ -153,3 +153,6 @@ Built 24 Oct 2026 (feat/plans-checkout): public /plans, staff /staff/pricing (pr
 16. SECURITY REVIEW: independent review done 24 Oct 2026, no critical or high findings. Open: staff first-login linking by email match needs the Google Workspace domain (hd claim) from the owner.
 17. KNOWN GAPS: upload memory use; large video upload needs streaming or presigned upload; file download not built; browser check of pages at 375, 768 and 1280 px not done (see item 10).
 18. REMAINING QUEUE: (a) choose storage and malware scanner providers (upload returns 503 until then); (b) choose an email/SMS provider so alerts can send; (c) payments (blocked on Westpac PayWay, no live keys); (d) owner to supply the Workspace domain for staff linking; (e) file download; (f) browser check (see item 10).
+
+## Account settings and terms (PR: feat/account-settings-terms, 24 Oct 2026)
+Versioned terms with insert-only acceptance log (db/20261024160000), /terms accept page, publish needs current terms for owner and actor (domain dep termsCurrentFor). /settings stores language and time zone per user (default en-AU, Australia/Sydney). /dashboard lists owner, agent, buyer and staff tasks. Open: counsel to approve the terms text (seed version 2026-10-24 is a draft); offers, enquiries and listing create are not yet gated on terms; staff have no settings page (separate sign-in).

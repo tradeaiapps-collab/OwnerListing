@@ -1,0 +1,17 @@
+.settings-form { display: grid; gap: var(--space-4); max-width: 28rem; }
+.settings-form label { display: grid; gap: var(--space-1); font-weight: 600; }
+.settings-form select { min-height: 44px; font: inherit; padding: var(--space-2) var(--space-3); }
+.settings-form button, .terms-accept button { min-height: 44px; }
+
+.terms-box { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: var(--space-4); }
+.terms-box ul { margin: var(--space-2) 0 0; padding-left: var(--space-6); }
+.terms-accept { display: grid; gap: var(--space-3); margin-top: var(--space-4); }
+.terms-accept .terms-check { display: flex; gap: var(--space-2); align-items: center; min-height: 44px; }
+
+.dash-grid { display: grid; gap: var(--space-3); grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr)); list-style: none; padding: 0; }
+.dash-grid a {
+  display: grid; gap: var(--space-1); min-height: 44px; padding: var(--space-4);
+  border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); color: var(--text); text-decoration: none;
+}
+.dash-grid a:hover { border-color: var(--brand); }
+.dash-grid .dash-text { color: var(--muted); font-weight: 400; }

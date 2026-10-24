@@ -9,6 +9,7 @@ import { readAuthEnv } from "./auth/config";
 import type { StaffActor } from "../domain/staff-access";
 import { createPgBillingStore } from "./billing-db";
 import { staffFromRequest } from "./staff-auth";
+import { hasCurrentTermsPg } from "./terms-db";
 import { appendAuditPg, appointmentForPg, createPgListingRepository, verifiedLicencesPg, type Queryable } from "./db";
 
 interface Wired { db: Queryable; deps: ListingServiceDeps }
@@ -33,7 +34,8 @@ function wire(): Wired {
       now: () => new Date().toISOString(),
       newId: () => randomUUID(),
       requiredDisclosures: getRequiredDisclosureKeys,
-      appointmentFor: (listingId, agentUserId) => appointmentForPg(db, listingId, agentUserId)
+      appointmentFor: (listingId, agentUserId) => appointmentForPg(db, listingId, agentUserId),
+      termsCurrentFor: userId => hasCurrentTermsPg(db, userId, new Date().toISOString())
     }
   };
 }
