@@ -105,6 +105,7 @@ decidePublish now blocks any listing until the owner's listing fee or plan is pa
 
 ## Payments: Westpac PayWay (decided 23 Oct 2026)
 Westpac is the bank and payment provider. src/adapters/westpac-payway.ts holds the settings and fails closed until connected. Open: apply for a PayWay merchant account; then build the real checkout and webhook signature check from Westpac's documentation, and set listingFeePaid from a confirmed payment.
+Built 24 Oct 2026 (feat/plans-checkout): public /plans, staff /staff/pricing (pricing.manage, new price rows with a reason), owner /listings/[id]/checkout (GST invoice, idempotent, locked price, unpriced plan unbuyable) and /api/webhooks/payway (HMAC-SHA256 in x-payway-signature, secret PAYWAY_WEBHOOK_SECRET, constant-time, idempotent by event id, amount mismatch opens an admin case, rejects all while the secret is unset). The adapter still fails closed, so checkout answers "not available yet" and nothing publishes. The webhook body and header are our placeholder format until Westpac's documentation replaces them. Open: transactions across the settle steps, refunds for payments on replaced invoices.
 
 ## Completed (Build 001)
 - Listing publish rules, including disclosure gate and unverified-agent block.
