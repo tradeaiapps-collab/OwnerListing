@@ -1,0 +1,6 @@
+/* Skip link, focus target and 44px touch targets for plain links. */
+.skip-link { position: absolute; left: var(--space-2); top: -100px; z-index: 10; padding: var(--space-3) var(--space-4); background: var(--brand); color: var(--brand-text); border-radius: 8px; font-weight: 600; }
+.skip-link:focus { top: var(--space-2); }
+#main-content:focus { outline: none; }
+.brand { display: inline-flex; align-items: center; min-height: 44px; }
+main :is(p, div) > a:not(.button) { display: inline-block; padding-block: 10px; }

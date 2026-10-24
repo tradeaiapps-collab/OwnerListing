@@ -1,3 +1,5 @@
+export const metadata = { title: "Sell or rent your property" };
+
 export default function Home() {
   return (
     <main>

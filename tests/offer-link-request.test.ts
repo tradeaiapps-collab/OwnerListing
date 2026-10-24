@@ -188,6 +188,18 @@ describe("POST/GET /api/enquiries/[id]/offer-link", () => {
     expect((await route.POST(post("request", { origin: "http://evil.test" }), ctx(enquiryId))).status).toBe(403);
     expect((await deps.offerLinks.latest(enquiryId))).toBeUndefined();
   });
+  it("refuses request and issue (and creates nothing) when the current terms are not accepted, or the check fails", async () => {
+    state.actor = buyer;
+    for (const check of [async () => false, async () => { throw new Error("db down"); }]) {
+      deps.termsCurrentFor = check;
+      for (const action of ["request", "issue"]) {
+        const res = await route.POST(post(action), ctx(enquiryId));
+        expect(res.status).toBeGreaterThanOrEqual(400);
+        expect(res.status).not.toBe(404);
+      }
+      expect(await deps.offerLinks.latest(enquiryId)).toBeUndefined();
+    }
+  });
   it("requires sign in, a valid id and a known action", async () => {
     expect((await route.POST(post("request"), ctx(enquiryId))).status).toBe(401);
     expect((await route.GET(new Request("http://test/x"), ctx(enquiryId))).status).toBe(401);

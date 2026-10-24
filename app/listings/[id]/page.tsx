@@ -4,6 +4,7 @@ import { useParams } from "next/navigation";
 import { formatPrice } from "../../../src/domain/listing-details";
 import "../../styles/documents.css";
 import { actionHref, publicPhotos } from "../../../src/domain/listing-actions";
+import { JSON_HEADERS } from "../ui";
 import "../../styles/detail.css";
 
 interface Listing {
@@ -61,16 +62,54 @@ function Gallery({ listingId, title }: { listingId: string; title: string }) {
   );
 }
 
+/** Bookmarks the listing for a signed-in buyer (no search is created). Signed-out visitors sign in and return here; owners and agents see no Save button. */
+function SaveButton({ listingId, userType }: { listingId: string; userType: string | null }) {
+  const [saved, setSaved] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const buyer = userType === "buyer";
+  useEffect(() => {
+    if (!buyer) return;
+    fetch("/api/buyer/saved-listings")
+      .then(async r => (r.ok ? (await r.json()).listings as { listingId: string }[] : []))
+      .then(all => setSaved(all.some(l => l.listingId === listingId)))
+      .catch(() => setSaved(false));
+  }, [buyer, listingId]);
+  if (userType === null) return <a className="button secondary" href={actionHref(listingId, "save", false)}>Save</a>;
+  if (!buyer) return null;
+  async function toggle() {
+    setBusy(true);
+    setError("");
+    try {
+      const res = saved
+        ? await fetch(`/api/buyer/saved-listings/${listingId}`, { method: "DELETE" })
+        : await fetch("/api/buyer/saved-listings", { method: "POST", headers: JSON_HEADERS, body: JSON.stringify({ listingId }) });
+      if (res.ok) setSaved(!saved);
+      else setError("Could not update your saved homes.");
+    } catch {
+      setError("Could not update your saved homes.");
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <>
+      <button type="button" className="button secondary" onClick={toggle} disabled={busy} aria-pressed={saved}>{saved ? "Saved" : "Save"}</button>
+      {error && <span role="alert">{error}</span>}
+    </>
+  );
+}
+
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1).replace(/_/g, " ");
 
 export default function ListingDetail() {
   const { id } = useParams<{ id: string }>();
   const [listing, setListing] = useState<Listing | null>(null);
   const [error, setError] = useState("");
-  const [signedIn, setSignedIn] = useState(false);
+  const [userType, setUserType] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch("/api/auth/me").then(async r => setSignedIn(r.ok && (await r.json()).user !== null)).catch(() => setSignedIn(false));
+    fetch("/api/auth/me").then(async r => setUserType(r.ok ? (await r.json()).user?.userType ?? null : null)).catch(() => setUserType(null));
   }, []);
 
   useEffect(() => {
@@ -108,8 +147,8 @@ export default function ListingDetail() {
       <p className="detail-address">{listing.address}</p>
       {listing.priceCents !== undefined && <p className="detail-price">{formatPrice(listing.priceCents, listing.transactionType as "sale" | "rent")}</p>}
       <div className="detail-actions">
-        <a className="button" href={actionHref(listing.id, "enquire", signedIn)}>Enquire</a>
-        <a className="button secondary" href={actionHref(listing.id, "save", signedIn)}>Save</a>
+        <a className="button" href={actionHref(listing.id, "enquire", userType !== null)}>Enquire</a>
+        <SaveButton listingId={listing.id} userType={userType} />
       </div>
       <Gallery listingId={listing.id} title={listing.title} />
       <dl className="details detail-facts">
