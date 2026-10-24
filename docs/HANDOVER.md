@@ -45,3 +45,6 @@ OwnerListing: Australian marketplace where owners list their own homes. AI assis
 
 ## Working rules
 One feature per PR; minimal patches; `npm test` and `npm run typecheck` are the gate; never skip tests or edit CI; security review for auth, uploads, ID data, raw SQL and payments; chat and published files are never deletable.
+
+## Site appearance (theme and branding)
+See docs/SITE_APPEARANCE.md. Permission `theme.edit` is held by `super_admin` and the new `designer` role only (the designer has no other permission). Staff screen: `/staff/site` (admin site).
