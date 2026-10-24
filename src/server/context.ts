@@ -11,7 +11,7 @@ import { createPgBillingStore } from "./billing-db";
 import { staffFromRequest } from "./staff-auth";
 import { createPgPublishAlertHook } from "./publish-alerts-db";
 import { hasCurrentTermsPg } from "./terms-db";
-import { appendAuditPg, appointmentForPg, createPgListingRepository, verifiedLicencesPg, type Queryable } from "./db";
+import { appendAuditPg, appointmentForPg, createPgListingRepository, trustAccountDecisionPg, verifiedLicencesPg, type Queryable } from "./db";
 
 interface Wired { db: Queryable; deps: ListingServiceDeps }
 const g = globalThis as unknown as { __ownerlisting?: Wired };
@@ -56,6 +56,7 @@ function wire(): Wired {
       newId: () => randomUUID(),
       requiredDisclosures: getRequiredDisclosureKeys,
       appointmentFor: (listingId, agentUserId) => appointmentForPg(db, listingId, agentUserId),
+      trustAccountFor: listingId => trustAccountDecisionPg(db, listingId),
       termsCurrentFor: userId => hasCurrentTermsPg(db, userId, new Date().toISOString()),
       afterPublish: createPgPublishAlertHook(db)
     }
