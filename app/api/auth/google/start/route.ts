@@ -13,7 +13,9 @@ export async function GET(req: Request) {
   res.cookies.set("ol_state", s.state, opts);
   res.cookies.set("ol_nonce", s.nonce, opts);
   res.cookies.set("ol_verifier", s.verifier, opts);
-  // Only "buyer" is honoured; anything else (including "agent" or "admin") means the default, owner.
-  res.cookies.set("ol_role", new URL(req.url).searchParams.get("as") === "buyer" ? "buyer" : "owner", opts);
+  // Only "buyer" and "staff" are honoured; anything else (including "agent" or "admin") means the default, owner.
+  // "staff" grants nothing by itself: the callback still requires a pre-provisioned staff account.
+  const as = new URL(req.url).searchParams.get("as");
+  res.cookies.set("ol_role", as === "buyer" || as === "staff" ? as : "owner", opts);
   return res;
 }
