@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
-import { listDocuments } from "../../../../../src/domain/document-service";
+import { listDocuments, uploadAccess } from "../../../../../src/domain/document-service";
 import { precheckUpload, uploadDocument } from "../../../../../src/domain/document-upload";
-import type { DocumentKind, Visibility } from "../../../../../src/domain/documents";
+import { DOCUMENT_KINDS, type DocumentKind, type Visibility } from "../../../../../src/domain/documents";
 import { getActor, getDb, getDeps, getUploadPorts } from "../../../../../src/server/context";
 import { csrfGuard } from "../../../../../src/server/csrf";
 import { createPgDocumentStore } from "../../../../../src/server/documents-db";
@@ -11,17 +11,20 @@ type Ctx = { params: Promise<{ id: string }> };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-/** Lists a listing's documents the caller may see (metadata only). Signed-out visitors see public files of published listings. */
+/**
+ * Lists a listing's documents the caller may see (metadata only), and which kinds the caller may add.
+ * Signed-out visitors see public files of published listings.
+ */
 export async function GET(req: Request, { params }: Ctx) {
   const { id } = await params;
   if (!UUID.test(id)) return failure({ ok: false, code: "not_found", message: "Listing not found." });
-  const r = await listDocuments(getDeps(), createPgDocumentStore(getDb()), await getActor(req), id);
-  return r.ok ? NextResponse.json({ documents: r.value }) : failure(r);
+  const store = createPgDocumentStore(getDb()), actor = await getActor(req);
+  const r = await listDocuments(getDeps(), store, actor, id);
+  return r.ok ? NextResponse.json({ documents: r.value, canUpload: await uploadAccess(getDeps(), store, actor, id) }) : failure(r);
 }
 
 /** This route buffers the file in memory, so it takes up to 100 MB. Larger videos need a streaming upload (not built). */
 const MAX_REQUEST_BYTES = 100_000_000;
-const KINDS = ["photo", "photo_360", "video", "video_360", "floorplan", "title_search", "building_inspection", "pest_report", "contract", "other"];
 
 /**
  * Adds a file (multipart: file, kind, visibility, optional supersedesId). Needs a session and the owner or an approved contractor role.
@@ -47,7 +50,7 @@ export async function POST(req: Request, { params }: Ctx) {
   let form: FormData;
   try { form = await req.formData(); } catch { return NextResponse.json({ error: "Invalid upload." }, { status: 400 }); }
   const file = form.get("file"), kind = form.get("kind"), visibility = form.get("visibility"), supersedes = form.get("supersedesId");
-  if (!(file instanceof File) || typeof kind !== "string" || !KINDS.includes(kind) || typeof visibility !== "string") {
+  if (!(file instanceof File) || typeof kind !== "string" || !(DOCUMENT_KINDS as readonly string[]).includes(kind) || typeof visibility !== "string") {
     return NextResponse.json({ error: "A file, kind and visibility are required." }, { status: 400 });
   }
   if (supersedes !== null && (typeof supersedes !== "string" || !UUID.test(supersedes))) {
