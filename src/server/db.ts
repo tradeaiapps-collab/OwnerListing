@@ -6,6 +6,7 @@ import { buildSearch } from "./listing-search-sql";
 import { isJurisdiction } from "../domain/jurisdiction";
 import type { AgentLicence } from "../domain/licence";
 import type { AgentAppointment } from "../domain/access";
+import type { TrustAccountDecision } from "../domain/trust-account";
 
 /** The part of pg.Pool this app uses, so tests and the domain do not depend on the driver. */
 export interface Queryable {
@@ -127,6 +128,28 @@ export function createPgListingRepository(db: Queryable): ListingRepository {
       return rows.map(r => toRecord(r, ds.get(r.id) ?? []));
     }
   };
+}
+
+const TRUST_KINDS = ["approved", "awaiting_human_approval", "needs_more_evidence", "flagged_for_admin", "rejected"] as const;
+
+/**
+ * The publish gate's view of a listing's trust account: the latest check, and "approved" only if that check says approved AND a person
+ * last approved the account's current details (a changed fingerprint voids it). No check, or any doubt, gives undefined (fails closed).
+ */
+export async function trustAccountDecisionPg(db: Queryable, listingId: string): Promise<TrustAccountDecision | undefined> {
+  if (!UUID_RE.test(listingId)) return undefined;
+  const res = await db.query(
+    `SELECT c.decision, c.reasons, a.details_fingerprint = a.last_human_approved_fingerprint AS current
+       FROM trust_account_check c JOIN trust_account a ON a.id = c.trust_account_id
+      WHERE c.listing_id = $1 ORDER BY c.checked_at DESC, c.id LIMIT 1`,
+    [listingId]
+  );
+  const row = res.rows[0];
+  const kind = TRUST_KINDS.find(k => k === row?.["decision"]);
+  if (!row || !kind) return undefined;
+  const reasons = Array.isArray(row["reasons"]) ? (row["reasons"] as unknown[]).filter((r): r is string => typeof r === "string") : [];
+  if (kind === "approved" && row["current"] !== true) return { kind: "awaiting_human_approval", reasons: ["Account details changed since a person last approved them."] };
+  return { kind, reasons };
 }
 
 /** Active appointment of an agent to a listing. Parameterised; returns undefined when none is active. */

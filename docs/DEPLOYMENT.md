@@ -40,3 +40,12 @@ Home loads; Google sign-in works; `/plans` loads; an upload answers 503 (storage
 | ABN check | Adapter built, no env wiring | ABN Lookup GUID |
 | AI | Rules-only engine; features report off | Self-hosted model and OCR server |
 | Legal text | Draft terms and contract template | Counsel review |
+
+## 7. End-to-end smoke script (scratch database only)
+`scripts/smoke.mjs` drives the running app over HTTP (about 90 steps): terms, draft listing with price, publish gate, browse and search, saved items, buyer verification, enquiry and messages, offer-link request and issue, offer submit (single use), owner offers, offer analysis, contract draft preview, owner and staff reports, key pages, and the provider-off routes. It is not run by `npm test`.
+```
+npm run migrate && npm run build && npm run start      # in another shell, with the env from section 3
+DATABASE_URL=... APP_URL=http://localhost:3004 SESSION_SECRET=<same as the server> node scripts/smoke.mjs
+```
+It seeds users, a law firm and trust account, and buyer verification straight into the database and signs session cookies the way `src/server/auth/session.ts` does, so use a throwaway database: the append-only tables cannot be cleaned. Exit code 1 on any unexpected status (500, 502, 504 always fail).
+Blocked by design, so the script seeds the result in SQL: publishing needs compliance-approved disclosure config (`src/config/disclosures.ts` is empty, so the gate answers "no configuration" and fails closed), the listing fee paid (PayWay is a stub), and an approved trust account (normally two staff approvals). Also fail closed and expected: AI summary "unavailable", checkout refused, `/api/webhooks/payway` 503 while its secret is unset.
