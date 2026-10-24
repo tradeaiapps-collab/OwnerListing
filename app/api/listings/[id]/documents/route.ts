@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { listDocuments } from "../../../../../src/domain/document-service";
-import { uploadDocument } from "../../../../../src/domain/document-upload";
+import { precheckUpload, uploadDocument } from "../../../../../src/domain/document-upload";
 import type { DocumentKind, Visibility } from "../../../../../src/domain/documents";
 import { getActor, getDb, getDeps, getUploadPorts } from "../../../../../src/server/context";
 import { csrfGuard } from "../../../../../src/server/csrf";
@@ -36,6 +36,10 @@ export async function POST(req: Request, { params }: Ctx) {
   if (!actor) return unauthenticated();
   const { id } = await params;
   if (!UUID.test(id)) return failure({ ok: false, code: "not_found", message: "Listing not found." });
+  const store = createPgDocumentStore(getDb()), ports = getUploadPorts();
+  // Cheap checks first, so a wrong-role or unconfigured request never makes the server buffer the body.
+  const early = await precheckUpload(getDeps(), store, ports, actor, id);
+  if (early && !early.ok) return early.code === "unavailable" ? NextResponse.json({ error: early.message }, { status: 503 }) : failure(early);
   const length = Number(req.headers.get("content-length"));
   if (!Number.isFinite(length) || length <= 0 || length > MAX_REQUEST_BYTES) {
     return NextResponse.json({ error: "File is missing or too large for this upload." }, { status: 413 });
@@ -49,7 +53,7 @@ export async function POST(req: Request, { params }: Ctx) {
   if (supersedes !== null && (typeof supersedes !== "string" || !UUID.test(supersedes))) {
     return NextResponse.json({ error: "Invalid earlier version." }, { status: 400 });
   }
-  const r = await uploadDocument(getDeps(), createPgDocumentStore(getDb()), getUploadPorts(), actor, id, {
+  const r = await uploadDocument(getDeps(), store, ports, actor, id, {
     kind: kind as DocumentKind, visibility: visibility as Visibility, declaredMime: file.type,
     bytes: new Uint8Array(await file.arrayBuffer()), ...(supersedes ? { supersedesId: supersedes } : {})
   });

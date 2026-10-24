@@ -65,6 +65,13 @@ export function canUploadDocument(
     CONTRACTOR_KINDS[a.kind].includes(kind));
 }
 
+/** Role check before the kind is known (used before the upload body is read). The kind is checked again once it is. */
+export function canUploadAnyDocument(userId: string, ownerUserId: string, listingId: string, assignments: readonly JobAssignment[]): boolean {
+  if (userId === ownerUserId) return true;
+  return assignments.some(a =>
+    a.listingId === listingId && a.contractorUserId === userId && a.status === "approved" && CONTRACTOR_KINDS[a.kind].length > 0);
+}
+
 export function canViewDocument(
   userId: string | undefined, doc: DocumentRecord, listingPublished: boolean,
   assignments: readonly JobAssignment[]
