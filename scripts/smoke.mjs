@@ -20,9 +20,10 @@ const staffCookie = uid => `ol_staff=${sign({ uid, exp }, `${SECRET}:staff-sessi
 
 const run = randomUUID().slice(0, 8);
 const seedUser = async (type, name, extra = {}) => {
+  const email = `${name.toLowerCase().replace(/\W+/g, ".")}.${run}@smoke.invalid`;
   const r = await db.query(
-    `INSERT INTO app_user (email, display_name, user_type, status, staff_role) VALUES ($1, $2, $3, 'active', $4) RETURNING id`,
-    [`${name.toLowerCase().replace(/\W+/g, ".")}.${run}@smoke.invalid`, name, type, extra.staffRole ?? null]);
+    `INSERT INTO app_user (email, display_name, user_type, status) VALUES ($1, $2, $3, 'active') RETURNING id`, [email, name, type]);
+  if (extra.staffRole) await db.query(`INSERT INTO staff_invite (email, role) VALUES ($1, $2)`, [email, extra.staffRole]);
   return r.rows[0].id;
 };
 

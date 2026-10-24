@@ -15,7 +15,7 @@ export async function upsertGoogleUser(db: Queryable, who: GoogleIdentity, reque
   const res = await db.query(
     `INSERT INTO app_user (email, display_name, user_type, status, google_sub)
      VALUES ($1, $2, $4, 'active', $3)
-     ON CONFLICT (google_sub) DO UPDATE SET email = EXCLUDED.email
+     ON CONFLICT (google_sub) DO UPDATE SET email = EXCLUDED.email WHERE app_user.user_type IN ('owner', 'agent', 'buyer')
      RETURNING id, user_type, status`,
     [who.email, who.name, who.sub, requestedType]
   );

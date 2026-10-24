@@ -12,8 +12,10 @@ const dateOnly = (v: unknown) => iso(v).slice(0, 10);
 // ---- Admin cases ----
 
 const CASE_COLS = `c.id, c.kind, c.subject_id, c.reason, c.status, c.assigned_to, c.opened_at, c.resolved_at, c.resolution_reason,
-  c.proposed_by, c.proposed_reason, p.staff_role AS proposed_role`;
-const CASE_FROM = `FROM admin_case c LEFT JOIN app_user p ON p.id = c.proposed_by AND p.staff_role IS NOT NULL AND p.user_type = 'admin' AND p.status = 'active'`;
+  c.proposed_by, c.proposed_reason, pi.role AS proposed_role`;
+const CASE_FROM = `FROM admin_case c
+  LEFT JOIN app_user p ON p.id = c.proposed_by AND p.user_type = 'admin' AND p.status = 'active'
+  LEFT JOIN staff_invite pi ON pi.email = lower(p.email::text) AND pi.revoked_at IS NULL`;
 
 export interface CaseRow extends CaseState {
   id: string; subjectId: string; reason: string; openedAt: string; resolvedAt: string | null; resolutionReason: string | null;

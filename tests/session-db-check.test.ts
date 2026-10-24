@@ -127,7 +127,7 @@ describe("sign-in clears the other session cookie", () => {
   const find = (set: string[], name: string) => set.filter(c => c.startsWith(`${name}=`));
 
   it("staff sign-in sets ol_staff and expires ol_session", async () => {
-    const set = await callback("staff", [{ id: "s1", staff_role: "compliance" }]);
+    const set = await callback("staff", [{ id: "s1", role: "compliance", user_type: "admin", status: "active", google_sub: "google-sub-1" }]);
     expect(find(set, STAFF_COOKIE)[0]).toMatch(/^ol_staff=[^;]+/);
     const cleared = find(set, SESSION_COOKIE);
     expect(cleared).toHaveLength(1);
