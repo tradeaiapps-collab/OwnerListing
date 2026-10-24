@@ -47,7 +47,7 @@ export default function Listings() {
         <ul style={{ listStyle: "none", padding: 0, display: "grid", gap: 12 }}>
           {rows.map(r => (
             <li key={r.id} style={{ border: "1px solid #8884", borderRadius: 8, padding: 12, overflowWrap: "anywhere" }}>
-              <strong>{r.title}</strong>
+              <a href={`/listings/${r.id}`}><strong>{r.title}</strong></a>
               <div>{r.address}</div>
               <small>{r.jurisdiction} · {r.transactionType === "sale" ? "Sale" : "Rent"} · {r.useClass}</small>
             </li>
