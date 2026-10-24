@@ -34,6 +34,8 @@ export interface ListingRepository {
   save(record: ListingRecord): Promise<void>;
   get(id: string): Promise<ListingRecord | undefined>;
   list(): Promise<ListingRecord[]>;
+  /** One owner's listings, newest first. The owner id always comes from the signed-in actor. */
+  listByOwner(ownerUserId: string): Promise<ListingRecord[]>;
 }
 
 export interface ListingServiceDeps {
@@ -167,6 +169,11 @@ export interface SearchFilters {
 }
 
 /** Published listings only, newest first. */
+/** The signed-in user's own listings (drafts and published), newest first. */
+export async function listMyListings(deps: ListingServiceDeps, actor: Actor): Promise<PropertyListing[]> {
+  return (await deps.repo.listByOwner(actor.userId)).map(r => r.listing);
+}
+
 export async function searchPublished(deps: ListingServiceDeps, f: SearchFilters): Promise<PropertyListing[]> {
   const all = await deps.repo.list();
   return all
@@ -243,6 +250,9 @@ export function createInMemoryListingRepository(): ListingRepository & { clear()
     async save(r) { rows.set(r.listing.id, r); },
     async get(id) { return rows.get(id); },
     async list() { return [...rows.values()]; },
+    async listByOwner(ownerUserId) {
+      return [...rows.values()].filter(r => r.listing.ownerUserId === ownerUserId).sort((x, y) => y.listing.createdAt.localeCompare(x.listing.createdAt));
+    },
     clear() { rows.clear(); }
   };
 }

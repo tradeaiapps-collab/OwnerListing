@@ -94,6 +94,12 @@ export function createPgListingRepository(db: Queryable): ListingRepository {
       const rows = res.rows as unknown as ListingRow[];
       const ds = await disclosuresFor(rows.map(r => r.id));
       return rows.map(r => toRecord(r, ds.get(r.id) ?? []));
+    },
+    async listByOwner(ownerUserId) {
+      const res = await db.query(`${SELECT} WHERE l.owner_user_id = $1 ORDER BY l.created_at DESC`, [ownerUserId]);
+      const rows = res.rows as unknown as ListingRow[];
+      const ds = await disclosuresFor(rows.map(r => r.id));
+      return rows.map(r => toRecord(r, ds.get(r.id) ?? []));
     }
   };
 }
