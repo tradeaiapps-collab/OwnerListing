@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import type { AuditEvent } from "../src/domain/audit";
 import type { BuyerVerification } from "../src/domain/buyer";
 import {
-  changeStatus, checkOfferLink, createInMemoryOfferRepository, issueOfferLink, myOffers, parseOfferInput, submitOffer,
+  changeStatus, checkOfferLink, createInMemoryOfferAlertRepository, createInMemoryOfferRepository, issueOfferLink, myOffers, parseOfferInput, submitOffer,
   type OfferDeps, type OfferInput
 } from "../src/domain/offer-service";
 import { createInMemoryListingRepository, type Actor } from "../src/domain/listing-service";
@@ -154,5 +154,36 @@ describe("decisions", () => {
     await submitted();
     expect((await myOffers(deps, owner)).map(i => [i.role, i.listingTitle])).toEqual([["owner", "Home pub"]]);
     expect((await myOffers(deps, buyer)).map(i => [i.role, i.listingTitle])).toEqual([["buyer", "Home pub"]]);
+  });
+});
+
+describe("offer alerts", () => {
+  beforeEach(() => { deps.alerts = createInMemoryOfferAlertRepository(); });
+  async function submitted() {
+    const t = tokenOf(await issueOfferLink(deps, APP, "pub", buyer.userId));
+    const r = await submitOffer(deps, buyer, input(t));
+    return r.ok ? r.value.id : "";
+  }
+
+  it("alerts the owner of a new offer once, and the list view marks it seen", async () => {
+    await submitted();
+    expect((await myOffers(deps, owner)).map(i => i.unread)).toEqual([true]);
+    expect((await myOffers(deps, owner)).map(i => i.unread)).toEqual([false]);
+    expect((await myOffers(deps, buyer)).map(i => i.unread)).toEqual([false]);
+  });
+
+  it("alerts the buyer when the owner decides, and the owner when the buyer withdraws", async () => {
+    const id = await submitted();
+    await myOffers(deps, owner);
+    await changeStatus(deps, owner, id, "under_review");
+    expect((await myOffers(deps, buyer)).map(i => i.unread)).toEqual([true]);
+    await changeStatus(deps, buyer, id, "withdrawn");
+    expect((await myOffers(deps, owner)).map(i => i.unread)).toEqual([true]);
+  });
+
+  it("never fails an offer because the alert store is down", async () => {
+    deps.alerts = { notify: async () => { throw new Error("down"); }, markRead: async () => {}, unreadOfferIds: async () => [] };
+    const t = tokenOf(await issueOfferLink(deps, APP, "pub", buyer.userId));
+    expect((await submitOffer(deps, buyer, input(t))).ok).toBe(true);
   });
 });

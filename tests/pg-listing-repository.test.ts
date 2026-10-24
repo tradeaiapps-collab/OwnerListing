@@ -3,8 +3,8 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { inbox, getThread, reply, startEnquiry, type EnquiryDeps } from "../src/domain/enquiry-service";
 import { createDraft, publishListing, searchPublished, updateDraft, type ListingServiceDeps } from "../src/domain/listing-service";
 import { appendAuditPg, createPgListingRepository, type Queryable } from "../src/server/db";
-import { changeStatus, checkOfferLink, issueOfferLink, submitOffer, type OfferDeps } from "../src/domain/offer-service";
-import { createPgOfferRepository } from "../src/server/offer-db";
+import { changeStatus, checkOfferLink, issueOfferLink, myOffers, submitOffer, type OfferDeps } from "../src/domain/offer-service";
+import { createPgOfferAlertRepository, createPgOfferRepository } from "../src/server/offer-db";
 import { createPgEnquiryRepository, createPgNotificationRepository, getBuyerVerification } from "../src/server/enquiry-db";
 import { upsertGoogleUser } from "../src/server/users";
 
@@ -131,7 +131,7 @@ describe.skipIf(!url)("Postgres listing repository", () => {
     await db.query("UPDATE buyer_verification SET phone_verified_at = now(), id_verified_at = now() WHERE user_id = $1", [buyerActor.userId]);
 
     const odeps: OfferDeps = {
-      offers: createPgOfferRepository(db), listings: deps.repo, verification: id => getBuyerVerification(db, id),
+      offers: createPgOfferRepository(db), alerts: createPgOfferAlertRepository(db), listings: deps.repo, verification: id => getBuyerVerification(db, id),
       appendAudit: e => appendAuditPg(db, e), now: deps.now, newId: deps.newId
     };
     const url = await issueOfferLink(odeps, "https://app.test", l.id, buyerActor.userId);
@@ -150,7 +150,10 @@ describe.skipIf(!url)("Postgres listing repository", () => {
 
     expect((await changeStatus(odeps, { userId: crypto.randomUUID(), userType: "owner" }, offer!.id, "accepted")).ok).toBe(false);
     expect((await changeStatus(odeps, buyerActor, offer!.id, "accepted")).ok).toBe(false);
+    expect((await myOffers(odeps, actor)).find(i => i.offer.id === offer!.id)?.unread).toBe(true);
+    expect((await myOffers(odeps, actor)).find(i => i.offer.id === offer!.id)?.unread).toBe(false);
     const accepted = await changeStatus(odeps, actor, offer!.id, "accepted");
+    expect((await myOffers(odeps, buyerActor)).find(i => i.offer.id === offer!.id)?.unread).toBe(true);
     expect(accepted.ok && accepted.value.status).toBe("accepted");
   });
 });

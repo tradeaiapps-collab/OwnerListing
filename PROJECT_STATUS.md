@@ -138,3 +138,10 @@ Westpac is the bank and payment provider. src/adapters/westpac-payway.ts holds t
 4. Auth with OIDC, MFA and role-based access (Phase 0).
 5. Compliance (Shirin) to supply state disclosure configuration.
 6. Australian legal review before any public launch (G0 and G1 controls).
+
+## Site build status (23 Oct 2026)
+One package per PR, CI is the gate (tests run only in CI). Merged: #2 import, #3 listings, #4 Postgres and Google login. Open and stacked, merge in this order: #5 enquiries, #6 offers, #7 mobile verification, #8 ID submission and staff review (security review needed), #9 enquiry spam limits and in-app alerts, #10 offer alerts.
+- Blocked by design until a provider or sign-off exists: SMS (no provider, verification returns unavailable), ID image storage (no private store, submission unavailable), email alerts (no provider), payments, publishing (no state disclosure config).
+- Open decisions: SMS provider; ID image storage and retention periods (counsel); counter-offers; whether several offers may be accepted.
+- Known limits: selfie "taken in app" is a client declaration, reviewers still judge it; ID image purge function exists but nothing schedules it; no screen to assign staff roles yet (set in the database).
+- Not done: responsive browser check (375, 768, 1280 px, light and dark; needs a browser), spec text for House Listing, Project Listing and Decisions, AI suggestions and negotiation mandate, vendor coordination, document management, admin dashboard, billing and terms modules, Queensland disclosure configuration.
