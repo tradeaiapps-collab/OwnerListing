@@ -1,0 +1,12 @@
+/* Public listing detail: price, actions, gallery and facts. Mobile first: one column, 44px touch targets. */
+.detail-address { margin: 0 0 var(--space-2); color: var(--muted); }
+.detail-price { font-size: 1.5rem; font-weight: 700; margin: 0 0 var(--space-3); }
+.detail-actions { display: flex; gap: var(--space-3); margin: 0 0 var(--space-4); }
+.detail-actions .button { flex: 1; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; text-align: center; }
+.detail-facts { display: grid; grid-template-columns: max-content 1fr; gap: var(--space-1) var(--space-4); margin: 0 0 var(--space-4); }
+.detail-facts dt { color: var(--muted); }
+.detail-facts dd { margin: 0; }
+
+@media (min-width: 640px) {
+  .detail-actions .button { flex: 0 0 auto; min-width: 160px; }
+}
