@@ -8,6 +8,7 @@ const ENQUIRIES: DashboardLink = { href: "/enquiries", label: "Enquiries", text:
 const OWNER_TASKS: readonly DashboardLink[] = [
   { href: "/listings/new", label: "List a property", text: "Start a new draft listing." },
   { href: "/listings/mine", label: "My listings", text: "Edit, publish and review offers." },
+  { href: "/reports", label: "Report", text: "Enquiries and offers for each of your listings." },
   ENQUIRIES, PLANS, SETTINGS
 ];
 
