@@ -3,7 +3,7 @@ import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 export interface SessionPayload {
   /** app_user.id */
   uid: string;
-  ut: "owner" | "agent" | "buyer";
+  ut: "owner" | "agent" | "buyer" | "vendor";
   /** Expiry, seconds since epoch. */
   exp: number;
 }
@@ -30,7 +30,7 @@ export function verifySession(token: string | undefined, secret: string, nowSeco
   if (given.length !== expected.length || !timingSafeEqual(given, expected)) return null;
   try {
     const p = JSON.parse(Buffer.from(body, "base64url").toString("utf8")) as Partial<SessionPayload>;
-    if (typeof p.uid !== "string" || (p.ut !== "owner" && p.ut !== "agent" && p.ut !== "buyer") || typeof p.exp !== "number") return null;
+    if (typeof p.uid !== "string" || (p.ut !== "owner" && p.ut !== "agent" && p.ut !== "buyer" && p.ut !== "vendor") || typeof p.exp !== "number") return null;
     if (p.exp <= nowSeconds) return null;
     return { uid: p.uid, ut: p.ut, exp: p.exp };
   } catch {

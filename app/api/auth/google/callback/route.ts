@@ -6,7 +6,7 @@ import { exchangeCode, readIdentity } from "../../../../../src/server/auth/googl
 import { SESSION_COOKIE, SESSION_TTL_SECONDS, readCookie, signSession } from "../../../../../src/server/auth/session";
 import { STAFF_COOKIE, STAFF_TTL_SECONDS, signStaffSession } from "../../../../../src/server/auth/staff-session";
 import { staffSignIn } from "../../../../../src/server/staff-auth";
-import { upsertGoogleUser } from "../../../../../src/server/users";
+import { upsertGoogleUser, vendorSignIn } from "../../../../../src/server/users";
 
 /** Finishes Google sign-in: checks state, exchanges the code, validates the ID token, then sets the session cookie. */
 export async function GET(req: Request) {
@@ -39,6 +39,17 @@ export async function GET(req: Request) {
       });
       for (const c of ["ol_state", "ol_nonce", "ol_verifier", "ol_role", "ol_next"]) res.cookies.set(c, "", { path: "/api/auth/google", maxAge: 0 });
       res.cookies.set(SESSION_COOKIE, "", { httpOnly: true, sameSite: "lax", secure: auth.secureCookies, path: "/", maxAge: 0 });
+      return res;
+    }
+    if (readCookie(req, "ol_role") === "vendor") {
+      const vendor = await vendorSignIn(getDb(), who);
+      if (!vendor) return failed();
+      const res = NextResponse.redirect(`${auth.appUrl}${safeNextFromCookie(readCookie(req, "ol_next")) ?? "/"}`);
+      res.cookies.set(SESSION_COOKIE, signSession({ uid: vendor.id, ut: "vendor", exp: now + SESSION_TTL_SECONDS }, auth.secret), {
+        httpOnly: true, sameSite: "lax", secure: auth.secureCookies, path: "/", maxAge: SESSION_TTL_SECONDS
+      });
+      for (const c of ["ol_state", "ol_nonce", "ol_verifier", "ol_role", "ol_next"]) res.cookies.set(c, "", { path: "/api/auth/google", maxAge: 0 });
+      res.cookies.set(STAFF_COOKIE, "", { httpOnly: true, sameSite: "lax", secure: auth.secureCookies, path: "/", maxAge: 0 });
       return res;
     }
     const user = await upsertGoogleUser(getDb(), who, readCookie(req, "ol_role") === "buyer" ? "buyer" : "owner");
