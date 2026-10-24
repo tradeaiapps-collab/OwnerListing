@@ -184,5 +184,8 @@ Staff sign in with any Google account (email_verified=true required). The normal
 ## Messaging delivery (25 Oct 2026)
 Email (SMTP via nodemailer) and SMS (Twilio-compatible REST over fetch) adapters sit behind the existing alert-delivery and sms ports. Settings are admin-managed at /staff/messaging (super admin, `staff.manage`), secrets sealed with AES-256-GCM under MESSAGING_SETTINGS_KEY, env vars override per field, resolved at send time. Every send attempt is recorded in the insert-only messaging_outbox. All of it fails closed until configured. Open: provider accounts, Spam Act consent wording (counsel, COUNSEL_QUESTIONS 18), security review of this PR.
 
+## Local test kit (PR: local test kit)
+- `docker-compose.local.yml`, `scripts/local-{setup,start,reset}.{ps1,sh}`, `scripts/seed-demo.mjs`, `docs/LOCAL_TEST.md`. Public 3005, admin 3006 (`NEXT_DIST_DIR` splits build folders).
+- DEV-ONLY `/dev-login` and `POST /api/dev/login` (`src/server/dev-login.ts`): 404 unless NODE_ENV!=production, DEV_LOGIN=1, VERCEL unset, APP_URL localhost, Host and URL localhost. Needs security review.
 ## Site appearance (built 25 Oct 2026, PR feat/site-theme)
 Admin-controlled theme and branding: /staff/site (permission theme.edit: super_admin and new designer role). Draft, preview (signed 15-minute token), publish, insert-only version history, revert (new version, live at once), reset to defaults. Public site reads the published version at request time (cached about 45 s, falls back to built-in defaults if the database is unavailable) and injects generated CSS variables. Details: docs/SITE_APPEARANCE.md. Open: security review (uploads, preview token); web fonts load from fonts.googleapis.com when chosen; emails and SMS still use the environment brand name.
