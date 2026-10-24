@@ -1,8 +1,8 @@
-import { randomUUID } from "node:crypto";
+import { createHmac, randomUUID } from "node:crypto";
 import type { SmsPort } from "../adapters/sms";
 import {
   CODE_TTL_MS, MAX_CODE_ATTEMPTS, SMS_CONSENT_VERSION, SMS_SEND_RATE, SMS_VERIFY_RATE,
-  hashCode, hashesEqual, newCode, normaliseAuMobile, secretUsable, sha256Hex
+  hashCode, hashesEqual, newCode, normaliseAuMobile, secretUsable
 } from "../domain/phone-verification";
 import { withinLimit } from "../domain/rate-limit";
 import type { Failure, Result } from "../domain/listing-service";
@@ -23,7 +23,8 @@ export interface PhoneStore {
   takeGuess(userId: string, maxAttempts: number): Promise<LiveCode | "none" | "locked">;
   /** Single use: true for exactly one caller. */
   consume(codeId: string, userId: string): Promise<boolean>;
-  markVerified(userId: string, phoneE164: string): Promise<void>;
+  /** False (and nothing changes) when another account already holds this verified number. */
+  markVerified(userId: string, phoneE164: string): Promise<boolean>;
   log(userId: string, event: PhoneEvent, ipHash: string | null): Promise<void>;
 }
 
@@ -33,11 +34,17 @@ const fail = (code: Failure["code"], message: string): Failure => ({ ok: false, 
 const OFF = fail("unavailable", "Mobile verification is not available yet.");
 const WRONG = fail("invalid", "That code is not valid. Check it or ask for a new one.");
 
+/**
+ * Keyed hash for rate-limit buckets and the logged IP. A plain SHA-256 of a mobile number or IPv4 address can be
+ * reversed by enumeration, so these are HMACs under the server secret.
+ */
+const keyed = (secret: string, v: string): string => createHmac("sha256", secret).update(v).digest("hex");
+
 /** Counts every bucket (a refused attempt still counts) and reports whether all were within their limit. */
-async function withinAll(d: PhoneDeps, keys: [string, number][], windowMs: number): Promise<boolean> {
+async function withinAll(d: PhoneDeps & { secret: string }, keys: [string, number][], windowMs: number): Promise<boolean> {
   let ok = true;
   for (const [key, limit] of keys) {
-    if (!withinLimit(await d.store.hit(sha256Hex(key), windowMs), limit)) ok = false;
+    if (!withinLimit(await d.store.hit(keyed(d.secret, key), windowMs), limit)) ok = false;
   }
   return ok;
 }
@@ -52,8 +59,8 @@ export async function sendPhoneCode(d: PhoneDeps, userId: string, ip: string, in
   const s = await d.store.state(userId);
   if (!s.emailVerified) return fail("forbidden", "Verify your email first.");
   if (s.phoneVerified) return fail("conflict", "Your mobile number is already verified.");
-  const ipHash = sha256Hex(`ip:${ip}`);
-  const inLimit = await withinAll(d, [
+  const ipHash = keyed(d.secret, `ip:${ip}`);
+  const inLimit = await withinAll({ ...d, secret: d.secret }, [
     [`sms-send:user:${userId}`, SMS_SEND_RATE.perUser], [`sms-send:ip:${ip}`, SMS_SEND_RATE.perIp], [`sms-send:phone:${phone}`, SMS_SEND_RATE.perPhone]
   ], SMS_SEND_RATE.windowMs);
   if (!inLimit) {
@@ -81,8 +88,8 @@ export async function verifyPhoneCode(d: PhoneDeps, userId: string, ip: string, 
   if (!d.sms.configured || !secretUsable(d.secret)) return OFF;
   const raw = input && typeof input === "object" ? (input as Record<string, unknown>)["code"] : undefined;
   if (typeof raw !== "string" || !/^\d{6}$/.test(raw)) return fail("invalid", "Enter the 6-digit code.");
-  const ipHash = sha256Hex(`ip:${ip}`);
-  const inLimit = await withinAll(d, [[`sms-verify:user:${userId}`, SMS_VERIFY_RATE.perUser], [`sms-verify:ip:${ip}`, SMS_VERIFY_RATE.perIp]], SMS_VERIFY_RATE.windowMs);
+  const ipHash = keyed(d.secret, `ip:${ip}`);
+  const inLimit = await withinAll({ ...d, secret: d.secret }, [[`sms-verify:user:${userId}`, SMS_VERIFY_RATE.perUser], [`sms-verify:ip:${ip}`, SMS_VERIFY_RATE.perIp]], SMS_VERIFY_RATE.windowMs);
   if (!inLimit) {
     await d.store.log(userId, "rate_limited", ipHash);
     return fail("rate_limited", "Too many attempts. Try again later.");
@@ -102,7 +109,10 @@ export async function verifyPhoneCode(d: PhoneDeps, userId: string, ip: string, 
     return WRONG;
   }
   if (!(await d.store.consume(live.id, userId))) return WRONG;
-  await d.store.markVerified(userId, live.phoneE164);
+  if (!(await d.store.markVerified(userId, live.phoneE164))) {
+    await d.store.log(userId, "code_wrong", ipHash);
+    return fail("conflict", "This mobile number cannot be used for verification. Use a different number or contact support.");
+  }
   await d.store.log(userId, "verified", ipHash);
   return { ok: true, value: { verified: true } };
 }

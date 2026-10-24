@@ -1,4 +1,4 @@
-import { createHmac, randomUUID } from "node:crypto";
+import { createHash, createHmac, randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -19,7 +19,7 @@ function fakePhoneStore(opts: { email?: boolean; phone?: boolean } = {}) {
   const log: PhoneEvent[] = [];
   const consents: string[] = [];
   const sent: string[] = [];
-  const st = { phoneVerifiedAt: null as string | null, phone: null as string | null, clock: Date.now() };
+  const st = { phoneVerifiedAt: null as string | null, phone: null as string | null, clock: Date.now(), takenBy: null as string | null };
   const store: PhoneStore = {
     async hit(b) { const n = (hits.get(b) ?? 0) + 1; hits.set(b, n); return n; },
     async state() { return { emailVerified: opts.email ?? true, phoneVerified: opts.phone ?? st.phoneVerifiedAt !== null }; },
@@ -36,7 +36,7 @@ function fakePhoneStore(opts: { email?: boolean; phone?: boolean } = {}) {
       return { id: open.id, phoneE164: open.phone, codeHash: open.hash, expired: open.expiresAt <= st.clock };
     },
     async consume(id) { const c = codes.find(x => x.id === id); if (!c || c.consumed) return false; c.consumed = true; return true; },
-    async markVerified(_u, phone) { st.phoneVerifiedAt = "now"; st.phone = phone; },
+    async markVerified(_u, phone) { if (st.takenBy === phone) return false; st.phoneVerifiedAt = "now"; st.phone = phone; return true; },
     async log(_u, e) { log.push(e); }
   };
   return { store, codes, log, consents, sent, st, hits };
@@ -183,6 +183,24 @@ describe("verifyPhoneCode", () => {
     expect(await verifyPhoneCode(deps, USER, "ip", { code })).toMatchObject({ ok: false });
     expect(f.st.phoneVerifiedAt).toBeNull();
   });
+  it("a number already verified on another account cannot verify this one (generic answer, nothing set)", async () => {
+    const { f, deps, code } = await sentCode();
+    f.st.takenBy = "+61400000000";
+    const r = await verifyPhoneCode(deps, USER, "ip", { code });
+    expect(r).toMatchObject({ ok: false, code: "conflict" });
+    expect(JSON.stringify(r)).not.toMatch(/another|account|taken|already/i);
+    expect(f.st.phoneVerifiedAt).toBeNull();
+    expect(f.log).not.toContain("verified");
+  });
+  it("rate-limit buckets and the logged IP are keyed hashes, not plain SHA-256 of the phone or IP", async () => {
+    const { f, deps } = setup();
+    await sendPhoneCode(deps, USER, "1.2.3.4", body);
+    const plain = (v: string) => createHash("sha256").update(v).digest("hex");
+    for (const k of [`sms-send:phone:+61400000000`, `sms-send:ip:1.2.3.4`]) {
+      expect(f.hits.has(plain(k))).toBe(false);
+      expect(f.hits.has(createHmac("sha256", SECRET).update(k).digest("hex"))).toBe(true);
+    }
+  });
   it("a wrong code never verifies, and never says whether it was close", async () => {
     const { f, deps, code } = await sentCode();
     const r = await verifyPhoneCode(deps, USER, "ip", { code: wrongOf(code) });
@@ -277,10 +295,10 @@ function fakeIdStore(o: { phone?: boolean; id?: boolean } = {}) {
     async recordSession(u, ref) { sessions.set(ref, { userId: u, outcome: "started" }); },
     async log(_u, e) { logs.push(e); },
     async applyResult(eventId, ref, outcome) {
-      if (events.has(eventId)) return "duplicate";
-      events.add(eventId);
       const s = sessions.get(ref);
       if (!s) return "unknown";
+      if (events.has(eventId)) return "duplicate";
+      events.add(eventId);
       if (s.outcome !== "started") return "applied";
       s.outcome = outcome;
       if (outcome === "passed") st.idVerified = true;
@@ -368,6 +386,20 @@ describe("handleIdCheckWebhook", () => {
     const raw = ev({ providerRef: "someone-else" });
     expect((await handleIdCheckWebhook(f.store, raw, sign(raw, WH), WH)).status).toBe(404);
     expect(f.st.idVerified).toBe(false);
+  });
+  it("an unknown reference does not burn the event id: the retry after the session is recorded still applies", async () => {
+    const f = fakeIdStore();
+    const raw = ev({ providerRef: "late-ref" });
+    expect((await handleIdCheckWebhook(f.store, raw, sign(raw, WH), WH)).status).toBe(404);
+    f.sessions.set("late-ref", { userId: USER, outcome: "started" });
+    const r = await handleIdCheckWebhook(f.store, raw, sign(raw, WH), WH);
+    expect(r.status).toBe(200);
+    expect(r.body["note"]).toBeUndefined();
+    expect(f.st.idVerified).toBe(true);
+  });
+  it("a short webhook secret is treated as unset", async () => {
+    const raw = ev();
+    expect((await handleIdCheckWebhook(fakeIdStore().store, raw, sign(raw, "short"), "short")).status).toBe(503);
   });
   it("rejects malformed or unexpected payloads and oversized bodies even when signed", async () => {
     const f = await started();
@@ -491,6 +523,11 @@ describe("migration db/20261024180000_phone_id_verification.sql", () => {
     for (const t of ["phone_sms_consent", "phone_attempt_log", "id_check_log"]) {
       expect(sql).toMatch(new RegExp(`BEFORE UPDATE OR DELETE ON ${t}\\s+FOR EACH ROW EXECUTE FUNCTION reject_ledger_mutation`));
     }
+  });
+  it("allows one verified account per mobile number, and the unknown-reference path inserts no log row", () => {
+    expect(sql).toMatch(/CREATE UNIQUE INDEX \w+ ON buyer_verification\(phone_e164\) WHERE phone_verified_at IS NOT NULL/);
+    const db = readFileSync(path.join(__dirname, "..", "src/server/phone-verification-db.ts"), "utf8");
+    expect(db.indexOf("FROM id_check_session WHERE provider_ref")).toBeLessThan(db.indexOf("INSERT INTO id_check_log (event, provider_ref, event_id)"));
   });
   it("has no column for images, document numbers or a plaintext code", () => {
     expect(sql.replace(/--.*$/gm, "")).not.toMatch(/image|document_number|licence_number|passport_number|selfie|\bcode\s+(TEXT|CHAR)/i);

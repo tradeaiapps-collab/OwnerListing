@@ -39,9 +39,14 @@ export function createPgPhoneStore(db: Queryable): PhoneStore {
       return r.rows.length === 1;
     },
     async markVerified(userId, phone) {
-      await db.query(
-        `INSERT INTO buyer_verification (user_id, phone_verified_at, phone_e164) VALUES ($1::uuid, now(), $2)
-         ON CONFLICT (user_id) DO UPDATE SET phone_verified_at = now(), phone_e164 = EXCLUDED.phone_e164`, [userId, phone]);
+      // One verified account per number. The partial unique index backs this up against a race (that path throws, so it fails closed).
+      const r = await db.query(
+        `INSERT INTO buyer_verification (user_id, phone_verified_at, phone_e164)
+         SELECT $1::uuid, now(), $2
+          WHERE NOT EXISTS (SELECT 1 FROM buyer_verification WHERE phone_e164 = $2 AND phone_verified_at IS NOT NULL AND user_id <> $1::uuid)
+         ON CONFLICT (user_id) DO UPDATE SET phone_verified_at = now(), phone_e164 = EXCLUDED.phone_e164
+         RETURNING user_id`, [userId, phone]);
+      return r.rows.length === 1;
     },
     async log(userId, event, ipHash) {
       await db.query("INSERT INTO phone_attempt_log (user_id, event, ip_hash) VALUES ($1::uuid, $2, $3)", [userId, event, ipHash]);
@@ -66,6 +71,10 @@ export function createPgIdStore(db: Queryable): IdStore {
     async applyResult(eventId, providerRef, outcome): Promise<IdResult> {
       if (!db.transaction) throw new Error("Transactions are required.");
       return db.transaction(async tx => {
+        // Check the reference first: an unknown reference must not burn the event id (the provider retries after our 404,
+        // and a result that arrives just before recordSession would otherwise be answered "duplicate" and lost).
+        const known = await tx.query("SELECT 1 FROM id_check_session WHERE provider_ref = $1", [providerRef]);
+        if (known.rows.length === 0) return "unknown";
         const logged = await tx.query(
           "INSERT INTO id_check_log (event, provider_ref, event_id) VALUES ($1, $2, $3) ON CONFLICT (event_id) DO NOTHING RETURNING id",
           [outcome === "passed" ? "result_passed" : "result_failed", providerRef, eventId]);
@@ -74,11 +83,8 @@ export function createPgIdStore(db: Queryable): IdStore {
           "UPDATE id_check_session SET outcome = $2, decided_at = now() WHERE provider_ref = $1 AND outcome = 'started' RETURNING user_id",
           [providerRef, outcome]);
         const userId = s.rows[0]?.["user_id"];
-        if (typeof userId !== "string") {
-          const known = await tx.query("SELECT 1 FROM id_check_session WHERE provider_ref = $1", [providerRef]);
-          // Known but already decided: the first result stands. Never issued: nothing changes.
-          return known.rows.length > 0 ? "applied" : "unknown";
-        }
+        // Already decided: the first result stands.
+        if (typeof userId !== "string") return "applied";
         if (outcome === "passed") {
           await tx.query(
             `INSERT INTO buyer_verification (user_id, id_verified_at, id_method, id_provider_ref) VALUES ($1::uuid, now(), 'provider', $2)

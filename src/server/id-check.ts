@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { IdCheckPort } from "../adapters/id-check";
-import { ID_START_RATE, sha256Hex } from "../domain/phone-verification";
+import { ID_START_RATE, secretUsable, sha256Hex } from "../domain/phone-verification";
 import { withinLimit } from "../domain/rate-limit";
 import type { Failure, Result } from "../domain/listing-service";
 import { signatureValid } from "./payment-webhook";
@@ -19,7 +19,7 @@ export interface IdStore {
   log(userId: string, event: IdLogEvent, providerRef: string | null): Promise<void>;
   /**
    * Applies a provider result once (keyed by eventId). Only a session still "started" can change; "passed" also sets
-   * id_verified_at. Every call is logged. "duplicate" for a repeated eventId, "unknown" for a reference we never issued.
+   * id_verified_at. Known sessions are logged once per eventId; an unknown reference changes and logs nothing. "duplicate" for a repeated eventId, "unknown" for a reference we never issued.
    */
   applyResult(eventId: string, providerRef: string, outcome: "passed" | "failed"): Promise<IdResult>;
 }
@@ -56,7 +56,7 @@ export interface WebhookReply { status: number; body: Record<string, unknown> }
 
 /** Provider result webhook. Rejects everything while the secret is unset or the HMAC is wrong; a result is applied once. */
 export async function handleIdCheckWebhook(store: IdStore, rawBody: string, signature: string | null, secret: string | undefined): Promise<WebhookReply> {
-  if (!secret) return { status: 503, body: { error: "ID check webhooks are not enabled." } };
+  if (!secretUsable(secret)) return { status: 503, body: { error: "ID check webhooks are not enabled." } };
   if (Buffer.byteLength(rawBody) > MAX_BODY_BYTES) return { status: 413, body: { error: "Too large." } };
   if (!signatureValid(rawBody, signature, secret)) return { status: 401, body: { error: "Invalid signature." } };
   let o: Record<string, unknown>;

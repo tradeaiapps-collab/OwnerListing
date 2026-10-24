@@ -2,6 +2,8 @@
 -- No ID images or document numbers are stored here: only the provider reference and the outcome.
 
 ALTER TABLE buyer_verification ADD COLUMN IF NOT EXISTS phone_e164 TEXT;
+-- One verified account per mobile number (stops one phone verifying many accounts).
+CREATE UNIQUE INDEX buyer_verification_phone_unique ON buyer_verification(phone_e164) WHERE phone_verified_at IS NOT NULL AND phone_e164 IS NOT NULL;
 
 -- Spam Act 2003 consent to receive the verification SMS. Recorded before any SMS is sent. Insert only.
 CREATE TABLE phone_sms_consent (
