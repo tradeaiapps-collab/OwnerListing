@@ -3,6 +3,7 @@ import type { AssignmentStatus, JobAssignment } from "./job-chat";
 import { hasVerifiedLicence, type AgentLicence } from "./licence";
 import type { Jurisdiction } from "./jurisdiction";
 import type { Actor, Result } from "./listing-service";
+import { licenceLocalDate } from "./timezone";
 
 export const ASSIGNMENT_KINDS = ["photographer", "solicitor", "inspector", "agent"] as const;
 export type AssignmentKind = typeof ASSIGNMENT_KINDS[number];
@@ -150,7 +151,8 @@ export async function respondToAssignment(
 
   if (action === "accept" && a.kind === "agent") {
     const listing = await repo.getListing(a.listingId);
-    const licensed = !!listing && hasVerifiedLicence(await repo.verifiedLicences(), a.contractorUserId, listing.jurisdiction, ids.now().slice(0, 10));
+    const today = listing ? licenceLocalDate(ids.now(), listing.jurisdiction) : undefined; // undefined fails closed
+    const licensed = !!listing && today !== undefined && hasVerifiedLicence(await repo.verifiedLicences(), a.contractorUserId, listing.jurisdiction, today);
     if (!licensed) return { ok: false, code: "forbidden", message: "A verified licence for this state is needed before accepting an agent job." };
   }
 

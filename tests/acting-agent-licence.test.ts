@@ -31,3 +31,29 @@ describe("acting agent licence on an owner's listing", () => {
     });
   }
 });
+
+describe("licence expiry uses the listing state's local date (QLD midnight = 14:00Z)", () => {
+  const lic = (userId: string): AgentLicence[] => [{ userId, jurisdiction: "QLD", status: "verified", expiresAt: "2026-10-24" }];
+  const agentOwned: PropertyListing = { ...listing, ownerUserId: "ag1", ownerUserType: "agent" };
+  const at = (l: PropertyListing, licences: AgentLicence[], now: string, extra = {}) => decidePublish(l, [], licences, now, { ...ok, ...extra });
+
+  it("owner-agent path: valid at 13:59Z on expiry day, expired at 14:00Z", () => {
+    expect(at(agentOwned, lic("ag1"), "2026-10-24T13:59:00.000Z").allowed).toBe(true);
+    const d = at(agentOwned, lic("ag1"), "2026-10-24T14:00:00.000Z");
+    expect(d.allowed).toBe(false);
+    expect(licenceReason(d.reasons)).toBe(true);
+  });
+  it("acting-agent path: valid at 13:59Z on expiry day, expired at 14:00Z", () => {
+    expect(at(listing, lic("ag1"), "2026-10-24T13:59:00.000Z", { actingAgentId: "ag1" }).allowed).toBe(true);
+    const d = at(listing, lic("ag1"), "2026-10-24T14:00:00.000Z", { actingAgentId: "ag1" });
+    expect(d.allowed).toBe(false);
+    expect(licenceReason(d.reasons)).toBe(true);
+  });
+  it("fails closed when the jurisdiction has no time zone", () => {
+    const odd = { ...agentOwned, jurisdiction: "XX" } as unknown as PropertyListing;
+    const licences: AgentLicence[] = [{ userId: "ag1", jurisdiction: "XX" as never, status: "verified" }];
+    expect(at(odd, licences, "2026-10-24T00:00:00.000Z").allowed).toBe(false);
+    expect(at({ ...odd, ownerUserType: "owner" }, licences, "2026-10-24T00:00:00.000Z", { actingAgentId: "ag1" }).allowed).toBe(false);
+  });
+});
+

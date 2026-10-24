@@ -1,6 +1,7 @@
 import { evaluatePublish, type PropertyListing, type PublishDecision } from "./listing";
 import { hasVerifiedLicence, type AgentLicence } from "./licence";
 import type { TrustAccountDecision } from "./trust-account";
+import { licenceLocalDate } from "./timezone";
 
 /**
  * Single entry point for publish decisions. Derives the agent licence flag from
@@ -13,16 +14,18 @@ export function decidePublish(
   listing: PropertyListing,
   requiredDisclosureKeys: readonly string[],
   licences: readonly AgentLicence[],
-  today: string,
+  /** The current instant (ISO). Licence expiry is judged on its date in the listing state's own time zone. */
+  now: string,
   options: { actingAgentId?: string; trustAccount?: TrustAccountDecision; termsAccepted?: boolean; rentalBondPathway?: BondPathway; listingFeePaid?: boolean } = {}
 ): PublishDecision {
   const { actingAgentId, trustAccount, termsAccepted, rentalBondPathway, listingFeePaid } = options;
+  const today = licenceLocalDate(now, listing.jurisdiction); // undefined fails closed
   const ownerLicenceOk =
     listing.ownerUserType !== "agent" ||
-    hasVerifiedLicence(licences, listing.ownerUserId, listing.jurisdiction, today);
+    (today !== undefined && hasVerifiedLicence(licences, listing.ownerUserId, listing.jurisdiction, today));
   const actingAgentLicenceOk =
     actingAgentId === undefined ||
-    hasVerifiedLicence(licences, actingAgentId, listing.jurisdiction, today);
+    (today !== undefined && hasVerifiedLicence(licences, actingAgentId, listing.jurisdiction, today));
   const licenceOk = ownerLicenceOk && actingAgentLicenceOk;
   const base = evaluatePublish(listing, requiredDisclosureKeys, licenceOk);
   // evaluatePublish only reports a licence failure for agent owners; report the acting agent's too (fail closed).

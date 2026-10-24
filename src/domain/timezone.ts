@@ -30,3 +30,13 @@ export function deadlineInfo(deadlineIso: string, jurisdiction: Jurisdiction, vi
 export function localDateInZone(iso: string, timeZone: string): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(iso));
 }
+
+/**
+ * The date a licence expiry is judged against: the instant's calendar date in the jurisdiction's own zone.
+ * Fails closed: undefined when the jurisdiction has no zone or the instant is invalid, so callers must treat it as not current.
+ */
+export function licenceLocalDate(nowIso: string, jurisdiction: Jurisdiction): string | undefined {
+  const tz = JURISDICTION_TIME_ZONE[jurisdiction];
+  if (tz === undefined) return undefined;
+  try { return localDateInZone(nowIso, tz); } catch { return undefined; }
+}
