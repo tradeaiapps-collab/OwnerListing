@@ -3,11 +3,17 @@ export interface ObjectStoragePort {
   /** False until a real provider is configured. Uploads are refused while false. */
   readonly configured: boolean;
   put(key: string, bytes: Uint8Array, contentType: string): Promise<void>;
+  /** Reads an object back. Callers must have checked access first; this port does not. Throws if the object cannot be read. */
+  get(key: string): Promise<Uint8Array>;
 }
 
 /** Provider choice is still open (see PROJECT_STATUS.md). Until one is wired in, nothing can be stored. */
 export function createUnconfiguredStorage(): ObjectStoragePort {
-  return { configured: false, async put() { throw new Error("File storage is not configured."); } };
+  return {
+    configured: false,
+    async put() { throw new Error("File storage is not configured."); },
+    async get() { throw new Error("File storage is not configured."); }
+  };
 }
 
 /** Add a real provider here (private bucket, encrypted at rest). Any unknown or missing setting fails closed. */
