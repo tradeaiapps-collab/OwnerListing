@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { readAuthEnv } from "../../../../../src/server/auth/config";
 import { buildAuthUrl } from "../../../../../src/server/auth/google";
+import { safeNext } from "../../../../../src/server/auth/safe-next";
 import { randomToken } from "../../../../../src/server/auth/session";
 
 /** Starts Google sign-in with state, nonce and PKCE. The secrets and the owner-or-buyer choice live in short-lived HttpOnly cookies. */
@@ -17,5 +18,8 @@ export async function GET(req: Request) {
   // "staff" grants nothing by itself: the callback still requires a pre-provisioned staff account.
   const as = new URL(req.url).searchParams.get("as");
   res.cookies.set("ol_role", as === "buyer" || as === "staff" ? as : "owner", opts);
+  // Optional return path; anything that is not a same-site relative path is dropped.
+  const next = safeNext(new URL(req.url).searchParams.get("next"));
+  if (next) res.cookies.set("ol_next", next, opts);
   return res;
 }

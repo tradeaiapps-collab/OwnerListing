@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import "./globals.css";
+import SiteNav from "./site-nav";
 
 export const metadata = { title: "OwnerListing", description: "Internal build: not for public use" };
 export const viewport = { width: "device-width", initialScale: 1 };
@@ -11,12 +12,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         <header className="site-header">
           <div className="site-header-inner">
             <a className="brand" href="/">OwnerListing</a>
-            <nav className="site-nav" aria-label="Main">
-              <a href="/listings">Browse</a>
-              <a href="/listings/new">List a property</a>
-              <a href="/listings/mine">My listings</a>
-              <a href="/buyer/saved-searches">Saved searches</a>
-            </nav>
+            <SiteNav />
           </div>
         </header>
         <div className="page">{children}</div>
