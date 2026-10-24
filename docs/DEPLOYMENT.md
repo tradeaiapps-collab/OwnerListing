@@ -2,6 +2,8 @@
 
 Stack: Next.js app, PostgreSQL. Env reference: `.env.example` (comments say which settings fail closed).
 
+Splitting public and admin sites (`APP_MODE`, `ADMIN_APP_URL`) and the free Vercel test deploy: docs/DEPLOY_VERCEL.md.
+
 ## 1. Database
 1. Create a PostgreSQL database and two roles: an owner/migration role and a runtime app role.
 2. Run migrations as the owner role: `DATABASE_URL=... npm run migrate`. It applies `db/*.sql` in filename order, once each, one transaction per file, and records them in `schema_migration`. Re-run after every deploy that adds a file; it stops at the first failure.
