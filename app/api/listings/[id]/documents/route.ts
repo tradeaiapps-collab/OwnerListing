@@ -3,6 +3,7 @@ import { listDocuments } from "../../../../../src/domain/document-service";
 import { uploadDocument } from "../../../../../src/domain/document-upload";
 import type { DocumentKind, Visibility } from "../../../../../src/domain/documents";
 import { getActor, getDb, getDeps, getUploadPorts } from "../../../../../src/server/context";
+import { csrfGuard } from "../../../../../src/server/csrf";
 import { createPgDocumentStore } from "../../../../../src/server/documents-db";
 import { failure, unauthenticated } from "../../../../../src/server/http";
 
@@ -29,7 +30,9 @@ const KINDS = ["photo", "photo_360", "video", "video_360", "floorplan", "title_s
  * There is no delete here: replacing a file creates a new version and keeps the old one.
  */
 export async function POST(req: Request, { params }: Ctx) {
-  const actor = getActor(req);
+  const blocked = csrfGuard(req, { json: false });
+  if (blocked) return blocked;
+  const actor = await getActor(req);
   if (!actor) return unauthenticated();
   const { id } = await params;
   if (!UUID.test(id)) return failure({ ok: false, code: "not_found", message: "Listing not found." });

@@ -44,6 +44,8 @@ let added: { doc: NewDocument; supersede?: DocumentRecord }[];
 let storage: ObjectStoragePort;
 let scanner: MalwareScanPort;
 
+process.env["APP_URL"] = "http://test";
+
 beforeEach(async () => {
   let n = 100;
   state.actor = owner;
@@ -72,7 +74,7 @@ function upload(bytes: Uint8Array, over: { name?: string; type?: string; kind?: 
   form.set("visibility", over.visibility ?? "owner_only");
   if (over.supersedesId) form.set("supersedesId", over.supersedesId);
   return POST(
-    new Request("http://x/api", { method: "POST", body: form, headers: { "content-length": String(bytes.length + 500) } }),
+    new Request("http://x/api", { method: "POST", body: form, headers: { "content-length": String(bytes.length + 500), origin: "http://test" } }),
     { params: Promise.resolve({ id: over.id ?? listingId }) }
   );
 }
@@ -87,6 +89,19 @@ describe("sniffMime", () => {
 });
 
 describe("POST /api/listings/[id]/documents", () => {
+  it("refuses a cross-origin upload and stores nothing", async () => {
+    const form = new FormData();
+    form.set("file", new File([PDF as Uint8Array<ArrayBuffer>], "scan.pdf", { type: "application/pdf" }));
+    form.set("kind", "contract");
+    form.set("visibility", "owner_only");
+    const res = await POST(
+      new Request("http://x/api", { method: "POST", body: form, headers: { "content-length": "600", origin: "http://evil.example" } }),
+      { params: Promise.resolve({ id: listingId }) }
+    );
+    expect(res.status).toBe(403);
+    expect(stored).toHaveLength(0);
+  });
+
   it("owner can upload; only a random key and the hash are recorded", async () => {
     const res = await upload(PDF, { name: "../../etc/passwd.pdf" });
     expect(res.status).toBe(201);
@@ -160,7 +175,7 @@ describe("POST /api/listings/[id]/documents", () => {
     const form = new FormData();
     form.set("file", new File([PDF], "a.pdf", { type: "application/pdf" }));
     const res = await POST(
-      new Request("http://x/api", { method: "POST", body: form, headers: { "content-length": "100000001" } }),
+      new Request("http://x/api", { method: "POST", body: form, headers: { "content-length": "100000001", origin: "http://test" } }),
       { params: Promise.resolve({ id: listingId }) }
     );
     expect(res.status).toBe(413);
