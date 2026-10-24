@@ -33,7 +33,6 @@ describe.skipIf(!DATABASE_URL)("messaging settings and outbox on Postgres", () =
   beforeAll(async () => {
     t = await createTestDb(); db = t.db; state.db = db;
     const id = await addUser(db, "admin");
-    await db.query("UPDATE app_user SET staff_role = 'super_admin' WHERE id = $1", [id]);
     admin = { id, role: "super_admin" };
   }, 60_000);
   afterAll(async () => { await t?.close(); });
@@ -215,7 +214,6 @@ describe.skipIf(!DATABASE_URL)("messaging settings and outbox on Postgres", () =
     const f = vi.fn(async () => new Response(JSON.stringify({ sid: "SM" + "c".repeat(32) }), { status: 201 }));
     vi.stubGlobal("fetch", f);
     const other = await addUser(db, "admin");
-    await db.query("UPDATE app_user SET staff_role = 'super_admin' WHERE id = $1", [other]);
     state.staff = { id: other, role: "super_admin" };
     const r1 = await send({ channel: "sms", phone: "+61400000003" });
     expect(r1.status).toBe(409);
@@ -232,7 +230,6 @@ describe.skipIf(!DATABASE_URL)("messaging settings and outbox on Postgres", () =
     // the overall cap also holds: another admin is refused once the shared bucket is used up
     await db.query("UPDATE offer_submit_attempt SET hits = $1 WHERE bucket = 'msg-test:all'", [MESSAGING_TEST_RATE.allStaff]);
     const third = await addUser(db, "admin");
-    await db.query("UPDATE app_user SET staff_role = 'super_admin' WHERE id = $1", [third]);
     state.staff = { id: third, role: "super_admin" };
     expect((await send({ channel: "sms", phone: "+61400000003" })).status).toBe(429);
     expect(f).toHaveBeenCalledTimes(3);

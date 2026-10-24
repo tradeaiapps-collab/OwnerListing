@@ -9,6 +9,10 @@ import { staffFromRequest } from "../src/server/staff-auth";
 import { NextRequest } from "next/server";
 
 vi.mock("../src/server/context", () => ({ getActor: () => null, getDeps: () => null, getDb: () => ({ query: async () => ({ rows: [{ id: "s1", staff_role: "compliance" }] }) }), getStaff: async () => null }));
+vi.mock("../src/server/staff-auth", async importOriginal => ({
+  ...(await importOriginal<typeof import("../src/server/staff-auth")>()),
+  staffSignIn: async () => ({ id: "s1", role: "compliance" })
+}));
 vi.mock("../src/server/auth/google", async importOriginal => ({
   ...(await importOriginal<typeof import("../src/server/auth/google")>()),
   exchangeCode: async () => ({}),
