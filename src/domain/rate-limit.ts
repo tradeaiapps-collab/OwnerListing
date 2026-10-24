@@ -30,6 +30,14 @@ export const UPLOAD_RATE = { windowMs: 10 * 60 * 1000, perUser: 20 } as const;
 export const UPLOAD_DAILY_BYTES = 500_000_000;
 export const UPLOAD_QUOTA_WINDOW_MS = 24 * 60 * 60 * 1000;
 
+/**
+ * Per-user limits on document deletion requests (security review 2026-10, finding 1). Product can change the numbers.
+ * Rate: 5 recorded requests per user per 10 minutes. Cap: 20 open requests per user; "open" is every request whose
+ * outcome is not delete_now (amend_only, held and rejected wait for a person or the legal process; delete_now needs nothing).
+ */
+export const DELETION_REQUEST_RATE = { windowMs: 10 * 60 * 1000, perUser: 5 } as const;
+export const DELETION_OPEN_CAP = 20;
+
 /** Fails closed: unknown usage or an unusable size is treated as over quota. */
 export function withinByteQuota(usedBytes: unknown, incomingBytes: number, limit: number = UPLOAD_DAILY_BYTES): boolean {
   return typeof usedBytes === "number" && Number.isFinite(usedBytes) && usedBytes >= 0

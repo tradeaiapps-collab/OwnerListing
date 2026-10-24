@@ -4,14 +4,14 @@ import { getAiEngine } from "../../../../../src/server/ai";
 import { getDb, getDeps } from "../../../../../src/server/context";
 import { csrfGuard } from "../../../../../src/server/csrf";
 import { offersForOwnerPg } from "../../../../../src/server/offers-db";
-import { requireListingOwner } from "../../../../../src/server/owner-listing";
+import { requireListingHandler } from "../../../../../src/server/owner-listing";
 
 type Ctx = { params: Promise<{ id: string }> };
 
 async function report(req: Request, id: string, withAi: boolean) {
-  const owner = await requireListingOwner(req, id);
+  const owner = await requireListingHandler(req, id);
   if (owner instanceof NextResponse) return owner;
-  const rows = compareOffers(await offersForOwnerPg(getDb(), id, owner.actor.userId));
+  const rows = compareOffers(await offersForOwnerPg(getDb(), id, owner.rec.listing.ownerUserId));
   // The AI is asked only on POST, through the AI port. It can summarise; it has no way to decide anything.
   const ai: AiSummary = withAi ? await requestAiSummary(getAiEngine(), rows) : { state: "not_requested" };
   if (withAi) {
@@ -25,7 +25,7 @@ async function report(req: Request, id: string, withAi: boolean) {
   return NextResponse.json({ rows, note: REPORT_NOTE, ai });
 }
 
-/** Owner-only deterministic comparison of the offers on a listing. No AI is called. Others get 404. */
+/** Deterministic comparison of the offers on a listing, for the owner or the appointed agent. No AI is called. Others get 404. */
 export async function GET(req: Request, { params }: Ctx) {
   return report(req, (await params).id, false);
 }

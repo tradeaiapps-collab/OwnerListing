@@ -65,11 +65,34 @@ export function createPgDocumentStore(db: Queryable): UploadStore {
       const row = res.rows[0];
       return row ? { storageKey: String(row["storage_key"]), contentType: String(row["declared_mime"]) } : undefined;
     },
-    async recordDeletionRequest(r) {
-      await db.query(
-        "INSERT INTO document_deletion_request (document_id, requested_by, outcome, reason) VALUES ($1, $2, $3, $4)",
-        [r.documentId, r.requestedBy, r.outcome, r.reason]
+    async recordDeletionRequest(r, limits) {
+      // One statement counts the requester's rows and inserts only while under both limits. Under READ COMMITTED two
+      // concurrent requests would both see the old count, so when the pool offers a transaction the requester's
+      // requests are serialised with a transaction-scoped advisory lock taken first (the guard then gets a fresh snapshot).
+      const guard = (q: Queryable) => q.query(
+        `WITH c AS (
+           SELECT count(*) FILTER (WHERE requested_at >= $5::timestamptz) AS recent,
+                  count(*) FILTER (WHERE outcome <> 'delete_now') AS open_count
+           FROM document_deletion_request WHERE requested_by = $2::uuid
+         ), ins AS (
+           INSERT INTO document_deletion_request (document_id, requested_by, outcome, reason)
+           SELECT $1::uuid, $2::uuid, $3, $4 FROM c WHERE c.open_count < $7::int AND c.recent < $6::int
+           RETURNING id
+         )
+         SELECT (SELECT count(*) FROM ins) AS inserted, c.recent, c.open_count FROM c`,
+        [r.documentId, r.requestedBy, r.outcome, r.reason, limits.sinceIso, limits.perWindow, limits.maxOpen]
       );
+      const res = db.transaction
+        ? await db.transaction(async tx => {
+            await tx.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`deletion_request:${r.requestedBy}`]);
+            return guard(tx);
+          })
+        : await guard(db);
+      const row = res.rows[0];
+      const inserted = Number(row?.["inserted"]), open = Number(row?.["open_count"]);
+      if (inserted === 1) return "recorded";
+      if (inserted === 0 && Number.isFinite(open)) return open >= limits.maxOpen ? "cap_reached" : "rate_limited";
+      throw new Error("deletion request guard returned no usable result");
     }
   };
 }
