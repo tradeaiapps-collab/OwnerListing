@@ -6,6 +6,7 @@ import "../../styles/staff.css";
 interface Check {
   checkId: string; checkedAt: string; evidence: Record<string, unknown>; reasons: string[]; firmName: string; tier: string;
   jurisdiction: string; accountName: string; bsb: string; newOrChanged: boolean; approvals: { staffId: string; outcome: string }[];
+  decision: string; checksToPerform: string[];
 }
 const EVIDENCE_LABELS: [string, string][] = [
   ["practisingCertificateCurrent", "Practising certificate current"], ["firmEmailVerified", "Firm confirmed by email"],
@@ -40,7 +41,7 @@ export default function StaffTrustAccounts() {
       <h1>Trust account approvals</h1>
       <p><a href="/staff">Back to staff</a></p>
       {message && <p role="alert">{message}</p>}
-      {loaded && checks.length === 0 && <p className="empty">Nothing is waiting for approval.</p>}
+      {loaded && checks.length === 0 && <p className="empty">No verification is waiting for a person.</p>}
       <ul className="card-list">
         {checks.map(c => {
           const decided = c.approvals.some(a => a.staffId === me);
@@ -54,7 +55,13 @@ export default function StaffTrustAccounts() {
                 {typeof c.evidence["automationError"] === "string" && <li>Automation error: {c.evidence["automationError"]}</li>}
               </ul>
               {c.reasons.map(r => <p key={r} className="muted">{r}</p>)}
-              {decided ? <p className="muted">You have already decided on this check.</p> : (
+              {c.checksToPerform.length > 0 && (
+                <>
+                  <h3>Checks to perform</h3>
+                  <ul className="plain-list">{c.checksToPerform.map(t => <li key={t}>{t}</li>)}</ul>
+                </>
+              )}
+              {c.decision !== "awaiting_human_approval" ? <p className="staff-notice">Cannot be approved yet. Complete the checks, then a new verification is run. Nothing publishes until a check is approved.</p> : decided ?<p className="muted">You have already decided on this check.</p> : (
                 <form className="stack" onSubmit={e => e.preventDefault()}>
                   <label>Reason (required, at least 10 characters)
                     <textarea className="staff-reason" value={reasons[c.checkId] ?? ""} onChange={e => setReasons({ ...reasons, [c.checkId]: e.target.value })} />
