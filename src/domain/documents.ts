@@ -2,6 +2,9 @@ import type { JobAssignment } from "./job-chat";
 
 export type DocumentKind =
   | "photo" | "photo_360" | "video" | "video_360" | "floorplan" | "title_search" | "building_inspection" | "pest_report" | "contract" | "other";
+export const DOCUMENT_KINDS: readonly DocumentKind[] = [
+  "photo", "photo_360", "video", "video_360", "floorplan", "title_search", "building_inspection", "pest_report", "contract", "other"
+];
 export type Visibility = "public" | "parties" | "owner_only";
 export type DocumentStatus = "active" | "held" | "superseded";
 
@@ -63,6 +66,13 @@ export function canUploadDocument(
   return assignments.some(a =>
     a.listingId === listingId && a.contractorUserId === userId && a.status === "approved" &&
     CONTRACTOR_KINDS[a.kind].includes(kind));
+}
+
+/** The kinds this user may add to the listing: every kind for the owner, otherwise what their approved assignments allow. */
+export function uploadableKinds(
+  userId: string, ownerUserId: string, listingId: string, assignments: readonly JobAssignment[]
+): DocumentKind[] {
+  return DOCUMENT_KINDS.filter(k => canUploadDocument(userId, ownerUserId, listingId, k, assignments));
 }
 
 /** Role check before the kind is known (used before the upload body is read). The kind is checked again once it is. */

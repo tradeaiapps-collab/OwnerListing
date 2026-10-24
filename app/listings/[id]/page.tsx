@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
+import "../../styles/documents.css";
 
 interface Listing {
   id: string;
@@ -13,6 +14,43 @@ interface Listing {
   status: string;
   disclosures: { key: string; satisfied: boolean }[];
   updatedAt: string;
+}
+
+type PublicDoc = { id: string; kind: string; visibility: string; status: string };
+
+/** Public photos, floor plans and videos of a published listing. Renders nothing when there are none or they cannot be loaded. */
+function Gallery({ listingId, title }: { listingId: string; title: string }) {
+  const [docs, setDocs] = useState<PublicDoc[]>([]);
+  useEffect(() => {
+    setDocs([]);
+    fetch(`/api/listings/${listingId}/documents`)
+      .then(async r => (r.ok ? (await r.json()).documents as PublicDoc[] : []))
+      .then(all => setDocs(all.filter(d => d.visibility === "public" && d.status === "active")))
+      .catch(() => setDocs([]));
+  }, [listingId]);
+  const of = (...kinds: string[]) => docs.filter(d => kinds.includes(d.kind));
+  const images = of("photo", "photo_360");
+  const links = [...of("floorplan").map(d => ({ d, label: "Floor plan" })), ...of("video", "video_360").map(d => ({ d, label: d.kind === "video" ? "Video" : "360 video" }))];
+  if (images.length === 0 && links.length === 0) return null;
+  return (
+    <section aria-label="Photos and plans">
+      <h2>Photos and plans</h2>
+      {images.length > 0 && (
+        <ul className="gallery">
+          {images.map((d, i) => (
+            <li key={d.id}>
+              <img src={`/api/documents/${d.id}/file`} loading="lazy" alt={`${d.kind === "photo" ? "Photo" : "360 degree photo"} ${i + 1} of ${images.length}: ${title}`} />
+            </li>
+          ))}
+        </ul>
+      )}
+      {links.length > 0 && (
+        <ul className="gallery-links">
+          {links.map(({ d, label }, i) => <li key={d.id}><a href={`/api/documents/${d.id}/file`}>{label} {i + 1} (download)</a></li>)}
+        </ul>
+      )}
+    </section>
+  );
 }
 
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1).replace(/_/g, " ");
@@ -67,6 +105,7 @@ export default function ListingDetail() {
           <ul className="plain-list">{provided.map(d => <li key={d.key}>{cap(d.key)}</li>)}</ul>
         </section>
       )}
+      <Gallery listingId={listing.id} title={listing.title} />
     </main>
   );
 }

@@ -1,4 +1,5 @@
-import { canViewDocument, evaluateDeletionRequest, type DeletionOutcome, type DocumentKind, type DocumentRecord, type Visibility, type DocumentStatus } from "./documents";
+import { canViewDocument, evaluateDeletionRequest, uploadableKinds, type DeletionOutcome, type DocumentKind, type DocumentRecord, type Visibility, type DocumentStatus } from "./documents";
+import type { ObjectStoragePort } from "../adapters/object-storage";
 import type { JobAssignment } from "./job-chat";
 import type { Actor, ListingServiceDeps, Result } from "./listing-service";
 
@@ -24,6 +25,8 @@ export interface DocumentStore {
   documentById(documentId: string): Promise<DocumentRecord | undefined>;
   assignmentsFor(listingId: string, contractorUserId: string): Promise<JobAssignment[]>;
   recordDeletionRequest(r: DeletionRequestRecord): Promise<void>;
+  /** Storage key and the stored (sniffed) content type. Used only by readDocumentFile, after the access check. */
+  storedFileFor(documentId: string): Promise<{ storageKey: string; contentType: string } | undefined>;
 }
 
 const notFound = (message: string): Result<never> => ({ ok: false, code: "not_found", message });
@@ -52,6 +55,54 @@ export async function listDocuments(
   return { ok: true, value: visible.map(summary) };
 }
 
+/** Who may add what on this listing (drives the upload form; the upload route checks again). */
+export async function uploadAccess(
+  deps: ListingServiceDeps, store: DocumentStore, actor: Actor | null, listingId: string
+): Promise<{ isOwner: boolean; kinds: DocumentKind[] }> {
+  const rec = await deps.repo.get(listingId);
+  if (!rec || !actor) return { isOwner: false, kinds: [] };
+  const isOwner = actor.userId === rec.listing.ownerUserId;
+  const assignments = isOwner ? [] : await store.assignmentsFor(listingId, actor.userId);
+  return { isOwner, kinds: uploadableKinds(actor.userId, rec.listing.ownerUserId, listingId, assignments) };
+}
+
+export type ReadResult = Result<{ bytes: Uint8Array; contentType: string }> | { ok: false; code: "unavailable"; message: string };
+
+/**
+ * Reads a file's bytes if the actor may view it. The signed-out actor (null) can only get public files of published listings.
+ * Same visibility rules as listDocuments: superseded versions are owner-only. Any denial answers not_found so existence is not revealed.
+ * Storage is only touched after the access check; unconfigured or failing storage answers unavailable (fail closed).
+ * Every download of a non-public file is written to the audit log.
+ */
+export async function readDocumentFile(
+  deps: ListingServiceDeps, store: DocumentStore, storage: ObjectStoragePort, actor: Actor | null, documentId: string
+): Promise<ReadResult> {
+  const doc = await store.documentById(documentId);
+  const rec = doc ? await deps.repo.get(doc.listingId) : undefined;
+  if (!doc || !rec) return notFound("File not found.");
+  const published = rec.listing.status === "published";
+  const isOwner = actor !== null && actor.userId === doc.ownerUserId;
+  const assignments = actor && !isOwner ? await store.assignmentsFor(doc.listingId, actor.userId) : [];
+  if (!canViewDocument(actor?.userId, doc, published, assignments) || (!isOwner && doc.status !== "active")) return notFound("File not found.");
+  const stored = await store.storedFileFor(doc.id);
+  if (!stored) return notFound("File not found.");
+  if (!storage.configured) return { ok: false, code: "unavailable", message: "File storage is not configured." };
+  let bytes: Uint8Array;
+  try {
+    bytes = await storage.get(stored.storageKey);
+  } catch {
+    return { ok: false, code: "unavailable", message: "The file could not be read right now." };
+  }
+  if (doc.visibility !== "public" && actor) {
+    await deps.appendAudit({
+      id: deps.newId(), occurredAt: deps.now(), actorType: "user", actorId: actor.userId,
+      aggregateType: "document", aggregateId: doc.id, eventType: "document.downloaded",
+      correlationId: deps.newId(), payload: { listingId: doc.listingId, kind: doc.kind, visibility: doc.visibility }
+    });
+  }
+  return { ok: true, value: { bytes, contentType: stored.contentType } };
+}
+
 /**
  * Records a deletion request and its outcome (insert only). It never removes a file.
  * Once a listing has been published or withdrawn its files can be replaced but not deleted.
@@ -74,7 +125,9 @@ export async function requestDocumentDeletion(
 }
 
 /** In-memory store for tests. */
-export function createInMemoryDocumentStore(seed: { documents?: DocumentRecord[]; assignments?: JobAssignment[] } = {}) {
+export function createInMemoryDocumentStore(
+  seed: { documents?: DocumentRecord[]; assignments?: JobAssignment[]; files?: Record<string, { storageKey: string; contentType: string }> } = {}
+) {
   const documents = [...(seed.documents ?? [])];
   const assignments = [...(seed.assignments ?? [])];
   const requests: DeletionRequestRecord[] = [];
@@ -84,7 +137,8 @@ export function createInMemoryDocumentStore(seed: { documents?: DocumentRecord[]
     async assignmentsFor(listingId, contractorUserId) {
       return assignments.filter(a => a.listingId === listingId && a.contractorUserId === contractorUserId);
     },
-    async recordDeletionRequest(r) { requests.push(r); }
+    async recordDeletionRequest(r) { requests.push(r); },
+    async storedFileFor(id) { return seed.files?.[id]; }
   };
   return { store, documents, requests };
 }
