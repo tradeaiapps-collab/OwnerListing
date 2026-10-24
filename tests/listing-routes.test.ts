@@ -138,3 +138,39 @@ describe("PATCH /api/listings/[id] (edit draft)", () => {
     expect((await get()).status).toBe(404);
   });
 });
+
+describe("GET /api/listings/[id] (owner-only bond pathway)", () => {
+  const rental: DraftInput = { ...input, transactionType: "rent" };
+  const get = (id: string) => getRoute(new Request(`http://test/api/listings/${id}`), { params: Promise.resolve({ id }) });
+  const saveWithBond = async (publish: boolean) => {
+    const draft = await createDraft(state.deps!, owner, rental);
+    const rec = (await state.deps!.repo.get(draft.id))!;
+    await state.deps!.repo.save({
+      ...rec,
+      listing: publish ? { ...rec.listing, status: "published" } : rec.listing,
+      rentalBondPathway: "solicitor_trust"
+    });
+    return draft.id;
+  };
+
+  it("returns the saved bond pathway to the owner", async () => {
+    const id = await saveWithBond(false);
+    state.actor = owner;
+    const body = await (await get(id)).json();
+    expect(body.rentalBondPathway).toBe("solicitor_trust");
+  });
+  it("omits the field when no bond pathway has been saved yet", async () => {
+    const draft = await createDraft(state.deps!, owner, rental);
+    state.actor = owner;
+    expect(Object.keys(await (await get(draft.id)).json())).toEqual(["listing"]);
+  });
+  it("never returns it to another user or a signed-out visitor, even on a published listing", async () => {
+    const id = await saveWithBond(true);
+    for (const a of [null, { userId: "owner-2", userType: "owner" } as Actor, agent]) {
+      state.actor = a;
+      const res = await get(id);
+      expect(res.status).toBe(200);
+      expect(Object.keys(await res.json())).toEqual(["listing"]);
+    }
+  });
+});
