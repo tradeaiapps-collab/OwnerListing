@@ -1,35 +1,40 @@
 import type { CaseKind, CaseState, TrustCheckState } from "../domain/staff-admin";
 import type { IdSubmission, IdStatus } from "../domain/id-verification";
-import type { StaffRole } from "../domain/staff-access";
+import { resolveRoleAccess } from "../domain/staff-roles";
 import type { TrustAccountDecision, TrustAccountEvidence } from "../domain/trust-account";
 import { checksToPerform } from "../domain/trust-verification";
 import type { Queryable } from "./db";
 
-const ROLES: readonly string[] = ["super_admin", "compliance", "accountant", "support", "technical", "reporting", "designer"];
 const iso = (v: unknown) => (v instanceof Date ? v.toISOString() : String(v));
 const dateOnly = (v: unknown) => iso(v).slice(0, 10);
 
 // ---- Admin cases ----
 
 const CASE_COLS = `c.id, c.kind, c.subject_id, c.reason, c.status, c.assigned_to, c.opened_at, c.resolved_at, c.resolution_reason,
-  c.proposed_by, c.proposed_reason, pi.role AS proposed_role`;
+  c.proposed_by, c.proposed_reason, pi.role AS proposed_role,
+  (pr.role_key IS NOT NULL) AS proposed_role_exists, pr.permissions AS proposed_permissions, pr.disabled AS proposed_role_disabled`;
 const CASE_FROM = `FROM admin_case c
   LEFT JOIN app_user p ON p.id = c.proposed_by AND p.user_type = 'admin' AND p.status = 'active'
-  LEFT JOIN staff_invite pi ON pi.email = lower(p.email::text) AND pi.revoked_at IS NULL`;
+  LEFT JOIN staff_invite pi ON pi.email = lower(p.email::text) AND pi.revoked_at IS NULL
+  LEFT JOIN staff_role_current pr ON pr.role_key = pi.role`;
 
 export interface CaseRow extends CaseState {
   id: string; subjectId: string; reason: string; openedAt: string; resolvedAt: string | null; resolutionReason: string | null;
 }
 
 function toCase(r: Record<string, unknown>): CaseRow {
-  const role = r["proposed_role"];
+  // The proposer's access as it stands now (custom roles from their current definition), so a revoked permission stops a pending override.
+  const proposer = typeof r["proposed_by"] === "string"
+    ? resolveRoleAccess(r["proposed_by"], r["proposed_role"], { exists: r["proposed_role_exists"] === true, permissions: r["proposed_permissions"], disabled: r["proposed_role_disabled"] })
+    : null;
   return {
     id: String(r["id"]), kind: r["kind"] as CaseKind, subjectId: String(r["subject_id"]), reason: String(r["reason"]),
     status: r["status"] as CaseRow["status"], assignedTo: (r["assigned_to"] as string | null) ?? null,
     openedAt: iso(r["opened_at"]), resolvedAt: r["resolved_at"] ? iso(r["resolved_at"]) : null,
     resolutionReason: (r["resolution_reason"] as string | null) ?? null,
     proposedBy: (r["proposed_by"] as string | null) ?? null, proposedReason: (r["proposed_reason"] as string | null) ?? null,
-    proposedByRole: typeof role === "string" && ROLES.includes(role) ? (role as StaffRole) : null
+    proposedByRole: proposer?.role ?? null,
+    ...(proposer?.permissions ? { proposedByPermissions: proposer.permissions } : {})
   };
 }
 

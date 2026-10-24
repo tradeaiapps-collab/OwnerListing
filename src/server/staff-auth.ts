@@ -1,14 +1,16 @@
 import { randomUUID } from "node:crypto";
 import { readAppMode } from "../config/app-mode";
 import type { StaffActor } from "../domain/staff-access";
-import { asStaffRole, normaliseStaffEmail } from "../domain/staff-invite";
+import { normaliseStaffEmail } from "../domain/staff-invite";
+import { isRoleKey, resolveRoleAccess } from "../domain/staff-roles";
 import type { GoogleIdentity } from "./auth/google";
 import { staffTokenFromRequest, verifyStaffSession } from "./auth/staff-session";
 import { appendAuditPg, type Queryable } from "./db";
 
 /**
  * Staff sign-in for a verified Google identity (readIdentity already requires email_verified=true). Any Google account may be used, but
- * the normalised email must exactly match an active staff_invite. The role comes from that invite, never from Google.
+ * the normalised email must exactly match an active staff_invite. The role comes from that invite, never from Google. An invite whose
+ * custom role is missing or disabled cannot sign in.
  * `bootstrap` (env STAFF_BOOTSTRAP_ADMIN_EMAILS) can create a super_admin invite for a listed email, and only while no active super_admin exists.
  * The login account is an app_user of type 'admin', created on first sign-in. An existing account with that email that is not an
  * active admin (for example an owner account) is never converted: the sign-in is denied. Every denial looks the same to the caller
@@ -48,9 +50,10 @@ export async function staffSignIn(db: Queryable, who: GoogleIdentity, bootstrap:
     await (db.transaction ? db.transaction(run) : run(db));
   }
   const invite = (await db.query(`SELECT id, role FROM staff_invite WHERE email = $1 AND revoked_at IS NULL`, [email])).rows[0];
-  const role = asStaffRole(invite?.["role"]);
+  const role = invite?.["role"];
   const inviteId = invite?.["id"];
-  if (!role || typeof inviteId !== "string") return deny("not_invited");
+  if (!isRoleKey(role) || typeof inviteId !== "string") return deny("not_invited");
+  if (!(await roleUsable(db, role))) return deny("role_disabled");
 
   const account = (await db.query(`SELECT id, user_type, status, google_sub FROM app_user WHERE email = $1`, [email])).rows[0];
   let id: unknown;
@@ -74,22 +77,41 @@ export async function staffSignIn(db: Queryable, who: GoogleIdentity, bootstrap:
   return { id, role };
 }
 
+/** Built-in roles are always usable; a custom role only while its current definition exists and is enabled. */
+async function roleUsable(db: Queryable, role: string): Promise<boolean> {
+  if (resolveRoleAccess("x", role, null)) return true;
+  const r = (await db.query(`SELECT disabled FROM staff_role_current WHERE role_key = $1`, [role])).rows[0];
+  return r?.["disabled"] === false;
+}
+
 /**
- * The signed-in staff member for this request, or null. The role is read from the active invite now, so revoking or changing it takes
- * effect at once. Only an invite that has been signed in to counts (accepted_at), so a cookie issued under an earlier, revoked invite for the
- * same email never revives when the address is invited again (for example after the mailbox was reassigned); that person must sign in again.
+ * The staff member with user id `uid` as the database holds it now: active admin account, active invite that has been signed in to,
+ * and the invite's role resolved to permissions from the current role definition (built-in roles from code). Unknown role: null;
+ * disabled custom role: no permissions. Used on every request and again under the lock by every staff access and role change.
+ */
+export async function loadStaffActor(db: Queryable, uid: string): Promise<StaffActor | null> {
+  const res = await db.query(
+    `SELECT u.id, i.role, (c.role_key IS NOT NULL) AS role_exists, c.permissions, c.disabled
+       FROM app_user u JOIN staff_invite i ON i.email = lower(u.email::text) AND i.revoked_at IS NULL
+       LEFT JOIN staff_role_current c ON c.role_key = i.role
+      WHERE u.id = $1 AND u.user_type = 'admin' AND u.status = 'active' AND i.accepted_at IS NOT NULL`,
+    [uid]
+  );
+  const row = res.rows[0];
+  const id = row?.["id"];
+  if (!row || typeof id !== "string") return null;
+  return resolveRoleAccess(id, row["role"], { exists: row["role_exists"] === true, permissions: row["permissions"], disabled: row["disabled"] });
+}
+
+/**
+ * The signed-in staff member for this request, or null. The role and its permissions are read from the database now, so revoking an
+ * invite, changing its role or editing the role definition takes effect at once. Only an invite that has been signed in to counts
+ * (accepted_at), so a cookie issued under an earlier, revoked invite for the same email never revives when the address is invited again
+ * (for example after the mailbox was reassigned); that person must sign in again.
  */
 export async function staffFromRequest(db: Queryable, req: Request, secret: string, nowSeconds: number): Promise<StaffActor | null> {
   if (readAppMode() === "public") return null; // defence in depth: a public deployment never honours a staff cookie
   const p = verifyStaffSession(staffTokenFromRequest(req), secret, nowSeconds);
   if (!p) return null;
-  const res = await db.query(
-    `SELECT u.id, i.role FROM app_user u JOIN staff_invite i ON i.email = lower(u.email::text) AND i.revoked_at IS NULL
-      WHERE u.id = $1 AND u.user_type = 'admin' AND u.status = 'active' AND i.accepted_at IS NOT NULL`,
-    [p.uid]
-  );
-  const row = res.rows[0];
-  const role = asStaffRole(row?.["role"]);
-  const id = row?.["id"];
-  return role && typeof id === "string" ? { id, role } : null;
+  return loadStaffActor(db, p.uid);
 }

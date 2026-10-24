@@ -5,8 +5,8 @@ import { getDb } from "../../../../src/server/context";
 import { loadFieldStates, loadStored, saveSettings, type Changes } from "../../../../src/server/messaging-settings-db";
 import { fail, readJsonObject, staffGate } from "../../../../src/server/staff-route";
 
-/** Super admin only (staff.manage), like every other staff screen: gate first, then the work. */
-const PERMISSION = "staff.manage";
+/** Email and SMS settings (messaging.settings, a sensitive permission: super admin by default). Gate first, then the work. */
+const PERMISSION = "messaging.settings";
 
 async function view() {
   const env = process.env;

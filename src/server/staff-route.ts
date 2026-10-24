@@ -11,7 +11,7 @@ export const fail = (status: number, error: string) => NextResponse.json({ error
 
 /**
  * Common start of every staff route: CSRF check on state-changing methods, then the signed-in staff member
- * (role read from the database now), then the permission. Returns the staff member or the response to send.
+ * (role and its permissions read from the database now, so a role edit or revocation applies to the very next request), then the permission. Returns the staff member or the response to send.
  */
 export async function staffGate(req: Request, permission: StaffPermission): Promise<StaffActor | NextResponse> {
   const blocked = csrfGuard(req);
