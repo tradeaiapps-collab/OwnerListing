@@ -1,0 +1,126 @@
+import type { AlertPreference, SavedSearch } from "./buyer";
+import { AU_JURISDICTIONS } from "./jurisdiction";
+import { PROPERTY_TYPES, TRANSACTION_TYPES, USE_CLASSES, type Failure, type Result } from "./listing-service";
+
+export const MAX_SEARCHES_PER_BUYER = 20;
+export const MAX_SUBURBS_PER_SEARCH = 10;
+const MAX_SUBURB_LENGTH = 80;
+const MAX_PRICE_CENTS = 100_000_000_000;
+const MAX_BEDROOMS = 20;
+
+export type SavedSearchInput = Omit<SavedSearch, "id" | "buyerUserId" | "active">;
+export type AlertChannel = AlertPreference["channel"];
+export interface AlertConsentInput { channel: AlertChannel; consent: boolean }
+
+export interface SavedSearchRepository {
+  list(buyerUserId: string): Promise<SavedSearch[]>;
+  insert(buyerUserId: string, input: SavedSearchInput): Promise<SavedSearch>;
+  listPreferences(buyerUserId: string): Promise<AlertPreference[]>;
+  giveConsent(buyerUserId: string, channel: AlertChannel, nowIso: string): Promise<void>;
+  unsubscribe(buyerUserId: string, channel: AlertChannel, nowIso: string): Promise<void>;
+}
+
+const fail = (code: Failure["code"], message: string): Failure => ({ ok: false, code, message });
+const isObject = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
+const oneOf = <T extends string>(v: unknown, allowed: readonly T[]): T | undefined =>
+  typeof v === "string" ? allowed.find(a => a === v) : undefined;
+
+/** A saved search holds property facts only. Any other key is rejected, so demographic or personal fields cannot be stored. */
+const SEARCH_KEYS = [
+  "transactionType", "useClass", "jurisdictions", "suburbs", "propertyTypes",
+  "minPriceCents", "maxPriceCents", "minBedrooms"
+] as const;
+
+function stringList<T extends string>(v: unknown, allowed: readonly T[], label: string): Result<T[]> {
+  if (v === undefined) return { ok: true, value: [] };
+  if (!Array.isArray(v) || v.length > allowed.length) return fail("invalid", `Invalid ${label}.`);
+  const out: T[] = [];
+  for (const item of v) {
+    const m = oneOf(item, allowed);
+    if (!m) return fail("invalid", `Invalid ${label}.`);
+    if (!out.includes(m)) out.push(m);
+  }
+  return { ok: true, value: out };
+}
+
+function intField(b: Record<string, unknown>, key: string, max: number, label: string): Result<number | undefined> {
+  const v = b[key];
+  if (v === undefined) return { ok: true, value: undefined };
+  if (typeof v !== "number" || !Number.isInteger(v) || v < 0 || v > max) return fail("invalid", `Invalid ${label}.`);
+  return { ok: true, value: v };
+}
+
+export function parseSavedSearchInput(body: unknown): Result<SavedSearchInput> {
+  if (!isObject(body)) return fail("invalid", "Send a JSON object.");
+  const extra = Object.keys(body).find(k => !(SEARCH_KEYS as readonly string[]).includes(k));
+  if (extra !== undefined) return fail("invalid", `Unsupported field: ${extra}.`);
+
+  const transactionType = oneOf(body["transactionType"], TRANSACTION_TYPES);
+  if (!transactionType) return fail("invalid", "Choose sale or rent.");
+  const useClass = oneOf(body["useClass"], USE_CLASSES);
+  if (!useClass) return fail("invalid", "Choose residential or commercial.");
+
+  const jurisdictions = stringList(body["jurisdictions"], AU_JURISDICTIONS, "state");
+  if (!jurisdictions.ok) return jurisdictions;
+  const propertyTypes = stringList(body["propertyTypes"], PROPERTY_TYPES, "property type");
+  if (!propertyTypes.ok) return propertyTypes;
+
+  const suburbs: string[] = [];
+  const rawSuburbs = body["suburbs"];
+  if (rawSuburbs !== undefined) {
+    if (!Array.isArray(rawSuburbs) || rawSuburbs.length > MAX_SUBURBS_PER_SEARCH) return fail("invalid", `Use at most ${MAX_SUBURBS_PER_SEARCH} suburbs.`);
+    for (const s of rawSuburbs) {
+      if (typeof s !== "string") return fail("invalid", "Invalid suburb.");
+      const t = s.trim();
+      if (t.length === 0 || t.length > MAX_SUBURB_LENGTH) return fail("invalid", "Invalid suburb.");
+      if (!suburbs.some(x => x.toLowerCase() === t.toLowerCase())) suburbs.push(t);
+    }
+  }
+
+  const min = intField(body, "minPriceCents", MAX_PRICE_CENTS, "minimum price");
+  if (!min.ok) return min;
+  const max = intField(body, "maxPriceCents", MAX_PRICE_CENTS, "maximum price");
+  if (!max.ok) return max;
+  if (min.value !== undefined && max.value !== undefined && min.value > max.value) return fail("invalid", "Minimum price is above maximum price.");
+  const beds = intField(body, "minBedrooms", MAX_BEDROOMS, "bedrooms");
+  if (!beds.ok) return beds;
+
+  return {
+    ok: true,
+    value: {
+      transactionType, useClass,
+      jurisdictions: jurisdictions.value, suburbs, propertyTypes: propertyTypes.value,
+      ...(min.value !== undefined ? { minPriceCents: min.value } : {}),
+      ...(max.value !== undefined ? { maxPriceCents: max.value } : {}),
+      ...(beds.value !== undefined ? { minBedrooms: beds.value } : {})
+    }
+  };
+}
+
+/** consent must be an explicit boolean: true opts in to the channel, false unsubscribes. */
+export function parseAlertConsentInput(body: unknown): Result<AlertConsentInput> {
+  if (!isObject(body)) return fail("invalid", "Send a JSON object.");
+  const extra = Object.keys(body).find(k => k !== "channel" && k !== "consent");
+  if (extra !== undefined) return fail("invalid", `Unsupported field: ${extra}.`);
+  const channel = oneOf(body["channel"], ["email", "sms"] as const);
+  if (!channel) return fail("invalid", "Choose email or sms.");
+  if (typeof body["consent"] !== "boolean") return fail("invalid", "Consent must be true or false.");
+  return { ok: true, value: { channel, consent: body["consent"] } };
+}
+
+export async function createSavedSearch(
+  repo: SavedSearchRepository, buyerUserId: string, input: SavedSearchInput
+): Promise<Result<SavedSearch>> {
+  const existing = await repo.list(buyerUserId);
+  if (existing.length >= MAX_SEARCHES_PER_BUYER) return fail("conflict", `You can keep up to ${MAX_SEARCHES_PER_BUYER} saved searches.`);
+  return { ok: true, value: await repo.insert(buyerUserId, input) };
+}
+
+/** Records the buyer's choice for one channel. Opting out never deletes the record. */
+export async function setAlertConsent(
+  repo: SavedSearchRepository, buyerUserId: string, input: AlertConsentInput, nowIso: string
+): Promise<AlertPreference[]> {
+  if (input.consent) await repo.giveConsent(buyerUserId, input.channel, nowIso);
+  else await repo.unsubscribe(buyerUserId, input.channel, nowIso);
+  return repo.listPreferences(buyerUserId);
+}
