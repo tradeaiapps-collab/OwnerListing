@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createInMemoryDocumentStore, type DocumentStore } from "../src/domain/document-service";
 import type { DocumentKind, DocumentRecord, Visibility } from "../src/domain/documents";
+import { DELETION_OPEN_CAP, DELETION_REQUEST_RATE } from "../src/domain/rate-limit";
 import {
   createDraft, createInMemoryListingRepository,
   type Actor, type DraftInput, type ListingServiceDeps
@@ -150,5 +151,35 @@ describe("POST /api/documents/[id]/deletion-request", () => {
     expect(((await (await del(uid(11))).json()) as { outcome: string }).outcome).toBe("amend_only");
     expect(mem.requests.map(r => r.outcome)).toEqual(["amend_only", "amend_only"]);
     expect(mem.documents).toHaveLength(4);
+  });
+  const seed = (count: number, outcome: "amend_only" | "delete_now", by = owner.userId) => {
+    for (let i = 0; i < count; i++) mem.requests.push({ documentId: uid(10), requestedBy: by, outcome, reason: "seed" });
+  };
+  it("answers 429 and records nothing once the user has too many open requests", async () => {
+    state.actor = owner;
+    seed(DELETION_OPEN_CAP, "amend_only");
+    const r = await del(uid(10));
+    expect(r.status).toBe(429);
+    expect(mem.requests).toHaveLength(DELETION_OPEN_CAP);
+  });
+  it("answers 429 and records nothing once the user is over the request rate", async () => {
+    state.actor = owner;
+    seed(DELETION_REQUEST_RATE.perUser, "delete_now");
+    expect((await del(uid(10))).status).toBe(429);
+    expect(mem.requests).toHaveLength(DELETION_REQUEST_RATE.perUser);
+  });
+  it("counts each user separately: another user's requests do not block the owner", async () => {
+    state.actor = owner;
+    seed(DELETION_OPEN_CAP, "amend_only", stranger.userId);
+    expect((await del(uid(10))).status).toBe(200);
+  });
+  it("fails closed with 503 when the limit check errors or gives an unusable answer, and records nothing", async () => {
+    state.actor = owner;
+    const real = state.store!.recordDeletionRequest;
+    state.store!.recordDeletionRequest = async () => { throw new Error("db down"); };
+    expect((await del(uid(10))).status).toBe(503);
+    state.store!.recordDeletionRequest = (async () => undefined) as unknown as typeof real;
+    expect((await del(uid(10))).status).toBe(503);
+    expect(mem.requests).toEqual([]);
   });
 });

@@ -9,6 +9,7 @@ import { OFFER_RATE, windowStart, withinLimit } from "../../../../../src/domain/
 import { countHitPg, eligibleBuyerPg } from "../../../../../src/server/offer-flow-db";
 import { offerLinkPg, offersForOwnerPg, submitOfferPg } from "../../../../../src/server/offers-db";
 import { csrfGuard } from "../../../../../src/server/csrf";
+import { requireListingHandler } from "../../../../../src/server/owner-listing";
 import { requireCurrentTerms } from "../../../../../src/server/terms-guard";
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -98,14 +99,14 @@ export async function POST(req: Request, { params }: Ctx) {
   return NextResponse.json({ offer: saved }, { status: 201 });
 }
 
-/** The listing's owner reviews offers. Other users (and agents) get 404 so the listing's existence is not revealed. */
+/** The listing's owner or its appointed (licensed) agent reviews offers. Everyone else gets 404 so the listing's existence is not revealed. */
 export async function GET(req: Request, { params }: Ctx) {
   const actor = await getActor(req);
   if (!actor) return unauthenticated();
   const denied = forbiddenFor({ id: actor.userId, role: actor.userType }, "offer.analyse");
   if (denied) return failure(denied);
   const { id } = await params;
-  const rec = await getDeps().repo.get(id);
-  if (!rec || rec.listing.ownerUserId !== actor.userId) return failure(notFound);
-  return NextResponse.json({ offers: await offersForOwnerPg(getDb(), id, actor.userId) });
+  const handler = await requireListingHandler(req, id);
+  if (handler instanceof NextResponse) return handler;
+  return NextResponse.json({ offers: await offersForOwnerPg(getDb(), id, handler.rec.listing.ownerUserId) });
 }

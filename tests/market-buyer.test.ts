@@ -35,7 +35,7 @@ describe("saved searches", () => {
 
 const base: PropertyListing = {
   id: "l", ownerUserId: "o", ownerUserType: "owner", jurisdiction: "QLD", status: "draft", title: "T",
-  propertyType: "house", useClass: "residential", transactionType: "rent", address: "A",
+  propertyType: "house", useClass: "residential", transactionType: "rent", address: "A", priceCents: 65_000,
   disclosures: [], createdAt: "2026-10-23T00:00:00.000Z", updatedAt: "2026-10-23T00:00:00.000Z"
 };
 
@@ -51,7 +51,7 @@ describe("residential, commercial, sale and rent", () => {
     expect(decidePublish(base, [], [], "2026-10-23", { ...common, rentalBondPathway: "solicitor_trust" }).allowed).toBe(false);
   });
   it("a sale still needs an approved trust account", () => {
-    const sale = { ...base, transactionType: "sale" as const };
+    const sale = { ...base, transactionType: "sale" as const, priceCents: 85_000_000 };
     expect(decidePublish(sale, [], [], "2026-10-23", { termsAccepted: true }).allowed).toBe(false);
     const paid = { termsAccepted: true, listingFeePaid: true, trustAccount: { kind: "approved" as const, reasons: [] } };
     expect(decidePublish(sale, [], [], "2026-10-23", paid).allowed).toBe(true);

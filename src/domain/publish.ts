@@ -2,6 +2,7 @@ import { evaluatePublish, type PropertyListing, type PublishDecision } from "./l
 import { hasVerifiedLicence, type AgentLicence } from "./licence";
 import type { TrustAccountDecision } from "./trust-account";
 import { licenceLocalDate } from "./timezone";
+import { priceError } from "./listing-details";
 
 /**
  * Single entry point for publish decisions. Derives the agent licence flag from
@@ -31,6 +32,16 @@ export function decidePublish(
   // evaluatePublish only reports a licence failure for agent owners; report the acting agent's too (fail closed).
   if (!actingAgentLicenceOk) {
     base.reasons.push("Acting agent licence must be verified and current before publication.");
+    base.allowed = false;
+  }
+  // A sale needs an asking price and a rental needs weekly rent. Fails closed: a missing or invalid price blocks publication.
+  const priceProblem = priceError(listing.priceCents, listing.transactionType);
+  if (priceProblem) {
+    base.reasons.push(
+      listing.priceCents === undefined || listing.priceCents === null
+        ? `${listing.transactionType === "rent" ? "Weekly rent" : "An asking price"} is required to publish.`
+        : priceProblem
+    );
     base.allowed = false;
   }
   if (termsAccepted !== true) {

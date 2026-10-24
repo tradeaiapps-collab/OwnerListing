@@ -2,6 +2,7 @@ import { canViewDocument, evaluateDeletionRequest, uploadableKinds, type Deletio
 import type { ObjectStoragePort } from "../adapters/object-storage";
 import type { JobAssignment } from "./job-chat";
 import type { Actor, ListingServiceDeps, Result } from "./listing-service";
+import { DELETION_OPEN_CAP, DELETION_REQUEST_RATE } from "./rate-limit";
 
 /** Metadata only. Storage keys, fingerprints and uploader ids are never returned. */
 export interface DocumentSummary {
@@ -24,7 +25,11 @@ export interface DocumentStore {
   documentsForListing(listingId: string): Promise<DocumentRecord[]>;
   documentById(documentId: string): Promise<DocumentRecord | undefined>;
   assignmentsFor(listingId: string, contractorUserId: string): Promise<JobAssignment[]>;
-  recordDeletionRequest(r: DeletionRequestRecord): Promise<void>;
+  /**
+   * Inserts the request only while the requester is under both limits (checked in the same statement as the insert).
+   * "rate_limited": too many recorded since `sinceIso`. "cap_reached": too many open ones. Nothing is inserted in either case.
+   */
+  recordDeletionRequest(r: DeletionRequestRecord, limits: { sinceIso: string; perWindow: number; maxOpen: number }): Promise<"recorded" | "rate_limited" | "cap_reached">;
   /** Storage key and the stored (sniffed) content type. Used only by readDocumentFile, after the access check. */
   storedFileFor(documentId: string): Promise<{ storageKey: string; contentType: string } | undefined>;
 }
@@ -118,9 +123,23 @@ export async function requestDocumentDeletion(
   // Withdrawn counts as published: a withdrawn listing may have been live, so its files stay on record.
   const everPublished = rec.listing.status === "published" || rec.listing.status === "withdrawn";
   const outcome = evaluateDeletionRequest(actor.userId, doc, { everPublished, saleCompleted: false });
-  await store.recordDeletionRequest({
-    documentId: doc.id, requestedBy: actor.userId, outcome: outcome.kind, reason: outcome.reason
-  });
+  // Per-user rate and open-request cap. Fails closed: a store error refuses the request and records nothing.
+  let recorded: Awaited<ReturnType<DocumentStore["recordDeletionRequest"]>>;
+  try {
+    recorded = await store.recordDeletionRequest(
+      { documentId: doc.id, requestedBy: actor.userId, outcome: outcome.kind, reason: outcome.reason },
+      {
+        sinceIso: new Date(Date.parse(deps.now()) - DELETION_REQUEST_RATE.windowMs).toISOString(),
+        perWindow: DELETION_REQUEST_RATE.perUser,
+        maxOpen: DELETION_OPEN_CAP
+      }
+    );
+  } catch {
+    return { ok: false, code: "unavailable", message: "Deletion requests are unavailable right now. Try again later." };
+  }
+  if (recorded === "rate_limited") return { ok: false, code: "rate_limited", message: "Too many deletion requests. Try again later." };
+  if (recorded === "cap_reached") return { ok: false, code: "rate_limited", message: "You have too many open deletion requests. Wait until they are reviewed." };
+  if (recorded !== "recorded") return { ok: false, code: "unavailable", message: "Deletion requests are unavailable right now. Try again later." };
   return { ok: true, value: { outcome: outcome.kind, reason: outcome.reason } };
 }
 
@@ -137,7 +156,14 @@ export function createInMemoryDocumentStore(
     async assignmentsFor(listingId, contractorUserId) {
       return assignments.filter(a => a.listingId === listingId && a.contractorUserId === contractorUserId);
     },
-    async recordDeletionRequest(r) { requests.push(r); },
+    async recordDeletionRequest(r, limits) {
+      // Mirrors the SQL guard. The in-memory store has no clock per row, so every earlier request counts as inside the window.
+      const mine = requests.filter(x => x.requestedBy === r.requestedBy);
+      if (mine.filter(x => x.outcome !== "delete_now").length >= limits.maxOpen) return "cap_reached";
+      if (mine.length >= limits.perWindow) return "rate_limited";
+      requests.push(r);
+      return "recorded";
+    },
     async storedFileFor(id) { return seed.files?.[id]; }
   };
   return { store, documents, requests };

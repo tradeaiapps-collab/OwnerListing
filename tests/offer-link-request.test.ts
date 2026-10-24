@@ -147,10 +147,11 @@ describe("denials", () => {
   it("denies issue and decline to buyers, agents and non-parties, and when nothing was requested", async () => {
     expect(await issueOfferLinkFromThread(deps, owner, enquiryId)).toMatchObject({ ok: false, code: "conflict" });
     await requestOfferLink(deps, buyer, enquiryId);
-    for (const who of [buyer, agent]) {
-      expect(await issueOfferLinkFromThread(deps, who, enquiryId)).toMatchObject({ ok: false, code: "forbidden" });
-      expect(await declineOfferLinkFromThread(deps, who, enquiryId)).toMatchObject({ ok: false, code: "forbidden" });
-    }
+    expect(await issueOfferLinkFromThread(deps, buyer, enquiryId)).toMatchObject({ ok: false, code: "forbidden" });
+    expect(await declineOfferLinkFromThread(deps, buyer, enquiryId)).toMatchObject({ ok: false, code: "forbidden" });
+    // An agent who is not appointed to this listing is not a party to the thread: same 404 as a missing thread.
+    expect(await issueOfferLinkFromThread(deps, agent, enquiryId)).toMatchObject({ ok: false, code: "not_found" });
+    expect(await declineOfferLinkFromThread(deps, agent, enquiryId)).toMatchObject({ ok: false, code: "not_found" });
     const otherOwner: Actor = { userId: "66666666-6666-4666-8666-666666666666", userType: "owner" };
     expect(await issueOfferLinkFromThread(deps, otherOwner, enquiryId)).toMatchObject({ ok: false, code: "not_found" });
     expect(await offerLinkState(deps, stranger, enquiryId)).toMatchObject({ ok: false, code: "not_found" });
