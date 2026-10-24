@@ -6,6 +6,9 @@ import { getActor, getDb, getDeps, getUploadPorts } from "../../../../../src/ser
 import { csrfGuard } from "../../../../../src/server/csrf";
 import { createPgDocumentStore } from "../../../../../src/server/documents-db";
 import { failure, unauthenticated } from "../../../../../src/server/http";
+import { hashToken } from "../../../../../src/domain/offer-intake";
+import { UPLOAD_QUOTA_WINDOW_MS, UPLOAD_RATE, windowStart, withinByteQuota, withinLimit } from "../../../../../src/domain/rate-limit";
+import { countHitPg } from "../../../../../src/server/offer-flow-db";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -46,6 +49,20 @@ export async function POST(req: Request, { params }: Ctx) {
   const length = Number(req.headers.get("content-length"));
   if (!Number.isFinite(length) || length <= 0 || length > MAX_REQUEST_BYTES) {
     return NextResponse.json({ error: "File is missing or too large for this upload." }, { status: 413 });
+  }
+  // Per-user rate and daily byte quota, before the body is buffered. Fails closed: a store error refuses the upload.
+  const now = getDeps().now();
+  try {
+    const hits = await countHitPg(getDb(), await hashToken(`upload:${actor.userId}`), windowStart(now, UPLOAD_RATE.windowMs));
+    if (!withinLimit(hits, UPLOAD_RATE.perUser)) {
+      return NextResponse.json({ error: "Too many uploads. Try again later." }, { status: 429, headers: { "Retry-After": "600" } });
+    }
+    const since = new Date(Date.parse(now) - UPLOAD_QUOTA_WINDOW_MS).toISOString();
+    if (!withinByteQuota(await store.bytesUploadedSince(actor.userId, since), length)) {
+      return NextResponse.json({ error: "Daily upload limit reached. Try again tomorrow." }, { status: 429, headers: { "Retry-After": "3600" } });
+    }
+  } catch {
+    return NextResponse.json({ error: "Uploads are unavailable right now. Try again later." }, { status: 503 });
   }
   let form: FormData;
   try { form = await req.formData(); } catch { return NextResponse.json({ error: "Invalid upload." }, { status: 400 }); }

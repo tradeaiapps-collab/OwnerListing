@@ -7,6 +7,7 @@ import { failure, unauthenticated } from "../../../../../src/server/http";
 import { OFFER_LINK_ISSUE_RATE, windowStart, withinLimit } from "../../../../../src/domain/rate-limit";
 import { countHitPg, eligibleBuyerPg, issueOfferLinkPg } from "../../../../../src/server/offer-flow-db";
 import { csrfGuard } from "../../../../../src/server/csrf";
+import { requireCurrentTerms } from "../../../../../src/server/terms-guard";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -26,6 +27,8 @@ export async function POST(req: Request, { params }: Ctx) {
   if (denied) return failure(denied);
   const { id } = await params;
   const deps = getDeps();
+  const noTerms = await requireCurrentTerms(deps.termsCurrentFor, actor.userId);
+  if (noTerms) return failure(noTerms);
   const rec = await deps.repo.get(id);
   if (!rec || rec.listing.ownerUserId !== actor.userId || rec.listing.status !== "published") return failure(notFound);
 

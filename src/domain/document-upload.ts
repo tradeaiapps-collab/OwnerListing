@@ -25,6 +25,8 @@ export type UploadStore = DocumentStore & {
   addDocument(d: NewDocument, supersede?: DocumentRecord): Promise<void>;
   /** False when the listing has no property record (property_document.property_id is required). */
   listingHasProperty(listingId: string): Promise<boolean>;
+  /** Bytes this user has stored since `sinceIso`. undefined when the store gave nothing usable (treated as over quota). */
+  bytesUploadedSince(userId: string, sinceIso: string): Promise<number | undefined>;
 };
 
 const VISIBILITIES: readonly Visibility[] = ["public", "parties", "owner_only"];

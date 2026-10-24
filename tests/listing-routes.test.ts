@@ -27,7 +27,9 @@ const input: DraftInput = {
 
 let n: number;
 
+let termsOk = true;
 beforeEach(() => {
+  termsOk = true;
   n = 0;
   state.actor = null;
   state.deps = {
@@ -35,7 +37,8 @@ beforeEach(() => {
     appendAudit: async () => {},
     now: () => "2026-10-24T00:00:00.000Z",
     newId: () => `id-${++n}`,
-    requiredDisclosures: () => []
+    requiredDisclosures: () => [],
+    termsCurrentFor: async () => termsOk
   };
 });
 
@@ -55,6 +58,14 @@ describe("POST /api/listings (create)", () => {
       state.actor = a;
       expect((await createRoute(post("/api/listings", input))).status).toBe(403);
     }
+  });
+  it("returns 403 and creates no draft until the owner has accepted the current terms", async () => {
+    state.actor = owner;
+    termsOk = false;
+    expect((await createRoute(post("/api/listings", input))).status).toBe(403);
+    delete (state.deps as { termsCurrentFor?: unknown }).termsCurrentFor; // gate not wired: fails closed
+    termsOk = true;
+    expect((await createRoute(post("/api/listings", input))).status).toBe(403);
   });
   it("returns 400 for an owner with an invalid body", async () => {
     state.actor = owner;

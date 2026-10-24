@@ -41,6 +41,8 @@ export interface EnquiryDeps {
   countHit: (key: string, windowMs: number) => Promise<number | undefined>;
   /** Where the buyer goes to ask for a formal offer link. */
   offerRequestUrl: (enquiryId: string) => string;
+  /** True only when the user accepted the terms in force now. Starting or replying to an enquiry needs it. */
+  termsCurrentFor: (userId: string) => Promise<boolean>;
   appendAudit: (e: AuditEvent) => Promise<void>;
   now: () => string;
   newId: () => string;

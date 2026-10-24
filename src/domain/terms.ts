@@ -37,8 +37,12 @@ export function termsGate(
   userId: string,
   current: TermsVersion | undefined
 ): Failure | null {
-  if (current !== undefined && hasAcceptedCurrentTerms(acceptances, userId, current)) return null;
-  return { ok: false, code: "forbidden", message: "Accept the current terms and privacy policy to continue." };
+  return termsGateFor(current !== undefined && hasAcceptedCurrentTerms(acceptances, userId, current));
+}
+
+/** Same gate once the lookup is done: only an explicit true passes, anything else is the forbidden failure. */
+export function termsGateFor(accepted: unknown): Failure | null {
+  return accepted === true ? null : { ok: false, code: "forbidden", message: "Accept the current terms and privacy policy to continue." };
 }
 
 /** Body: { version, agree: true }. The version must be the one in force, so an old or invented version is refused. */

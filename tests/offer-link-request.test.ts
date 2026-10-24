@@ -59,7 +59,8 @@ beforeEach(async () => {
     now: () => new Date(clock).toISOString(),
     newId: () => `99999999-9999-4999-8999-${String(++n).padStart(12, "0")}`,
     offerLinks: createInMemoryOfferLinkRepository(KEY),
-    eligibleBuyer: async b => eligible.has(b)
+    eligibleBuyer: async b => eligible.has(b),
+    termsCurrentFor: async () => true
   };
   state.deps = deps;
   state.actor = null;
