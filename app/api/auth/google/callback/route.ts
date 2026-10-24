@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getDb } from "../../../../../src/server/context";
 import { readAuthEnv } from "../../../../../src/server/auth/config";
+import { safeNextFromCookie } from "../../../../../src/server/auth/safe-next";
 import { exchangeCode, readIdentity } from "../../../../../src/server/auth/google";
 import { SESSION_COOKIE, SESSION_TTL_SECONDS, readCookie, signSession } from "../../../../../src/server/auth/session";
 import { STAFF_COOKIE, STAFF_TTL_SECONDS, signStaffSession } from "../../../../../src/server/auth/staff-session";
@@ -13,7 +14,7 @@ export async function GET(req: Request) {
   if (!auth) return NextResponse.json({ error: "Sign-in is not configured." }, { status: 503 });
   const failed = () => {
     const r = NextResponse.redirect(`${auth.appUrl}/?login=failed`);
-    for (const c of ["ol_state", "ol_nonce", "ol_verifier", "ol_role"]) r.cookies.set(c, "", { path: "/api/auth/google", maxAge: 0 });
+    for (const c of ["ol_state", "ol_nonce", "ol_verifier", "ol_role", "ol_next"]) r.cookies.set(c, "", { path: "/api/auth/google", maxAge: 0 });
     return r;
   };
 
@@ -36,18 +37,18 @@ export async function GET(req: Request) {
       res.cookies.set(STAFF_COOKIE, signStaffSession({ uid: staff.id, exp: now + STAFF_TTL_SECONDS }, auth.secret), {
         httpOnly: true, sameSite: "lax", secure: auth.secureCookies, path: "/", maxAge: STAFF_TTL_SECONDS
       });
-      for (const c of ["ol_state", "ol_nonce", "ol_verifier", "ol_role"]) res.cookies.set(c, "", { path: "/api/auth/google", maxAge: 0 });
+      for (const c of ["ol_state", "ol_nonce", "ol_verifier", "ol_role", "ol_next"]) res.cookies.set(c, "", { path: "/api/auth/google", maxAge: 0 });
       res.cookies.set(SESSION_COOKIE, "", { httpOnly: true, sameSite: "lax", secure: auth.secureCookies, path: "/", maxAge: 0 });
       return res;
     }
     const user = await upsertGoogleUser(getDb(), who, readCookie(req, "ol_role") === "buyer" ? "buyer" : "owner");
     if (!user) return failed();
 
-    const res = NextResponse.redirect(`${auth.appUrl}${user.userType === "buyer" ? "/buyer/saved-searches" : "/listings/new"}`);
+    const res = NextResponse.redirect(`${auth.appUrl}${safeNextFromCookie(readCookie(req, "ol_next")) ?? (user.userType === "buyer" ? "/buyer/saved-searches" : "/listings/new")}`);
     res.cookies.set(SESSION_COOKIE, signSession({ uid: user.id, ut: user.userType, exp: now + SESSION_TTL_SECONDS }, auth.secret), {
       httpOnly: true, sameSite: "lax", secure: auth.secureCookies, path: "/", maxAge: SESSION_TTL_SECONDS
     });
-    for (const c of ["ol_state", "ol_nonce", "ol_verifier", "ol_role"]) res.cookies.set(c, "", { path: "/api/auth/google", maxAge: 0 });
+    for (const c of ["ol_state", "ol_nonce", "ol_verifier", "ol_role", "ol_next"]) res.cookies.set(c, "", { path: "/api/auth/google", maxAge: 0 });
     res.cookies.set(STAFF_COOKIE, "", { httpOnly: true, sameSite: "lax", secure: auth.secureCookies, path: "/", maxAge: 0 });
     return res;
   } catch {

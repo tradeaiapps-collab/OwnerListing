@@ -97,3 +97,14 @@ export function nextVerificationStep(v: BuyerVerification): VerificationStep | n
   if (!v.idVerified) return "verify_id";
   return null;
 }
+
+export type StepStatus = "done" | "current" | "waiting";
+export interface StepState { step: VerificationStep; status: StepStatus }
+
+/** Status of each step in order: finished steps are done, the next one is current, later ones wait. Status only, no personal data. */
+export function verificationSteps(v: BuyerVerification): StepState[] {
+  const order: VerificationStep[] = ["verify_email", "verify_phone", "verify_id"];
+  const next = nextVerificationStep(v);
+  const reached = next === null ? order.length : order.indexOf(next);
+  return order.map((step, i) => ({ step, status: i < reached ? "done" : i === reached ? "current" : "waiting" }));
+}
