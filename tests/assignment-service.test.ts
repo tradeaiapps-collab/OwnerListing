@@ -146,6 +146,20 @@ describe("respondToAssignment", () => {
   });
 });
 
+describe("agent job licence expiry at the QLD midnight boundary", () => {
+  const lic = [{ userId: agent.userId, jurisdiction: "QLD" as const, status: "verified" as const, expiresAt: "2026-10-24" }];
+  const accept = async (nowIso: string) => {
+    const repo = setup(lic);
+    const r = await invite(repo, { kind: "agent", contractorUserId: agent.userId });
+    if (!r.ok) throw new Error("setup failed");
+    return respondToAssignment(repo, agent, r.value.id, { action: "accept" }, { ...ids, now: () => nowIso });
+  };
+  it("is valid at 13:59Z on expiry day and expired at 14:00Z", async () => {
+    expect(await accept("2026-10-24T13:59:00.000Z")).toMatchObject({ ok: true });
+    expect(await accept("2026-10-24T14:00:00.000Z")).toMatchObject({ ok: false, code: "forbidden" });
+  });
+});
+
 describe("listAssignments", () => {
   it("shows each user only their own side, with the other party's name and no email", async () => {
     const repo = setup();
