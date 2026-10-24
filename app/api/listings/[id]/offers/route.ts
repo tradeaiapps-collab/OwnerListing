@@ -44,7 +44,7 @@ export async function POST(req: Request, { params }: Ctx) {
   }
 
   // The link is a bearer token, so it is only honoured for the buyer it was issued to, signed in as that buyer.
-  const actor = getActor(req);
+  const actor = await getActor(req);
   if (!actor) return unauthenticated();
   const link = await offerLinkPg(db, tokenHash);
   if (!link) return failure(badLink);
