@@ -1,6 +1,6 @@
 import { staffCan, type StaffActor, type StaffRole } from "./staff-access";
 
-export const STAFF_ROLES: readonly StaffRole[] = ["super_admin", "compliance", "accountant", "support", "technical", "reporting"];
+export const STAFF_ROLES: readonly StaffRole[] = ["super_admin", "compliance", "accountant", "support", "technical", "reporting", "designer"];
 export const asStaffRole = (v: unknown): StaffRole | null => (typeof v === "string" && (STAFF_ROLES as readonly string[]).includes(v) ? (v as StaffRole) : null);
 
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;

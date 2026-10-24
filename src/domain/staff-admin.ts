@@ -13,7 +13,8 @@ const SECTIONS: readonly StaffSection[] = [
   { href: "/staff/reports", label: "Reports", permission: "report.sales" },
   { href: "/staff/audit", label: "Audit log", permission: "report.audit" },
   { href: "/staff/invites", label: "Staff access", permission: "staff.manage" },
-  { href: "/staff/messaging", label: "Messaging settings", permission: "staff.manage" }
+  { href: "/staff/messaging", label: "Messaging settings", permission: "staff.manage" },
+  { href: "/staff/site", label: "Site appearance", permission: "theme.edit" }
 ];
 
 /** Only the sections this staff member's role allows. */

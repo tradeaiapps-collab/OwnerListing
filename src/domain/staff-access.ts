@@ -1,4 +1,4 @@
-export type StaffRole = "super_admin" | "compliance" | "accountant" | "support" | "technical" | "reporting";
+export type StaffRole = "super_admin" | "compliance" | "accountant" | "support" | "technical" | "reporting" | "designer";
 
 export type StaffPermission =
   | "report.sales" | "report.suburb" | "report.financial" | "report.solicitor" | "report.broker"
@@ -6,14 +6,14 @@ export type StaffPermission =
   | "pii.view_masked" | "pii.view_full"
   | "case.manage" | "trust_account.approve" | "licence.verify"
   | "ai.engine_set" | "config.edit" | "logs.technical" | "dispute.read_chat"
-  | "override.request" | "override.approve" | "staff.manage" | "pricing.manage" | "identity.review";
+  | "override.request" | "override.approve" | "staff.manage" | "pricing.manage" | "identity.review" | "theme.edit";
 
 const ALL: readonly StaffPermission[] = [
   "report.sales", "report.suburb", "report.financial", "report.solicitor", "report.broker",
   "report.buyer", "report.seller", "report.audit", "report.operations",
   "pii.view_masked", "pii.view_full", "case.manage", "trust_account.approve", "licence.verify",
   "ai.engine_set", "config.edit", "logs.technical", "dispute.read_chat",
-  "override.request", "override.approve", "staff.manage", "pricing.manage", "identity.review"
+  "override.request", "override.approve", "staff.manage", "pricing.manage", "identity.review", "theme.edit"
 ];
 
 /** Least privilege: each team sees only what its job needs. Technical staff get no personal data. */
@@ -24,7 +24,9 @@ const ROLE_PERMISSIONS: Record<StaffRole, readonly StaffPermission[]> = {
   accountant: ["report.financial", "report.sales", "pii.view_masked"],
   support: ["report.buyer", "report.seller", "pii.view_masked", "case.manage", "override.request"],
   technical: ["logs.technical", "report.operations", "config.edit"],
-  reporting: ["report.sales", "report.suburb", "report.operations"]
+  reporting: ["report.sales", "report.suburb", "report.operations"],
+  /** Site appearance only (theme.edit). No personal data, no reports, no money. */
+  designer: ["theme.edit"]
 };
 
 export interface StaffActor { id: string; role: StaffRole }

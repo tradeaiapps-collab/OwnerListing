@@ -5,7 +5,7 @@ import type { TrustAccountDecision, TrustAccountEvidence } from "../domain/trust
 import { checksToPerform } from "../domain/trust-verification";
 import type { Queryable } from "./db";
 
-const ROLES: readonly string[] = ["super_admin", "compliance", "accountant", "support", "technical", "reporting"];
+const ROLES: readonly string[] = ["super_admin", "compliance", "accountant", "support", "technical", "reporting", "designer"];
 const iso = (v: unknown) => (v instanceof Date ? v.toISOString() : String(v));
 const dateOnly = (v: unknown) => iso(v).slice(0, 10);
 

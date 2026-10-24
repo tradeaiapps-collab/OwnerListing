@@ -23,6 +23,7 @@ export function appOriginFor(mode: AppMode, env: Record<string, string | undefin
 
 // Only built assets. /_next/data and the rest of /_next/ are not exempt, so they cannot be a way around the split.
 const STATIC = /^\/(_next\/static\/|_next\/image$|favicon\.ico$|robots\.txt$)/;
+const SITE_ASSET = /^\/api\/site\/asset\/(logo-light|logo-dark|favicon)$/;
 const isStaffPath = (p: string) => p === "/staff" || p.startsWith("/staff/") || p === "/api/staff" || p.startsWith("/api/staff/");
 
 /**
@@ -57,5 +58,6 @@ export function isAllowed(mode: AppMode, rawPathname: string, as: string | null,
   if (STATIC.test(pathname) || pathname === "/api/health") return true;
   const staffSignIn = (pathname === AUTH_START && as === "staff") || (pathname === AUTH_CALLBACK && role === "staff");
   if (mode === "public") return !isStaffPath(pathname) && !staffSignIn;
-  return isStaffPath(pathname) || staffSignIn || pathname === "/api/auth/logout" || DEV_LOGIN_PATHS.has(pathname);
+  // The themed header on the admin site shows the same logo, so the public, read-only image route is served here too.
+  return isStaffPath(pathname) || staffSignIn || pathname === "/api/auth/logout" || SITE_ASSET.test(pathname) || DEV_LOGIN_PATHS.has(pathname);
 }
