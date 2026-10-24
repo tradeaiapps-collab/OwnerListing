@@ -5,6 +5,9 @@ import { DEFAULT_AUTO_REPLY, queueReplyDraft, type DraftRepository, type ReplyDr
 import type { Actor, Failure, ListingRepository, Result } from "./listing-service";
 import { AUTOMATED_SENDER_ID, buildOfferPrompt, shouldSendOfferPrompt } from "./offer-intake";
 import { ENQUIRY_RATE, windowStart, withinLimit } from "./rate-limit";
+import type { AgentAppointment } from "./access";
+import { isAppointedAgent } from "./appointed-agent";
+import type { AgentLicence } from "./licence";
 
 export interface Enquiry { id: string; listingId: string; buyerUserId: string; createdAt: string }
 /** senderUserId is null for automated system messages (the chat-offer notice). */
@@ -46,6 +49,9 @@ export interface EnquiryDeps {
   appendAudit: (e: AuditEvent) => Promise<void>;
   now: () => string;
   newId: () => string;
+  /** With both set, an agent with an active appointment and a current licence may handle the listing's threads. Unset means owner only. */
+  appointmentFor?: (listingId: string, agentUserId: string) => Promise<AgentAppointment | undefined>;
+  licences?: () => Promise<readonly AgentLicence[]>;
 }
 
 const fail = (code: Failure["code"], message: string): Failure => ({ ok: false, code, message });
@@ -81,10 +87,6 @@ async function underLimit(deps: EnquiryDeps, key: string, rate: { windowMs: numb
 }
 
 const TOO_FAST = fail("rate_limited", "You are sending too many messages. Try again later.");
-
-async function ownerOf(deps: EnquiryDeps, listingId: string): Promise<string | undefined> {
-  return (await deps.listings.get(listingId))?.listing.ownerUserId;
-}
 
 /**
  * Stores a message. A buyer must still be fully verified and under the spam limits. After a buyer message:
@@ -142,11 +144,16 @@ export async function startEnquiry(
 }
 
 /** Non-parties get the same not_found as a missing thread, so existence is never revealed. */
-export async function participantEnquiry(deps: EnquiryDeps, actor: Actor, id: string): Promise<Result<{ enquiry: Enquiry; ownerUserId: string }>> {
+export async function participantEnquiry(deps: EnquiryDeps, actor: Actor, id: string): Promise<Result<{ enquiry: Enquiry; ownerUserId: string; asAgent: boolean }>> {
   const e = await deps.enquiries.get(id);
-  const ownerUserId = e ? await ownerOf(deps, e.listingId) : undefined;
-  if (!e || !ownerUserId || (e.buyerUserId !== actor.userId && ownerUserId !== actor.userId)) return fail("not_found", "Enquiry not found.");
-  return { ok: true, value: { enquiry: e, ownerUserId } };
+  const rec = e ? await deps.listings.get(e.listingId) : undefined;
+  if (!e || !rec) return fail("not_found", "Enquiry not found.");
+  const ownerUserId = rec.listing.ownerUserId;
+  // The owner and the buyer are parties. So is the listing's appointed agent while the appointment and licence are valid.
+  const isParty = e.buyerUserId === actor.userId || ownerUserId === actor.userId;
+  const asAgent = !isParty && (await isAppointedAgent(deps, actor, rec.listing));
+  if (!isParty && !asAgent) return fail("not_found", "Enquiry not found.");
+  return { ok: true, value: { enquiry: e, ownerUserId, asAgent } };
 }
 
 export async function getThread(deps: EnquiryDeps, actor: Actor, id: string): Promise<Result<{ enquiry: Enquiry; messages: EnquiryMessage[] }>> {

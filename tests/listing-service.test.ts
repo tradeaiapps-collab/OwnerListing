@@ -3,7 +3,7 @@ import type { AuditEvent } from "../src/domain/audit";
 import {
   createDraft, createInMemoryListingRepository, getListing, parseDraftInput, parseDraftPatch,
   publishListing, searchPublished, updateDraft,
-  type Actor, type DraftInput, type ListingServiceDeps
+  type Actor, type DraftCreate, type DraftInput, type ListingServiceDeps
 } from "../src/domain/listing-service";
 import type { SearchQuery } from "../src/domain/listing-search";
 
@@ -101,8 +101,21 @@ describe("publishing", () => {
     expect((await repo.get(l.id))?.listing.status).toBe("draft");
   });
 
+  it("blocks publishing a sale or a rental that has no price, and changes nothing", async () => {
+    for (const tx of ["sale", "rent"] as const) {
+      const l = await createDraft(deps, owner, { ...input, transactionType: tx });
+      const rec = await repo.get(l.id);
+      await repo.save({ ...rec!, listingFeePaid: true, termsAccepted: true, rentalBondPathway: "state_bond_authority" });
+      const ready = { ...deps, trustAccountFor: async () => ({ kind: "approved" as const, reasons: [] }) };
+      const r = await publishListing(ready, owner, l.id, false);
+      expect(r.ok && r.value.decision.allowed).toBe(false);
+      expect(r.ok && r.value.decision.reasons).toContain(tx === "rent" ? "Weekly rent is required to publish." : "An asking price is required to publish.");
+      expect((await repo.get(l.id))?.listing.status).toBe("draft");
+    }
+  });
+
   it("publishes through pending_review with audit events once every gate passes", async () => {
-    const l = await createDraft(deps, owner, input);
+    const l = await createDraft(deps, owner, { ...input, priceCents: 85_000_000 });
     const rec = await repo.get(l.id);
     await repo.save({ ...rec!, listingFeePaid: true, termsAccepted: true });
     const ready = { ...deps, trustAccountFor: async () => ({ kind: "approved" as const, reasons: [] }) };
@@ -139,7 +152,7 @@ describe("searchPublished", () => {
 });
 
 describe("rental bond pathway at publish", () => {
-  const rent: DraftInput = { ...input, transactionType: "rent" };
+  const rent: DraftCreate = { ...input, transactionType: "rent", priceCents: 65_000 };
 
   async function readyRental(pathway?: "state_bond_authority" | "solicitor_trust") {
     const l = await createDraft(deps, owner, rent);

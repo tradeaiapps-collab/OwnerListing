@@ -147,10 +147,11 @@ describe("denials", () => {
   it("denies issue and decline to buyers, agents and non-parties, and when nothing was requested", async () => {
     expect(await issueOfferLinkFromThread(deps, owner, enquiryId)).toMatchObject({ ok: false, code: "conflict" });
     await requestOfferLink(deps, buyer, enquiryId);
-    for (const who of [buyer, agent]) {
-      expect(await issueOfferLinkFromThread(deps, who, enquiryId)).toMatchObject({ ok: false, code: "forbidden" });
-      expect(await declineOfferLinkFromThread(deps, who, enquiryId)).toMatchObject({ ok: false, code: "forbidden" });
-    }
+    expect(await issueOfferLinkFromThread(deps, buyer, enquiryId)).toMatchObject({ ok: false, code: "forbidden" });
+    expect(await declineOfferLinkFromThread(deps, buyer, enquiryId)).toMatchObject({ ok: false, code: "forbidden" });
+    // An agent who is not appointed to this listing is not a party to the thread: same 404 as a missing thread.
+    expect(await issueOfferLinkFromThread(deps, agent, enquiryId)).toMatchObject({ ok: false, code: "not_found" });
+    expect(await declineOfferLinkFromThread(deps, agent, enquiryId)).toMatchObject({ ok: false, code: "not_found" });
     const otherOwner: Actor = { userId: "66666666-6666-4666-8666-666666666666", userType: "owner" };
     expect(await issueOfferLinkFromThread(deps, otherOwner, enquiryId)).toMatchObject({ ok: false, code: "not_found" });
     expect(await offerLinkState(deps, stranger, enquiryId)).toMatchObject({ ok: false, code: "not_found" });
@@ -186,6 +187,18 @@ describe("POST/GET /api/enquiries/[id]/offer-link", () => {
     state.actor = null;
     expect((await route.POST(post("request", { origin: "http://evil.test" }), ctx(enquiryId))).status).toBe(403);
     expect((await deps.offerLinks.latest(enquiryId))).toBeUndefined();
+  });
+  it("refuses request and issue (and creates nothing) when the current terms are not accepted, or the check fails", async () => {
+    state.actor = buyer;
+    for (const check of [async () => false, async () => { throw new Error("db down"); }]) {
+      deps.termsCurrentFor = check;
+      for (const action of ["request", "issue"]) {
+        const res = await route.POST(post(action), ctx(enquiryId));
+        expect(res.status).toBeGreaterThanOrEqual(400);
+        expect(res.status).not.toBe(404);
+      }
+      expect(await deps.offerLinks.latest(enquiryId)).toBeUndefined();
+    }
   });
   it("requires sign in, a valid id and a known action", async () => {
     expect((await route.POST(post("request"), ctx(enquiryId))).status).toBe(401);
