@@ -532,7 +532,8 @@ describe("migration db/20261024180000_phone_id_verification.sql", () => {
   it("has no column for images, document numbers or a plaintext code", () => {
     expect(sql.replace(/--.*$/gm, "")).not.toMatch(/image|document_number|licence_number|passport_number|selfie|\bcode\s+(TEXT|CHAR)/i);
   });
-  it("ID_IMAGES_AVAILABLE stays false", () => {
-    expect(readFileSync(path.join(__dirname, "..", "src/domain/staff-admin.ts"), "utf8")).toMatch(/export const ID_IMAGES_AVAILABLE = false;/);
+  it("ID image availability is derived from config, not a constant that could be flipped to true", () => {
+    expect(readFileSync(path.join(__dirname, "..", "src/domain/staff-admin.ts"), "utf8")).not.toMatch(/ID_IMAGES_AVAILABLE/);
+    expect(readFileSync(path.join(__dirname, "..", "src/server/verification-context.ts"), "utf8")).toMatch(/idImages: idImagesAvailable\(\)/);
   });
 });

@@ -6,7 +6,9 @@ import "../../styles/staff.css";
 interface Sub {
   id: string; userId: string; accountName: string; documentKind: string; documentCountry: string;
   expiryDate: string; submittedAt: string; approvals: number; selfieCapturedInApp: boolean;
+  assignedTo: string | null; assignedAt: string | null; hasImages: boolean; hasBack: boolean;
 }
+const CLAIM_MS = 30 * 60 * 1000;
 const TICKS = [
   ["documentLooksGenuine", "Document looks genuine"], ["photoMatchesSelfie", "Photo matches the selfie"],
   ["nameMatchesAccount", "Name matches the account"], ["notExpired", "Document is in date"]
@@ -33,6 +35,13 @@ export default function StaffIdReview() {
   const form = (id: string) => forms[id] ?? blank;
   const patch = (id: string, p: Partial<Form>) => setForms({ ...forms, [id]: { ...form(id), ...p } });
 
+  async function claim(s: Sub) {
+    setMessage("");
+    const res = await postStaff(`/api/staff/id-review/${s.id}/claim`, {});
+    setMessage(res.ok ? "Claimed for 30 minutes. Open every image before approving." : String(res.data["error"] ?? "Failed."));
+    await load();
+  }
+
   async function decide(s: Sub, outcome: "approve" | "reject" | "needs_more") {
     setMessage("");
     const f = form(s.id);
@@ -47,18 +56,28 @@ export default function StaffIdReview() {
     <main>
       <h1>Identity review</h1>
       <p><a href="/staff">Back to staff</a></p>
-      {loaded && !imagesAvailable && <p className="staff-notice">Document images unavailable: image storage is not built, so approval is blocked. You can still reject or ask for more.</p>}
+      {loaded && !imagesAvailable && <p className="staff-notice">Document images unavailable: image storage, the malware scanner or the image key is not configured, so approval is blocked. You can still reject or ask for more.</p>}
+      {loaded && imagesAvailable && <p className="muted">Claim a check to see its images (30 minutes; every view is logged with your name). Do not copy, screenshot or download images. The selfie camera can be bypassed, so look for photos of screens or prints.</p>}
       {message && <p role="alert">{message}</p>}
       {loaded && subs.length === 0 && <p className="empty">No identity checks are waiting.</p>}
       <ul className="card-list">
         {subs.map(s => {
           const f = form(s.id);
           const own = s.userId === me;
+          const mine = s.assignedTo === me && s.assignedAt !== null && Date.now() - Date.parse(s.assignedAt) < CLAIM_MS;
+          const heldByOther = !mine && s.assignedTo !== null && s.assignedAt !== null && Date.now() - Date.parse(s.assignedAt) < CLAIM_MS;
+          const parts = s.hasBack ? ["front", "back", "selfie"] : ["front", "selfie"];
           return (
             <li key={s.id} className="card">
               <h2>{s.accountName}</h2>
               <p>{s.documentKind.replace(/_/g, " ")} · {s.documentCountry.toUpperCase()} · expires {s.expiryDate} · {s.approvals} approval(s) so far</p>
-              <p className="muted">Images unavailable. Submitted {new Date(s.submittedAt).toLocaleString()}.</p>
+              <p className="muted">{s.hasImages ? (mine ? "Claimed by you." : heldByOther ? "Another reviewer is working on this." : "Claim to view images.") : "No images."} Submitted {new Date(s.submittedAt).toLocaleString()}.</p>
+              {imagesAvailable && s.hasImages && !own && !mine && !heldByOther && <button type="button" onClick={() => void claim(s)}>Claim and view images</button>}
+              {imagesAvailable && mine && (
+                <div className="staff-checks">
+                  {parts.map(p => <figure key={p}><img src={`/api/staff/id-review/${s.id}/image/${p}`} alt={`ID ${p}`} referrerPolicy="no-referrer" draggable={false} /><figcaption>{p}</figcaption></figure>)}
+                </div>
+              )}
               {own ? <p className="staff-notice">This is your own identity check; another reviewer must review it.</p> : (
                 <form className="stack" onSubmit={e => e.preventDefault()}>
                   <div className="staff-checks">
@@ -76,7 +95,7 @@ export default function StaffIdReview() {
                     <textarea className="staff-reason" value={f.reason} onChange={e => patch(s.id, { reason: e.target.value })} />
                   </label>
                   <div className="actions">
-                    <button type="button" disabled={!imagesAvailable} onClick={() => void decide(s, "approve")}>Approve</button>
+                    <button type="button" disabled={!imagesAvailable || !mine} onClick={() => void decide(s, "approve")}>Approve</button>
                     <button type="button" className="secondary" onClick={() => void decide(s, "needs_more")}>Needs more</button>
                     <button type="button" className="secondary" onClick={() => void decide(s, "reject")}>Reject</button>
                   </div>

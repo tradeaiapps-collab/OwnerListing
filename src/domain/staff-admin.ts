@@ -82,6 +82,3 @@ export function planTrustDecision(actor: StaffActor, c: TrustCheckState, outcome
   const needsSecond = c.lastApprovedFingerprint === null || c.lastApprovedFingerprint !== c.fingerprint;
   return needsSecond && c.priors.length === 0 ? { action: "first_approval" } : { action: "approve" };
 }
-
-/** Image storage is not built, so identity documents cannot be seen and approval stays blocked (fail closed). */
-export const ID_IMAGES_AVAILABLE = false;

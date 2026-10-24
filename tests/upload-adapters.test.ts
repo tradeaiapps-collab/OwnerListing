@@ -31,8 +31,13 @@ describe("local disk storage", () => {
     }
     expect(await readdir(root)).toEqual([]);
   });
-  it("has no delete operation", () => {
-    expect(Object.keys(createLocalDiskStorage("/tmp/x")).sort()).toEqual(["configured", "get", "put"]);
+  it("has no delete operation for listing files (only identity images under id/ can be removed, for retention)", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "ol-store-"));
+    const s = createLocalDiskStorage(root);
+    expect(Object.keys(s).sort()).toEqual(["configured", "get", "put", "remove"]);
+    await s.put(KEY, new Uint8Array([1]), "image/jpeg");
+    await expect(s.remove!(KEY)).rejects.toThrow(/Only identity images/);
+    expect(await s.get(KEY)).toEqual(new Uint8Array([1]));
   });
   it("needs an absolute folder", () => {
     expect(() => createLocalDiskStorage("relative/dir")).toThrow();

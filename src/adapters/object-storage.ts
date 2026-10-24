@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 /** Where uploaded file bytes live. Only the key and the SHA-256 are stored in the database, never the bytes or the filename. */
@@ -8,6 +8,11 @@ export interface ObjectStoragePort {
   put(key: string, bytes: Uint8Array, contentType: string): Promise<void>;
   /** Reads an object back. Callers must have checked access first; this port does not. Throws if the object cannot be read. */
   get(key: string): Promise<Uint8Array>;
+  /**
+   * Deletes an identity image (keys under id/ only, for the retention job). Listing files are never deletable, so any
+   * other key is refused. An object that is already gone counts as deleted. Ports without it cannot hold ID images.
+   */
+  remove?(key: string): Promise<void>;
 }
 
 /** Provider choice is still open (see PROJECT_STATUS.md). Until one is wired in, nothing can be stored. */
@@ -19,12 +24,13 @@ export function createUnconfiguredStorage(): ObjectStoragePort {
   };
 }
 
-/** Keys are made by the server: listings/<uuid>/<uuid>. Anything else is refused, so a key can never climb out of the storage folder. */
-const KEY = /^listings\/[A-Za-z0-9_-]{1,64}\/[A-Za-z0-9_-]{1,64}$/;
+/** Keys are made by the server: listings/<uuid>/<uuid> or id/<hex>/<hex>. Anything else is refused, so a key can never climb out of the storage folder. */
+const KEY = /^(listings|id)\/[A-Za-z0-9_-]{1,64}\/[A-Za-z0-9_-]{1,64}$/;
+const ID_KEY = /^id\//;
 
 /**
  * Stores objects as files under one absolute folder. For development, staging and single-server installs; no external account.
- * put never overwrites (flag "wx"), files are owner-only (0600), and there is deliberately no delete.
+ * put never overwrites (flag "wx"), files are owner-only (0600), and only identity images (id/ keys) can be deleted.
  * Bytes are NOT encrypted at rest here: use an encrypted volume. Refused in production unless STORAGE_LOCAL_ALLOW_PRODUCTION=1.
  */
 export function createLocalDiskStorage(root: string): ObjectStoragePort {
@@ -45,6 +51,10 @@ export function createLocalDiskStorage(root: string): ObjectStoragePort {
     },
     async get(key) {
       return new Uint8Array(await readFile(resolve(key)));
+    },
+    async remove(key) {
+      if (!ID_KEY.test(key)) throw new Error("Only identity images can be deleted.");
+      await unlink(resolve(key)).catch((e: NodeJS.ErrnoException) => { if (e.code !== "ENOENT") throw e; });
     }
   };
 }

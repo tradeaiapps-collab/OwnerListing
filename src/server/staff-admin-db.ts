@@ -168,18 +168,22 @@ export async function rejectTrustCheck(db: Queryable, checkId: string, staffId: 
 export interface IdQueueRow {
   id: string; userId: string; accountName: string; documentKind: string; documentCountry: string;
   expiryDate: string; submittedAt: string; approvals: number; selfieCapturedInApp: boolean;
+  assignedTo: string | null; assignedAt: string | null; hasImages: boolean; hasBack: boolean;
 }
 
-/** Image keys are never selected: the images are not shown or stored by this screen. */
+/** Image keys are never selected: images are fetched one at a time through the audited image route by the claiming reviewer. */
 export async function listIdQueue(db: Queryable): Promise<IdQueueRow[]> {
   const res = await db.query(
-    `SELECT s.id, s.user_id, u.display_name, s.document_kind, s.document_country, s.expiry_date, s.submitted_at, s.approvals, s.selfie_captured_in_app
+    `SELECT s.id, s.user_id, u.display_name, s.document_kind, s.document_country, s.expiry_date, s.submitted_at, s.approvals, s.selfie_captured_in_app,
+            s.assigned_reviewer, s.assigned_at, (s.front_image_key IS NOT NULL AND s.selfie_key IS NOT NULL) AS has_images, s.back_image_key IS NOT NULL AS has_back
        FROM id_submission s JOIN app_user u ON u.id = s.user_id WHERE s.status = 'pending' ORDER BY s.submitted_at LIMIT 100`
   );
   return res.rows.map(r => ({
     id: String(r["id"]), userId: String(r["user_id"]), accountName: String(r["display_name"]), documentKind: String(r["document_kind"]),
     documentCountry: String(r["document_country"]).trim(), expiryDate: dateOnly(r["expiry_date"]), submittedAt: iso(r["submitted_at"]),
-    approvals: Array.isArray(r["approvals"]) ? r["approvals"].length : 0, selfieCapturedInApp: r["selfie_captured_in_app"] === true
+    approvals: Array.isArray(r["approvals"]) ? r["approvals"].length : 0, selfieCapturedInApp: r["selfie_captured_in_app"] === true,
+    assignedTo: (r["assigned_reviewer"] as string | null) ?? null, assignedAt: r["assigned_at"] ? iso(r["assigned_at"]) : null,
+    hasImages: r["has_images"] === true, hasBack: r["has_back"] === true
   }));
 }
 
@@ -200,10 +204,13 @@ export async function getIdSubmission(db: Queryable, id: string): Promise<IdSubm
   };
 }
 
-/** Saves a reviewed submission only if nobody else changed it meanwhile. Approval also marks the buyer as manually verified. */
+/**
+ * Saves a reviewed submission only if nobody else changed it meanwhile. Approval also marks the buyer as manually verified.
+ * Every decision ends the current claim, so a first approval leaves the check free for a different second reviewer.
+ */
 export async function saveIdReview(db: Queryable, before: IdSubmission, after: IdSubmission): Promise<boolean> {
   const res = await db.query(
-    `WITH upd AS (UPDATE id_submission SET status = $3, approvals = $4::jsonb, decided_at = $5
+    `WITH upd AS (UPDATE id_submission SET status = $3, approvals = $4::jsonb, decided_at = $5, assigned_reviewer = NULL, assigned_at = NULL
                    WHERE id = $1 AND status = 'pending' AND approvals = $2::jsonb RETURNING user_id, status),
           ver AS (INSERT INTO buyer_verification (user_id, id_verified_at, id_method)
                   SELECT user_id, now(), 'manual_review' FROM upd WHERE status = 'approved'

@@ -68,7 +68,7 @@ export function reviewSubmission(
   if (reviewer.id === s.userId) throw new Error("Staff cannot review their own identity check.");
   if (s.status !== "pending") throw new Error("This submission is not waiting for review.");
   if (outcome === "reject") return { ...s, status: "rejected", decidedAt: now };
-  if (outcome === "needs_more") return { ...s, status: "needs_more" };
+  if (outcome === "needs_more") return { ...s, status: "needs_more", decidedAt: now };
   const { documentLooksGenuine, photoMatchesSelfie, nameMatchesAccount, notExpired } = checklist;
   if (![documentLooksGenuine, photoMatchesSelfie, nameMatchesAccount, notExpired].every(Boolean)) {
     throw new Error("Every check must pass to approve.");
@@ -88,11 +88,11 @@ export function isIdVerified(s: IdSubmission): boolean {
   return s.status === "approved";
 }
 
-/** Days to keep the ID images after a decision. Counsel to confirm. Afterwards only the result is kept. */
-export const RETAIN_IMAGE_DAYS = { approved: 7, rejected: 30 } as const;
+/** Days to keep the ID images after a decision. Counsel to confirm. Afterwards only the result is kept. "Needs more" counts as a rejection. */
+export const RETAIN_IMAGE_DAYS = { approved: 7, rejected: 30, needs_more: 30 } as const;
 
 export function imagesDueForDeletion(s: IdSubmission, now: string): boolean {
-  if (s.decidedAt === undefined || (s.status !== "approved" && s.status !== "rejected")) return false;
+  if (s.decidedAt === undefined || s.status === "pending") return false;
   return new Date(now).getTime() >= new Date(s.decidedAt).getTime() + RETAIN_IMAGE_DAYS[s.status] * 86_400_000;
 }
 
