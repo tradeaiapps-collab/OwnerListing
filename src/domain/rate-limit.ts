@@ -16,4 +16,7 @@ export const ENQUIRY_RATE = {
   newThreads: { windowMs: 24 * 60 * 60 * 1000, perBuyer: 5 }
 } as const;
 
+/** A buyer asking for an offer link from a thread. */
+export const OFFER_LINK_REQUEST_RATE = { windowMs: 24 * 60 * 60 * 1000, perBuyer: 5 } as const;
+
 export const OFFER_RATE ={ windowMs: 10 * 60 * 1000, perLink: 5, perIp: 20 } as const;
