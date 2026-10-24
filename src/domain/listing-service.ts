@@ -174,6 +174,14 @@ export async function listMyListings(deps: ListingServiceDeps, actor: Actor): Pr
   return (await deps.repo.listByOwner(actor.userId)).map(r => r.listing);
 }
 
+/** What a public viewer may see. Internal ownership fields never leave the server. */
+export type PublicListing = Omit<PropertyListing, "ownerUserId" | "ownerUserType">;
+
+export function toPublicListing(l: PropertyListing): PublicListing {
+  const { ownerUserId: _ownerUserId, ownerUserType: _ownerUserType, ...pub } = l;
+  return pub;
+}
+
 export async function searchPublished(deps: ListingServiceDeps, f: SearchFilters): Promise<PropertyListing[]> {
   const all = await deps.repo.list();
   return all
