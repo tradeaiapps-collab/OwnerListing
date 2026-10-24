@@ -1,5 +1,5 @@
 import { alertKey } from "../domain/alerts";
-import type { AlertPreference } from "../domain/buyer";
+import type { AlertPreference, ListingSummary } from "../domain/buyer";
 import type { PropertyListing } from "../domain/listing";
 import { createPublishAlertHook } from "../domain/publish-alerts";
 import { createUnconfiguredAlertDelivery } from "../adapters/alert-delivery";
@@ -8,6 +8,29 @@ import { toSearch } from "./saved-search-db";
 
 const iso = (v: unknown): string | undefined => (v instanceof Date ? v.toISOString() : typeof v === "string" ? v : undefined);
 const MAX_SEARCHES_SCANNED = 5000;
+
+/**
+ * Narrows saved searches to those that could match a listing. It only drops searches matchesSearch would reject
+ * (an empty criteria list means "any"; a listing without price/bedrooms/suburb fails a search that limits it), so matchesSearch stays the final authority.
+ * Listing values travel as parameters; the SQL text is constant. A malformed numeric criterion counts as no limit here and is rejected later by toSearch.
+ */
+export function buildAlertCandidateQuery(l: ListingSummary): { text: string; params: unknown[] } {
+  const num = (key: string) => `(CASE WHEN jsonb_typeof(s.criteria->'${key}') = 'number' THEN (s.criteria->>'${key}')::numeric END)`;
+  const any = (key: string) => `(jsonb_typeof(s.criteria->'${key}') IS DISTINCT FROM 'array' OR jsonb_array_length(s.criteria->'${key}') = 0`;
+  const text = `SELECT s.id, s.buyer_user_id, s.criteria, s.active FROM saved_search s
+           JOIN app_user u ON u.id = s.buyer_user_id
+          WHERE s.active AND u.status = 'active' AND u.user_type = 'buyer'
+            AND s.criteria->>'transactionType' = $1 AND s.criteria->>'useClass' = $2
+            AND ${any("jurisdictions")} OR s.criteria->'jurisdictions' @> jsonb_build_array($3::text))
+            AND ${any("propertyTypes")} OR s.criteria->'propertyTypes' @> jsonb_build_array($4::text))
+            AND ${any("suburbs")} OR EXISTS (SELECT 1 FROM jsonb_array_elements_text(s.criteria->'suburbs') x WHERE lower(btrim(x)) = $5::text))
+            AND (${num("minPriceCents")} IS NULL OR $6::bigint >= ${num("minPriceCents")})
+            AND (${num("maxPriceCents")} IS NULL OR $6::bigint <= ${num("maxPriceCents")})
+            AND (${num("minBedrooms")} IS NULL OR $7::int >= ${num("minBedrooms")})
+          ORDER BY s.created_at, s.id LIMIT $8`;
+  const suburb = l.suburb?.trim().toLowerCase();
+  return { text, params: [l.transactionType, l.useClass, l.jurisdiction, l.propertyType, suburb ?? null, l.priceCents ?? null, l.bedrooms ?? null, MAX_SEARCHES_SCANNED] };
+}
 
 /** Post-publish alert hook on the database. Delivery uses the fail-closed port, so nothing is sent until a provider is chosen. */
 export function createPgPublishAlertHook(db: Queryable): (listing: PropertyListing) => Promise<unknown> {
@@ -19,11 +42,9 @@ export function createPgPublishAlertHook(db: Queryable): (listing: PropertyListi
       const base = process.env["APP_URL"]?.replace(/\/+$/, "");
       return base ? `${base}/buyer/saved-searches` : "";
     },
-    async loadSearches() {
-      const r = await db.query(
-        `SELECT s.id, s.buyer_user_id, s.criteria, s.active FROM saved_search s
-           JOIN app_user u ON u.id = s.buyer_user_id
-          WHERE s.active AND u.status = 'active' AND u.user_type = 'buyer' LIMIT $1`, [MAX_SEARCHES_SCANNED]);
+    async loadSearches(listing) {
+      const q = buildAlertCandidateQuery(listing);
+      const r = await db.query(q.text, q.params);
       return r.rows.flatMap(row => { const s = toSearch(row); return s ? [s] : []; });
     },
     async loadPrefs(buyerUserIds) {

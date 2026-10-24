@@ -8,6 +8,9 @@ import { createPgBillingStore } from "../src/server/billing-db";
 import { createPgEnquiryRepository, createPgOfferLinkRepository } from "../src/server/enquiry-db";
 import { createPgListingRepository } from "../src/server/db";
 import { createPgSavedSearchRepository } from "../src/server/saved-search-db";
+import { matchesSearch, type ListingSummary } from "../src/domain/buyer";
+import { appointedListingsPg } from "../src/server/agent-inbox-db";
+import { buildAlertCandidateQuery } from "../src/server/publish-alerts-db";
 import { hasCurrentTermsPg, recordAcceptance } from "../src/server/terms-db";
 import { addListing, addUser, createTestDb, DATABASE_URL, type TestDb } from "./helpers/pg-db";
 
@@ -340,6 +343,97 @@ describe.skipIf(!DATABASE_URL)("Postgres integration (migrations + raw SQL)", ()
       const fresh = await addUser(db, "buyer");
       await repo.unsubscribe(fresh, "sms", "2026-10-24T02:00:00Z");
       expect((await repo.listPreferences(fresh))[0]).toMatchObject({ channel: "sms", unsubscribedAt: "2026-10-24T02:00:00.000Z" });
+    });
+  });
+
+  describe("publish alert candidate query", () => {
+    const base = { transactionType: "sale", useClass: "residential", jurisdictions: ["QLD"], suburbs: [] as string[], propertyTypes: [] as string[] };
+    const listing: ListingSummary = { id: "l1", status: "published", jurisdiction: "QLD", suburb: "New Farm", transactionType: "sale", useClass: "residential", propertyType: "house", priceCents: 120_000_000, bedrooms: 3 };
+    const seed = async (buyer: string, criteria: Record<string, unknown>, active = true) =>
+      String((await db.query("INSERT INTO saved_search (buyer_user_id, criteria, active) VALUES ($1,$2::jsonb,$3) RETURNING id", [buyer, JSON.stringify(criteria), active])).rows[0]!["id"]);
+    const candidates = async (l: ListingSummary, mine: string[]) => {
+      const q = buildAlertCandidateQuery(l);
+      return (await db.query(q.text, q.params)).rows.map(r => String(r["id"])).filter(id => mine.includes(id));
+    };
+
+    it("keeps every search matchesSearch accepts and drops the rest, including missing listing facts and malformed criteria", async () => {
+      const buyer = await addUser(db, "buyer");
+      const cases: Record<string, Record<string, unknown>> = {
+        any: base, otherState: { ...base, jurisdictions: ["NSW"] }, noStateLimit: { ...base, jurisdictions: [] },
+        rent: { ...base, transactionType: "rent" }, commercial: { ...base, useClass: "commercial" },
+        unit: { ...base, propertyTypes: ["unit"] }, house: { ...base, propertyTypes: ["house", "unit"] },
+        suburbHit: { ...base, suburbs: ["  new FARM "] }, suburbMiss: { ...base, suburbs: ["Paddington"] },
+        minOk: { ...base, minPriceCents: 100_000_000 }, minHigh: { ...base, minPriceCents: 130_000_000 },
+        maxOk: { ...base, maxPriceCents: 120_000_000 }, maxLow: { ...base, maxPriceCents: 100_000_000 },
+        bedsOk: { ...base, minBedrooms: 3 }, bedsHigh: { ...base, minBedrooms: 4 },
+        badNumber: { ...base, minPriceCents: "lots" }
+      };
+      const ids: Record<string, string> = {};
+      for (const [k, c] of Object.entries(cases)) ids[k] = await seed(buyer, c);
+      ids["inactive"] = await seed(buyer, base, false);
+      const mine = Object.values(ids);
+      const got = new Set(await candidates(listing, mine));
+      // Superset of the domain matches (matchesSearch stays the authority).
+      for (const [k, c] of Object.entries(cases)) {
+        const parsed = parseSavedSearchInput(c);
+        if (parsed.ok && matchesSearch({ id: ids[k]!, buyerUserId: buyer, active: true, ...parsed.value }, listing)) expect(got.has(ids[k]!), k).toBe(true);
+      }
+      for (const k of ["otherState", "rent", "commercial", "unit", "suburbMiss", "minHigh", "maxLow", "bedsHigh", "inactive"]) expect(got.has(ids[k]!), k).toBe(false);
+      for (const k of ["any", "noStateLimit", "house", "suburbHit", "minOk", "maxOk", "bedsOk"]) expect(got.has(ids[k]!), k).toBe(true);
+    });
+
+    it("a listing without suburb, price or bedrooms only meets searches that do not limit them", async () => {
+      const buyer = await addUser(db, "buyer");
+      const open = await seed(buyer, base);
+      const sub = await seed(buyer, { ...base, suburbs: ["New Farm"] });
+      const min = await seed(buyer, { ...base, minPriceCents: 1 });
+      const max = await seed(buyer, { ...base, maxPriceCents: 999_999_999 });
+      const beds = await seed(buyer, { ...base, minBedrooms: 0 });
+      const bare: ListingSummary = { id: "l2", status: "published", jurisdiction: "QLD", transactionType: "sale", useClass: "residential", propertyType: "house" };
+      expect(await candidates(bare, [open, sub, min, max, beds])).toEqual([open]);
+    });
+
+    it("skips searches of buyers who are not active, and treats a quote in the suburb as data", async () => {
+      const gone = await addUser(db, "buyer", "suspended");
+      const s = await seed(gone, base);
+      expect(await candidates(listing, [s])).toEqual([]);
+      const ok = await addUser(db, "buyer");
+      const s2 = await seed(ok, { ...base, suburbs: ["O'Connor'; DROP TABLE saved_search;--"] });
+      expect(await candidates({ ...listing, suburb: "O'Connor'; DROP TABLE saved_search;--" }, [s2])).toEqual([s2]);
+      expect((await db.query("SELECT count(*) AS n FROM saved_search")).rows[0]!["n"]).not.toBe("0");
+    });
+  });
+
+  describe("agent inbox", () => {
+    it("lists only active appointments of that agent with enquiry and unread counts", async () => {
+      const owner = await addUser(db, "owner");
+      const agent = await addUser(db, "agent");
+      const other = await addUser(db, "agent");
+      const buyer = await addUser(db, "buyer");
+      const mine = await addListing(db, owner, { title: "Mine", jurisdiction: "QLD" });
+      const revoked = await addListing(db, owner, { title: "Revoked" });
+      const theirs = await addListing(db, owner, { title: "Theirs" });
+      const unappointed = await addListing(db, owner, { title: "None" });
+      const appoint = (l: string, a: string, revokedAt: string | null = null) =>
+        db.query("INSERT INTO listing_agent_appointment (listing_id, agent_user_id, appointed_by, revoked_at) VALUES ($1,$2,$3,$4)", [l, a, owner, revokedAt]);
+      await appoint(mine, agent); await appoint(revoked, agent, "2026-10-01T00:00:00Z"); await appoint(theirs, other);
+      const repo = createPgEnquiryRepository(db);
+      const enq = randomUUID();
+      await repo.insert({ id: enq, listingId: mine, buyerUserId: buyer, createdAt: "2026-10-24T00:00:00Z" });
+      await repo.addMessage({ id: randomUUID(), enquiryId: enq, senderUserId: buyer, automated: false, body: "q1", sentAt: "2026-10-24T01:00:00Z" });
+      await repo.addMessage({ id: randomUUID(), enquiryId: enq, senderUserId: buyer, automated: false, body: "q2", sentAt: "2026-10-24T02:00:00Z" });
+      await repo.addMessage({ id: randomUUID(), enquiryId: enq, senderUserId: agent, automated: false, body: "mine", sentAt: "2026-10-24T03:00:00Z" });
+      await repo.insert({ id: randomUUID(), listingId: theirs, buyerUserId: buyer, createdAt: "2026-10-24T00:00:00Z" });
+      void unappointed;
+
+      const rows = await appointedListingsPg(db, agent);
+      expect(rows.map(r => r.title)).toEqual(["Mine"]);
+      expect(rows[0]).toMatchObject({ listingId: mine, jurisdiction: "QLD", enquiries: 1, unread: 2 });
+      await repo.markRead(agent, enq, "2026-10-24T02:30:00Z");
+      expect((await appointedListingsPg(db, agent))[0]).toMatchObject({ unread: 0 });
+      expect((await appointedListingsPg(db, other)).map(r => r.title)).toEqual(["Theirs"]);
+      expect((await appointedListingsPg(db, other))[0]).toMatchObject({ enquiries: 1, unread: 0 });
+      expect(await appointedListingsPg(db, owner)).toEqual([]);
     });
   });
 });
