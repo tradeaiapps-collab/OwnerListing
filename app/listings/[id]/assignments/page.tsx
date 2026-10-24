@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import { JSON_HEADERS, fieldStyle } from "../../ui";
+import { JSON_HEADERS } from "../../ui";
 
 type Assignment = { id: string; kind: string; status: string; counterpartName: string };
 
@@ -73,26 +73,26 @@ export default function ListingAssignments() {
   return (
     <main>
       <h1>Contractors</h1>
-      <p style={{ color: "#555" }}>Invite someone who already has an account. They must accept before the job chat opens.</p>
+      <p className="muted">Invite someone who already has an account. They must accept before the job chat opens.</p>
       {loadError && <p role="alert">{loadError}</p>}
-      {!loadError && items === null && <p>Loading…</p>}
-      {items && items.length === 0 && <p>No contractors invited yet.</p>}
-      <ul style={{ listStyle: "none", padding: 0 }}>
+      {!loadError && items === null && <p className="muted" role="status">Loading…</p>}
+      {items && items.length === 0 && <p className="empty">No contractors invited yet.</p>}
+      <ul className="card-list">
         {items?.map(a => (
-          <li key={a.id} style={{ margin: "12px 0", overflowWrap: "anywhere" }}>
+          <li key={a.id}>
             <strong>{a.counterpartName}</strong> · {a.kind} · {STATUS_LABELS[a.status] ?? a.status}
-            <div>
-              {a.status === "approved" && <a href={`/jobs/${a.id}/chat`}>Open chat</a>}
-              {a.status === "approved" && <button type="button" disabled={busy} onClick={() => void act(a.id, "complete")} style={{ marginLeft: 8 }}>Mark completed</button>}
-              {(a.status === "proposed" || a.status === "approved") && <button type="button" disabled={busy} onClick={() => void act(a.id, "cancel")} style={{ marginLeft: 8 }}>Cancel</button>}
+            <div className="actions">
+              {a.status === "approved" && <a className="button" href={`/jobs/${a.id}/chat`}>Open chat</a>}
+              {a.status === "approved" && <button type="button" className="secondary" disabled={busy} onClick={() => void act(a.id, "complete")}>Mark completed</button>}
+              {(a.status === "proposed" || a.status === "approved") && <button type="button" className="secondary" disabled={busy} onClick={() => void act(a.id, "cancel")}>Cancel</button>}
             </div>
           </li>
         ))}
       </ul>
       {items && (
-        <form onSubmit={onInvite}>
+        <form className="stack" onSubmit={onInvite}>
           <label>Role
-            <select value={kind} onChange={e => setKind(e.target.value)} style={fieldStyle}>
+            <select value={kind} onChange={e => setKind(e.target.value)}>
               <option value="photographer">Photographer</option>
               <option value="solicitor">Solicitor</option>
               <option value="inspector">Inspector</option>
@@ -100,9 +100,9 @@ export default function ListingAssignments() {
             </select>
           </label>
           <label>Contractor's email or user id
-            <input value={contact} onChange={e => setContact(e.target.value)} required maxLength={254} style={fieldStyle} />
+            <input value={contact} onChange={e => setContact(e.target.value)} required maxLength={254} />
           </label>
-          <button type="submit" disabled={busy} style={{ marginTop: 8, padding: "8px 16px", fontSize: 16 }}>{busy ? "Working…" : "Send invitation"}</button>
+          <button type="submit" disabled={busy}>{busy ? "Working…" : "Send invitation"}</button>
           {error && <p role="alert">{error}</p>}
         </form>
       )}

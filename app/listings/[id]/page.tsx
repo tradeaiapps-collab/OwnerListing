@@ -37,7 +37,7 @@ export default function ListingDetail() {
   const back = <p><a href="/listings">Back to listings</a></p>;
 
   if (error) return <main>{back}<p role="alert">{error}</p></main>;
-  if (!listing) return <main>{back}<p>Loading...</p></main>;
+  if (!listing) return <main>{back}<p className="muted" role="status">Loading...</p></main>;
   if (listing.status !== "published") {
     return (
       <main>
@@ -51,20 +51,20 @@ export default function ListingDetail() {
   const provided = listing.disclosures.filter(d => d.satisfied);
 
   return (
-    <main style={{ overflowWrap: "anywhere" }}>
+    <main>
       {back}
       <h1>{listing.title}</h1>
       <p>{listing.address}</p>
-      <dl style={{ display: "grid", gridTemplateColumns: "max-content 1fr", gap: "4px 16px", margin: "16px 0" }}>
-        <dt>State</dt><dd style={{ margin: 0 }}>{listing.jurisdiction}</dd>
-        <dt>Offer</dt><dd style={{ margin: 0 }}>{listing.transactionType === "sale" ? "For sale" : "For rent"}</dd>
-        <dt>Use</dt><dd style={{ margin: 0 }}>{cap(listing.useClass)}</dd>
-        <dt>Property</dt><dd style={{ margin: 0 }}>{cap(listing.propertyType)}</dd>
+      <dl className="details">
+        <dt>State</dt><dd>{listing.jurisdiction}</dd>
+        <dt>Offer</dt><dd>{listing.transactionType === "sale" ? "For sale" : "For rent"}</dd>
+        <dt>Use</dt><dd>{cap(listing.useClass)}</dd>
+        <dt>Property</dt><dd>{cap(listing.propertyType)}</dd>
       </dl>
       {provided.length > 0 && (
         <section aria-label="Disclosures">
           <h2>Disclosures provided</h2>
-          <ul>{provided.map(d => <li key={d.key}>{cap(d.key)}</li>)}</ul>
+          <ul className="plain-list">{provided.map(d => <li key={d.key}>{cap(d.key)}</li>)}</ul>
         </section>
       )}
     </main>

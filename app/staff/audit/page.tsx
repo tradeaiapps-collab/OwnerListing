@@ -9,8 +9,14 @@ export default function StaffAudit() {
   const [next, setNext] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [loaded, setLoaded] = useState(false);
+  const [searching, setSearching] = useState(false);
 
   async function load(cursor?: string) {
+    setSearching(true);
+    try { await fetchRows(cursor); } finally { setSearching(false); }
+  }
+
+  async function fetchRows(cursor?: string) {
     setError("");
     const p = new URLSearchParams();
     for (const [k, v] of Object.entries(f)) if (v) p.set(k, v);
@@ -33,16 +39,16 @@ export default function StaffAudit() {
   return (
     <main>
       <h1>Audit log</h1>
-      <p>Read only. Personal data and credentials are removed.</p>
-      <form onSubmit={e => { e.preventDefault(); void load(); }} style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
+      <p className="muted">Read only. Personal data and credentials are removed.</p>
+      <form className="stack" onSubmit={e => { e.preventDefault(); void load(); }}>
         {field("eventType", "Event")}{field("actorId", "Actor")}{field("listingId", "Listing")}
         {field("from", "From", "datetime-local")}{field("to", "To", "datetime-local")}
-        <button type="submit">Search</button>
+        <button type="submit" disabled={searching}>{searching ? "Searching…" : "Search"}</button>
       </form>
       {error && <p role="alert">{error}</p>}
-      {loaded && rows.length === 0 && <p>No events found.</p>}
+      {loaded && rows.length === 0 && <p className="empty">No events found.</p>}
       {rows.length > 0 && (
-        <table>
+        <div className="table-wrap"><table>
           <thead><tr><th>When</th><th>Event</th><th>Actor</th><th>Subject</th><th>Details</th></tr></thead>
           <tbody>
             {rows.map(r => (
@@ -53,9 +59,9 @@ export default function StaffAudit() {
               </tr>
             ))}
           </tbody>
-        </table>
+        </table></div>
       )}
-      {next && <button onClick={() => void load(next)}>Load more</button>}
+      {next && <button type="button" className="secondary" onClick={() => void load(next)}>Load more</button>}
     </main>
   );
 }
