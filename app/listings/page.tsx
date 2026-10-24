@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { dollarsToCents, formatPrice } from "../../src/domain/listing-details";
+import { filtersFromParams } from "./url-params";
 import "../styles/search.css";
 
 interface Row {
@@ -39,15 +40,25 @@ export default function Listings() {
   const [total, setTotal] = useState(0);
   const [pageSize, setPageSize] = useState(12);
   const [error, setError] = useState("");
+  const [ready, setReady] = useState(false);
+
+  // Initial filters from the URL (home page search, shared links); invalid values are dropped.
+  useEffect(() => {
+    const init = { ...BLANK, ...filtersFromParams(new URLSearchParams(window.location.search)) };
+    setForm(init);
+    setApplied(init);
+    setReady(true);
+  }, []);
 
   useEffect(() => {
+    if (!ready) return;
     setRows(null);
     setError("");
     fetch(`/api/listings?${toParams(applied, sort, page)}`)
       .then(r => r.json())
       .then(d => { setRows(d.listings ?? []); setTotal(d.total ?? 0); setPageSize(d.pageSize ?? 12); })
       .catch(() => setError("Could not load listings."));
-  }, [applied, sort, page]);
+  }, [ready, applied, sort, page]);
 
   const set = (k: keyof Form) => (e: React.ChangeEvent<HTMLSelectElement | HTMLInputElement>) => setForm(f => ({ ...f, [k]: e.target.value }));
   const pages = Math.max(1, Math.ceil(total / pageSize));

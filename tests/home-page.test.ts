@@ -1,0 +1,66 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { renderToStaticMarkup } from "react-dom/server";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import Home from "../app/page";
+import { filtersFromParams } from "../app/listings/url-params";
+
+const root = path.join(__dirname, "..");
+const params = (s: string) => new URLSearchParams(s);
+
+describe("home page", () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  it("renders without a database, with the empty state and the main sections", async () => {
+    vi.stubEnv("DATABASE_URL", "");
+    const html = renderToStaticMarkup(await Home());
+    expect(html).toContain('action="/listings"');
+    expect(html).toContain("No listings published yet");
+    for (const t of ["How it works", "For owners", "solicitor&#x27;s trust account", "AI never accepts an offer", "/plans", "/listings/new"]) expect(html).toContain(t);
+    expect(html).not.toMatch(/Internal build|not live/i);
+  });
+
+  it("uses the configured brand name and tagline", async () => {
+    vi.stubEnv("NEXT_PUBLIC_SITE_NAME", "Acme Homes");
+    vi.stubEnv("NEXT_PUBLIC_SITE_TAGLINE", "Own your sale");
+    const html = renderToStaticMarkup(await Home());
+    expect(html).toContain("Acme Homes holds no money");
+    expect(html).toContain("Own your sale");
+    expect(html).not.toContain("OwnerListing");
+  });
+
+  it("shows the preview badge outside production only", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    expect(renderToStaticMarkup(await Home())).not.toContain("Preview");
+    vi.stubEnv("NODE_ENV", "development");
+    expect(renderToStaticMarkup(await Home())).toContain("Preview");
+  });
+
+  it("keeps its styles in home.css and the old hero rules are gone", () => {
+    expect(readFileSync(path.join(root, "app/globals.css"), "utf8")).not.toMatch(/\.hero\b/);
+    expect(readFileSync(path.join(root, "app/page.tsx"), "utf8")).toContain('./styles/home.css');
+  });
+});
+
+describe("browse URL filters", () => {
+  it("reads valid values", () => {
+    expect(filtersFromParams(params("state=qld&type=rent&use=residential&suburb=Paddington&beds=3&price=900"))).toEqual({
+      jurisdiction: "QLD", transactionType: "rent", useClass: "residential", location: "Paddington", minBedrooms: "3", maxPrice: "900"
+    });
+    expect(filtersFromParams(params("location=4064&type=sale")).location).toBe("4064");
+    expect(filtersFromParams(params("postcode=4000")).location).toBe("4000");
+  });
+
+  it("drops invalid, oversized or hostile values", () => {
+    expect(filtersFromParams(params("state=XX&type=lease&use=x&beds=9&price=abc"))).toEqual({});
+    expect(filtersFromParams(params(`suburb=${"a".repeat(81)}`))).toEqual({});
+    expect(filtersFromParams(params("type=sale&price=1e9;drop")).maxPrice).toBeUndefined();
+    expect(filtersFromParams(params("type=sale&price=-5")).maxPrice).toBeUndefined();
+    expect(filtersFromParams(params("price=500")).maxPrice).toBeUndefined();
+    expect(filtersFromParams(params("beds=0"))).toEqual({});
+  });
+
+  it("an empty query changes nothing", () => {
+    expect(filtersFromParams(params(""))).toEqual({});
+  });
+});
