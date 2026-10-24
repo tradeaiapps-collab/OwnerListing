@@ -85,7 +85,7 @@ export async function POST(req: Request, { params }: Ctx) {
 
 /** The listing's owner reviews offers. Other users (and agents) get 404 so the listing's existence is not revealed. */
 export async function GET(req: Request, { params }: Ctx) {
-  const actor = getActor(req);
+  const actor = await getActor(req);
   if (!actor) return unauthenticated();
   const denied = forbiddenFor({ id: actor.userId, role: actor.userType }, "offer.analyse");
   if (denied) return failure(denied);

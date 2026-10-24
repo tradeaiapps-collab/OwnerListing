@@ -10,7 +10,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** Records a deletion request and its outcome. It never deletes a file: published files can only be replaced. */
 export async function POST(req: Request, { params }: Ctx) {
-  const actor = getActor(req);
+  const actor = await getActor(req);
   if (!actor) return unauthenticated();
   const { id } = await params;
   if (!UUID.test(id)) return failure({ ok: false, code: "not_found", message: "Document not found." });

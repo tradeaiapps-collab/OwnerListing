@@ -25,7 +25,7 @@ export async function GET(req: Request) {
 
 /** Creates a draft owned by the signed-in user. */
 export async function POST(req: Request) {
-  const actor = getActor(req);
+  const actor = await getActor(req);
   if (!actor) return unauthenticated();
   const denied = forbiddenFor({ id: actor.userId, role: actor.userType }, "listing.create");
   if (denied) return failure(denied);
