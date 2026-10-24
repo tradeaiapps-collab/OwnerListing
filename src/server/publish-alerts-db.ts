@@ -2,10 +2,10 @@ import { alertKey } from "../domain/alerts";
 import type { ListingSummary } from "../domain/buyer";
 import type { PropertyListing } from "../domain/listing";
 import { createPublishAlertHook } from "../domain/publish-alerts";
-import { alertDeliveryFromEnv } from "../adapters/alert-delivery";
 import { loadAlertPrefs, logDeliveryPg, overRatePg, queueAfterFailure, queueDeferred } from "./alert-outbox-db";
 import { unsubscribeUrlFor } from "./alert-unsubscribe";
 import type { Queryable } from "./db";
+import { alertDeliveryFor } from "./messaging";
 import { toSearch } from "./saved-search-db";
 
 const MAX_SEARCHES_SCANNED = 5000;
@@ -34,14 +34,14 @@ export function buildAlertCandidateQuery(l: ListingSummary): { text: string; par
 }
 
 /**
- * Post-publish alert hook on the database. Delivery uses the port chosen by alertDeliveryFromEnv, which fails closed
- * until a provider is chosen. Failed sends are queued for retry and buyers over their hourly limit are deferred (see alert-outbox-db).
+ * Post-publish alert hook on the database. Delivery uses alertDeliveryFor (settings from the database and environment, resolved at send time), which fails closed
+ * until email/SMS settings exist. Failed sends are queued for retry and buyers over their hourly limit are deferred (see alert-outbox-db).
  * Each message carries a signed one-click unsubscribe link; without APP_URL and ALERT_UNSUBSCRIBE_KEY there is no link, so nothing is sent.
  */
 export function createPgPublishAlertHook(db: Queryable): (listing: PropertyListing) => Promise<unknown> {
   const now = () => new Date().toISOString();
   return createPublishAlertHook({
-    port: alertDeliveryFromEnv(process.env),
+    port: alertDeliveryFor(db, process.env),
     now,
     unsubscribeUrlFor: (buyerUserId, channel) => unsubscribeUrlFor(process.env, buyerUserId, channel),
     overRate: buyerUserId => overRatePg(db, buyerUserId, now()),

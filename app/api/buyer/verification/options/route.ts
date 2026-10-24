@@ -9,5 +9,5 @@ export async function GET(req: Request) {
   const actor = await getActor(req);
   if (!actor) return unauthenticated();
   if (actor.userType !== "buyer") return NextResponse.json({ error: "Buyers only." }, { status: 403 });
-  return NextResponse.json({ available: verificationAvailability(), smsConsentText: SMS_CONSENT_TEXT });
+  return NextResponse.json({ available: await verificationAvailability(), smsConsentText: SMS_CONSENT_TEXT });
 }
