@@ -3,6 +3,7 @@ import { inviteContractor, listAssignments } from "../../../../../src/domain/ass
 import { assignmentIds, getAssignmentRepo } from "../../../../../src/server/assignment-db";
 import { getActor } from "../../../../../src/server/context";
 import { failure, unauthenticated } from "../../../../../src/server/http";
+import { csrfGuard } from "../../../../../src/server/csrf";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -21,6 +22,8 @@ export async function GET(req: Request, { params }: Ctx) {
  * The owner is always the signed-in user; the body cannot name one.
  */
 export async function POST(req: Request, { params }: Ctx) {
+  const blocked = csrfGuard(req);
+  if (blocked) return blocked;
   const actor = await getActor(req);
   if (!actor) return unauthenticated();
   const { id } = await params;

@@ -15,6 +15,8 @@ vi.mock("../src/server/job-chat-db", () => {
 });
 
 import * as route from "../app/api/jobs/[id]/messages/route";
+process.env["APP_URL"] = "http://test";
+
 
 const A = "11111111-1111-4111-8111-111111111111";
 const owner: Actor = { userId: "22222222-2222-4222-8222-222222222222", userType: "owner" };
@@ -29,7 +31,7 @@ const assignment = (status: JobAssignment["status"]): JobAssignment => ({
 const ctx = (id: string) => ({ params: Promise.resolve({ id }) });
 const get = (id = A) => route.GET(new Request(`http://test/api/jobs/${id}/messages`), ctx(id));
 const post = (body: unknown, id = A) =>
-  route.POST(new Request(`http://test/api/jobs/${id}/messages`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }), ctx(id));
+  route.POST(new Request(`http://test/api/jobs/${id}/messages`, { method: "POST", headers: { "content-type": "application/json", origin: "http://test" }, body: JSON.stringify(body) }), ctx(id));
 
 beforeEach(() => {
   state.actor = null;

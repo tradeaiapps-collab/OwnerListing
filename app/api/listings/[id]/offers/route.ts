@@ -8,6 +8,7 @@ import { failure, unauthenticated } from "../../../../../src/server/http";
 import { OFFER_RATE, windowStart, withinLimit } from "../../../../../src/domain/rate-limit";
 import { countHitPg, eligibleBuyerPg } from "../../../../../src/server/offer-flow-db";
 import { offerLinkPg, offersForOwnerPg, submitOfferPg } from "../../../../../src/server/offers-db";
+import { csrfGuard } from "../../../../../src/server/csrf";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -20,6 +21,8 @@ const badLink = { ok: false, code: "invalid", message: "This offer link is not v
  * Nothing here accepts, counters or rejects an offer: the owner decides.
  */
 export async function POST(req: Request, { params }: Ctx) {
+  const blocked = csrfGuard(req);
+  if (blocked) return blocked;
   const { id } = await params;
   const parsed = parseOfferSubmission(await req.json().catch(() => null));
   if (!parsed.ok) return failure(parsed);

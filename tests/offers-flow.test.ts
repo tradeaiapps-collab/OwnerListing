@@ -24,6 +24,8 @@ vi.mock("../src/server/context", () => ({
 import { POST as issuePost } from "../app/api/listings/[id]/offer-links/route";
 import { POST as decisionPost } from "../app/api/listings/[id]/offers/[offerId]/decision/route";
 import { POST as submitPost } from "../app/api/listings/[id]/offers/route";
+process.env["APP_URL"] = "http://test";
+
 
 const owner: Actor = { userId: "owner-1", userType: "owner" };
 const agent: Actor = { userId: "agent-1", userType: "agent" };
@@ -89,7 +91,7 @@ beforeEach(async () => {
 const json = (url: string, body?: unknown, headers: Record<string, string> = {}) =>
   new Request(`http://test${url}`, {
     method: "POST",
-    headers: { "content-type": "application/json", ...headers },
+    headers: { "content-type": "application/json", origin: "http://test", ...headers },
     ...(body === undefined ? {} : { body: JSON.stringify(body) })
   });
 const issue = (id: string, body: unknown) =>

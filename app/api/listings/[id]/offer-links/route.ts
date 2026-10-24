@@ -6,6 +6,7 @@ import { getActor, getDb, getDeps } from "../../../../../src/server/context";
 import { failure, unauthenticated } from "../../../../../src/server/http";
 import { OFFER_LINK_ISSUE_RATE, windowStart, withinLimit } from "../../../../../src/domain/rate-limit";
 import { countHitPg, eligibleBuyerPg, issueOfferLinkPg } from "../../../../../src/server/offer-flow-db";
+import { csrfGuard } from "../../../../../src/server/csrf";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -17,6 +18,8 @@ const notEligible = { ok: false, code: "invalid", message: "An offer link could 
  * Only the token hash is stored; the raw token is returned once and cannot be read back.
  */
 export async function POST(req: Request, { params }: Ctx) {
+  const blocked = csrfGuard(req);
+  if (blocked) return blocked;
   const actor = await getActor(req);
   if (!actor) return unauthenticated();
   const denied = forbiddenFor({ id: actor.userId, role: actor.userType }, "offer.approve");
