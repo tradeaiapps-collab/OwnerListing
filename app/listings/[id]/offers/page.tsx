@@ -1,10 +1,22 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
+import { isUuid, type OwnerDecision } from "../../../../src/domain/offer-decision";
+import { buildOfferUrl } from "../../../../src/domain/offer-form";
+import { JSON_HEADERS } from "../../ui";
+import "../../../styles/offers.css";
 
-type Offer = { id: string; priceCents: number; conditions: string[]; settlementDays: number; depositCents: number; status: string; submittedAt: string };
+/** aiAnalysis is shown read-only if the API ever returns one. It never carries a decision. */
+type Offer = { id: string; priceCents: number; conditions: string[]; settlementDays: number; depositCents: number; status: string; submittedAt: string; aiAnalysis?: string };
 
 const dollars = (cents: number) => new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD" }).format(cents / 100);
+const label = (s: string) => s.charAt(0).toUpperCase() + s.slice(1).replace(/_/g, " ");
+
+const CONFIRM: Record<OwnerDecision, { title: string; text: string; button: string }> = {
+  accept: { title: "Accept this offer?", text: "This records your decision only. No money moves on this site; deposits go to the solicitor's trust account.", button: "Yes, accept" },
+  reject: { title: "Reject this offer?", text: "The buyer will be told it was not accepted.", button: "Yes, reject" },
+  counter_request: { title: "Ask the buyer for a counter?", text: "This asks the buyer to improve their offer. Nothing is accepted.", button: "Yes, ask for a counter" }
+};
 
 /** Owner view of formal offers on one listing. Only the owner decides (the AI never accepts); no buyer identity is shown here. */
 export default function Offers() {
@@ -14,6 +26,10 @@ export default function Offers() {
   const [notice, setNotice] = useState("");
   const [buyerId, setBuyerId] = useState("");
   const [link, setLink] = useState("");
+  const [issuing, setIssuing] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [pending, setPending] = useState<{ offerId: string; decision: OwnerDecision } | null>(null);
+  const [deciding, setDeciding] = useState(false);
 
   const load = () => {
     fetch(`/api/listings/${id}/offers`)
@@ -34,13 +50,16 @@ export default function Offers() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
-  const decide = async (offerId: string, decision: "accept" | "reject" | "counter_request") => {
+  const decide = async () => {
+    if (!pending) return;
     setNotice("");
-    if (decision === "accept" && !window.confirm("Accept this offer? This records your decision only. No money moves on this site.")) return;
-    const r = await fetch(`/api/listings/${id}/offers/${offerId}/decision`, {
-      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ decision })
+    setDeciding(true);
+    const r = await fetch(`/api/listings/${id}/offers/${pending.offerId}/decision`, {
+      method: "POST", headers: JSON_HEADERS, body: JSON.stringify({ decision: pending.decision })
     }).catch(() => null);
     const d = r ? await r.json().catch(() => ({})) : {};
+    setDeciding(false);
+    setPending(null);
     setNotice(r?.ok ? "Decision recorded." : d.error ?? "Could not record that decision.");
     load();
   };
@@ -48,15 +67,21 @@ export default function Offers() {
   const issueLink = async () => {
     setNotice("");
     setLink("");
+    setCopied(false);
+    setIssuing(true);
     const r = await fetch(`/api/listings/${id}/offer-links`, {
-      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ buyerUserId: buyerId.trim() })
+      method: "POST", headers: JSON_HEADERS, body: JSON.stringify({ buyerUserId: buyerId.trim() })
     }).catch(() => null);
     const d = r ? await r.json().catch(() => ({})) : {};
-    if (r?.ok) setLink(String(d.token));
+    setIssuing(false);
+    if (r?.ok) setLink(buildOfferUrl(window.location.origin, id, String(d.token)));
     else setNotice(d.error ?? "Could not create the link.");
   };
 
+  const copy = () => navigator.clipboard.writeText(link).then(() => setCopied(true), () => setNotice("Copy failed. Select the link and copy it."));
+
   const open = (s: string) => s === "submitted" || s === "under_review" || s === "countered";
+  const idOk = isUuid(buyerId.trim());
 
   return (
     <main>
@@ -67,25 +92,44 @@ export default function Offers() {
       <section className="panel">
         <h2>Invite a verified buyer to make an offer</h2>
         <div className="actions">
-          <input className="grow" aria-label="Buyer ID" placeholder="Buyer ID" value={buyerId} onChange={e => setBuyerId(e.target.value)} />
-          <button type="button" onClick={issueLink} disabled={buyerId.trim() === ""}>Create single-use link</button>
+          <input className="grow" aria-label="Buyer ID" placeholder="Buyer ID (from the chat)" value={buyerId} onChange={e => setBuyerId(e.target.value)} />
+          <button type="button" onClick={issueLink} disabled={!idOk || issuing}>{issuing ? "Creating…" : "Create single-use link"}</button>
         </div>
-        {link ? <p>Copy this offer token now. It is shown once, works once and expires in 24 hours:<br /><code>{link}</code></p> : null}
+        {buyerId.trim() !== "" && !idOk ? <small className="muted">A buyer ID looks like 123e4567-e89b-12d3-a456-426614174000.</small> : null}
+        {link ? (
+          <div>
+            <p>Send this link to the buyer in the chat. It is shown once, works once, for this buyer only, and expires in 24 hours.</p>
+            <div className="copy-row">
+              <code>{link}</code>
+              <button type="button" className="secondary" onClick={copy}>{copied ? "Copied" : "Copy link"}</button>
+            </div>
+          </div>
+        ) : null}
       </section>
       {!error && offers === null ? <p className="muted" role="status">Loading offers…</p> : null}
       {offers && offers.length === 0 ? <p className="empty">No offers yet.</p> : null}
       <ul className="card-list">
         {offers?.map(o => (
           <li key={o.id}>
-            <strong>{dollars(o.priceCents)}</strong> · {o.status.replace("_", " ")}
+            <strong>{dollars(o.priceCents)}</strong> <span className={`badge badge-${o.status}`}>{label(o.status)}</span>
             <div>Deposit {dollars(o.depositCents)} · Settlement {o.settlementDays} days</div>
             <div>{o.conditions.length > 0 ? `Conditions: ${o.conditions.join("; ")}` : "No conditions"}</div>
             <small className="muted">Submitted {new Date(o.submittedAt).toLocaleString("en-AU")}</small>
-            {open(o.status) ? (
+            {o.aiAnalysis ? <div className="ai-note"><strong>AI analysis</strong> (a note only; you decide)<br />{o.aiAnalysis}</div> : null}
+            {open(o.status) && pending?.offerId === o.id ? (
+              <div className="confirm-box" role="alertdialog" aria-label={CONFIRM[pending.decision].title}>
+                <strong>{CONFIRM[pending.decision].title}</strong>
+                <p>{CONFIRM[pending.decision].text}</p>
+                <div className="actions">
+                  <button type="button" onClick={decide} disabled={deciding}>{deciding ? "Saving…" : CONFIRM[pending.decision].button}</button>
+                  <button type="button" className="secondary" onClick={() => setPending(null)} disabled={deciding}>Cancel</button>
+                </div>
+              </div>
+            ) : open(o.status) ? (
               <div className="actions">
-                <button type="button" onClick={() => decide(o.id, "accept")}>Accept</button>
-                <button type="button" className="secondary" onClick={() => decide(o.id, "reject")}>Reject</button>
-                {o.status !== "countered" ? <button type="button" className="secondary" onClick={() => decide(o.id, "counter_request")}>Ask for a counter</button> : null}
+                <button type="button" onClick={() => setPending({ offerId: o.id, decision: "accept" })}>Accept</button>
+                <button type="button" className="secondary" onClick={() => setPending({ offerId: o.id, decision: "reject" })}>Reject</button>
+                {o.status !== "countered" ? <button type="button" className="secondary" onClick={() => setPending({ offerId: o.id, decision: "counter_request" })}>Request counter</button> : null}
               </div>
             ) : null}
           </li>
