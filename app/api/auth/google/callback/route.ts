@@ -5,6 +5,7 @@ import { safeNextFromCookie } from "../../../../../src/server/auth/safe-next";
 import { exchangeCode, readIdentity } from "../../../../../src/server/auth/google";
 import { SESSION_COOKIE, SESSION_TTL_SECONDS, readCookie, signSession } from "../../../../../src/server/auth/session";
 import { STAFF_COOKIE, STAFF_TTL_SECONDS, signStaffSession } from "../../../../../src/server/auth/staff-session";
+import { parseBootstrapEmails } from "../../../../../src/domain/staff-invite";
 import { staffSignIn } from "../../../../../src/server/staff-auth";
 import { upsertGoogleUser, vendorSignIn } from "../../../../../src/server/users";
 
@@ -31,7 +32,7 @@ export async function GET(req: Request) {
     const who = claims && readIdentity(claims, { clientId: auth.google.clientId, nonce, nowSeconds: now });
     if (!who) return failed();
     if (readCookie(req, "ol_role") === "staff") {
-      const staff = await staffSignIn(getDb(), who);
+      const staff = await staffSignIn(getDb(), who, parseBootstrapEmails(process.env["STAFF_BOOTSTRAP_ADMIN_EMAILS"]));
       if (!staff) return failed();
       const res = NextResponse.redirect(`${auth.appUrl}/`);
       res.cookies.set(STAFF_COOKIE, signStaffSession({ uid: staff.id, exp: now + STAFF_TTL_SECONDS }, auth.secret), {

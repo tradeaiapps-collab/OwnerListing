@@ -10,7 +10,7 @@ OwnerListing: Australian marketplace where owners list their own homes. AI assis
 | Agent | Appointed by the owner; publishes only with a full-scope appointment and a verified, unexpired licence |
 | Buyer | Sign-up, saved searches and alert consent, enquire (needs verification), formal offer via single-use link |
 | Contractor | Accept or decline assignment, job chat, upload own document kinds when approved |
-| Staff | `/staff` dashboard, admin cases, trust-account approvals (two people), identity review checklist, pricing, audit log; role read from the database per request |
+| Staff | `/staff` dashboard, admin cases, trust-account approvals (two people), identity review checklist, pricing, audit log, staff access (invite, revoke, set role; admin only); role read from the active invite per request |
 
 ## Placeholder or off
 - Payments: adapter is a stub and the webhook format is our placeholder; nothing publishes until a real paid confirmation exists.
@@ -20,14 +20,13 @@ OwnerListing: Australian marketplace where owners list their own homes. AI assis
 - Known gaps: upload memory use and no per-user upload quota; browser check at 375, 768 and 1280 px not done; open PR #59 (enquiry offer-link request and owner issue flow) needs security review.
 
 ## Blocked on the owner
-1. Google Workspace domain for staff linking.
-2. Email provider and SMS provider.
-3. Westpac PayWay merchant account (then real checkout and webhook from their docs).
-4. Storage provider and malware scanner.
-5. ID verification provider (DVS) and biometric handling decision.
-6. ABN Lookup access key (free registration).
-7. Counsel review: terms, contract template, retention and deletion, trust-account and licensing questions, AI-learning consent.
-8. Compliance to supply state disclosure configuration; domain name; hosting; GPU server for AI.
+1. Email provider and SMS provider.
+2. Westpac PayWay merchant account (then real checkout and webhook from their docs).
+3. Storage provider and malware scanner.
+4. ID verification provider (DVS) and biometric handling decision.
+5. ABN Lookup access key (free registration).
+6. Counsel review: terms, contract template, retention and deletion, trust-account and licensing questions, AI-learning consent.
+7. Compliance to supply state disclosure configuration; domain name; hosting; GPU server for AI.
 
 ## Working rules
 One feature per PR; minimal patches; `npm test` and `npm run typecheck` are the gate; never skip tests or edit CI; security review for auth, uploads, ID data, raw SQL and payments; chat and published files are never deletable.

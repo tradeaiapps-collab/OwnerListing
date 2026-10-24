@@ -17,7 +17,7 @@ npm run start      # next start -p 3004
 Put a TLS-terminating reverse proxy in front. Set `TRUSTED_PROXY_HOPS` to the real number of proxies (client IP is read from the right of x-forwarded-for). Set `APP_URL` to the exact public https origin, or state-changing routes return 403.
 
 ## 3. Required env
-`APP_URL`, `DATABASE_URL`, `TRUSTED_PROXY_HOPS`, `SESSION_SECRET` (32+ chars), `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`. Google OAuth redirect URI: `${APP_URL}/api/auth/google/callback`. `PAYWAY_*` stay unset until the merchant account exists. No live payment keys until pen test and counsel sign-off.
+`APP_URL`, `DATABASE_URL`, `TRUSTED_PROXY_HOPS`, `SESSION_SECRET` (32+ chars), `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`. Google OAuth redirect URI: `${APP_URL}/api/auth/google/callback`. Set `STAFF_BOOTSTRAP_ADMIN_EMAILS` (comma list) for the first deploy so the first admin can sign in at `/api/auth/google/start?as=staff`; that admin then invites everyone else at `/staff/invites` (any Google account; the verified email must exactly match an active invite, and the role comes from the invite). The bootstrap emails work only while no active super_admin exists; clear the variable once a second admin exists. `PAYWAY_*` stay unset until the merchant account exists. No live payment keys until pen test and counsel sign-off.
 
 ## 4. Backups
 - Daily full backup plus WAL archiving (point-in-time recovery); keep at least 30 days; encrypted; stored off the primary host.
@@ -32,7 +32,6 @@ Home loads; Google sign-in works; `/plans` loads; an upload answers 503 (storage
 ## 6. Blocked on providers (stays off or fails closed)
 | Area | Behaviour now | Needs |
 |---|---|---|
-| Staff sign-in linking | First-login linking by email match waits | Google Workspace domain (hd claim) |
 | Email and SMS (alerts, verification) | Delivery port fails closed, nothing sends | Provider, consent wording |
 | Payments | Adapter stub; nothing can be marked paid, so nothing publishes | Westpac PayWay merchant account and docs |
 | File storage and malware scan | Upload and download answer 503 | Storage provider, scanner, encryption at rest |
