@@ -13,7 +13,7 @@ async function report(req: Request, id: string, withAi: boolean) {
   if (owner instanceof NextResponse) return owner;
   const rows = compareOffers(await offersForOwnerPg(getDb(), id, owner.rec.listing.ownerUserId));
   // The AI is asked only on POST, through the AI port. It can summarise; it has no way to decide anything.
-  const ai: AiSummary = withAi ? await requestAiSummary(getAiEngine(), rows) : { state: "not_requested" };
+  const ai: AiSummary = withAi ? await requestAiSummary(await getAiEngine(), rows) : { state: "not_requested" };
   if (withAi) {
     const deps = getDeps();
     await deps.appendAudit({

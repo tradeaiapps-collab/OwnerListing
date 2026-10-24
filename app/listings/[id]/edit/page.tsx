@@ -6,6 +6,40 @@ import { JSON_HEADERS, listingFormBody } from "../../ui";
 
 type Loaded = ListingDefaults & { id: string; status: string };
 type Check = { allowed: boolean; reasons: string[] };
+type Suggestion = { state: "ready"; text: string; label: string } | { state: "unavailable"; message: string };
+
+/** Owner asks the self-hosted AI for a draft description. Shown as text to copy and edit; never saved or published from here. */
+function SuggestDescription({ id }: { id: string }) {
+  const [notes, setNotes] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<Suggestion | null>(null);
+  const [error, setError] = useState("");
+  async function ask() {
+    setBusy(true); setError(""); setResult(null);
+    try {
+      const res = await fetch(`/api/listings/${id}/description-suggestion`, { method: "POST", headers: JSON_HEADERS, body: JSON.stringify({ notes }) });
+      const d = await res.json();
+      if (res.ok) setResult(d); else setError(d.error ?? "Could not get a suggestion.");
+    } catch { setError("Could not get a suggestion."); } finally { setBusy(false); }
+  }
+  return (
+    <section className="panel">
+      <h3>Suggest description</h3>
+      <label>Notes for the AI (optional, for example what you love about the home)
+        <textarea value={notes} maxLength={1000} rows={3} onChange={e => setNotes(e.target.value)} />
+      </label>
+      <button type="button" className="secondary" disabled={busy} onClick={ask}>{busy ? "Working..." : "Suggest description"}</button>
+      {result?.state === "ready" && (
+        <div>
+          <p className="muted"><strong>{result.label}.</strong> Check every fact and change anything that is not right.</p>
+          <textarea readOnly value={result.text} rows={8} />
+        </div>
+      )}
+      {result?.state === "unavailable" && <p className="muted" role="status">{result.message}</p>}
+      {error && <p role="alert">{error}</p>}
+    </section>
+  );
+}
 
 export default function EditListing() {
   const { id } = useParams<{ id: string }>();
@@ -110,6 +144,7 @@ export default function EditListing() {
               </div>
             )}
           </section>
+          <SuggestDescription id={id} />
         </>
       )}
       <p><a className="button secondary" href="/listings/mine">Back to my listings</a></p>
