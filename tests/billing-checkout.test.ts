@@ -290,6 +290,11 @@ describe("payment webhook", () => {
     expect(store.invoices[0]?.status).toBe("failed");
     expect(store.feePaid).toBe(false);
   });
+  it("refuses an oversized body by Content-Length before reading it", async () => {
+    const raw = JSON.stringify(event());
+    const r = await webhookRoute.POST(new Request(`${APP}/api/webhooks/payway`, { method: "POST", headers: { "x-payway-signature": sign(raw), "content-length": "1000000" }, body: raw }));
+    expect(r.status).toBe(413);
+  });
   it("has no csrf requirement: the signature is the authentication", async () => {
     const raw = JSON.stringify(event());
     const r = await webhookRoute.POST(new Request(`${APP}/api/webhooks/payway`, { method: "POST", headers: { "x-payway-signature": sign(raw), origin: "https://provider.example" }, body: raw }));
@@ -300,7 +305,7 @@ describe("payment webhook", () => {
 describe("pg billing store", () => {
   function fakeDb(rows: Record<string, unknown>[] = []) {
     const calls: { text: string; params: unknown[] }[] = [];
-    const db: Queryable = { async query(text, params) { calls.push({ text, params: params ?? [] }); return { rows: /^\s*(SELECT|INSERT INTO plan_price)/.test(text) ? rows : [] }; } };
+    const db: Queryable = { async query(text, params) { calls.push({ text, params: params ?? [] }); return { rows: /^\s*(SELECT|INSERT INTO plan_price)/.test(text) ? rows : /^\s*(UPDATE invoice|INSERT INTO payment_event)/.test(text) ? [{ id: "x", event_id: "e" }] : [] }; } };
     return { db, calls };
   }
   it("inserts a new price row with its reason and never updates old rows", async () => {
@@ -310,13 +315,50 @@ describe("pg billing store", () => {
     expect(calls[0]?.params).toEqual(["basic", 500, "s1", "why"]);
     expect(calls.some(c => /UPDATE plan_price|DELETE/.test(c.text))).toBe(false);
   });
-  it("settles a paid event: pending invoice only, then the listing fee for that owner, then the event row", async () => {
+  it("settles a paid event: event row first, then the pending invoice only, then the listing fee for that owner", async () => {
     const { db, calls } = fakeDb();
     await createPgBillingStore(db).settle(invoiceFor("paid"), { eventId: "e", invoiceId: "i", amountCents: 11000, outcome: "succeeded", providerRef: "r" });
-    expect(calls[0]?.text).toMatch(/WHERE id = \$1 AND status = 'pending'/);
-    expect(calls[1]?.text).toMatch(/SET listing_fee_paid = true.*owner_user_id = \$2/s);
-    expect(calls[1]?.params).toEqual([LISTING, OWNER]);
-    expect(calls[2]?.text).toMatch(/ON CONFLICT \(event_id\) DO NOTHING/);
+    expect(calls[0]?.text).toMatch(/ON CONFLICT \(event_id\) DO NOTHING/);
+    expect(calls[1]?.text).toMatch(/WHERE id = \$1 AND status = 'pending'/);
+    expect(calls[2]?.text).toMatch(/SET listing_fee_paid = true.*owner_user_id = \$2/s);
+    expect(calls[2]?.params).toEqual([LISTING, OWNER]);
+  });
+  it("a duplicate event id (replay or concurrent duplicate) changes nothing", async () => {
+    const calls: string[] = [];
+    const db: Queryable = { async query(text) { calls.push(text); return { rows: [] }; } };
+    await createPgBillingStore(db).settle(invoiceFor("paid"), { eventId: "e", invoiceId: "i", amountCents: 11000, outcome: "succeeded", providerRef: "r" });
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatch(/INSERT INTO payment_event/);
+  });
+  it("never marks the listing paid when the invoice was no longer pending; it opens an admin case instead", async () => {
+    const calls: string[] = [];
+    const db: Queryable = { async query(text) { calls.push(text); return { rows: /INSERT INTO payment_event/.test(text) ? [{ event_id: "e" }] : [] }; } };
+    await createPgBillingStore(db).settle(invoiceFor("pending"), { eventId: "e", invoiceId: "i", amountCents: 11000, outcome: "succeeded", providerRef: "r" });
+    expect(calls.some(c => /listing_fee_paid/.test(c))).toBe(false);
+    expect(calls.some(c => /INSERT INTO admin_case/.test(c))).toBe(true);
+  });
+  it("runs multi-step billing writes in one transaction and rolls back on failure", async () => {
+    const log: string[] = [];
+    const tx: Queryable = { async query(text) { log.push(text.trim().split(/\s+/).slice(0, 3).join(" ")); if (/INSERT INTO invoice/.test(text)) throw new Error("boom"); return { rows: [] }; } };
+    const db: Queryable = {
+      async query() { throw new Error("must not run outside the transaction"); },
+      async transaction(fn) { log.push("BEGIN"); try { const r = await fn(tx); log.push("COMMIT"); return r; } catch (e) { log.push("ROLLBACK"); throw e; } }
+    };
+    await expect(createPgBillingStore(db).replaceInvoices(["00000000-0000-4000-8000-0000000000c1"], invoiceFor("pending"))).rejects.toThrow("boom");
+    expect(log[0]).toBe("BEGIN");
+    expect(log.at(-1)).toBe("ROLLBACK");
+    expect(log).not.toContain("COMMIT");
+  });
+  it("a malformed listing id is not found without touching the database", async () => {
+    const db: Queryable = { async query() { throw new Error("no query expected"); } };
+    expect(await createPgBillingStore(db).listingOwner("not-a-uuid")).toBeUndefined();
+  });
+  it("append-only triggers guard prices, payment events and deletion requests", async () => {
+    const { readFileSync } = await import("node:fs");
+    const sql = readFileSync(new URL("../db/20261024150000_append_only_ledgers.sql", import.meta.url), "utf8");
+    for (const t of ["plan_price", "add_on_price", "payment_event", "document_deletion_request"]) {
+      expect(sql).toMatch(new RegExp(`CREATE TRIGGER ${t}_append_only\\s+BEFORE UPDATE OR DELETE ON ${t}`));
+    }
   });
   it("reads bigint cents (strings from pg) as numbers", async () => {
     const { db } = fakeDb([{ id: "i", owner_user_id: OWNER, amount_ex_gst_cents: "10000", gst_cents: "1000", total_cents: "11000", status: "pending", provider_ref: null, listing_id: LISTING, plan_id: "standard" }]);
