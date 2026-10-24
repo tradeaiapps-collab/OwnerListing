@@ -4,6 +4,8 @@ import { getRequiredDisclosureKeys } from "../config/disclosures";
 import type { Actor, ListingServiceDeps } from "../domain/listing-service";
 import { actorFromRequest } from "./auth/actor";
 import { readAuthEnv } from "./auth/config";
+import type { StaffActor } from "../domain/staff-access";
+import { staffFromRequest } from "./staff-auth";
 import { appendAuditPg, appointmentForPg, createPgListingRepository, verifiedLicencesPg, type Queryable } from "./db";
 
 interface Wired { db: Queryable; deps: ListingServiceDeps }
@@ -40,6 +42,12 @@ function wired(): Wired {
 
 export const getDeps = () => wired().deps;
 export const getDb = () => wired().db;
+
+/** Signed-in staff member (role read from the database now), or null. */
+export async function getStaff(req: Request): Promise<StaffActor | null> {
+  const auth = readAuthEnv();
+  return auth ? staffFromRequest(getDb(), req, auth.secret, Math.floor(Date.now() / 1000)) : null;
+}
 
 export function getActor(req: Request): Actor | null {
   const auth = readAuthEnv();

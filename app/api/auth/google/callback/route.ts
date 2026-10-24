@@ -3,6 +3,8 @@ import { getDb } from "../../../../../src/server/context";
 import { readAuthEnv } from "../../../../../src/server/auth/config";
 import { exchangeCode, readIdentity } from "../../../../../src/server/auth/google";
 import { SESSION_COOKIE, SESSION_TTL_SECONDS, readCookie, signSession } from "../../../../../src/server/auth/session";
+import { STAFF_COOKIE, STAFF_TTL_SECONDS, signStaffSession } from "../../../../../src/server/auth/staff-session";
+import { staffSignIn } from "../../../../../src/server/staff-auth";
 import { upsertGoogleUser } from "../../../../../src/server/users";
 
 /** Finishes Google sign-in: checks state, exchanges the code, validates the ID token, then sets the session cookie. */
@@ -27,6 +29,16 @@ export async function GET(req: Request) {
     const now = Math.floor(Date.now() / 1000);
     const who = claims && readIdentity(claims, { clientId: auth.google.clientId, nonce, nowSeconds: now });
     if (!who) return failed();
+    if (readCookie(req, "ol_role") === "staff") {
+      const staff = await staffSignIn(getDb(), who);
+      if (!staff) return failed();
+      const res = NextResponse.redirect(`${auth.appUrl}/`);
+      res.cookies.set(STAFF_COOKIE, signStaffSession({ uid: staff.id, exp: now + STAFF_TTL_SECONDS }, auth.secret), {
+        httpOnly: true, sameSite: "lax", secure: auth.secureCookies, path: "/", maxAge: STAFF_TTL_SECONDS
+      });
+      for (const c of ["ol_state", "ol_nonce", "ol_verifier", "ol_role"]) res.cookies.set(c, "", { path: "/api/auth/google", maxAge: 0 });
+      return res;
+    }
     const user = await upsertGoogleUser(getDb(), who, readCookie(req, "ol_role") === "buyer" ? "buyer" : "owner");
     if (!user) return failed();
 
