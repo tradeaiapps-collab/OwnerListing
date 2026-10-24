@@ -68,6 +68,7 @@ beforeEach(async () => {
   state.db = {
     async query(text, params) {
       calls.push({ text, params: params ?? [] });
+      if (text.includes("offer_submit_attempt")) return { rows: [{ hits: 1 }] };
       if (text.includes("FROM offer_link WHERE")) return { rows: linkRow ? [linkRow] : [] };
       if (text.includes("WITH spent")) return { rows: spendRows };
       if (text.includes("FROM formal_offer o")) return { rows: offerRows };
