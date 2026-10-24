@@ -11,7 +11,7 @@ Last updated: 2026-10-24, after PR #61 was merged (open: #59). Deploy and handov
 - PostgreSQL: migrations db/001 to db/016 plus a timestamped Google login and listing flags migration, run by scripts/migrate.mjs (PR #4).
 - Next.js app (app/): Google login routes, listings API and listing pages (PR #4).
 - Separate services later for AI and payments.
-- Investment module hard-disabled until Gate G4.
+- Investor projects module built (25 Oct 2026) but OFF by default: two keys (env INVESTMENT_MODULE_ENABLED and a super-admin database switch with recorded counsel confirmation). Stays off until counsel signs off (COUNSEL_QUESTIONS 9).
 
 ## Team (playbook section 12)
 Each role is assigned to an AI agent. Agents draft and build; accountable decisions and legal or licence sign-offs stay with a human.
@@ -124,12 +124,15 @@ Built 24 Oct 2026 (feat/plans-checkout): public /plans, staff /staff/pricing (pr
 
 - Auto-reply with owner review window (src/domain/auto-reply.ts): routine replies from owner-approved templates wait for a review window (default set by owner) before sending; owner can pause, edit, cancel or take over; counters and out-of-mandate items always go to the owner. Still to build: owner discussion thread with the AI for each negotiation (UI).
 
+## Investor projects (built 25 Oct 2026, OFF)
+Owners (fully verified) post projects; staff approve, reject or request changes (any edit returns to review); verified buyers with an investor declaration (wholesale, sophisticated or retail; default visibility wholesale only) browse, express non-binding interest and chat (insert-only, contact details masked, other party shown only as "Investor" or "Project owner"). Posting model chosen by the super admin and copied onto each project: Model 1 free posting with a commission that becomes due after staff confirm the signed agreement (invoiced to the poster, marked paid or waived by staff; never taken from investor money); Model 2 upfront fee via PayWay (fails closed), with contact disclosure per admin setting. No payment, deposit, commitment or allocation fields exist. Open: owner ID verification is buyer-only today, so owners cannot get verified to post yet; project documents (information memorandum) not uploadable yet (documents service is listing-bound); reply-by-email not built; counsel review of everything in COUNSEL_QUESTIONS 9.
+
 ## Open issues (from review)
 1. FIXED: Agent check now reads ownerUserType (mirrors app_user.user_type). Agent licence table added (db/002_agent_licence.sql). Licence lookup helper added (src/domain/licence.ts). Publish path now uses decidePublish (src/domain/publish.ts). Still open: no API route calls it yet.
 2. FIXED: Per-round concession limit enforced (proposedConcessionBps). Still open: targetPriceCents is unused.
 3. FIXED: Offer decision field renamed to mayDraft.
 4. Floor-leak test only checks one number. Check full output and reason text.
-5. Investment test name contradicts its behaviour. Rename.
+5. FIXED (25 Oct): investment test renamed to match its behaviour.
 6. PARTLY FIXED: repository port and SQL written (src/domain/audit-repository.ts), append-only trigger in db/003. Still open: PostgreSQL driver and adapter (needs npm).
 7. FIXED: package-lock.json created on first install (owner's machine, 22 Oct).
 8. FIXED: listing status changes go through transitionListing (src/domain/listing-transitions.ts); publishing needs an allowed decision and emits an audit event.

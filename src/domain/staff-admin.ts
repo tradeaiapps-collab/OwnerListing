@@ -17,7 +17,9 @@ export const STAFF_SECTIONS: readonly StaffSection[] = [
   { href: "/staff/invites", label: "Staff access", permissions: ["staff.manage"] },
   { href: "/staff/roles", label: "Roles and permissions", permissions: ["staff.manage"] },
   { href: "/staff/messaging", label: "Messaging settings", permissions: ["messaging.settings"] },
-  { href: "/staff/site", label: "Site appearance", permissions: ["theme.edit"] }
+  { href: "/staff/site", label: "Site appearance", permissions: ["theme.edit"] },
+  { href: "/staff/investments", label: "Investor projects review", permissions: ["investment.review"] },
+  { href: "/staff/investments/settings", label: "Investor module switch", permissions: ["investment.manage"] }
 ];
 
 /** Only the sections this staff member's permissions allow (resolved from the role definition on every request). */

@@ -12,9 +12,12 @@ type Who = "loading" | "out" | "staff" | "owner" | "buyer";
  */
 export default function SiteNav({ items, iconStyle }: { items?: NavItem[]; iconStyle?: IconStyle }) {
   const [who, setWho] = useState<Who>("loading");
+  const [invest, setInvest] = useState(false);
 
   useEffect(() => {
     const get = (url: string) => fetch(url).then(r => (r.ok ? r.json() : null)).catch(() => null);
+    // 404 unless the investor module is live (both keys), so nothing about investing shows while it is off.
+    void get("/api/investments/status").then(s => setInvest(s?.live === true));
     Promise.all([get("/api/auth/me"), get("/api/staff/me")]).then(([me, staff]) => {
       if (staff?.staff) setWho("staff");
       else if (me?.user) setWho(me.user.userType === "buyer" ? "buyer" : "owner");
@@ -42,6 +45,8 @@ export default function SiteNav({ items, iconStyle }: { items?: NavItem[]; iconS
         if (!def || !it.visible || !shown[it.id]) return null;
         return <a key={it.id} href={def.href}><Icon name={def.icon} style={style} />{it.label}</a>;
       })}
+      {/* Not in the admin nav catalogue on purpose: shown only while the investor module is live (status answers 404 when off). */}
+      {invest && (who === "owner" || who === "buyer") && <a href="/investments">Investor projects</a>}
       {(who === "owner" || who === "buyer" || who === "staff") && <button type="button" className="nav-signout" onClick={signOut}>Sign out</button>}
     </nav>
   );
