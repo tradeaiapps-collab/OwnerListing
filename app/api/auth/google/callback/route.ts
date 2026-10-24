@@ -37,6 +37,7 @@ export async function GET(req: Request) {
         httpOnly: true, sameSite: "lax", secure: auth.secureCookies, path: "/", maxAge: STAFF_TTL_SECONDS
       });
       for (const c of ["ol_state", "ol_nonce", "ol_verifier", "ol_role"]) res.cookies.set(c, "", { path: "/api/auth/google", maxAge: 0 });
+      res.cookies.set(SESSION_COOKIE, "", { httpOnly: true, sameSite: "lax", secure: auth.secureCookies, path: "/", maxAge: 0 });
       return res;
     }
     const user = await upsertGoogleUser(getDb(), who, readCookie(req, "ol_role") === "buyer" ? "buyer" : "owner");
@@ -47,6 +48,7 @@ export async function GET(req: Request) {
       httpOnly: true, sameSite: "lax", secure: auth.secureCookies, path: "/", maxAge: SESSION_TTL_SECONDS
     });
     for (const c of ["ol_state", "ol_nonce", "ol_verifier", "ol_role"]) res.cookies.set(c, "", { path: "/api/auth/google", maxAge: 0 });
+    res.cookies.set(STAFF_COOKIE, "", { httpOnly: true, sameSite: "lax", secure: auth.secureCookies, path: "/", maxAge: 0 });
     return res;
   } catch {
     return failed();

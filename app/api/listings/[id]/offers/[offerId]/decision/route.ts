@@ -15,7 +15,7 @@ const conflict = { ok: false, code: "conflict", message: "This offer can no long
  * This only records the decision: no money moves and no funds are held (deposits go to the solicitor's trust account).
  */
 export async function POST(req: Request, { params }: Ctx) {
-  const actor = getActor(req);
+  const actor = await getActor(req);
   if (!actor) return unauthenticated();
   const denied = forbiddenFor({ id: actor.userId, role: actor.userType }, "offer.approve");
   if (denied) return failure(denied);

@@ -16,7 +16,7 @@ const notEligible = { ok: false, code: "invalid", message: "That buyer cannot be
  * Only the token hash is stored; the raw token is returned once and cannot be read back.
  */
 export async function POST(req: Request, { params }: Ctx) {
-  const actor = getActor(req);
+  const actor = await getActor(req);
   if (!actor) return unauthenticated();
   const denied = forbiddenFor({ id: actor.userId, role: actor.userType }, "offer.approve");
   if (denied) return failure(denied);

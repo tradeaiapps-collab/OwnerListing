@@ -6,6 +6,7 @@ import { canActOnListing, type AgentAppointment } from "./access";
 import { transitionListing } from "./listing-transitions";
 import type { TrustAccountDecision } from "./trust-account";
 import type { AgentLicence } from "./licence";
+import { JURISDICTION_TIME_ZONE, localDateInZone } from "./timezone";
 
 export const PROPERTY_TYPES = [
   "house", "unit", "townhouse", "land",
@@ -227,7 +228,7 @@ export async function publishListing(
   } else {
     const trustAccount = deps.trustAccountFor ? await deps.trustAccountFor(l.id) : undefined;
     const licences = deps.licences ? await deps.licences() : [];
-    decision = decidePublish(l, required, licences, now.slice(0, 10), {
+    decision = decidePublish(l, required, licences, localDateInZone(now, JURISDICTION_TIME_ZONE[l.jurisdiction]), {
       termsAccepted: rec.termsAccepted,
       listingFeePaid: rec.listingFeePaid,
       ...(rec.rentalBondPathway ? { rentalBondPathway: rec.rentalBondPathway } : {}),
