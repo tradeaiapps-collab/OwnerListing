@@ -24,7 +24,10 @@ export default function EditListing() {
     fetch(`/api/listings/${id}`)
       .then(async r => {
         const d = await r.json();
-        if (r.ok) setListing(d.listing);
+        if (r.ok) {
+          setListing(d.listing);
+          setBond(typeof d.rentalBondPathway === "string" ? d.rentalBondPathway : "");
+        }
         else setLoadError(r.status === 404 ? "Listing not found. If it is your draft, sign in first." : d.error ?? "Could not load the listing.");
       })
       .catch(() => setLoadError("Could not load the listing."));
