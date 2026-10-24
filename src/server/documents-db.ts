@@ -55,6 +55,11 @@ export function createPgDocumentStore(db: Queryable): UploadStore {
       const res = await db.query("SELECT 1 FROM property_listing WHERE id = $1 AND property_id IS NOT NULL", [listingId]);
       return res.rows.length > 0;
     },
+    async storedFileFor(documentId) {
+      const res = await db.query("SELECT storage_key, declared_mime FROM property_document WHERE id = $1", [documentId]);
+      const row = res.rows[0];
+      return row ? { storageKey: String(row["storage_key"]), contentType: String(row["declared_mime"]) } : undefined;
+    },
     async recordDeletionRequest(r) {
       await db.query(
         "INSERT INTO document_deletion_request (document_id, requested_by, outcome, reason) VALUES ($1, $2, $3, $4)",

@@ -67,7 +67,7 @@ beforeEach(async () => {
   };
   state.store = store;
   stored = []; scanned = 0;
-  storage = { configured: true, async put(key, _b, type) { stored.push({ key, type }); } };
+  storage = { configured: true, async put(key, _b, type) { stored.push({ key, type }); }, async get() { return new Uint8Array(); } };
   scanner = { configured: true, async scan() { scanned++; return "clean"; } };
   state.ports = { storage, scanner };
 });
