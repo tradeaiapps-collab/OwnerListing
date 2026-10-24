@@ -1,20 +1,21 @@
--- Admin-managed staff roles. Built-in roles (super_admin, compliance, accountant, support, technical, reporting) are seeded here and are
+-- Admin-managed staff roles. Built-in roles (super_admin, compliance, accountant, support, technical, reporting, designer) are seeded here and are
 -- fixed: their permissions live in code (src/domain/staff-access.ts) and these rows only make the keys referenceable. Custom roles
 -- (key prefix custom_) are created and edited by a super admin in /staff/roles. Both tables are insert-only: an edit adds a new version
 -- row, and nothing is ever updated or deleted, so the full history of every role is kept.
 --
+-- Runs after 20261025130000_site_theme.sql, which added 'designer' to the invite role check; designer is kept as a built-in role.
 -- Existing invites: staff_invite.role already holds a built-in key. Its values are not changed or copied anywhere; the CHECK listing the
 -- six keys is widened to also allow custom_ keys, a foreign key to staff_role_def is added, and the migration stops if any existing
 -- invite would not resolve. No invite row is rewritten, so nothing can be lost.
 --
 -- Rollback (manual, only while no custom role is in use): revoke every invite whose role starts with custom_, then
 --   ALTER TABLE staff_invite DROP CONSTRAINT staff_invite_role_fkey; ALTER TABLE staff_invite DROP CONSTRAINT staff_invite_role_check;
---   ALTER TABLE staff_invite ADD CONSTRAINT staff_invite_role_check CHECK (role IN ('super_admin','compliance','accountant','support','technical','reporting')) NOT VALID;
+--   ALTER TABLE staff_invite ADD CONSTRAINT staff_invite_role_check CHECK (role IN ('super_admin','compliance','accountant','support','technical','reporting','designer')) NOT VALID;
 --   DROP VIEW staff_role_current; DROP TABLE staff_role_def_version; DROP TABLE staff_role_def; DROP FUNCTION staff_role_version_guard(); DROP FUNCTION staff_role_def_guard();
 --   and delete this file's row from schema_migration. NOT VALID keeps the revoked custom-role history rows readable.
 
 CREATE TABLE staff_role_def (
-  key TEXT PRIMARY KEY CHECK (key IN ('super_admin','compliance','accountant','support','technical','reporting') OR key ~ '^custom_[a-z0-9_]{2,40}$'),
+  key TEXT PRIMARY KEY CHECK (key IN ('super_admin','compliance','accountant','support','technical','reporting','designer') OR key ~ '^custom_[a-z0-9_]{2,40}$'),
   is_system BOOLEAN NOT NULL,
   created_by UUID REFERENCES app_user(id),
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -73,10 +74,10 @@ SELECT DISTINCT ON (v.role_key) v.role_key, d.is_system, v.version, v.label, v.d
  ORDER BY v.role_key, v.version DESC;
 
 INSERT INTO staff_role_def (key, is_system) VALUES
-  ('super_admin', true), ('compliance', true), ('accountant', true), ('support', true), ('technical', true), ('reporting', true);
+  ('super_admin', true), ('compliance', true), ('accountant', true), ('support', true), ('technical', true), ('reporting', true), ('designer', true);
 INSERT INTO staff_role_def_version (role_key, version, label) VALUES
   ('super_admin', 1, 'Super admin'), ('compliance', 1, 'Compliance'), ('accountant', 1, 'Accountant'),
-  ('support', 1, 'Support'), ('technical', 1, 'Technical'), ('reporting', 1, 'Reporting');
+  ('support', 1, 'Support'), ('technical', 1, 'Technical'), ('reporting', 1, 'Reporting'), ('designer', 1, 'Designer');
 
 DO $$
 BEGIN
@@ -88,6 +89,6 @@ $$;
 
 ALTER TABLE staff_invite DROP CONSTRAINT staff_invite_role_check;
 ALTER TABLE staff_invite ADD CONSTRAINT staff_invite_role_check
-  CHECK (role IN ('super_admin','compliance','accountant','support','technical','reporting') OR role ~ '^custom_[a-z0-9_]{2,40}$');
+  CHECK (role IN ('super_admin','compliance','accountant','support','technical','reporting','designer') OR role ~ '^custom_[a-z0-9_]{2,40}$');
 ALTER TABLE staff_invite ADD CONSTRAINT staff_invite_role_fkey FOREIGN KEY (role) REFERENCES staff_role_def(key);
 CREATE INDEX staff_invite_role_active ON staff_invite(role) WHERE revoked_at IS NULL;

@@ -16,7 +16,8 @@ export const STAFF_SECTIONS: readonly StaffSection[] = [
   { href: "/staff/pricing", label: "Pricing and plans", permissions: ["pricing.manage"] },
   { href: "/staff/invites", label: "Staff access", permissions: ["staff.manage"] },
   { href: "/staff/roles", label: "Roles and permissions", permissions: ["staff.manage"] },
-  { href: "/staff/messaging", label: "Messaging settings", permissions: ["messaging.settings"] }
+  { href: "/staff/messaging", label: "Messaging settings", permissions: ["messaging.settings"] },
+  { href: "/staff/site", label: "Site appearance", permissions: ["theme.edit"] }
 ];
 
 /** Only the sections this staff member's permissions allow (resolved from the role definition on every request). */

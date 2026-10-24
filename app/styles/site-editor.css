@@ -1,0 +1,56 @@
+/* Staff > Site appearance editor. Uses the site tokens, so it follows light and dark mode. */
+.page:has(.se) { max-width: 1280px; }
+.se-head { display: flex; flex-wrap: wrap; gap: var(--space-4); justify-content: space-between; align-items: flex-start; margin-bottom: var(--space-4); }
+.se-head h1 { margin-bottom: var(--space-2); }
+.se-head p { margin: 0; max-width: 46rem; }
+.se-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.se-dirty { color: var(--danger); }
+
+.se-grid { display: grid; gap: var(--space-6); grid-template-columns: 1fr; align-items: start; }
+@media (min-width: 1000px) { .se-grid { grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); } .se-preview { position: sticky; top: var(--space-4); } }
+
+.se-tabs, .se-seg { display: flex; flex-wrap: wrap; gap: var(--space-1); margin-bottom: var(--space-3); }
+.se-tab { background: transparent; color: var(--text); border: 1px solid var(--border); min-height: 40px; padding: var(--space-1) var(--space-3); border-radius: 999px; font-weight: 500; text-transform: capitalize; }
+.se-tab.on { background: var(--brand); color: var(--brand-text); border-color: var(--brand); }
+
+.se-sec-head { display: flex; justify-content: space-between; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
+.se-sec-head h2 { margin: 0; }
+.se-sec-head button { min-height: 36px; font-size: 0.875rem; }
+
+.se-field { display: grid; gap: var(--space-1); margin: var(--space-4) 0; }
+.se-err { color: var(--danger); font-weight: 600; }
+.se-num { display: grid; grid-template-columns: 1fr 6.5rem; gap: var(--space-3); align-items: center; }
+.se-num input[type="range"] { min-height: 44px; padding: 0; border: 0; background: transparent; }
+
+.se-cols { display: grid; gap: 0 var(--space-4); grid-template-columns: 1fr; }
+@media (min-width: 560px) { .se-cols { grid-template-columns: 1fr 1fr; } }
+.se-colour-row { display: grid; grid-template-columns: 3.25rem 1fr; gap: var(--space-2); }
+.se-colour-row input[type="color"] { padding: 2px; min-height: 44px; width: 3.25rem; cursor: pointer; }
+.se-colour-row input:not([type="color"]) { font-family: ui-monospace, Menlo, Consolas, monospace; }
+.se-swatches { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-bottom: var(--space-3); }
+.se-swatch { padding: var(--space-1) var(--space-3); border-radius: var(--radius-sm, 8px); border: 1px solid var(--border); font-size: 0.875rem; }
+
+.se-upload-row { display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: center; }
+.se-thumb { display: inline-flex; align-items: center; justify-content: center; width: 8rem; height: 4rem; border: 1px dashed var(--border); border-radius: var(--radius-sm, 8px); background: #fff; overflow: hidden; }
+.se-thumb.dark { background: #0f1218; }
+.se-thumb img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.se-file { position: relative; cursor: pointer; overflow: hidden; }
+.se-file input { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; min-height: 0; }
+.se-file:focus-within { outline: 3px solid var(--focus); outline-offset: 2px; }
+
+.se-list { list-style: none; padding: 0; margin: 0 0 var(--space-3); display: grid; gap: var(--space-2); }
+.se-list li { display: grid; grid-template-columns: auto 1fr auto; gap: var(--space-2); align-items: center; }
+.se-list li > small { grid-column: 1 / -1; }
+.se-link-row { grid-template-columns: 1fr 1fr auto !important; }
+.se-move { display: inline-flex; gap: var(--space-1); }
+.se-move button { min-width: 44px; padding: 0; }
+.se-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+.se-badge { display: inline-block; padding: 2px 10px; border-radius: 999px; border: 1px solid var(--border); font-size: 0.8rem; margin-right: var(--space-1); }
+.se-badge.live { background: var(--brand); color: var(--brand-text); border-color: var(--brand); }
+
+.se-pbar { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-3); align-items: center; margin-bottom: var(--space-2); }
+.se-pbar .se-seg { margin: 0; }
+.se-pbar button.secondary { min-height: 40px; }
+.se-frame-wrap { border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); overflow: auto; display: flex; justify-content: center; max-height: 78vh; }
+.se-frame-wrap iframe { border: 0; height: 74vh; min-height: 480px; max-width: 100%; background: #fff; }

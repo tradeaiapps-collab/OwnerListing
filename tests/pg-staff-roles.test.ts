@@ -36,13 +36,13 @@ describe.skipIf(!DATABASE_URL)("staff roles (Postgres)", () => {
     return (await fromCookie((await signIn(e))!))!;
   }
 
-  it("the migration seeds the six built-in roles and existing invites still resolve", async () => {
+  it("the migration seeds the seven built-in roles (designer from the site theme lane included) and existing invites still resolve", async () => {
     const roles = (await db.query(`SELECT role_key, is_system, version, permissions FROM staff_role_current ORDER BY role_key`)).rows;
-    expect(roles.filter(r => r["is_system"]).map(r => r["role_key"])).toEqual(["accountant", "compliance", "reporting", "super_admin", "support", "technical"]);
+    expect(roles.filter(r => r["is_system"]).map(r => r["role_key"])).toEqual(["accountant", "compliance", "designer", "reporting", "super_admin", "support", "technical"]);
     expect(roles.every(r => !r["is_system"] || (r["version"] === 1 && (r["permissions"] as string[]).length === 0))).toBe(true);
     const a = await admin();
     expect(await fromCookie(a)).toEqual(a);
-    expect((await listRoles(db)).slice(0, 6).map(r => r.key)).toEqual(["super_admin", "compliance", "accountant", "support", "technical", "reporting"]);
+    expect((await listRoles(db)).slice(0, 7).map(r => r.key)).toEqual(["super_admin", "compliance", "accountant", "support", "technical", "reporting", "designer"]);
   });
 
   it("built-in roles cannot be edited, disabled or deleted, and no role row can be updated or deleted", async () => {
@@ -64,16 +64,16 @@ describe.skipIf(!DATABASE_URL)("staff roles (Postgres)", () => {
   it("create -> invite -> sign in: permissions come from the role; edits and disabling apply to the very next request", async () => {
     const a = await admin();
     const k = key();
-    expect(await createRole(db, a, { key: k, label: "Website", description: "Site team", permissions: ["site.theme.edit", "report.sales"] })).toEqual({ ok: true, key: k, version: 1 });
+    expect(await createRole(db, a, { key: k, label: "Website", description: "Site team", permissions: ["theme.edit", "report.sales"] })).toEqual({ ok: true, key: k, version: 1 });
     const m = await member(a, k);
-    expect(staffCan(m, "site.theme.edit")).toBe(true);
+    expect(staffCan(m, "theme.edit")).toBe(true);
     expect(staffCan(m, "report.sales")).toBe(true);
     expect(staffCan(m, "staff.manage")).toBe(false);
 
-    expect(await changeRole(db, a, k, { action: "update", expectedVersion: 1, input: { label: "Website", description: "Site team", permissions: ["site.theme.edit"] } })).toMatchObject({ ok: true, version: 2 });
+    expect(await changeRole(db, a, k, { action: "update", expectedVersion: 1, input: { label: "Website", description: "Site team", permissions: ["theme.edit"] } })).toMatchObject({ ok: true, version: 2 });
     const now = (await fromCookie(m))!;
     expect(staffCan(now, "report.sales")).toBe(false);
-    expect(staffCan(now, "site.theme.edit")).toBe(true);
+    expect(staffCan(now, "theme.edit")).toBe(true);
 
     expect(await changeRole(db, a, k, { action: "disable", expectedVersion: 2 })).toMatchObject({ ok: true, version: 3 });
     expect((await fromCookie(m))!.permissions).toEqual([]);
@@ -81,7 +81,7 @@ describe.skipIf(!DATABASE_URL)("staff roles (Postgres)", () => {
     expect(await createInvite(db, a, fresh(), k)).toMatchObject({ ok: false, status: 409 });
 
     expect(await changeRole(db, a, k, { action: "enable", expectedVersion: 3 })).toMatchObject({ ok: true, version: 4 });
-    expect(staffCan((await fromCookie(m))!, "site.theme.edit")).toBe(true);
+    expect(staffCan((await fromCookie(m))!, "theme.edit")).toBe(true);
 
     const upd = (await audits("staff.role_updated")).find(r => (r["payload"] as { roleKey: string }).roleKey === k)!;
     expect(upd["payload"]).toMatchObject({ roleKey: k, version: 2, added: [], removed: ["report.sales"] });
@@ -109,14 +109,14 @@ describe.skipIf(!DATABASE_URL)("staff roles (Postgres)", () => {
   it("a custom staff manager: no role edits, no escalation, no sensitive roles, cannot touch greater access", async () => {
     const a = await admin();
     const mgrRole = key();
-    await createRole(db, a, { key: mgrRole, label: "Staff manager", description: "", permissions: ["staff.manage", "site.theme.edit", "report.sales"] });
+    await createRole(db, a, { key: mgrRole, label: "Staff manager", description: "", permissions: ["staff.manage", "theme.edit", "report.sales"] });
     const m = await member(a, mgrRole);
     const web = key();
-    await createRole(db, a, { key: web, label: "Web", description: "", permissions: ["site.theme.edit"] });
+    await createRole(db, a, { key: web, label: "Web", description: "", permissions: ["theme.edit"] });
     const fin = key();
     await createRole(db, a, { key: fin, label: "Finance", description: "", permissions: ["report.sales", "report.financial"] });
 
-    expect(await createRole(db, m, { key: key(), label: "Mine", description: "", permissions: ["site.theme.edit"] })).toMatchObject({ ok: false, status: 403 });
+    expect(await createRole(db, m, { key: key(), label: "Mine", description: "", permissions: ["theme.edit"] })).toMatchObject({ ok: false, status: 403 });
     expect(await changeRole(db, m, web, { action: "disable", expectedVersion: 1 })).toMatchObject({ ok: false, status: 403 });
     expect(await changeRole(db, m, mgrRole, { action: "update", expectedVersion: 1, input: { label: "Staff manager", description: "", permissions: ["staff.manage", "identity.review"] } }))
       .toMatchObject({ ok: false, status: 409 }); // own role
@@ -137,7 +137,7 @@ describe.skipIf(!DATABASE_URL)("staff roles (Postgres)", () => {
     expect((await audits("staff.role_change_refused")).map(r => (r["payload"] as { reason: string }).reason)).toEqual(expect.arrayContaining(["not_super_admin", "own_role"]));
 
     // Removing staff.manage from the manager's role stops them at once.
-    expect(await changeRole(db, a, mgrRole, { action: "update", expectedVersion: 1, input: { label: "Staff manager", description: "", permissions: ["site.theme.edit"] } })).toMatchObject({ ok: true });
+    expect(await changeRole(db, a, mgrRole, { action: "update", expectedVersion: 1, input: { label: "Staff manager", description: "", permissions: ["theme.edit"] } })).toMatchObject({ ok: true });
     expect(staffCan((await fromCookie(m))!, "staff.manage")).toBe(false);
     expect(await createInvite(db, m, fresh(), web)).toMatchObject({ ok: false, status: 403 });
   });
@@ -159,10 +159,10 @@ describe.skipIf(!DATABASE_URL)("staff roles (Postgres)", () => {
   it("access review export lists each active staff member's current permissions", async () => {
     const a = await admin();
     const k = key();
-    await createRole(db, a, { key: k, label: "Web", description: "", permissions: ["site.theme.edit"] });
+    await createRole(db, a, { key: k, label: "Web", description: "", permissions: ["theme.edit"] });
     await member(a, k);
     const rows = accessReviewRows(await listActiveAccess(db), await listRoles(db));
-    expect(rows.filter(r => r[2] === k).map(r => r[8])).toEqual(["site.theme.edit"]);
+    expect(rows.filter(r => r[2] === k).map(r => r[8])).toEqual(["theme.edit"]);
     expect(rows.filter(r => r[2] === "super_admin").length).toBeGreaterThan(20);
   });
 });

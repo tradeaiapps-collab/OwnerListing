@@ -1,11 +1,16 @@
 "use client";
 import { useEffect, useState } from "react";
+import { Icon } from "./icons";
+import { NAV_CATALOG, type IconStyle, type NavItem } from "../src/domain/site-theme";
 import "./styles/nav.css";
 
 type Who = "loading" | "out" | "staff" | "owner" | "buyer";
 
-/** Links follow the signed-in type. This only hides links; every route still enforces access on the server. */
-export default function SiteNav() {
+/**
+ * Links follow the signed-in type. This only hides links; every route still enforces access on the server.
+ * `items` is the admin's navigation setting (order, labels, hidden items); targets and icons come from the fixed catalogue.
+ */
+export default function SiteNav({ items, iconStyle }: { items?: NavItem[]; iconStyle?: IconStyle }) {
   const [who, setWho] = useState<Who>("loading");
 
   useEffect(() => {
@@ -24,19 +29,19 @@ export default function SiteNav() {
 
   const owner = who === "owner" || who === "out";
   const buyer = who === "buyer" || who === "out";
+  const shown: Record<string, boolean> = {
+    browse: true, plans: true, list: owner, mine: who === "owner", offers: who === "owner", searches: buyer,
+    saved: who === "buyer", verification: who === "buyer", dashboard: who !== "loading" && who !== "out", staff: who === "staff", signin: who === "out"
+  };
+  const list = items ?? NAV_CATALOG.map(n => ({ id: n.id, label: n.label, visible: true }));
+  const style = iconStyle ?? "outline";
   return (
     <nav className="site-nav" aria-label="Main">
-      <a href="/listings">Browse</a>
-      <a href="/plans">Plans</a>
-      {owner && <a href="/listings/new">List a property</a>}
-      {who === "owner" && <a href="/listings/mine">My listings</a>}
-      {who === "owner" && <a href="/listings/mine">Offers</a>}
-      {buyer && <a href="/buyer/saved-searches">Saved searches</a>}
-      {who === "buyer" && <a href="/buyer/saved-listings">Saved homes</a>}
-      {who === "buyer" && <a href="/buyer/verification">Verification</a>}
-      {who !== "loading" && who !== "out" && <a href="/dashboard">Dashboard</a>}
-      {who === "staff" && <a href="/staff">Staff</a>}
-      {who === "out" && <a href="/api/auth/google/start">Sign in</a>}
+      {list.map(it => {
+        const def = NAV_CATALOG.find(n => n.id === it.id);
+        if (!def || !it.visible || !shown[it.id]) return null;
+        return <a key={it.id} href={def.href}><Icon name={def.icon} style={style} />{it.label}</a>;
+      })}
       {(who === "owner" || who === "buyer" || who === "staff") && <button type="button" className="nav-signout" onClick={signOut}>Sign out</button>}
     </nav>
   );

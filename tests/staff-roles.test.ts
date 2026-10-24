@@ -29,7 +29,7 @@ const custom = (key: string, permissions: StaffPermission[], o: Partial<RoleDef>
   ({ key, label: key.replace("custom_", ""), description: "", permissions, isSystem: false, disabled: false, version: 1, ...o });
 const sys = (k: string) => SYSTEM_ROLE_DEFS.find(r => r.key === k)!;
 /** A custom staff manager: may manage staff but holds only a few non-sensitive permissions besides. */
-const manager: StaffActor = { id: "m1", role: "custom_staff_mgr", permissions: ["staff.manage", "report.sales", "site.theme.edit", "case.manage"] };
+const manager: StaffActor = { id: "m1", role: "custom_staff_mgr", permissions: ["staff.manage", "report.sales", "theme.edit", "case.manage"] };
 
 describe("permission catalogue", () => {
   it("is the single source of truth: unique keys, every area known, labels and descriptions present", () => {
@@ -46,7 +46,7 @@ describe("permission catalogue", () => {
       "report.operations", "pii.view_masked", "pii.view_full", "case.manage", "trust_account.approve", "licence.verify", "ai.engine_set", "config.edit",
       "logs.technical", "dispute.read_chat", "override.request", "override.approve", "staff.manage", "pricing.manage", "identity.review"];
     const keys: string[] = PERMISSION_CATALOGUE.map(p => p.key);
-    for (const k of [...old, "site.theme.edit", "site.content.edit", "site.content.publish", "messaging.settings"]) expect(keys).toContain(k);
+    for (const k of [...old, "theme.edit", "site.content.edit", "site.content.publish", "messaging.settings"]) expect(keys).toContain(k);
   });
   it("flags identity review, financial reports, staff management and messaging settings as sensitive", () => {
     for (const k of ["identity.review", "report.financial", "staff.manage", "messaging.settings"]) expect(isSensitivePermission(k)).toBe(true);
@@ -64,18 +64,18 @@ describe("resolving a role to access (fail closed)", () => {
     expect(resolveRoleAccess("s", "reporting", { exists: true, permissions: ["staff.manage"], disabled: true })).toEqual({ id: "s", role: "reporting" });
   });
   it("custom roles take their permissions from the current definition, dropping unknown keys", () => {
-    expect(resolveRoleAccess("s", "custom_web", { exists: true, permissions: ["site.theme.edit", "root.all", "site.theme.edit"], disabled: false }))
-      .toEqual({ id: "s", role: "custom_web", permissions: ["site.theme.edit"] });
+    expect(resolveRoleAccess("s", "custom_web", { exists: true, permissions: ["theme.edit", "root.all", "theme.edit"], disabled: false }))
+      .toEqual({ id: "s", role: "custom_web", permissions: ["theme.edit"] });
   });
   it("a disabled custom role grants nothing; a missing or malformed role gives no staff member", () => {
-    expect(resolveRoleAccess("s", "custom_web", { exists: true, permissions: ["site.theme.edit"], disabled: true })?.permissions).toEqual([]);
-    expect(resolveRoleAccess("s", "custom_web", { exists: true, permissions: ["site.theme.edit"], disabled: null })?.permissions).toEqual([]);
+    expect(resolveRoleAccess("s", "custom_web", { exists: true, permissions: ["theme.edit"], disabled: true })?.permissions).toEqual([]);
+    expect(resolveRoleAccess("s", "custom_web", { exists: true, permissions: ["theme.edit"], disabled: null })?.permissions).toEqual([]);
     expect(resolveRoleAccess("s", "custom_web", { exists: false, permissions: null, disabled: null })).toBeNull();
     expect(resolveRoleAccess("s", "custom_web", null)).toBeNull();
     for (const k of ["root", "Custom_web", "custom_", "custom_x", "custom_web;drop", 5, null]) expect(resolveRoleAccess("s", k, { exists: true, permissions: ["staff.manage"], disabled: false })).toBeNull();
   });
   it("a custom actor without resolved permissions, or one named like an admin, has no extra access", () => {
-    expect(staffCan({ id: "s", role: "custom_web" }, "site.theme.edit")).toBe(false);
+    expect(staffCan({ id: "s", role: "custom_web" }, "theme.edit")).toBe(false);
     expect(staffCan({ id: "s", role: "custom_super_admin" }, "staff.manage")).toBe(false);
     expect(staffCan({ id: "s", role: "custom_web", permissions: [] }, "report.sales")).toBe(false);
   });
@@ -83,21 +83,23 @@ describe("resolving a role to access (fail closed)", () => {
     expect(sectionsFor({ id: "s", role: "custom_empty", permissions: [] })).toEqual([]);
   });
   it("dashboard sections follow the resolved permissions", () => {
-    expect(sectionsFor(manager).map(s => s.href)).toEqual(["/staff/cases", "/staff/reports", "/staff/invites", "/staff/roles"]);
+    expect(sectionsFor(manager).map(s => s.href)).toEqual(["/staff/cases", "/staff/reports", "/staff/invites", "/staff/roles", "/staff/site"]);
     expect(sectionsFor(admin).map(s => s.href)).toContain("/staff/messaging");
+    expect(sectionsFor({ id: "d", role: "designer" }).map(s => s.href)).toEqual(["/staff/site"]);
+    expect(sectionsFor({ id: "s", role: "custom_web", permissions: ["theme.edit"] }).map(s => s.href)).toEqual(["/staff/site"]);
     expect(sectionsFor({ id: "s", role: "custom_m", permissions: ["staff.manage"] }).map(s => s.href)).not.toContain("/staff/messaging");
   });
 });
 
 describe("permission removed mid-session takes effect on the next request", () => {
   it("staffFromRequest re-reads the role definition each time", async () => {
-    let row: Record<string, unknown> = { id: "s1", role: "custom_web", role_exists: true, permissions: ["site.theme.edit", "report.sales"], disabled: false };
+    let row: Record<string, unknown> = { id: "s1", role: "custom_web", role_exists: true, permissions: ["theme.edit", "report.sales"], disabled: false };
     const db: Queryable = { async query() { return { rows: [row] }; } };
     const secret = "s".repeat(40);
     const req = () => new Request("http://x", { headers: { cookie: `ol_staff=${signStaffSession({ uid: "s1", exp: 2_000_000_000 }, secret)}` } });
     const first = (await staffFromRequest(db, req(), secret, 1_900_000_000))!;
     expect(staffCan(first, "report.sales")).toBe(true);
-    row = { ...row, permissions: ["site.theme.edit"] };
+    row = { ...row, permissions: ["theme.edit"] };
     const second = (await staffFromRequest(db, req(), secret, 1_900_000_000))!;
     expect(staffCan(second, "report.sales")).toBe(false);
     row = { ...row, disabled: true };
@@ -116,10 +118,10 @@ describe("role input (injection)", () => {
     }
   });
   it("create needs a custom_ key, a clean label and known permissions", () => {
-    const ok = { key: "custom_web", label: "Web", description: "Website team", permissions: ["site.theme.edit", "site.theme.edit"] };
-    expect(parseRoleCreate(ok)).toEqual({ ok: true, value: { key: "custom_web", label: "Web", description: "Website team", permissions: ["site.theme.edit"] } });
+    const ok = { key: "custom_web", label: "Web", description: "Website team", permissions: ["theme.edit", "theme.edit"] };
+    expect(parseRoleCreate(ok)).toEqual({ ok: true, value: { key: "custom_web", label: "Web", description: "Website team", permissions: ["theme.edit"] } });
     for (const key of ["super_admin", "web", "custom_A", "custom_x", "custom_web'--", `custom_${"a".repeat(41)}`]) expect(parseRoleCreate({ ...ok, key }).ok).toBe(false);
-    expect(parseRoleCreate({ ...ok, permissions: ["site.theme.edit", "root.all"] }).ok).toBe(false);
+    expect(parseRoleCreate({ ...ok, permissions: ["theme.edit", "root.all"] }).ok).toBe(false);
     expect(parseRoleCreate({ ...ok, permissions: "staff.manage" }).ok).toBe(false);
     expect(parseRoleCreate({ ...ok, description: "<img src=x onerror=alert(1)>" }).ok).toBe(false);
     expect(parseRoleCreate({ ...ok, description: "a‮b" }).ok).toBe(false);
@@ -139,7 +141,7 @@ describe("role input (injection)", () => {
 });
 
 describe("role editing rules", () => {
-  const web = custom("custom_web", ["site.theme.edit"]);
+  const web = custom("custom_web", ["theme.edit"]);
   const upd = (permissions: StaffPermission[], expectedVersion = 1) => ({ action: "update" as const, expectedVersion, input: { label: "web", description: "", permissions } });
 
   it("only a super admin can create or change roles, even a custom role holding staff.manage", () => {
@@ -164,11 +166,11 @@ describe("role editing rules", () => {
   });
   it("edits are diffed, a stale version is refused (concurrent edits) and an empty change is refused", () => {
     const p = planRoleChange(admin, web, upd(["site.content.edit"]));
-    expect(p).toMatchObject({ ok: true, added: ["site.content.edit"], removed: ["site.theme.edit"] });
+    expect(p).toMatchObject({ ok: true, added: ["site.content.edit"], removed: ["theme.edit"] });
     // A second admin saving from the same page (version 1) after the first save (now version 2) is refused.
     const after = { ...web, version: 2, permissions: ["site.content.edit"] as StaffPermission[] };
     expect(planRoleChange(admin, after, upd(["site.content.publish"], 1))).toMatchObject({ ok: false, status: 409, reason: "stale" });
-    expect(planRoleChange(admin, web, upd(["site.theme.edit"]))).toMatchObject({ ok: false, reason: "unchanged" });
+    expect(planRoleChange(admin, web, upd(["theme.edit"]))).toMatchObject({ ok: false, reason: "unchanged" });
     expect(planRoleChange(admin, null, upd([]))).toMatchObject({ ok: false, status: 404 });
   });
   it("disable and enable add a version; a disabled role cannot be assigned", () => {
@@ -182,7 +184,7 @@ describe("assigning roles (no escalation)", () => {
   it("nobody can give a role holding a permission they lack", () => {
     expect(planRoleAssign(manager, custom("custom_x", ["report.sales", "report.audit"]))).toMatchObject({ ok: false, status: 403, reason: "escalation" });
     expect(planRoleAssign(manager, sys("technical"))).toMatchObject({ ok: false, reason: "escalation" });
-    expect(planRoleAssign(manager, custom("custom_web", ["site.theme.edit"]))).toEqual({ ok: true });
+    expect(planRoleAssign(manager, custom("custom_web", ["theme.edit"]))).toEqual({ ok: true });
   });
   it("sensitive roles and super admin need a super admin, even when the manager holds the permission", () => {
     expect(planRoleAssign(manager, custom("custom_mgr2", ["staff.manage"]))).toMatchObject({ ok: false, reason: "sensitive" });
@@ -197,7 +199,7 @@ describe("assigning roles (no escalation)", () => {
   it("a lesser admin cannot change or revoke someone with more access", () => {
     expect(planOutrank(manager, sys("super_admin"))).toMatchObject({ ok: false, reason: "outranked" });
     expect(planOutrank(manager, sys("compliance"))).toMatchObject({ ok: false, reason: "outranked" });
-    expect(planOutrank(manager, custom("custom_web", ["site.theme.edit"]))).toEqual({ ok: true });
+    expect(planOutrank(manager, custom("custom_web", ["theme.edit"]))).toEqual({ ok: true });
     expect(planOutrank(admin, sys("super_admin"))).toEqual({ ok: true });
   });
 });
@@ -228,13 +230,13 @@ describe("two-person rules hold for custom roles", () => {
 
 describe("access review rows", () => {
   it("one row per staff member and permission; disabled and unknown roles show no access", () => {
-    const roles = [...SYSTEM_ROLE_DEFS, custom("custom_web", ["site.theme.edit", "report.sales"]), custom("custom_off", ["report.sales"], { disabled: true })];
+    const roles = [...SYSTEM_ROLE_DEFS, custom("custom_web", ["theme.edit", "report.sales"]), custom("custom_off", ["report.sales"], { disabled: true })];
     const rows = accessReviewRows([
       { inviteId: "i1", email: "a@x.com", role: "custom_web", acceptedAt: null },
       { inviteId: "i2", email: "b@x.com", role: "custom_off", acceptedAt: "2026-10-25T00:00:00.000Z" },
       { inviteId: "i3", email: "c@x.com", role: "custom_gone", acceptedAt: null }
     ], roles);
-    expect(rows.filter(r => r[0] === "i1").map(r => r[8])).toEqual(["report.sales", "site.theme.edit"]);
+    expect(rows.filter(r => r[0] === "i1").map(r => r[8])).toEqual(["report.sales", "theme.edit"]);
     expect(rows.filter(r => r[0] === "i2")).toEqual([["i2", "b@x.com", "custom_off", "off", "custom", 1, "disabled (no access)", "2026-10-25T00:00:00.000Z", "", "", ""]]);
     expect(rows.find(r => r[0] === "i3")?.[6]).toBe("unknown (no access)");
   });
@@ -252,7 +254,7 @@ describe("role routes", () => {
   const req = (url: string, method: string, body?: unknown, headers: Record<string, string> = { origin, "content-type": "application/json" }) =>
     new Request(`http://x${url}`, { method, headers, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
   const ctx = (key: string) => ({ params: Promise.resolve({ key }) });
-  const createBody = { key: "custom_web", label: "Web", permissions: ["site.theme.edit"] };
+  const createBody = { key: "custom_web", label: "Web", permissions: ["theme.edit"] };
 
   it("signed out: 401; staff without staff.manage: 403; nothing is queried", async () => {
     state.staff = null;
@@ -264,7 +266,7 @@ describe("role routes", () => {
       expect((await rolePost(req("/api/staff/roles/custom_web", "POST", { action: "disable", expectedVersion: 1 }), ctx("custom_web"))).status).toBe(403);
       expect((await exportGet(req("/api/staff/roles/export", "GET"))).status).toBe(403);
     }
-    state.staff = { id: "n", role: "custom_web", permissions: ["site.theme.edit"] };
+    state.staff = { id: "n", role: "custom_web", permissions: ["theme.edit"] };
     expect((await rolesGet(req("/api/staff/roles", "GET"))).status).toBe(403);
     expect(calls).toHaveLength(0);
   });
@@ -312,11 +314,11 @@ describe("role routes", () => {
   });
   it("a super admin creates a role: version 1 plus an audit row with the permissions and no personal data", async () => {
     const writes = writeDb({ id: "a1", role: "super_admin", role_exists: true, permissions: [], disabled: false });
-    const res = await rolesPost(req("/api/staff/roles", "POST", { ...createBody, permissions: ["site.theme.edit", "staff.manage"] }));
+    const res = await rolesPost(req("/api/staff/roles", "POST", { ...createBody, permissions: ["theme.edit", "staff.manage"] }));
     expect(res.status).toBe(201);
     expect(writes.map(w => /INSERT INTO (\w+)/.exec(w.text)?.[1])).toEqual(["staff_role_def", "staff_role_def_version", "audit_event"]);
     const payload = JSON.parse(writes[2]!.params.find(p => typeof p === "string" && p.startsWith("{")) as string);
-    expect(payload).toEqual({ role: "super_admin", roleKey: "custom_web", version: 1, added: ["staff.manage", "site.theme.edit"], sensitive: ["staff.manage"] });
+    expect(payload).toEqual({ role: "super_admin", roleKey: "custom_web", version: 1, added: ["staff.manage", "theme.edit"], sensitive: ["staff.manage"] });
   });
   it("editing a built-in role through the API is refused and audited", async () => {
     const writes = writeDb({ id: "a1", role: "super_admin", role_exists: true, permissions: [], disabled: false }, { support: { role_key: "support", version: 1, label: "Support", permissions: [], disabled: false } });
@@ -326,11 +328,11 @@ describe("role routes", () => {
   });
   it("an edit writes the next version and audits the permission diff", async () => {
     const writes = writeDb({ id: "a1", role: "super_admin", role_exists: true, permissions: [], disabled: false },
-      { custom_web: { role_key: "custom_web", version: 3, label: "Web", description: "", permissions: ["site.theme.edit"], disabled: false } });
+      { custom_web: { role_key: "custom_web", version: 3, label: "Web", description: "", permissions: ["theme.edit"], disabled: false } });
     const res = await rolePost(req("/api/staff/roles/custom_web", "POST", { action: "update", expectedVersion: 3, label: "Web", permissions: ["site.content.edit"] }), ctx("custom_web"));
     expect(res.status).toBe(200);
     expect(writes[0]!.params.slice(0, 2)).toEqual(["custom_web", 4]);
     const payload = JSON.parse(writes[1]!.params.find(p => typeof p === "string" && p.startsWith("{")) as string);
-    expect(payload).toMatchObject({ roleKey: "custom_web", version: 4, previousVersion: 3, added: ["site.content.edit"], removed: ["site.theme.edit"], labelChanged: false });
+    expect(payload).toMatchObject({ roleKey: "custom_web", version: 4, previousVersion: 3, added: ["site.content.edit"], removed: ["theme.edit"], labelChanged: false });
   });
 });

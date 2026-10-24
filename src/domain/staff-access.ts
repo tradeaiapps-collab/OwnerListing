@@ -1,4 +1,4 @@
-export type StaffRole = "super_admin" | "compliance" | "accountant" | "support" | "technical" | "reporting";
+export type StaffRole = "super_admin" | "compliance" | "accountant" | "support" | "technical" | "reporting" | "designer";
 
 export type PermissionArea =
   | "cases" | "trust_accounts" | "identity" | "reports" | "personal_data" | "pricing" | "messaging"
@@ -46,7 +46,7 @@ export const PERMISSION_CATALOGUE = [
   { key: "pricing.manage", area: "pricing", label: "Set plan prices", description: "Add new plan prices with a reason. Existing subscriptions keep their price.", sensitive: true },
   { key: "messaging.settings", area: "messaging", label: "Email and SMS settings", description: "Enter or change the email and SMS provider details and send test messages.", sensitive: true },
   { key: "staff.manage", area: "staff", label: "Manage staff access", description: "Invite staff, change their role and revoke access, only within the access you hold yourself. Editing roles is for super admins only.", sensitive: true },
-  { key: "site.theme.edit", area: "website", label: "Edit website theme", description: "Change the website colours, fonts and logo.", sensitive: false },
+  { key: "theme.edit", area: "website", label: "Edit site appearance", description: "Change the website colours, fonts and logo (draft, preview, publish, revert) at /staff/site.", sensitive: false },
   { key: "site.content.edit", area: "website", label: "Edit website content", description: "Draft changes to website pages and blocks.", sensitive: false },
   { key: "site.content.publish", area: "website", label: "Publish website content", description: "Make drafted website content live.", sensitive: false },
   { key: "ai.engine_set", area: "platform", label: "Choose the AI engine", description: "Switch between the template engine and the trained model.", sensitive: true },
@@ -73,7 +73,9 @@ const ROLE_PERMISSIONS: Record<StaffRole, readonly StaffPermission[]> = {
   accountant: ["report.financial", "report.sales", "pii.view_masked"],
   support: ["report.buyer", "report.seller", "pii.view_masked", "case.manage", "override.request"],
   technical: ["logs.technical", "report.operations", "config.edit"],
-  reporting: ["report.sales", "report.suburb", "report.operations"]
+  reporting: ["report.sales", "report.suburb", "report.operations"],
+  /** Site appearance only (theme.edit). No personal data, no reports, no money. */
+  designer: ["theme.edit"]
 };
 
 /** Built-in (system) roles and their labels. They cannot be edited, disabled or deleted. */
@@ -83,7 +85,8 @@ export const SYSTEM_ROLES: readonly { key: StaffRole; label: string; description
   { key: "accountant", label: "Accountant", description: "Financial and sales reports with masked personal details." },
   { key: "support", label: "Support", description: "Admin cases and owner and buyer reports with masked personal details." },
   { key: "technical", label: "Technical", description: "Technical logs, operations report and platform settings. No personal data." },
-  { key: "reporting", label: "Reporting", description: "Sales, suburb and operations reports." }
+  { key: "reporting", label: "Reporting", description: "Sales, suburb and operations reports." },
+  { key: "designer", label: "Designer", description: "Site appearance only (colours, fonts, logo). No personal data, reports or money." }
 ];
 
 export const isSystemRole = (v: unknown): v is StaffRole => typeof v === "string" && Object.prototype.hasOwnProperty.call(ROLE_PERMISSIONS, v);
