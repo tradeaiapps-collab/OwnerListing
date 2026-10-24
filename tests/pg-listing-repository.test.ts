@@ -53,6 +53,20 @@ describe.skipIf(!url)("Postgres listing repository", () => {
     expect((await deps.repo.get(l.id))?.listing.title).toBe("Renamed");
   });
 
+  it("lists only the given owner's listings", async () => {
+    const sub = `sub-other-${Date.now()}`;
+    const other = await upsertGoogleUser(db, { sub, email: `${sub}@example.test`, name: "Other Owner" });
+    const mine = { userId: ownerId, userType: "owner" as const };
+    const theirs = { userId: other!.id, userType: "owner" as const };
+    const a = await createDraft(deps, mine, { ...input, title: "Mine A" });
+    await createDraft(deps, theirs, { ...input, title: "Theirs" });
+    const b = await createDraft(deps, mine, { ...input, title: "Mine B" });
+    const ids = (await deps.repo.listByOwner(ownerId)).map(r => r.listing.id);
+    expect(ids).toContain(a.id);
+    expect(ids).toContain(b.id);
+    expect((await deps.repo.listByOwner(ownerId)).every(r => r.listing.ownerUserId === ownerId)).toBe(true);
+  });
+
   it("publishes only through the gate and lists it in search", async () => {
     const actor = { userId: ownerId, userType: "owner" as const };
     const l = await createDraft(deps, actor, { ...input, title: "Live home" });
