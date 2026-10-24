@@ -10,4 +10,10 @@ export const withinLimit = (hits: unknown, limit: number): boolean =>
 
 export const OFFER_LINK_ISSUE_RATE = { windowMs: 10 * 60 * 1000, perOwner: 10 } as const;
 
+/** Per-buyer spam limits for enquiries. Automated system messages are not counted. */
+export const ENQUIRY_RATE = {
+  messages: { windowMs: 60 * 60 * 1000, perBuyer: 20 },
+  newThreads: { windowMs: 24 * 60 * 60 * 1000, perBuyer: 5 }
+} as const;
+
 export const OFFER_RATE ={ windowMs: 10 * 60 * 1000, perLink: 5, perIp: 20 } as const;

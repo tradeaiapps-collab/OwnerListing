@@ -7,6 +7,7 @@ import type { Actor, ListingServiceDeps } from "../domain/listing-service";
 import { actorFromRequestChecked } from "./auth/actor";
 import { readAuthEnv } from "./auth/config";
 import type { StaffActor } from "../domain/staff-access";
+import { createPgBillingStore } from "./billing-db";
 import { staffFromRequest } from "./staff-auth";
 import { appendAuditPg, appointmentForPg, createPgListingRepository, verifiedLicencesPg, type Queryable } from "./db";
 
@@ -44,6 +45,7 @@ function wired(): Wired {
 
 export const getDeps = () => wired().deps;
 export const getDb = () => wired().db;
+export const getBilling = () => createPgBillingStore(getDb());
 
 /** Signed-in staff member (role read from the database now), or null. */
 export async function getStaff(req: Request): Promise<StaffActor | null> {

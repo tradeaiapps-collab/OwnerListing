@@ -1,0 +1,5 @@
+.staff-links { display: grid; gap: 0.75rem; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); }
+.staff-links a { display: block; padding: 1rem; border: 1px solid currentColor; border-radius: 0.5rem; text-decoration: none; }
+.staff-reason { width: 100%; min-height: 4rem; }
+.staff-notice { padding: 0.75rem 1rem; border-left: 4px solid currentColor; }
+.staff-checks { display: grid; gap: 0.25rem; margin: 0.5rem 0; }
