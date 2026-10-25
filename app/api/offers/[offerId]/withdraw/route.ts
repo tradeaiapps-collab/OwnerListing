@@ -5,11 +5,12 @@ import { getDb, getDeps } from "../../../../../src/server/context";
 import { csrfGuard } from "../../../../../src/server/csrf";
 import { failure } from "../../../../../src/server/http";
 import { buyerWithdrawPg } from "../../../../../src/server/offer-counter-db";
+import { withApi } from "../../../../../src/server/api/with-api";
 
 type Ctx = { params: Promise<{ offerId: string }> };
 
 /** The buyer withdraws their offer before it is accepted. Always allowed for an open offer, even if their verification lapsed. */
-export async function POST(req: Request, { params }: Ctx) {
+async function handlePost(req: Request, { params }: Ctx) {
   const blocked = csrfGuard(req);
   if (blocked) return blocked;
   const { offerId } = await params;
@@ -28,3 +29,5 @@ export async function POST(req: Request, { params }: Ctx) {
   });
   return NextResponse.json({ offer: { id: offerId, status: "withdrawn" } });
 }
+
+export const POST = withApi(handlePost);

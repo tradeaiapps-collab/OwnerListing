@@ -4,6 +4,7 @@ import { FIELDS, displayValue, isField, resolveMessaging, validateField, type Me
 import { getDb } from "../../../../src/server/context";
 import { loadFieldStates, loadStored, saveSettings, type Changes } from "../../../../src/server/messaging-settings-db";
 import { fail, readJsonObject, staffGate } from "../../../../src/server/staff-route";
+import { withApi } from "../../../../src/server/api/with-api";
 
 /** Email and SMS settings (messaging.settings, a sensitive permission: super admin by default). Gate first, then the work. */
 const PERMISSION = "messaging.settings";
@@ -22,7 +23,7 @@ async function view() {
 }
 
 /** Current settings, masked. Secrets are never returned, only "set" or "not set". */
-export async function GET(req: Request) {
+async function handleGet(req: Request) {
   const staff = await staffGate(req, PERMISSION);
   if (staff instanceof NextResponse) return staff;
   return NextResponse.json(await view(), { headers: { "cache-control": "no-store" } });
@@ -32,7 +33,7 @@ export async function GET(req: Request) {
  * Updates settings. Body: { "<field>": "<value>" } for the fields to change; an empty string clears a field; omitted fields stay as they are.
  * Refused (nothing saved) while MESSAGING_SETTINGS_KEY is unusable. Each change is audited with the field name only.
  */
-export async function PUT(req: Request) {
+async function handlePut(req: Request) {
   const staff = await staffGate(req, PERMISSION);
   if (staff instanceof NextResponse) return staff;
   if (!messagingKeyUsable(process.env["MESSAGING_SETTINGS_KEY"])) {
@@ -54,3 +55,6 @@ export async function PUT(req: Request) {
   await saveSettings(getDb(), staff, changes, process.env);
   return NextResponse.json(await view(), { headers: { "cache-control": "no-store" } });
 }
+
+export const GET = withApi(handleGet);
+export const PUT = withApi(handlePut);

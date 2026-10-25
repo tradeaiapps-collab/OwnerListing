@@ -3,12 +3,13 @@ import { appOriginFor, readAppMode } from "../../../../../src/config/app-mode";
 import { NO_STORE } from "../../../../../src/server/site-route";
 import { fail, staffGate } from "../../../../../src/server/staff-route";
 import { PREVIEW_PARAM, PREVIEW_TTL_SECONDS, signPreviewToken } from "../../../../../src/server/theme-preview";
+import { withApi } from "../../../../../src/server/api/with-api";
 
 /**
  * Issues a signed preview token (15 minutes) and the public-site address that shows the draft with it. Staff with theme.edit only.
  * Fails closed when THEME_PREVIEW_SECRET (32+ characters, the same value on the public and admin sites) is not set.
  */
-export async function POST(req: Request) {
+async function handlePost(req: Request) {
   const staff = await staffGate(req, "theme.edit");
   if (staff instanceof NextResponse) return staff;
   const secret = process.env["THEME_PREVIEW_SECRET"];
@@ -19,3 +20,5 @@ export async function POST(req: Request) {
   const token = signPreviewToken({ uid: staff.id, exp }, secret);
   return NextResponse.json({ url: `${origin}/?${PREVIEW_PARAM}=${encodeURIComponent(token)}`, origin, expiresAt: new Date(exp * 1000).toISOString() }, { headers: NO_STORE });
 }
+
+export const POST = withApi(handlePost);

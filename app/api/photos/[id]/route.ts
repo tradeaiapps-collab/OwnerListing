@@ -5,6 +5,7 @@ import { getActor, getDb, getDeps, getUploadPorts } from "../../../../src/server
 import { failure } from "../../../../src/server/http";
 import { staffPhotoAccess, UUID } from "../../../../src/server/photo-route";
 import { createPgPhotoStore } from "../../../../src/server/photos-db";
+import { withApi } from "../../../../src/server/api/with-api";
 
 type Ctx = { params: Promise<{ id: string }> };
 const SIZES: readonly PhotoSize[] = ["thumb", "medium", "full"];
@@ -14,7 +15,7 @@ const SIZES: readonly PhotoSize[] = ["thumb", "medium", "full"];
  * hidden photos only for the owner, the listing's photographer/agent or staff (see readPhoto). Denials are 404.
  * The Content-Type is the stored, sniffed image type; nosniff and a sandbox CSP stop it ever running as a page.
  */
-export async function GET(req: Request, { params }: Ctx) {
+async function handleGet(req: Request, { params }: Ctx) {
   const { id } = await params;
   const size = new URL(req.url).searchParams.get("size") ?? "full";
   if (!UUID.test(id) || !(SIZES as readonly string[]).includes(size)) return failure({ ok: false, code: "not_found", message: "Photo not found." });
@@ -34,3 +35,5 @@ export async function GET(req: Request, { params }: Ctx) {
     }
   });
 }
+
+export const GET = withApi(handleGet);

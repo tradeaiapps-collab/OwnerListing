@@ -6,12 +6,13 @@ import { engineForConfig } from "../../../../../src/server/ai";
 import { getDb } from "../../../../../src/server/context";
 import { countHitPg } from "../../../../../src/server/offer-flow-db";
 import { fail, staffAudit } from "../../../../../src/server/staff-route";
+import { withApi } from "../../../../../src/server/api/with-api";
 
 /**
  * "Test connection": asks the configured model server which models it has (GET /api/tags). Sends no listing or user data.
  * Works while the switch is off, so the admin can check before turning AI on. Rate limited per admin and overall (fail closed); audited.
  */
-export async function POST(req: Request) {
+async function handlePost(req: Request) {
   const staff = await aiAdminGate(req);
   if (staff instanceof NextResponse) return staff;
   const now = new Date().toISOString();
@@ -28,3 +29,5 @@ export async function POST(req: Request) {
   await staffAudit(staff, "ai_switch", "site", "ai.connection_tested", { outcome, model: s.model, ...(s.error ? { errorCode: s.error } : {}) });
   return NextResponse.json({ outcome, reachable: s.reachable, model: s.model, modelInstalled: s.modelInstalled, ...(s.error ? { errorCode: s.error } : {}) });
 }
+
+export const POST = withApi(handlePost);

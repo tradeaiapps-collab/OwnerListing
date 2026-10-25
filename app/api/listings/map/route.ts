@@ -5,13 +5,14 @@ import { getDb, getDeps } from "../../../../src/server/context";
 import { cardPhoto } from "../../../../src/domain/listing-photos";
 import type { PhotoStore } from "../../../../src/domain/photo-service";
 import { createPgPhotoStore } from "../../../../src/server/photos-db";
+import { withApi } from "../../../../src/server/api/with-api";
 
 /**
  * Public map pins for published listings that have a map location: the same filters as /api/listings plus
  * bbox=south,west,north,east. Returns at most MAX_MAP_PINS pins (newest first) and `total`, so the map can say
  * "zoom in to see all" when there are more. Only card fields go out; never the owner.
  */
-export async function GET(req: Request) {
+async function handleGet(req: Request) {
   const query = { ...parseSearchQuery(new URL(req.url).searchParams), located: true, page: 1, pageSize: MAX_MAP_PINS };
   const page = await searchPublished(getDeps(), query);
   let covers: Awaited<ReturnType<PhotoStore["coversFor"]>> = new Map();
@@ -28,3 +29,5 @@ export async function GET(req: Request) {
   }));
   return NextResponse.json({ pins, total: page.total, limit: MAX_MAP_PINS });
 }
+
+export const GET = withApi(handleGet);

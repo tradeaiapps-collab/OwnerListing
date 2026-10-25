@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { MAX_CONTRACT_BYTES, submitContract } from "../../../../../../src/domain/investment-service";
 import { getInvestmentDeps } from "../../../../../../src/server/investments-db";
 import { investGate, invFailure, notFound, ok, UUID, type Ctx } from "../../../../../../src/server/investment-route";
+import { withApi } from "../../../../../../src/server/api/with-api";
 
 /** Reads the body but stops past `max` bytes (a missing or false Content-Length cannot make the server buffer more). null = too big. */
 async function readCapped(req: Request, max: number): Promise<Uint8Array | null> {
@@ -25,7 +26,7 @@ async function readCapped(req: Request, max: number): Promise<Uint8Array | null>
 }
 
 /** The investor uploads the signed agreement: the raw PDF bytes as the body (Content-Type application/pdf). Only POST: files are never deleted. */
-export async function POST(req: Request, { params }: Ctx) {
+async function handlePost(req: Request, { params }: Ctx) {
   const deps = getInvestmentDeps();
   const actor = await investGate(req, deps, { json: false });
   if (actor instanceof NextResponse) return actor;
@@ -38,3 +39,5 @@ export async function POST(req: Request, { params }: Ctx) {
   const r = await submitContract(deps, actor, id, bytes);
   return r.ok ? ok({ contractStatus: r.value }, 201) : invFailure(r);
 }
+
+export const POST = withApi(handlePost);

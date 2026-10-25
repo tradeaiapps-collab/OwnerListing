@@ -3,6 +3,7 @@ import { readDocumentFile } from "../../../../../src/domain/document-service";
 import { getActor, getDb, getDeps, getUploadPorts } from "../../../../../src/server/context";
 import { createPgDocumentStore } from "../../../../../src/server/documents-db";
 import { failure } from "../../../../../src/server/http";
+import { withApi } from "../../../../../src/server/api/with-api";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -13,7 +14,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
  * everything else needs the right role (see readDocumentFile). Always sent as an attachment with the stored,
  * sniffed content type and nosniff, so an uploaded file can never run as a page in our origin.
  */
-export async function GET(req: Request, { params }: Ctx) {
+async function handleGet(req: Request, { params }: Ctx) {
   const { id } = await params;
   if (!UUID.test(id)) return failure({ ok: false, code: "not_found", message: "File not found." });
   const r = await readDocumentFile(getDeps(), createPgDocumentStore(getDb()), getUploadPorts().storage, await getActor(req), id);
@@ -29,3 +30,5 @@ export async function GET(req: Request, { params }: Ctx) {
     }
   });
 }
+
+export const GET = withApi(handleGet);

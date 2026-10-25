@@ -8,6 +8,7 @@ import { failure } from "../../../../../src/server/http";
 import { buyerAgreePg } from "../../../../../src/server/offer-counter-db";
 import { eligibleBuyerPg } from "../../../../../src/server/offer-flow-db";
 import { requireCurrentTerms } from "../../../../../src/server/terms-guard";
+import { withApi } from "../../../../../src/server/api/with-api";
 
 type Ctx = { params: Promise<{ offerId: string }> };
 
@@ -17,7 +18,7 @@ const conflict = { ok: false, code: "conflict", message: "That counter-offer is 
  * The buyer agrees to the owner's open counter. This does NOT accept the offer: only the owner accepts, so the offer goes
  * back to the owner with the agreed terms. Only the buyer of this offer.
  */
-export async function POST(req: Request, { params }: Ctx) {
+async function handlePost(req: Request, { params }: Ctx) {
   const blocked = csrfGuard(req);
   if (blocked) return blocked;
   const { offerId } = await params;
@@ -45,3 +46,5 @@ export async function POST(req: Request, { params }: Ctx) {
   });
   return NextResponse.json({ offer: { id: offerId, status: "buyer_countered" } });
 }
+
+export const POST = withApi(handlePost);

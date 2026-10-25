@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { runAlertOutbox } from "../../../../../src/server/alert-outbox-db";
 import { getDb } from "../../../../../src/server/context";
 import { alertDeliveryFor } from "../../../../../src/server/messaging";
+import { withApi } from "../../../../../src/server/api/with-api";
 
 /**
  * Worker tick for the alert outbox, called by a scheduler (not by browsers) with header x-cron-secret.
@@ -10,10 +11,12 @@ import { alertDeliveryFor } from "../../../../../src/server/messaging";
  */
 const digest = (s: string) => createHash("sha256").update(s).digest();
 
-export async function POST(req: Request) {
+async function handlePost(req: Request) {
   const secret = process.env["ALERT_CRON_SECRET"];
   if (!secret || secret.length < 32) return NextResponse.json({ error: "Alert worker is not configured." }, { status: 503 });
   if (!timingSafeEqual(digest(req.headers.get("x-cron-secret") ?? ""), digest(secret))) return NextResponse.json({ error: "Not allowed." }, { status: 401 });
   const counts = await runAlertOutbox(getDb(), alertDeliveryFor(getDb(), process.env), process.env, new Date().toISOString());
   return NextResponse.json({ counts });
 }
+
+export const POST = withApi(handlePost);

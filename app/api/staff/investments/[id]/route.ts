@@ -4,9 +4,10 @@ import { REVIEW_OUTCOMES, type ReviewOutcome } from "../../../../../src/domain/i
 import { getInvestmentDeps } from "../../../../../src/server/investments-db";
 import { investStaffGate, invFailure, notFound, ok, UUID, type Ctx } from "../../../../../src/server/investment-route";
 import { fail, readJsonObject } from "../../../../../src/server/staff-route";
+import { withApi } from "../../../../../src/server/api/with-api";
 
 /** Staff decision: { outcome: approve | reject | request_changes, reason, version }. Reason and version go to the status history and audit. */
-export async function POST(req: Request, { params }: Ctx) {
+async function handlePost(req: Request, { params }: Ctx) {
   const deps = getInvestmentDeps();
   const staff = await investStaffGate(req, deps, "investment.review");
   if (staff instanceof NextResponse) return staff;
@@ -18,3 +19,5 @@ export async function POST(req: Request, { params }: Ctx) {
   const r = await decideProject(deps, staff, id, outcome as ReviewOutcome, b?.["reason"], b?.["version"]);
   return r.ok ? ok({ status: r.value }) : invFailure(r);
 }
+
+export const POST = withApi(handlePost);

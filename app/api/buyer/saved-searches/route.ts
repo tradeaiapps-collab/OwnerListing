@@ -4,16 +4,17 @@ import { getActor } from "../../../../src/server/context";
 import { failure, unauthenticated } from "../../../../src/server/http";
 import { getSavedSearchRepo } from "../../../../src/server/saved-search-context";
 import { csrfGuard } from "../../../../src/server/csrf";
+import { withApi } from "../../../../src/server/api/with-api";
 
 /** The signed-in user's own saved searches. */
-export async function GET(req: Request) {
+async function handleGet(req: Request) {
   const actor = await getActor(req);
   if (!actor) return unauthenticated();
   return NextResponse.json({ searches: await getSavedSearchRepo().list(actor.userId) });
 }
 
 /** Saves a search of property facts for the signed-in user. Saving a search does not turn on alerts; that needs consent. */
-export async function POST(req: Request) {
+async function handlePost(req: Request) {
   const blocked = csrfGuard(req);
   if (blocked) return blocked;
   const actor = await getActor(req);
@@ -23,3 +24,6 @@ export async function POST(req: Request) {
   const r = await createSavedSearch(getSavedSearchRepo(), actor.userId, parsed.value);
   return r.ok ? NextResponse.json({ search: r.value }, { status: 201 }) : failure(r);
 }
+
+export const GET = withApi(handleGet);
+export const POST = withApi(handlePost);

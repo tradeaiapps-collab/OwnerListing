@@ -7,6 +7,7 @@ import { getActor, getDb } from "../../../../../src/server/context";
 import { csrfGuard } from "../../../../../src/server/csrf";
 import { getEnquiryDeps } from "../../../../../src/server/enquiry-db";
 import { failure, unauthenticated } from "../../../../../src/server/http";
+import { withApi } from "../../../../../src/server/api/with-api";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -16,7 +17,7 @@ const notFound = { ok: false, code: "not_found", message: "Enquiry not found." }
  * Safety warnings on a thread, for the seller side only (owner or appointed agent). The buyer gets an empty list:
  * flags are a private note to the seller, never shown to the person who wrote the message.
  */
-export async function GET(req: Request, { params }: Ctx) {
+async function handleGet(req: Request, { params }: Ctx) {
   const actor = await getActor(req);
   if (!actor) return unauthenticated();
   const { id } = await params;
@@ -40,7 +41,7 @@ export async function GET(req: Request, { params }: Ctx) {
 }
 
 /** The listing's owner turns AI drafting back on for this thread after a handoff. Body: { "action": "resume_ai" }. */
-export async function POST(req: Request, { params }: Ctx) {
+async function handlePost(req: Request, { params }: Ctx) {
   const blocked = csrfGuard(req);
   if (blocked) return blocked;
   const actor = await getActor(req);
@@ -62,3 +63,6 @@ export async function POST(req: Request, { params }: Ctx) {
   });
   return NextResponse.json({ aiPaused: false });
 }
+
+export const GET = withApi(handleGet);
+export const POST = withApi(handlePost);

@@ -3,8 +3,9 @@ import { planClaim } from "../../../../../../src/domain/staff-admin";
 import { getDb } from "../../../../../../src/server/context";
 import { claimCase, getCase } from "../../../../../../src/server/staff-admin-db";
 import { fail, staffAudit, staffGate, UUID_RE } from "../../../../../../src/server/staff-route";
+import { withApi } from "../../../../../../src/server/api/with-api";
 
-export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
+async function handlePost(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const staff = await staffGate(req, "case.manage");
   if (staff instanceof NextResponse) return staff;
   const { id } = await ctx.params;
@@ -17,3 +18,5 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   await staffAudit(staff, "admin_case", id, "staff.case_claimed", { kind: c.kind });
   return NextResponse.json({ ok: true });
 }
+
+export const POST = withApi(handlePost);

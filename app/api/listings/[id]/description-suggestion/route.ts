@@ -6,6 +6,7 @@ import { getDb, getDeps } from "../../../../../src/server/context";
 import { csrfGuard } from "../../../../../src/server/csrf";
 import { countHitPg } from "../../../../../src/server/offer-flow-db";
 import { requireListingHandler } from "../../../../../src/server/owner-listing";
+import { withApi } from "../../../../../src/server/api/with-api";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -14,7 +15,7 @@ type Ctx = { params: Promise<{ id: string }> };
  * Returns the draft only: nothing is saved or published, and the screen labels it "AI suggestion, check before publishing".
  * AI off, busy or failing = { state: "unavailable" } with status 200, so the page never breaks. Rate limited per user (fail closed).
  */
-export async function POST(req: Request, { params }: Ctx) {
+async function handlePost(req: Request, { params }: Ctx) {
   const blocked = csrfGuard(req);
   if (blocked) return blocked;
   const id = (await params).id;
@@ -41,3 +42,5 @@ export async function POST(req: Request, { params }: Ctx) {
   });
   return NextResponse.json(result, { headers: { "cache-control": "no-store" } });
 }
+
+export const POST = withApi(handlePost);

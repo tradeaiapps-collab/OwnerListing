@@ -4,9 +4,10 @@ import { getActor } from "../../../../src/server/context";
 import { failure, unauthenticated } from "../../../../src/server/http";
 import { getSavedListingRepo } from "../../../../src/server/saved-listing-context";
 import { csrfGuard } from "../../../../src/server/csrf";
+import { withApi } from "../../../../src/server/api/with-api";
 
 /** The signed-in buyer's own bookmarked (published) listings. */
-export async function GET(req: Request) {
+async function handleGet(req: Request) {
   const actor = await getActor(req);
   if (!actor) return unauthenticated();
   const denied = buyerOnly(actor);
@@ -15,7 +16,7 @@ export async function GET(req: Request) {
 }
 
 /** Body: { listingId }. Bookmarks a published listing for the signed-in buyer. */
-export async function POST(req: Request) {
+async function handlePost(req: Request) {
   const blocked = csrfGuard(req);
   if (blocked) return blocked;
   const actor = await getActor(req);
@@ -28,3 +29,6 @@ export async function POST(req: Request) {
   const r = await saveListing(getSavedListingRepo(), actor, id.value);
   return r.ok ? NextResponse.json(r.value, { status: 201 }) : failure(r);
 }
+
+export const GET = withApi(handleGet);
+export const POST = withApi(handlePost);

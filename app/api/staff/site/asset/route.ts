@@ -5,6 +5,7 @@ import { getDb } from "../../../../../src/server/context";
 import { MAX_UPLOAD_BODY_BYTES, NO_STORE, readBoundedJson } from "../../../../../src/server/site-route";
 import { insertAsset } from "../../../../../src/server/site-theme-db";
 import { fail, staffGate } from "../../../../../src/server/staff-route";
+import { withApi } from "../../../../../src/server/api/with-api";
 
 const B64 = /^[A-Za-z0-9+/]+={0,2}$/;
 
@@ -14,7 +15,7 @@ const B64 = /^[A-Za-z0-9+/]+={0,2}$/;
  * The hero photo is first rewritten without its EXIF, XMP and text metadata (camera, GPS), with the same cleaner as ID photos.
  * Returns the new image id to put in the settings; the file is public only once a published version uses it.
  */
-export async function POST(req: Request) {
+async function handlePost(req: Request) {
   const staff = await staffGate(req, "theme.edit");
   if (staff instanceof NextResponse) return staff;
   const body = await readBoundedJson(req, MAX_UPLOAD_BODY_BYTES);
@@ -35,3 +36,5 @@ export async function POST(req: Request) {
   const id = await insertAsset(getDb(), staff, { name, contentType: check.contentType, bytes, width: check.width, height: check.height });
   return NextResponse.json({ id, name, contentType: check.contentType, width: check.width, height: check.height, bytes: bytes.length }, { status: 201, headers: NO_STORE });
 }
+
+export const POST = withApi(handlePost);

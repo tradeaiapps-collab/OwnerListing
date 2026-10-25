@@ -5,6 +5,7 @@ import { startCheckout } from "../../../../../src/domain/billing-service";
 import { getActor, getBilling } from "../../../../../src/server/context";
 import { csrfGuard } from "../../../../../src/server/csrf";
 import { failure, unauthenticated } from "../../../../../src/server/http";
+import { withApi } from "../../../../../src/server/api/with-api";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -13,7 +14,7 @@ type Ctx = { params: Promise<{ id: string }> };
  * The owner is redirected there, so card numbers never reach this app. While the provider is not connected this answers 503
  * and the invoice stays unpaid, so the listing cannot publish. Only the listing's owner can do this.
  */
-export async function POST(req: Request, { params }: Ctx) {
+async function handlePost(req: Request, { params }: Ctx) {
   const blocked = csrfGuard(req);
   if (blocked) return blocked;
   const actor = await getActor(req);
@@ -32,3 +33,5 @@ export async function POST(req: Request, { params }: Ctx) {
     return NextResponse.json({ error: "Online payment is not available yet.", invoice: r.invoice }, { status: 503 });
   }
 }
+
+export const POST = withApi(handlePost);

@@ -4,11 +4,12 @@ import { getDb } from "../../../../src/server/context";
 import { MAX_SETTINGS_BYTES, NO_STORE, outcomeResponse, parseSettings, readBoundedJson, versionOrNull } from "../../../../src/server/site-route";
 import { loadView, saveDraft } from "../../../../src/server/site-theme-db";
 import { fail, staffGate } from "../../../../src/server/staff-route";
+import { withApi } from "../../../../src/server/api/with-api";
 
 const PERMISSION = "theme.edit";
 
 /** Draft, published settings, version history and the option lists the editor needs. */
-export async function GET(req: Request) {
+async function handleGet(req: Request) {
   const staff = await staffGate(req, PERMISSION);
   if (staff instanceof NextResponse) return staff;
   const view = await loadView(getDb());
@@ -19,7 +20,7 @@ export async function GET(req: Request) {
 }
 
 /** Saves the editor's settings as a new draft version. Body: { baseVersion: number | null, settings }. Nothing goes live until it is published. */
-export async function PUT(req: Request) {
+async function handlePut(req: Request) {
   const staff = await staffGate(req, PERMISSION);
   if (staff instanceof NextResponse) return staff;
   const body = await readBoundedJson(req, MAX_SETTINGS_BYTES);
@@ -31,3 +32,6 @@ export async function PUT(req: Request) {
   const db = getDb();
   return outcomeResponse(await saveDraft(db, staff, base, parsed.value), () => loadView(db));
 }
+
+export const GET = withApi(handleGet);
+export const PUT = withApi(handlePut);

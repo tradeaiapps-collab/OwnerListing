@@ -4,9 +4,10 @@ import { staffCan } from "../../../../src/domain/staff-access";
 import { getDb } from "../../../../src/server/context";
 import { createDraftVersionPg, listVersionsPg } from "../../../../src/server/disclosure-config-db";
 import { fail, readJsonObject, staffAudit, staffGate } from "../../../../src/server/staff-route";
+import { withApi } from "../../../../src/server/api/with-api";
 
 /** Every requirements version (draft, approved, retired). For staff who draft or approve them. */
-export async function GET(req: Request) {
+async function handleGet(req: Request) {
   const staff = await staffGate(req, "disclosure.config_edit").then(async s => (s instanceof NextResponse ? staffGate(req, "disclosure.config_approve") : s));
   if (staff instanceof NextResponse) return staff;
   return NextResponse.json({
@@ -16,7 +17,7 @@ export async function GET(req: Request) {
 }
 
 /** Drafts the next version of a combination: { jurisdiction, transactionType, useClass, items, note }. It does nothing until approved. */
-export async function POST(req: Request) {
+async function handlePost(req: Request) {
   const staff = await staffGate(req, "disclosure.config_edit");
   if (staff instanceof NextResponse) return staff;
   const parsed = parseNewVersion(await readJsonObject(req));
@@ -29,3 +30,6 @@ export async function POST(req: Request) {
   });
   return NextResponse.json({ id: r.id, version: r.version }, { status: 201 });
 }
+
+export const GET = withApi(handleGet);
+export const POST = withApi(handlePost);

@@ -4,11 +4,12 @@ import { appointmentIds, getAgentAppointmentRepo } from "../../../../../src/serv
 import { getActor } from "../../../../../src/server/context";
 import { failure, unauthenticated } from "../../../../../src/server/http";
 import { csrfGuard } from "../../../../../src/server/csrf";
+import { withApi } from "../../../../../src/server/api/with-api";
 
 type Ctx = { params: Promise<{ id: string }> };
 
 /** The owner's view of this listing's agent: the active appointment and open invitations. Anyone else gets 404. */
-export async function GET(req: Request, { params }: Ctx) {
+async function handleGet(req: Request, { params }: Ctx) {
   const actor = await getActor(req);
   if (!actor) return unauthenticated();
   const { id } = await params;
@@ -21,7 +22,7 @@ export async function GET(req: Request, { params }: Ctx) {
  * Body: { "agentUserId": "uuid" } or { "email": "..." }, plus optional "scope": "enquiries_and_offers" (default) | "full".
  * The agent must accept; nothing is granted until then.
  */
-export async function POST(req: Request, { params }: Ctx) {
+async function handlePost(req: Request, { params }: Ctx) {
   const blocked = csrfGuard(req);
   if (blocked) return blocked;
   const actor = await getActor(req);
@@ -30,3 +31,6 @@ export async function POST(req: Request, { params }: Ctx) {
   const r = await inviteAgent(getAgentAppointmentRepo(), actor, id, await req.json().catch(() => null), appointmentIds);
   return r.ok ? NextResponse.json({ invite: r.value }, { status: 201 }) : failure(r);
 }
+
+export const GET = withApi(handleGet);
+export const POST = withApi(handlePost);

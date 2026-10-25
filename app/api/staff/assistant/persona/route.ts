@@ -5,6 +5,7 @@ import { getDb } from "../../../../../src/server/context";
 import { choosePersona, loadPersonaView } from "../../../../../src/server/assistant-persona-db";
 import { NO_STORE, readBoundedJson } from "../../../../../src/server/site-route";
 import { fail, staffGate, staffGateAny } from "../../../../../src/server/staff-route";
+import { withApi } from "../../../../../src/server/api/with-api";
 
 /**
  * The assistant's character. Anyone who can work on the guide sees the choice; changing it goes live at once, so it needs
@@ -12,14 +13,14 @@ import { fail, staffGate, staffGateAny } from "../../../../../src/server/staff-r
  */
 const CHANGE = "site.content.publish";
 
-export async function GET(req: Request) {
+async function handleGet(req: Request) {
   const staff = await staffGateAny(req, ["site.content.edit", CHANGE]);
   if (staff instanceof NextResponse) return staff;
   return NextResponse.json({ ...(await loadPersonaView(getDb())), personas: PERSONAS, canChange: staffCan(staff, CHANGE) }, { headers: NO_STORE });
 }
 
 /** Body: { persona: "elena" | "maya" | "amara" | "sofia" | "noor" }. */
-export async function PUT(req: Request) {
+async function handlePut(req: Request) {
   const staff = await staffGate(req, CHANGE);
   if (staff instanceof NextResponse) return staff;
   const body = await readBoundedJson(req, 1024);
@@ -30,3 +31,6 @@ export async function PUT(req: Request) {
   await choosePersona(db, staff, persona);
   return NextResponse.json({ ...(await loadPersonaView(db)), personas: PERSONAS, canChange: true }, { headers: NO_STORE });
 }
+
+export const GET = withApi(handleGet);
+export const PUT = withApi(handlePut);

@@ -5,9 +5,10 @@ import { localDateInZone } from "../../../../src/domain/timezone";
 import { getDb } from "../../../../src/server/context";
 import { loadReport } from "../../../../src/server/admin-report-builder-db";
 import { fail, staffAudit, staffGate } from "../../../../src/server/staff-route";
+import { withApi } from "../../../../src/server/api/with-api";
 
 /** Grouped report for ?dimension=category|transaction|region|suburb|agent&from&to (JSON, or CSV with &format=csv). Every view and export is logged. */
-export async function GET(req: Request) {
+async function handleGet(req: Request) {
   const staff = await staffGate(req, "report.sales");
   if (staff instanceof NextResponse) return staff;
   const params = new URL(req.url).searchParams;
@@ -26,3 +27,5 @@ export async function GET(req: Request) {
     }
   });
 }
+
+export const GET = withApi(handleGet);

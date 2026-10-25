@@ -9,6 +9,7 @@ import { countHitPg } from "../../../../../../src/server/offer-flow-db";
 import { UUID } from "../../../../../../src/server/photo-route";
 import { createPgPhotoStore } from "../../../../../../src/server/photos-db";
 import { requireCurrentTerms } from "../../../../../../src/server/terms-guard";
+import { withApi } from "../../../../../../src/server/api/with-api";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -17,7 +18,7 @@ type Ctx = { params: Promise<{ id: string }> };
  * The first visible photo is the cover. Leaving a photo out removes it, allowed only before the listing was ever published;
  * after that photos can only be hidden or replaced. Each save is a new history row; nothing is overwritten.
  */
-export async function PUT(req: Request, { params }: Ctx) {
+async function handlePut(req: Request, { params }: Ctx) {
   const blocked = csrfGuard(req);
   if (blocked) return blocked;
   const actor = await getActor(req);
@@ -39,3 +40,5 @@ export async function PUT(req: Request, { params }: Ctx) {
   const r = await updateLayout(deps, createPgPhotoStore(getDb()), actor, id, body);
   return r.ok ? NextResponse.json({ version: r.value.version }) : failure(r);
 }
+
+export const PUT = withApi(handlePut);

@@ -12,6 +12,7 @@ import { offerLinkPg, offersForOwnerPg, submitOfferPg } from "../../../../../src
 import { csrfGuard } from "../../../../../src/server/csrf";
 import { requireListingHandler } from "../../../../../src/server/owner-listing";
 import { requireCurrentTerms } from "../../../../../src/server/terms-guard";
+import { withApi } from "../../../../../src/server/api/with-api";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -23,7 +24,7 @@ const badLink = { ok: false, code: "invalid", message: "This offer link is not v
  * bound to one buyer and one listing). The buyer id comes from the link row, never from the request body.
  * Nothing here accepts, counters or rejects an offer: the owner decides.
  */
-export async function POST(req: Request, { params }: Ctx) {
+async function handlePost(req: Request, { params }: Ctx) {
   const blocked = csrfGuard(req);
   if (blocked) return blocked;
   const { id } = await params;
@@ -101,7 +102,7 @@ export async function POST(req: Request, { params }: Ctx) {
 }
 
 /** The listing's owner or its appointed (licensed) agent reviews offers. Everyone else gets 404 so the listing's existence is not revealed. */
-export async function GET(req: Request, { params }: Ctx) {
+async function handleGet(req: Request, { params }: Ctx) {
   const actor = await getActor(req);
   if (!actor) return unauthenticated();
   const denied = forbiddenFor({ id: actor.userId, role: actor.userType }, "offer.analyse");
@@ -113,3 +114,6 @@ export async function GET(req: Request, { params }: Ctx) {
   await expireCountersPg(db, getDeps().now(), { listingId: id });
   return NextResponse.json({ offers: await offersForOwnerPg(db, id, handler.rec.listing.ownerUserId) });
 }
+
+export const POST = withApi(handlePost);
+export const GET = withApi(handleGet);

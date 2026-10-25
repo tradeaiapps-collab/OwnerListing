@@ -3,9 +3,10 @@ import { buildStaffReport, staffReportCsv } from "../../../../src/domain/reports
 import { getDb } from "../../../../src/server/context";
 import { loadStaffReport } from "../../../../src/server/reports-db";
 import { staffAudit, staffGate } from "../../../../src/server/staff-route";
+import { withApi } from "../../../../src/server/api/with-api";
 
 /** Platform report (JSON, or CSV with ?format=csv). Each section is included only if the role allows it. */
-export async function GET(req: Request) {
+async function handleGet(req: Request) {
   const staff = await staffGate(req, "report.sales");
   if (staff instanceof NextResponse) return staff;
   const report = buildStaffReport(staff, await loadStaffReport(getDb()));
@@ -16,3 +17,5 @@ export async function GET(req: Request) {
     headers: { "content-type": "text/csv; charset=utf-8", "content-disposition": 'attachment; filename="staff-report.csv"', "cache-control": "no-store" }
   });
 }
+
+export const GET = withApi(handleGet);

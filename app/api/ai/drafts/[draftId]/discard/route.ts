@@ -4,11 +4,12 @@ import { discardReplyDraft, getAiReplyDeps } from "../../../../../../src/server/
 import { getActor } from "../../../../../../src/server/context";
 import { csrfGuard } from "../../../../../../src/server/csrf";
 import { failure, unauthenticated } from "../../../../../../src/server/http";
+import { withApi } from "../../../../../../src/server/api/with-api";
 
 type Ctx = { params: Promise<{ draftId: string }> };
 
 /** The seller throws away an AI draft. The draft row stays as a record with status "discarded". */
-export async function POST(req: Request, { params }: Ctx) {
+async function handlePost(req: Request, { params }: Ctx) {
   const blocked = csrfGuard(req);
   if (blocked) return blocked;
   const actor = await getActor(req);
@@ -18,3 +19,5 @@ export async function POST(req: Request, { params }: Ctx) {
   const r = await discardReplyDraft(await getAiReplyDeps(), actor, draftId);
   return r.ok ? NextResponse.json(r.value) : failure(r);
 }
+
+export const POST = withApi(handlePost);

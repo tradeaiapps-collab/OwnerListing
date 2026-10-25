@@ -3,12 +3,13 @@ import { planCaseResolve } from "../../../../../../src/domain/staff-admin";
 import { getDb } from "../../../../../../src/server/context";
 import { getCase, proposeResolve, resolveCase } from "../../../../../../src/server/staff-admin-db";
 import { fail, readJsonObject, staffAudit, staffGate, UUID_RE } from "../../../../../../src/server/staff-route";
+import { withApi } from "../../../../../../src/server/api/with-api";
 
 /**
  * Resolve a case with a required reason. Safety-gate cases (trust account, licence) are overrides:
  * the first call records the proposal (202), a different authorised person's call completes it and writes override_log.
  */
-export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
+async function handlePost(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const staff = await staffGate(req, "case.manage");
   if (staff instanceof NextResponse) return staff;
   const body = await readJsonObject(req);
@@ -28,3 +29,5 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   await staffAudit(staff, "admin_case", id, "staff.case_resolved", { kind: c.kind, override: plan.override !== null });
   return NextResponse.json({ ok: true });
 }
+
+export const POST = withApi(handlePost);

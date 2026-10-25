@@ -9,6 +9,7 @@ import { csrfGuard } from "../../../../../src/server/csrf";
 import { countHitPg } from "../../../../../src/server/offer-flow-db";
 import { requireListingHandler } from "../../../../../src/server/owner-listing";
 import { getComparablesSource, insertPriceEstimatePg, latestPriceEstimatePg } from "../../../../../src/server/price-guidance";
+import { withApi } from "../../../../../src/server/api/with-api";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -63,13 +64,16 @@ async function guidance(req: Request, id: string, explain: boolean) {
 }
 
 /** Price guidance for the owner or appointed agent (spec 2.4). Rules only, no AI. Everyone else gets 404; never public. */
-export async function GET(req: Request, { params }: Ctx) {
+async function handleGet(req: Request, { params }: Ctx) {
   return guidance(req, (await params).id, false);
 }
 
 /** The same guidance plus an optional AI explanation (rate limited). The AI cannot change the numbers. */
-export async function POST(req: Request, { params }: Ctx) {
+async function handlePost(req: Request, { params }: Ctx) {
   const blocked = csrfGuard(req);
   if (blocked) return blocked;
   return guidance(req, (await params).id, true);
 }
+
+export const GET = withApi(handleGet);
+export const POST = withApi(handlePost);

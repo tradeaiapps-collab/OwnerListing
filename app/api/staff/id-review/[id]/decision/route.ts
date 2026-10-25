@@ -7,6 +7,7 @@ import { getIdImageDeps } from "../../../../../../src/server/verification-contex
 import { getDb } from "../../../../../../src/server/context";
 import { getIdSubmission, saveIdReview } from "../../../../../../src/server/staff-admin-db";
 import { fail, readJsonObject, staffAudit, staffGate, UUID_RE } from "../../../../../../src/server/staff-route";
+import { withApi } from "../../../../../../src/server/api/with-api";
 
 const OUTCOMES: readonly string[] = ["approve", "reject", "needs_more"];
 const STATUS_CHECKS = ["done", "not_available", "failed"] as const;
@@ -25,7 +26,7 @@ function parseChecklist(v: unknown): ReviewChecklist {
  * One reviewer's decision on an identity check. Approval needs image storage configured, the reviewer's live claim and
  * every image opened under that claim (approvalBlocker). A reviewer cannot review their own check; every decision needs a reason.
  */
-export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
+async function handlePost(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const staff = await staffGate(req, "identity.review");
   if (staff instanceof NextResponse) return staff;
   const body = await readJsonObject(req);
@@ -55,3 +56,5 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   await staffAudit(staff, "id_submission", id, "staff.id_reviewed", { outcome, resultingStatus: after.status, checklist, reason: (body["reason"] as string).trim() });
   return NextResponse.json({ ok: true, status: after.status });
 }
+
+export const POST = withApi(handlePost);

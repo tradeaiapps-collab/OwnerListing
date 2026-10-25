@@ -5,11 +5,14 @@ import { smsConsentText } from "../../../../../src/domain/phone-verification";
 import { getActor } from "../../../../../src/server/context";
 import { unauthenticated } from "../../../../../src/server/http";
 import { verificationAvailability } from "../../../../../src/server/verification-context";
+import { withApi } from "../../../../../src/server/api/with-api";
 
 /** Which verification steps can be offered now (a port that is not configured reports false), and the SMS and ID-photo consent wording. */
-export async function GET(req: Request) {
+async function handleGet(req: Request) {
   const actor = await getActor(req);
   if (!actor) return unauthenticated();
   if (actor.userType !== "buyer") return NextResponse.json({ error: "Buyers only." }, { status: 403 });
   return NextResponse.json({ available: await verificationAvailability(), smsConsentText: smsConsentText(readBrand().name), idImageConsent: { text: idImageConsentText(readBrand().name), version: ID_IMAGE_CONSENT_VERSION } });
 }
+
+export const GET = withApi(handleGet);

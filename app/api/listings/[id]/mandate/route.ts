@@ -7,6 +7,7 @@ import { csrfGuard } from "../../../../../src/server/csrf";
 import { failure } from "../../../../../src/server/http";
 import { insertMandatePg, mandateHistoryPg } from "../../../../../src/server/mandate-db";
 import { requireListingHandler } from "../../../../../src/server/owner-listing";
+import { withApi } from "../../../../../src/server/api/with-api";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -26,7 +27,7 @@ async function access(req: Request, id: string) {
  * The listing's negotiation mandate and its version history, for the owner or appointed agent (404 for anyone else).
  * The floor price is never returned: only whether one is set.
  */
-export async function GET(req: Request, { params }: Ctx) {
+async function handleGet(req: Request, { params }: Ctx) {
   const { id } = await params;
   const a = await access(req, id);
   if (a instanceof NextResponse) return a;
@@ -46,7 +47,7 @@ export async function GET(req: Request, { params }: Ctx) {
  * not sent. The audit event is written in the same transaction and never carries prices.
  * Spec: mandate changes need step-up MFA; MFA is not built yet (PROJECT_STATUS.md), so this is session-only for now.
  */
-export async function PUT(req: Request, { params }: Ctx) {
+async function handlePut(req: Request, { params }: Ctx) {
   const blocked = csrfGuard(req);
   if (blocked) return blocked;
   const { id } = await params;
@@ -88,3 +89,6 @@ export async function PUT(req: Request, { params }: Ctx) {
   if (!saved) return failure({ ok: false, code: "conflict", message: "Someone saved a newer version. Reload to see it, then make your change again." });
   return NextResponse.json({ mandate: toMandateView(saved) }, { headers: noStore });
 }
+
+export const GET = withApi(handleGet);
+export const PUT = withApi(handlePut);

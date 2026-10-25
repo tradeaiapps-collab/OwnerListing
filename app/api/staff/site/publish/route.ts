@@ -4,9 +4,10 @@ import { MAX_SETTINGS_BYTES, outcomeResponse, readBoundedJson, versionOrNull } f
 import { clearThemeCache } from "../../../../../src/server/site-theme";
 import { loadView, publishDraft } from "../../../../../src/server/site-theme-db";
 import { fail, staffGate } from "../../../../../src/server/staff-route";
+import { withApi } from "../../../../../src/server/api/with-api";
 
 /** Makes the draft live. Body: { version } must be the current draft, so nobody publishes a draft they have not seen. */
-export async function POST(req: Request) {
+async function handlePost(req: Request) {
   const staff = await staffGate(req, "theme.edit");
   if (staff instanceof NextResponse) return staff;
   const body = await readBoundedJson(req, MAX_SETTINGS_BYTES);
@@ -18,3 +19,5 @@ export async function POST(req: Request) {
   clearThemeCache(); // this server shows the change at once; other servers pick it up within the cache time (about 45 s)
   return outcomeResponse(outcome, () => loadView(db));
 }
+
+export const POST = withApi(handlePost);

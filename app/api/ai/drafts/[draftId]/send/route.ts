@@ -5,6 +5,7 @@ import { getActor } from "../../../../../../src/server/context";
 import { csrfGuard } from "../../../../../../src/server/csrf";
 import { failure, unauthenticated } from "../../../../../../src/server/http";
 import { requireCurrentTerms } from "../../../../../../src/server/terms-guard";
+import { withApi } from "../../../../../../src/server/api/with-api";
 
 type Ctx = { params: Promise<{ draftId: string }> };
 
@@ -13,7 +14,7 @@ type Ctx = { params: Promise<{ draftId: string }> };
  * The AI never sends: this is the seller's own action. The AI-assistance footer is always added. A draft that fails the checks
  * gets 422 with the reasons and nothing is sent.
  */
-export async function POST(req: Request, { params }: Ctx) {
+async function handlePost(req: Request, { params }: Ctx) {
   const blocked = csrfGuard(req);
   if (blocked) return blocked;
   const actor = await getActor(req);
@@ -34,3 +35,5 @@ export async function POST(req: Request, { params }: Ctx) {
   if ("violations" in r) return NextResponse.json({ error: r.message, violations: r.violations }, { status: 422 });
   return failure(r);
 }
+
+export const POST = withApi(handlePost);

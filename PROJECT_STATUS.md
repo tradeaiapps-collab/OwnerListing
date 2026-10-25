@@ -10,6 +10,7 @@ Last updated: 2026-10-24, after PR #61 was merged (open: #59). Deploy and handov
 - TypeScript domain layer (pure functions, no framework), tested with Vitest.
 - PostgreSQL: migrations db/001 to db/016 plus a timestamped Google login and listing flags migration, run by scripts/migrate.mjs (PR #4).
 - Next.js app (app/): Google login routes, listings API and listing pages (PR #4).
+- API standards (25 Oct 2026, feature/api-standards): /api/v1 versioning, the spec's error format and codes, Idempotency-Key on writes, X-Correlation-Id. Legacy /api/... unchanged for the site's pages. See docs/API_STANDARDS.md.
 - Separate services later for AI and payments.
 - Investor projects module built (25 Oct 2026) but OFF by default: two keys (env INVESTMENT_MODULE_ENABLED and a super-admin database switch with recorded counsel confirmation). Stays off until counsel signs off (COUNSEL_QUESTIONS 9).
 

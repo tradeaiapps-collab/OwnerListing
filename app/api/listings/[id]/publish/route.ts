@@ -4,11 +4,12 @@ import { forbiddenFor } from "../../../../../src/domain/access";
 import { getActor, getDeps } from "../../../../../src/server/context";
 import { failure, unauthenticated } from "../../../../../src/server/http";
 import { csrfGuard } from "../../../../../src/server/csrf";
+import { withApi } from "../../../../../src/server/api/with-api";
 
 type Ctx = { params: Promise<{ id: string }> };
 
 /** Runs the publish gate. Add ?dryRun=1 to check without publishing. A blocked result is a normal 200 with reasons. */
-export async function POST(req: Request, { params }: Ctx) {
+async function handlePost(req: Request, { params }: Ctx) {
   const blocked = csrfGuard(req, { json: false });
   if (blocked) return blocked;
   const actor = await getActor(req);
@@ -20,3 +21,5 @@ export async function POST(req: Request, { params }: Ctx) {
   const r = await publishListing(getDeps(), actor, id, dryRun);
   return r.ok ? NextResponse.json(r.value) : failure(r);
 }
+
+export const POST = withApi(handlePost);

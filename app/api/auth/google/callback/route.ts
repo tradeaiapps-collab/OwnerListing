@@ -8,9 +8,10 @@ import { STAFF_COOKIE, STAFF_TTL_SECONDS, signStaffSession } from "../../../../.
 import { parseBootstrapEmails } from "../../../../../src/domain/staff-invite";
 import { staffSignIn } from "../../../../../src/server/staff-auth";
 import { upsertGoogleUser, vendorSignIn } from "../../../../../src/server/users";
+import { withApi } from "../../../../../src/server/api/with-api";
 
 /** Finishes Google sign-in: checks state, exchanges the code, validates the ID token, then sets the session cookie. */
-export async function GET(req: Request) {
+async function handleGet(req: Request) {
   const auth = readAuthEnv();
   if (!auth) return NextResponse.json({ error: "Sign-in is not configured." }, { status: 503 });
   const failed = () => {
@@ -67,3 +68,5 @@ export async function GET(req: Request) {
     return failed();
   }
 }
+
+export const GET = withApi(handleGet);

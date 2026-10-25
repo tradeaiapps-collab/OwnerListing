@@ -4,6 +4,7 @@ import { objectStorageFromEnv } from "../../../../../src/adapters/object-storage
 import { getDb } from "../../../../../src/server/context";
 import { runIdImageRetention } from "../../../../../src/server/id-image";
 import { createPgIdImageStore } from "../../../../../src/server/id-image-db";
+import { withApi } from "../../../../../src/server/api/with-api";
 
 /**
  * Deletes ID images whose retention period is over (7 days after approval, 30 after rejection; counsel to confirm).
@@ -12,7 +13,7 @@ import { createPgIdImageStore } from "../../../../../src/server/id-image-db";
  */
 const digest = (s: string) => createHash("sha256").update(s).digest();
 
-export async function POST(req: Request) {
+async function handlePost(req: Request) {
   const secret = process.env["ID_RETENTION_CRON_SECRET"];
   if (!secret || secret.length < 32) return NextResponse.json({ error: "ID image retention is not configured." }, { status: 503 });
   if (!timingSafeEqual(digest(req.headers.get("x-cron-secret") ?? ""), digest(secret))) return NextResponse.json({ error: "Not allowed." }, { status: 401 });
@@ -21,3 +22,5 @@ export async function POST(req: Request) {
   const counts = await runIdImageRetention({ store: createPgIdImageStore(getDb()), storage }, new Date().toISOString());
   return NextResponse.json({ counts });
 }
+
+export const POST = withApi(handlePost);

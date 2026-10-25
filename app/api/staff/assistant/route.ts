@@ -4,12 +4,13 @@ import { getDb } from "../../../../src/server/context";
 import { loadGuideView, saveGuideDraft } from "../../../../src/server/guide-assistant-db";
 import { NO_STORE, readBoundedJson, versionOrNull } from "../../../../src/server/site-route";
 import { fail, staffGate } from "../../../../src/server/staff-route";
+import { withApi } from "../../../../src/server/api/with-api";
 
 /** Drafting the guide assistant's text is website content: site.content.edit. Making it live needs site.content.publish (publish route). */
 const PERMISSION = "site.content.edit";
 const MAX_BYTES = 32 * 1024;
 
-export async function GET(req: Request) {
+async function handleGet(req: Request) {
   const staff = await staffGate(req, PERMISSION);
   if (staff instanceof NextResponse) return staff;
   const view = await loadGuideView(getDb());
@@ -17,7 +18,7 @@ export async function GET(req: Request) {
 }
 
 /** Saves a new draft version. Body: { baseVersion: number | null, content }. Plain text only; nothing goes live until it is published. */
-export async function PUT(req: Request) {
+async function handlePut(req: Request) {
   const staff = await staffGate(req, PERMISSION);
   if (staff instanceof NextResponse) return staff;
   const body = await readBoundedJson(req, MAX_BYTES);
@@ -31,3 +32,6 @@ export async function PUT(req: Request) {
   if (!out.ok) return fail(out.code === "conflict" ? 409 : 404, out.error);
   return NextResponse.json(await loadGuideView(db), { headers: NO_STORE });
 }
+
+export const GET = withApi(handleGet);
+export const PUT = withApi(handlePut);

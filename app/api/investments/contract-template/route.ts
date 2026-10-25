@@ -2,9 +2,10 @@ import { NextResponse } from "next/server";
 import { INVESTMENT_CONTRACT } from "../../../../src/config/investment-contract";
 import { getInvestmentDeps } from "../../../../src/server/investments-db";
 import { investGate } from "../../../../src/server/investment-route";
+import { withApi } from "../../../../src/server/api/with-api";
 
 /** The DRAFT agreement template as a plain-text download. Fixed text from config: no one's details, no file metadata. */
-export async function GET(req: Request) {
+async function handleGet(req: Request) {
   const deps = getInvestmentDeps();
   const actor = await investGate(req, deps);
   if (actor instanceof NextResponse) return actor;
@@ -15,3 +16,5 @@ export async function GET(req: Request) {
     }
   });
 }
+
+export const GET = withApi(handleGet);

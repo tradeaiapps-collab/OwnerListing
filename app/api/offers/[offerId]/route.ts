@@ -4,11 +4,12 @@ import { getDb } from "../../../../src/server/context";
 import { requireBuyerOffer } from "../../../../src/server/buyer-offer";
 import { offerTimelinePg } from "../../../../src/server/offer-timeline-db";
 import { countersForOfferPg } from "../../../../src/server/offer-counter-db";
+import { withApi } from "../../../../src/server/api/with-api";
 
 type Ctx = { params: Promise<{ offerId: string }> };
 
 /** The buyer's own offer, its counter-offers and its timeline. Others get 404. */
-export async function GET(req: Request, { params }: Ctx) {
+async function handleGet(req: Request, { params }: Ctx) {
   const { offerId } = await params;
   const mine = await requireBuyerOffer(req, offerId);
   if (mine instanceof NextResponse) return mine;
@@ -18,3 +19,5 @@ export async function GET(req: Request, { params }: Ctx) {
     timeline: await offerTimelinePg(getDb(), offerId)
   });
 }
+
+export const GET = withApi(handleGet);

@@ -13,6 +13,7 @@ import { offersForOwnerPg } from "../../../../../../../../src/server/offers-db";
 import { enquiryForOfferPg, sameBuyerOffersPg } from "../../../../../../../../src/server/offer-suggestions-db";
 import { requireListingHandler } from "../../../../../../../../src/server/owner-listing";
 import { getWordingFilter } from "../../../../../../../../src/server/wording-filter";
+import { withApi } from "../../../../../../../../src/server/api/with-api";
 
 type Ctx = { params: Promise<{ id: string; offerId: string }> };
 
@@ -24,7 +25,7 @@ const notFound = { ok: false, code: "not_found", message: "Offer not found." } a
  * AI off = the same analysis with "drafts": [] and "aiAvailable": false. Drafts are stored (ai_draft) and sent with
  * POST /api/ai/drafts/[draftId]/send into the buyer's conversation, when the buyer has one.
  */
-export async function POST(req: Request, { params }: Ctx) {
+async function handlePost(req: Request, { params }: Ctx) {
   const blocked = csrfGuard(req);
   if (blocked) return blocked;
   const { id, offerId } = await params;
@@ -64,3 +65,5 @@ export async function POST(req: Request, { params }: Ctx) {
     drafts: result.drafts.map(d => ({ id: d.record.id, action: d.action, text: stripFooter(d.record.text), status: d.record.status, violations: d.violations }))
   }, { headers: { "cache-control": "no-store" } });
 }
+
+export const POST = withApi(handlePost);

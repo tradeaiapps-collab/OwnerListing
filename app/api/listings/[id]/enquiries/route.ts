@@ -7,11 +7,12 @@ import { getEnquiryDeps } from "../../../../../src/server/enquiry-db";
 import { failure, unauthenticated } from "../../../../../src/server/http";
 import { screenWithDefaults } from "../../../../../src/server/message-safety";
 import { requireCurrentTerms } from "../../../../../src/server/terms-guard";
+import { withApi } from "../../../../../src/server/api/with-api";
 
 type Ctx = { params: Promise<{ id: string }> };
 
 /** A verified buyer starts (or continues) their enquiry thread with the owner of a published listing. Body: { "body": "text" }. */
-export async function POST(req: Request, { params }: Ctx) {
+async function handlePost(req: Request, { params }: Ctx) {
   const blocked = csrfGuard(req);
   if (blocked) return blocked;
   const actor = await getActor(req);
@@ -29,3 +30,5 @@ export async function POST(req: Request, { params }: Ctx) {
   await screenWithDefaults(r.value.enquiry, r.value.message);
   return NextResponse.json(r.value, { status: 201 });
 }
+
+export const POST = withApi(handlePost);

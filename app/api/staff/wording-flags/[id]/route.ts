@@ -2,12 +2,13 @@ import { NextResponse } from "next/server";
 import { getDb } from "../../../../../src/server/context";
 import { fail, readJsonObject, staffAudit, staffGate } from "../../../../../src/server/staff-route";
 import { reviewWordingFlagPg } from "../../../../../src/server/wording-flags-db";
+import { withApi } from "../../../../../src/server/api/with-api";
 
 /**
  * Clear (a lawful exception: that exact match may publish on that listing) or uphold (stays blocked) an open flag.
  * Body: { decision: "clear" | "uphold", reason } with a reason of 10 to 1000 characters. Logged in the audit trail.
  */
-export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
+async function handlePost(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const staff = await staffGate(req, "wording.review");
   if (staff instanceof NextResponse) return staff;
   const b = await readJsonObject(req);
@@ -23,3 +24,5 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   await staffAudit(staff, "listing", r.listingId!, decision === "clear" ? "staff.wording_flag_cleared" : "staff.wording_flag_upheld", { flagId: id, reason });
   return NextResponse.json({ ok: true });
 }
+
+export const POST = withApi(handlePost);

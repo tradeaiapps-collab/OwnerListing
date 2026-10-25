@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { parseOptionalAbn } from "../../../../../../src/domain/abn";
 import { getDb } from "../../../../../../src/server/context";
 import { fail, readJsonObject, staffAudit, staffGate, UUID_RE } from "../../../../../../src/server/staff-route";
+import { withApi } from "../../../../../../src/server/api/with-api";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -9,7 +10,7 @@ type Ctx = { params: Promise<{ id: string }> };
  * Staff record (or clear) a law firm's ABN while reviewing its trust account. Body: { "abn": "51 824 753 556" | "" }.
  * The checksum is enforced here and again by the database; digits only are stored. Same permission as the trust account queue.
  */
-export async function PUT(req: Request, { params }: Ctx) {
+async function handlePut(req: Request, { params }: Ctx) {
   const staff = await staffGate(req, "trust_account.approve");
   if (staff instanceof NextResponse) return staff;
   const { id } = await params;
@@ -23,3 +24,5 @@ export async function PUT(req: Request, { params }: Ctx) {
   await staffAudit(staff, "law_firm", id, "staff.law_firm_abn_set", { cleared: parsed.abn === null });
   return NextResponse.json({ ok: true, abn: parsed.abn });
 }
+
+export const PUT = withApi(handlePut);
