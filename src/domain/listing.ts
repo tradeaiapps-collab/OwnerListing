@@ -30,6 +30,8 @@ export interface PropertyListing extends ListingDetails {
   useClass: UseClass;
   transactionType: "sale" | "rent";
   address: string;
+  /** Owner-written description. Scanned by the anti-discrimination wording filter before publishing. */
+  description?: string;
   disclosures: ListingDisclosure[];
   createdAt: string;
   updatedAt: string;

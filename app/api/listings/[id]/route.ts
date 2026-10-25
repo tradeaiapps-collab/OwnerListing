@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getListing, parseDraftPatch, toPublicListing, updateDraft } from "../../../../src/domain/listing-service";
+import { getListing, listingWordingFlags, parseDraftPatch, toPublicListing, updateDraft } from "../../../../src/domain/listing-service";
 import { getActor, getDeps } from "../../../../src/server/context";
 import { failure, unauthenticated } from "../../../../src/server/http";
 import { csrfGuard } from "../../../../src/server/csrf";
@@ -23,7 +23,7 @@ export async function GET(req: Request, { params }: Ctx) {
   return NextResponse.json({ listing, isOwner });
 }
 
-/** Edits a draft. Published listings cannot be edited here. */
+/** Edits a draft. Published listings cannot be edited here. The reply carries the wording flags so the owner can fix them before publishing. */
 export async function PATCH(req: Request, { params }: Ctx) {
   const blocked = csrfGuard(req);
   if (blocked) return blocked;
@@ -33,5 +33,5 @@ export async function PATCH(req: Request, { params }: Ctx) {
   if (!parsed.ok) return failure(parsed);
   const { id } = await params;
   const r = await updateDraft(getDeps(), actor, id, parsed.value);
-  return r.ok ? NextResponse.json({ listing: r.value }) : failure(r);
+  return r.ok ? NextResponse.json({ listing: r.value, wordingFlags: listingWordingFlags(r.value) }) : failure(r);
 }

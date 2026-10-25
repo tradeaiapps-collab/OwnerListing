@@ -1,5 +1,6 @@
 import { AI_SUGGESTION_LABEL, CONTACT_RE, fenceData, isEngineUsable, type AiEnginePort } from "./ai-engine";
 import { checkPublicOutput } from "./ai-public-guard";
+import { scanForDiscrimination } from "./discrimination-filter";
 import type { DocumentRecord } from "./documents";
 
 export interface DescriptionClaim { text: string; sourceDocId: string; sourceRef?: string }
@@ -70,10 +71,11 @@ export function buildDescriptionPrompt(f: DescriptionFacts, ownerNotes: string):
   ].join("\n");
 }
 
-/** Backstop on the model's text: public guard, no absolute condition claims, no contact details or links, sensible length. */
+/** Backstop on the model's text: public guard, no absolute condition claims, no contact details or links, no discriminatory wording, sensible length. */
 export function checkSuggestion(text: string): boolean {
   const t = text.trim();
-  return t.length > 0 && t.length <= MAX_SUGGESTION && checkPublicOutput(t).ok && !ABSOLUTE.some(re => re.test(t)) && !CONTACT_RE.test(t);
+  return t.length > 0 && t.length <= MAX_SUGGESTION && checkPublicOutput(t).ok && !ABSOLUTE.some(re => re.test(t)) && !CONTACT_RE.test(t) &&
+    !scanForDiscrimination(t).blocked;
 }
 
 export type DescriptionSuggestion =

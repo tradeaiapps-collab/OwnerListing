@@ -8,6 +8,7 @@ import { ENQUIRY_RATE, windowStart, withinLimit } from "./rate-limit";
 import type { AgentAppointment } from "./access";
 import { isAppointedAgent } from "./appointed-agent";
 import type { AgentLicence } from "./licence";
+import { messageWordingError } from "./discrimination-filter";
 
 export interface Enquiry { id: string; listingId: string; buyerUserId: string; createdAt: string }
 /** senderUserId is null for automated system messages (the chat-offer notice). */
@@ -100,6 +101,11 @@ async function post(deps: EnquiryDeps, e: Enquiry, ownerUserId: string, senderUs
     return fail("forbidden", STEP_TEXT[nextVerificationStep(verification) ?? "verify_id"]);
   }
   if (fromBuyer && !(await underLimit(deps, `enq-msg:${senderUserId}`, ENQUIRY_RATE.messages))) return TOO_FAST;
+  // Owner and agent messages go through the anti-discrimination wording filter (spec 6.4). Messages are permanent, so check first.
+  if (!fromBuyer) {
+    const wording = messageWordingError(body);
+    if (wording) return fail("invalid", wording);
+  }
 
   const now = deps.now();
   const m: EnquiryMessage = { id: deps.newId(), enquiryId: e.id, senderUserId, automated: false, body, sentAt: now };
@@ -249,6 +255,8 @@ export async function updateAutoReply(deps: EnquiryDeps, actor: Actor, input: un
   if (t !== undefined) {
     const parsed = parseMessageBody({ body: t });
     if (!parsed.ok) return parsed;
+    const wording = messageWordingError(parsed.value);
+    if (wording) return fail("invalid", wording.replace("This message can't be sent", "This template can't be saved"));
     await deps.drafts.addTemplate({ id: deps.newId(), ownerUserId: actor.userId, body: parsed.value }, deps.now());
   }
   await deps.drafts.saveSettings(actor.userId, next);
