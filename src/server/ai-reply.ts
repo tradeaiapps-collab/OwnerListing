@@ -76,6 +76,10 @@ export async function sendReplyDraft(deps: AiReplyDeps, actor: Actor, draftId: s
   const found = await actionableDraft(deps, actor, draftId);
   if (!found) return fail("not_found", "Draft not found.");
   if (found.draft.status !== "pending" && found.draft.status !== "held") return fail("conflict", "This draft was already sent or discarded.");
+  // Spec 2.4: an agent may send an offer response only inside the owner's mandate. Outside it, the owner decides.
+  if (found.draft.kind === "offer_response" && found.side.asAgent && !found.draft.policyDecision.withinMandate) {
+    return fail("forbidden", "Only the owner can send this response, because it is outside the negotiation settings.");
+  }
   const rec = await deps.enquiry.listings.get(found.draft.listingId);
   const check = checkSend(found.draft, mode, text, deps.wordingFilter, rec?.listing.priceCents);
   if (!check.ok) {
