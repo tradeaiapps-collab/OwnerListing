@@ -9,7 +9,8 @@ export interface TimelineEvent {
   /** The terms this event put on the table, or the terms accepted. */
   terms?: CounterTerms;
   fromStatus?: string;
-  toStatus: string;
+  /** Missing on events recorded before the offer history carried statuses. */
+  toStatus?: string;
   occurredAt: string;
 }
 
@@ -19,8 +20,8 @@ export function describeEvent(e: Pick<TimelineEvent, "type" | "actor" | "round">
   const round = e.round ? ` (round ${e.round})` : "";
   switch (e.type) {
     case "submitted": return `${who(e.actor)} made a formal offer`;
-    case "counter_requested": return `${who(e.actor)} asked for a better offer`;
-    case "countered": return `${who(e.actor)} sent a counter-offer${round}`;
+    case "countered": return `${who(e.actor)} asked for a better offer`;
+    case "owner_countered": return `${who(e.actor)} sent a counter-offer${round}`;
     case "buyer_countered": return `${who(e.actor)} sent a counter-offer${round}`;
     case "buyer_agreed": return `${who(e.actor)} agreed to the owner's counter-offer${round}`;
     case "accepted": return `${who(e.actor)} accepted the offer`;

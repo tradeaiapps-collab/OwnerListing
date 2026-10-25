@@ -46,9 +46,9 @@ describe.skipIf(!DATABASE_URL)("offer timeline (Postgres)", () => {
     await decideOfferPg(db, o.listingId, o.offerId, o.owner, statusesAllowing("accept"), "accepted", at(5));
     expect(await shape(o.offerId)).toEqual([
       ["submitted", "buyer", null, "submitted", 90_000_000],
-      ["countered", "owner", "submitted", "countered", 98_000_000],
+      ["owner_countered", "owner", "submitted", "countered", 98_000_000],
       ["buyer_countered", "buyer", "countered", "buyer_countered", 93_000_000],
-      ["countered", "owner", "buyer_countered", "countered", 95_000_000],
+      ["owner_countered", "owner", "buyer_countered", "countered", 95_000_000],
       ["buyer_agreed", "buyer", "countered", "buyer_countered", 95_000_000],
       ["accepted", "owner", "buyer_countered", "accepted", 95_000_000]
     ]);
@@ -70,7 +70,7 @@ describe.skipIf(!DATABASE_URL)("offer timeline (Postgres)", () => {
     await decideOfferPg(db, b.listingId, b.offerId, b.owner, statusesAllowing("counter_request"), "countered", at(1));
     await decideOfferPg(db, b.listingId, b.offerId, b.owner, statusesAllowing("reject"), "rejected", at(2));
     expect((await shape(b.offerId)).slice(1)).toEqual([
-      ["counter_requested", "owner", "submitted", "countered", null],
+      ["countered", "owner", "submitted", "countered", null],
       ["rejected", "owner", "countered", "rejected", null]
     ]);
 
@@ -113,7 +113,7 @@ describe.skipIf(!DATABASE_URL)("offer timeline backfill migration (Postgres)", (
   const name = `ol_test_${randomUUID().replace(/-/g, "")}`;
   let client: pg.Client;
   const dbDir = path.join(process.cwd(), "db");
-  const TIMELINE = "20261025200000_offer_events.sql";
+  const TIMELINE = "20261025220000_offer_event_negotiation.sql";
 
   beforeAll(async () => {
     const admin = new pg.Client({ connectionString: DATABASE_URL });
@@ -134,7 +134,7 @@ describe.skipIf(!DATABASE_URL)("offer timeline backfill migration (Postgres)", (
     await admin.end();
   });
 
-  it("gives offers made before the migration a timeline from formal_offer, the audit log and lapsed counters", async () => {
+  it("copies owner decisions from the audit log once, skipping decisions already in the history", async () => {
     const q = async (text: string, p: unknown[] = []) => (await client.query(text, p)).rows;
     const user = async (type: string) => String((await q("INSERT INTO app_user (email, display_name, user_type, status) VALUES ($1,'T',$2,'active') RETURNING id", [`${randomUUID()}@example.test`, type]))[0]!["id"]);
     const owner = await user("owner");
@@ -151,25 +151,21 @@ describe.skipIf(!DATABASE_URL)("offer timeline backfill migration (Postgres)", (
       q(`INSERT INTO audit_event (occurred_at, actor_type, actor_id, aggregate_type, aggregate_id, event_type, correlation_id, payload)
         VALUES ($1,'user',$2,'formal_offer',$3,$4,'c',$5::jsonb)`, [occurred, actor, offerId, type, JSON.stringify(payload)]);
 
+    // Decided before offer_event existed: only the audit log has it.
     const accepted = await newOffer(at(0));
     await q("UPDATE formal_offer SET status = 'accepted' WHERE id = $1", [accepted]);
     await audit(accepted, owner, "offer.countered", { decision: "counter_request", from: "submitted", to: "countered" }, at(1));
     await audit(accepted, owner, "offer.accepted", { decision: "accept", from: "countered", to: "accepted" }, at(2));
-
-    const lapsed = await newOffer(at(0));
-    const counterId = String((await q(`INSERT INTO offer_counter (offer_id, round, from_party, created_by, price_cents, settlement_days, deposit_cents, status, created_at, expires_at, closed_at)
-      VALUES ($1,1,'owner',$2,98000000,30,0,'expired',$3,$4,$4) RETURNING id`, [lapsed, owner, at(1), at(25)]))[0]!["id"]);
-    await q("UPDATE formal_offer SET status = 'expired' WHERE id = $1", [lapsed]);
-    await audit(lapsed, owner, "offer.countered", { counterId, round: 1, from: "submitted" }, at(1));
+    // Decided since: already in offer_event, so it must not be copied twice.
+    const rejected = await newOffer(at(0));
+    await q("UPDATE formal_offer SET status = 'rejected' WHERE id = $1", [rejected]);
+    await q("INSERT INTO offer_event (offer_id, event_type, actor_kind, actor_user_id, occurred_at) VALUES ($1,'rejected','owner',$2,$3)", [rejected, owner, at(1)]);
+    await audit(rejected, owner, "offer.rejected", { decision: "reject", from: "submitted", to: "rejected" }, at(1));
 
     await client.query(await readFile(path.join(dbDir, TIMELINE), "utf8"));
-    const events = async (id: string) => (await q("SELECT event_type, actor_kind, to_status, price_cents FROM offer_event WHERE offer_id = $1 ORDER BY occurred_at", [id]))
-      .map(r => [r["event_type"], r["actor_kind"], r["to_status"], r["price_cents"] === null ? null : Number(r["price_cents"])]);
-    expect(await events(accepted)).toEqual([
-      ["submitted", "buyer", "submitted", 90_000_000], ["counter_requested", "owner", "countered", null], ["accepted", "owner", "accepted", null]
-    ]);
-    expect(await events(lapsed)).toEqual([
-      ["submitted", "buyer", "submitted", 90_000_000], ["countered", "owner", "countered", 98_000_000], ["expired", "system", "expired", null]
-    ]);
+    const events = async (id: string) => (await q("SELECT event_type, actor_kind, from_status, to_status FROM offer_event WHERE offer_id = $1 ORDER BY occurred_at", [id]))
+      .map(r => [r["event_type"], r["actor_kind"], r["from_status"], r["to_status"]]);
+    expect(await events(accepted)).toEqual([["countered", "owner", "submitted", "countered"], ["accepted", "owner", "countered", "accepted"]]);
+    expect(await events(rejected)).toEqual([["rejected", "owner", null, null]]);
   });
 });

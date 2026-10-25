@@ -73,6 +73,7 @@ beforeEach(async () => {
       if (text.includes("SET status = 'agreed'") || text.includes("SET status = 'withdrawn'")) return { rows: writeOk ? [{ id: OFFER }] : [] };
       if (text.includes("FROM offer_counter WHERE offer_id")) return { rows: counters };
       if (text.includes("WHERE o.buyer_user_id = $1")) return { rows: p[0] === "buyer-9" ? [buyerRow()] : [] };
+      if (text.includes("LEFT JOIN buyer_verification v")) return { rows: p[1] === listingId ? [{ ...ownerRow(), buyer_user_id: "buyer-9", owner_user_id: "owner-1" }] : [] };
       if (text.includes("FROM formal_offer o JOIN property_listing l")) return { rows: p[1] === "owner-1" ? [ownerRow()] : [] };
       return { rows: [] };
     }
@@ -145,10 +146,12 @@ describe("GET /api/listings/[id]/offers/[offerId] (owner detail)", () => {
     const res = await ownerDetail(get(`/api/listings/${listingId}/offers/${OFFER}`), { params: Promise.resolve({ id: listingId, offerId: OFFER }) });
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.offer.awaiting).toBe("owner");
-    expect(body.counters.map((c: { fromParty: string }) => c.fromParty)).toEqual(["owner"]);
+    expect(body.offer.priceCents).toBe(90_000_000);
+    expect(body.negotiation.awaiting).toBe("owner");
+    expect(body.negotiation.standing.priceCents).toBe(90_000_000);
+    expect(body.negotiation.counters.map((c: { fromParty: string }) => c.fromParty)).toEqual(["owner"]);
     expect(body.canDecide).toBe(true);
-    expect(body.timeline).toEqual([]);
+    expect(body.negotiation.timeline).toEqual([]);
     expect(calls.some(c => c.text.includes("FROM offer_event WHERE offer_id = $1") && c.params[0] === OFFER)).toBe(true);
     expect(JSON.stringify(body)).not.toContain("buyer-9");
     state.actor = otherOwner;

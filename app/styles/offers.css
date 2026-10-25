@@ -16,3 +16,71 @@
 .timeline > li.timeline-expired::before, .timeline > li.timeline-withdrawn::before, .timeline > li.timeline-rejected::before { background: var(--muted); }
 .timeline time { display: block; color: var(--muted); font-size: 0.875rem; }
 .timeline .badge { margin-left: var(--space-2); }
+
+/* Offer detail (app/listings/[id]/offers/[offerId]) */
+.od-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: var(--space-3) var(--space-6); margin-bottom: var(--space-4); }
+main .od-eyebrow { margin: 0 0 var(--space-1); color: var(--muted); font-weight: 600; font-size: 0.9375rem; }
+.od-head h1 { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); font-variant-numeric: tabular-nums; }
+.od-head h1 .badge { font-size: 0.875rem; margin: 0; }
+main .od-sub { margin: var(--space-1) 0 0; }
+main .od-vs { margin: 0; display: grid; gap: 2px; padding: var(--space-3) var(--space-4); border-radius: var(--radius); border: 1px solid var(--border); background: var(--surface); max-width: 22rem; }
+.od-vs strong { font-size: 1.5rem; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.od-vs span { color: var(--muted); font-size: 0.875rem; }
+.od-vs.is-below strong { color: var(--warn); }
+.od-vs.is-above strong { color: var(--ok); }
+
+.od-layout { display: grid; gap: var(--space-4) var(--space-6); grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 960px) {
+  .od-layout { grid-template-columns: minmax(0, 1fr) 340px; align-items: start; }
+  .od-aside { position: sticky; top: 88px; }
+}
+@media (max-width: 959px) { .od-aside { order: -1; } }
+.od-main > section + section { margin-top: var(--space-6); }
+.od-main h2 { margin-top: 0; }
+.od-section-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2); margin-bottom: var(--space-3); }
+.od-section-head h2 { margin: 0; }
+
+.od-terms { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--space-3); margin: 0; }
+.od-terms > div { padding: var(--space-3) var(--space-4); border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+.od-terms dt { color: var(--muted); font-size: 0.8125rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
+.od-terms dd { margin: var(--space-1) 0 0; font-size: 1.125rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.od-terms dd .muted { font-size: 0.875rem; font-weight: 600; }
+.od-checks { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; font-size: 0.9375rem; }
+.od-checks li::before { content: "✓ "; color: var(--ok); font-weight: 800; }
+.od-conds { margin-top: 0; }
+
+.od-timeline { list-style: none; margin: 0; padding: 0; position: relative; }
+.od-ev { position: relative; display: grid; grid-template-columns: 24px minmax(0, 1fr); gap: var(--space-3); padding-bottom: var(--space-4); }
+.od-ev:not(:last-child)::before { content: ""; position: absolute; left: 11px; top: 18px; bottom: 0; width: 2px; background: var(--line); }
+.od-ev-dot { width: 14px; height: 14px; margin: 5px 5px 0; border-radius: 50%; background: var(--bg); border: 3px solid var(--brand); }
+.od-ev-accepted .od-ev-dot { border-color: var(--ok); background: var(--ok); }
+.od-ev-rejected .od-ev-dot, .od-ev-withdrawn .od-ev-dot, .od-ev-expired .od-ev-dot { border-color: var(--danger); }
+.od-ev-handoff .od-ev-dot { border-color: var(--warn); }
+main .od-ev-title { margin: 0; font-weight: 600; }
+main .od-ev-meta { margin: 0; color: var(--muted); font-size: 0.875rem; }
+
+.od-current > td { background: var(--tint); }
+.od-up { color: var(--ok); font-weight: 700; }
+.od-down { color: var(--danger); font-weight: 700; }
+
+.od-messages { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-2); }
+.od-msg { max-width: min(36rem, 88%); padding: var(--space-2) var(--space-3); border-radius: 14px; border: 1px solid var(--border); background: var(--surface); }
+.od-msg-owner, .od-msg-agent { justify-self: end; background: var(--tint); border-color: color-mix(in srgb, var(--brand) 30%, var(--border)); }
+.od-msg-system { justify-self: center; background: none; border-style: dashed; font-size: 0.875rem; }
+main .od-msg-meta { margin: 0; color: var(--muted); font-size: 0.75rem; font-weight: 600; }
+main .od-msg-body { margin: 2px 0 0; }
+
+.od-decide h2 { font-size: 1.125rem; }
+.od-actions { display: grid; gap: var(--space-2); }
+.od-actions button { width: 100%; }
+button.od-danger { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 45%, var(--border)); }
+button.od-danger:hover:not(:disabled) { background: var(--danger-tint); color: var(--danger); border-color: var(--danger); }
+button.od-danger-solid { background: var(--danger); color: var(--bg); }
+button.od-danger-solid:hover:not(:disabled) { background: color-mix(in srgb, var(--danger) 85%, var(--text)); color: var(--bg); }
+.od-confirm-terms { display: grid; grid-template-columns: auto 1fr; gap: 2px var(--space-3); margin: var(--space-2) 0; font-size: 0.9375rem; }
+.od-confirm-terms dt { color: var(--muted); }
+.od-confirm-terms dd { margin: 0; font-weight: 600; }
+.od-decide .confirm-box .actions { margin: var(--space-2) 0 0; }
+main .od-note { margin: var(--space-3) 0 0; color: var(--muted); font-size: 0.8125rem; }
+main .od-links { font-size: 0.9375rem; }
+.od-conds .chip::before { display: none; }

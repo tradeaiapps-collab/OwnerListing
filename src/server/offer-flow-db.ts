@@ -32,7 +32,8 @@ export async function ownerOfferStatusPg(db: Queryable, listingId: string, offer
 }
 
 /**
- * Moves the status in one guarded statement. No row back means it changed under us. Moves no money.
+ * Moves the status and writes the matching offer_event in one guarded statement, so the history can never miss a
+ * decision. No row back means it changed under us. Moves no money. `to` is accepted, rejected or countered.
  * Accepting is refused while the owner's own counter waits for the buyer. On accept, the terms accepted are the buyer's
  * latest (their open counter, an owner counter they agreed to, or else their original offer); any open counter closes.
  */
@@ -65,7 +66,7 @@ export async function decideOfferPg(
      -- The timeline row: an acceptance carries the terms accepted (the basis counter, or the original offer).
      INSERT INTO offer_event (offer_id, event_type, actor_kind, actor_user_id, counter_id, counter_round,
        price_cents, conditions, settlement_days, deposit_cents, from_status, to_status, occurred_at)
-     SELECT m.id, CASE $5 WHEN 'countered' THEN 'counter_requested' ELSE $5 END, 'owner', $3,
+     SELECT m.id, $5, 'owner', $3,
        b.id, b.round,
        CASE WHEN $5 = 'accepted' THEN COALESCE(b.price_cents, t.price_cents) END,
        CASE WHEN $5 = 'accepted' THEN COALESCE(b.conditions, t.conditions) END,

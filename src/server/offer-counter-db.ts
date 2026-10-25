@@ -72,7 +72,7 @@ const INSERT_COUNTER = (party: "owner" | "buyer") => `, ins AS (
   )
   INSERT INTO offer_event (offer_id, event_type, actor_kind, actor_user_id, counter_id, counter_round,
     price_cents, conditions, settlement_days, deposit_cents, from_status, to_status, occurred_at)
-  SELECT i.offer_id, '${party === "owner" ? "countered" : "buyer_countered"}', '${party}', $3, i.id, i.round, $4, $5::jsonb, $6, $7,
+  SELECT i.offer_id, '${party === "owner" ? "owner_countered" : "buyer_countered"}', '${party}', $3, i.id, i.round, $4, $5::jsonb, $6, $7,
     t.from_status, '${party === "owner" ? "countered" : "buyer_countered"}', $8
   FROM ins i JOIN target t ON t.id = i.offer_id
   RETURNING counter_id AS id, counter_round AS round`;

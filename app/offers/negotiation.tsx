@@ -28,7 +28,7 @@ export function OfferTimeline({ events, viewer }: { events: TimelineEvent[]; vie
       {events.map(e => (
         <li key={e.id} className={`timeline-${e.type}`}>
           <time dateTime={e.occurredAt}>{when(e.occurredAt)}</time>
-          <div><strong>{describeEvent(e, viewer)}</strong> <span className={`badge badge-${e.toStatus}`}>{offerStatusLabel(e.toStatus, viewer)}</span></div>
+          <div><strong>{describeEvent(e, viewer)}</strong> {e.toStatus ? <span className={`badge badge-${e.toStatus}`}>{offerStatusLabel(e.toStatus, viewer)}</span> : null}</div>
           {e.terms ? <TermsLine t={e.terms} /> : null}
         </li>
       ))}

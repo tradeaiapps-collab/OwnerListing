@@ -27,7 +27,7 @@ export async function offerTimelinePg(db: Queryable, offerId: string): Promise<T
       }
     } : {}),
     ...(r["from_status"] ? { fromStatus: String(r["from_status"]) } : {}),
-    toStatus: String(r["to_status"]),
+    ...(r["to_status"] ? { toStatus: String(r["to_status"]) } : {}),
     occurredAt: iso(r["occurred_at"] as Date | string)
   }));
 }
