@@ -56,7 +56,7 @@ All demo email addresses end in `@demo.invalid` (not real).
 
 | Account | Site | What it can do |
 |---|---|---|
-| Sarah Mitchell (owner) | public | Owns 4 listings (Paddington QLD sale, New Farm QLD rent, Bondi NSW sale, Randwick NSW rent), 1 paid invoice, 2 submitted offers, enquiries |
+| Sarah Mitchell (owner) | public | Owns 4 listings (Paddington QLD sale, New Farm QLD rent, Bondi NSW sale, Randwick NSW rent), 1 paid invoice, 3 offers from James (two on Paddington: an earlier one she asked him to improve, then a higher one), enquiries |
 | Daniel Okafor (owner) | public | Owns 4 listings (Fitzroy North VIC sale, Windsor VIC rent, Chermside QLD sale, Sydney NSW rent), 1 pending invoice, an open offer-link request to answer |
 | Mia Chen (agent) | public | Verified QLD licence, appointed on Sarah's Paddington listing |
 | James Nguyen (buyer, fully verified) | public | Email, phone and ID verified; has enquiries and two offers |
