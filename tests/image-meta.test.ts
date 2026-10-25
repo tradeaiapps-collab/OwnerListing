@@ -120,3 +120,48 @@ describe.skipIf(!sharp)("round trip with a real encoder", () => {
     expect([meta.format, meta.width, meta.height, meta.exif]).toEqual(["webp", 300, 200, undefined]);
   });
 });
+
+describe("hidden data and size tricks (security review)", () => {
+  const splice = (b: Uint8Array, at: number, ins: number[]) => Uint8Array.from([...b.subarray(0, at), ...ins, ...b.subarray(at)]);
+  const withChunk = (b: Uint8Array, type: string, data: string) => {
+    const d = Array.from(Buffer.from(data, "latin1"));
+    const n = d.length;
+    const out = Buffer.from([...b, ...Buffer.from(type, "latin1"), n & 0xff, (n >> 8) & 0xff, 0, 0, ...d, ...(n & 1 ? [0] : [])]);
+    out.writeUInt32LE(out.length - 8, 4);
+    return new Uint8Array(out);
+  };
+
+  it("JPEG: refuses reserved/extension segments that could carry hidden data", () => {
+    const src = splice(jpeg(), 2, [0xff, 0xf0, 0, 8, ...Buffer.from("SECRET", "latin1")]);
+    expect(stripImageMetadata(src, "image/jpeg").ok).toBe(false);
+  });
+
+  it("JPEG: refuses a second frame header (declared size must be the decoded size)", () => {
+    const tiny = [8, 0, 10, 0, 10, 1, 1, 0x11, 0];
+    const src = splice(jpeg({ width: 8000, height: 7000 }), 2, [0xff, 0xc0, 0, tiny.length + 2, ...tiny]);
+    expect(stripImageMetadata(src, "image/jpeg").ok).toBe(false);
+  });
+
+  it("PNG: refuses a second IHDR", () => {
+    const ihdr = Buffer.alloc(13); ihdr.writeUInt32BE(300, 0); ihdr.writeUInt32BE(200, 4); ihdr[8] = 8; ihdr[9] = 2;
+    expect(stripImageMetadata(png({ extra: [["IHDR", ihdr.toString("latin1")]] }), "image/png").ok).toBe(false);
+  });
+
+  it("WebP: drops unknown chunks", () => {
+    const r = ok(stripImageMetadata(withChunk(webp(), "ABCD", "HIDDEN-SECRET"), "image/webp"));
+    expect(has(r.bytes, "HIDDEN-SECRET")).toBe(false);
+    expect(Buffer.from(r.bytes).readUInt32LE(4)).toBe(r.bytes.length - 8);
+  });
+
+  it("WebP: refuses animation (flag or ANIM/ANMF chunks)", () => {
+    const flagged = new Uint8Array(webp()); flagged[20] = flagged[20]! | 0x02;
+    expect(stripImageMetadata(flagged, "image/webp")).toEqual({ ok: false, reason: "Animated images cannot be added." });
+    expect(stripImageMetadata(withChunk(webp(), "ANMF", "x".repeat(16)), "image/webp").ok).toBe(false);
+  });
+
+  it("WebP: refuses a canvas size that differs from the frame size", () => {
+    const src = new Uint8Array(webp({ lossless: true, width: 1000, height: 750 }));
+    src[24] = 199; src[25] = 0; src[26] = 0; // canvas width 200
+    expect(stripImageMetadata(src, "image/webp").ok).toBe(false);
+  });
+});

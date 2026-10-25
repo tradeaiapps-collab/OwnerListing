@@ -4,6 +4,8 @@
  * What is removed: EXIF (GPS, camera, serial numbers, dates), XMP, IPTC/Photoshop, comments, text chunks, MPF extra pictures
  * and embedded thumbnails. What is kept: pixels, colour profile (ICC), JFIF and Adobe colour markers, and for JPEG the
  * orientation only (rewritten as a one-entry EXIF block, so phone photos still display the right way up).
+ * Only known segments/chunks are kept (unknown WebP chunks dropped, unknown JPEG segments refused); one frame/header
+ * only, so the checked size is the decoded size; animated WebP is refused (APNG animation chunks are dropped).
  */
 export type PhotoMime = "image/jpeg" | "image/png" | "image/webp";
 export interface ImageInfo { mime: PhotoMime; width: number; height: number }
@@ -59,12 +61,14 @@ function orientationSegment(o: number): Uint8Array {
 }
 
 const SOF = new Set([0xc0, 0xc1, 0xc2, 0xc3, 0xc5, 0xc6, 0xc7, 0xc9, 0xca, 0xcb, 0xcd, 0xce, 0xcf]);
+/** Non-APP segments a baseline/progressive JPEG needs (DHT, DAC, DQT, DRI, SOS, DNL, plus SOF). Anything else is refused. */
+const JPEG_TABLES = new Set([0xc4, 0xcc, 0xdb, 0xdd, 0xda, 0xdc]);
 
 function stripJpeg(b: Uint8Array): StripResult {
   if (b.length < 4 || b[0] !== 0xff || b[1] !== 0xd8) return bad("Not a JPEG image.");
   const out: Uint8Array[] = [Uint8Array.from([0xff, 0xd8])];
   let orientation = 1, width = 0, height = 0, pos = 2, wroteOrientation = false;
-  let sawScan = false;
+  let sawScan = false, frames = 0;
   for (;;) {
     // Segment mode: expect a marker.
     if (pos >= b.length || b[pos] !== 0xff) return bad("The JPEG file is damaged.");
@@ -89,9 +93,11 @@ function stripJpeg(b: Uint8Array): StripResult {
     else if (m === 0xe2) keep = data.length >= 12 && ascii(data, 0, 12) === "ICC_PROFILE\0";
     else if (m === 0xee) keep = data.length >= 5 && ascii(data, 0, 5) === "Adobe";
     else if ((m >= 0xe3 && m <= 0xef) || m === 0xfe) keep = false;
-    else keep = true;
+    else if (SOF.has(m) || JPEG_TABLES.has(m)) keep = true;
+    else return bad("The JPEG file uses an unsupported feature."); // JPGn, SOI inside, hierarchical: could carry hidden data
     if (SOF.has(m)) {
-      if (data.length < 6) return bad("The JPEG file is damaged.");
+      // One frame only: a second SOF could declare a different (smaller) size than the one a decoder uses.
+      if (data.length < 6 || ++frames > 1) return bad("The JPEG file is damaged.");
       height = u16be(data, 1); width = u16be(data, 3);
     }
     if (m === 0xda && !wroteOrientation) {
@@ -115,6 +121,9 @@ function stripJpeg(b: Uint8Array): StripResult {
   return { ok: true, bytes: concat(out), info: { mime: "image/jpeg", width: swap ? height : width, height: swap ? width : height } };
 }
 
+/** WebP chunks kept for a still image. Unknown chunks are dropped (they may carry metadata); animation is refused. */
+const WEBP_KEEP = new Set(["VP8 ", "VP8L", "ALPH", "ICCP"]);
+
 const PNG_SIG = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
 const PNG_KEEP = new Set(["IHDR", "PLTE", "IDAT", "IEND", "tRNS", "gAMA", "cHRM", "sRGB", "iCCP", "sBIT", "pHYs", "bKGD", "cICP"]);
 
@@ -128,7 +137,11 @@ function stripPng(b: Uint8Array): StripResult {
     const type = ascii(b, pos + 4, 4);
     if (!/^[A-Za-z]{4}$/.test(type) || len > b.length || pos + 12 + len > b.length) return bad("The PNG file is damaged.");
     if (first && type !== "IHDR") return bad("The PNG file is damaged.");
-    if (type === "IHDR") { width = u32be(b, pos + 8); height = u32be(b, pos + 12); }
+    if (type === "IHDR") {
+      // Exactly one IHDR: a second one could declare a smaller size than the one a decoder uses.
+      if (!first || len !== 13) return bad("The PNG file is damaged.");
+      width = u32be(b, pos + 8); height = u32be(b, pos + 12);
+    }
     if (type === "IDAT") sawData = true;
     const chunk = b.subarray(pos, pos + 12 + len);
     if (PNG_KEEP.has(type)) out.push(chunk);
@@ -146,7 +159,7 @@ function stripWebp(b: Uint8Array): StripResult {
   const end = 8 + u32le(b, 4);
   if (end > b.length || end < 20) return bad("The WebP file is damaged.");
   const chunks: Uint8Array[] = [];
-  let pos = 12, width = 0, height = 0, sawData = false;
+  let pos = 12, width = 0, height = 0, sawData = false, canvas = false;
   while (pos < end) {
     if (pos + 8 > end) return bad("The WebP file is damaged.");
     const type = ascii(b, pos, 4), len = u32le(b, pos + 4);
@@ -155,10 +168,11 @@ function stripWebp(b: Uint8Array): StripResult {
     const data = b.subarray(pos + 8, pos + 8 + len);
     const chunk = b.subarray(pos, Math.min(pos + 8 + padded, end));
     pos += 8 + padded;
-    if (type === "EXIF" || type === "XMP ") continue;
+    if (type === "ANIM" || type === "ANMF") return bad("Animated images cannot be added.");
     if (type === "VP8X") {
-      if (len < 10) return bad("The WebP file is damaged.");
-      width = u24le(data, 4) + 1; height = u24le(data, 7) + 1;
+      if (len < 10 || canvas || chunks.length) return bad("The WebP file is damaged.");
+      if (data[0]! & 0x02) return bad("Animated images cannot be added.");
+      width = u24le(data, 4) + 1; height = u24le(data, 7) + 1; canvas = true;
       const copy = new Uint8Array(chunk);
       copy[8] = copy[8]! & ~(0x08 | 0x04); // clear the EXIF and XMP flags
       chunks.push(copy);
@@ -166,17 +180,19 @@ function stripWebp(b: Uint8Array): StripResult {
     }
     if (type === "VP8 ") {
       if (len < 10 || data[3] !== 0x9d || data[4] !== 0x01 || data[5] !== 0x2a) return bad("The WebP file is damaged.");
-      if (!width) { width = (data[6]! | (data[7]! << 8)) & 0x3fff; height = (data[8]! | (data[9]! << 8)) & 0x3fff; }
+      const w = (data[6]! | (data[7]! << 8)) & 0x3fff, h = (data[8]! | (data[9]! << 8)) & 0x3fff;
+      if (sawData || (canvas && (w !== width || h !== height))) return bad("The WebP file is damaged.");
+      width = w; height = h;
       sawData = true;
     } else if (type === "VP8L") {
       if (len < 5 || data[0] !== 0x2f) return bad("The WebP file is damaged.");
-      if (!width) {
-        const bits = u32le(data, 1);
-        width = (bits & 0x3fff) + 1; height = ((bits >>> 14) & 0x3fff) + 1;
-      }
+      const bits = u32le(data, 1);
+      const w = (bits & 0x3fff) + 1, h = ((bits >>> 14) & 0x3fff) + 1;
+      if (sawData || (canvas && (w !== width || h !== height))) return bad("The WebP file is damaged.");
+      width = w; height = h;
       sawData = true;
-    } else if (type === "ANMF") sawData = true;
-    chunks.push(chunk);
+    }
+    if (WEBP_KEEP.has(type)) chunks.push(chunk);
   }
   if (!sawData || !width || !height) return bad("The WebP file has no image data.");
   const total = 4 + chunks.reduce((n, c) => n + c.length, 0);

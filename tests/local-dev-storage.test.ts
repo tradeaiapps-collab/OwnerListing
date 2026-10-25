@@ -42,12 +42,15 @@ describe("local test kit storage (LOCAL_STORAGE_DIR)", () => {
 
 describe("local-noop malware scanner", () => {
   it("only under the same dev-only guard, and a real clamd setting wins", async () => {
-    const noop = malwareScannerFromEnv({ MALWARE_SCAN_DRIVER: "local-noop", LOCAL_STORAGE_DIR: DIR });
+    const noop = malwareScannerFromEnv({ MALWARE_SCAN_DRIVER: "local-noop", LOCAL_STORAGE_DIR: DIR, NODE_ENV: "development" });
     expect(noop.configured).toBe(true);
     expect(await noop.scan(Uint8Array.from([1]))).toBe("clean");
     expect(malwareScannerFromEnv({ MALWARE_SCAN_DRIVER: "local-noop" }).configured).toBe(false);
+    // NODE_ENV unset (e.g. a custom server or worker) fails closed.
+    expect(malwareScannerFromEnv({ MALWARE_SCAN_DRIVER: "local-noop", LOCAL_STORAGE_DIR: DIR }).configured).toBe(false);
+    expect(malwareScannerFromEnv({ MALWARE_SCAN_DRIVER: "local-noop", LOCAL_STORAGE_DIR: DIR, NODE_ENV: "test" }).configured).toBe(true);
     expect(malwareScannerFromEnv({ MALWARE_SCAN_DRIVER: "local-noop", LOCAL_STORAGE_DIR: DIR, NODE_ENV: "production" }).configured).toBe(false);
-    expect(malwareScannerFromEnv({ MALWARE_SCAN_DRIVER: "local-noop", LOCAL_STORAGE_DIR: DIR, VERCEL: "1" }).configured).toBe(false);
+    expect(malwareScannerFromEnv({ MALWARE_SCAN_DRIVER: "local-noop", LOCAL_STORAGE_DIR: DIR, NODE_ENV: "development", VERCEL: "1" }).configured).toBe(false);
     expect(malwareScannerFromEnv({ MALWARE_SCAN_DRIVER: "noop", LOCAL_STORAGE_DIR: DIR }).configured).toBe(false);
   });
 });
