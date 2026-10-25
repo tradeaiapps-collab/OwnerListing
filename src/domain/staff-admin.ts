@@ -8,6 +8,7 @@ export const REASON_ERROR = `A reason of at least ${MIN_REASON} characters is re
 export interface StaffSection { href: string; label: string; permissions: readonly StaffPermission[] }
 
 export const STAFF_SECTIONS: readonly StaffSection[] = [
+  { href: "/staff/dashboard", label: "Admin dashboard", permissions: ["report.sales", "report.operations", "listing.moderate", "user.manage"] },
   { href: "/staff/cases", label: "Admin cases", permissions: ["case.manage"] },
   { href: "/staff/safety", label: "Message safety review", permissions: ["case.manage"] },
   { href: "/staff/trust-accounts", label: "Trust account approvals", permissions: ["trust_account.approve"] },
@@ -15,6 +16,8 @@ export const STAFF_SECTIONS: readonly StaffSection[] = [
   { href: "/staff/wording-flags", label: "Discriminatory wording review", permissions: ["wording.review"] },
   { href: "/staff/disclosures", label: "Disclosure requirements", permissions: ["disclosure.config_edit", "disclosure.config_approve"] },
   { href: "/staff/disclosures/reviews", label: "Disclosure evidence review", permissions: ["disclosure.verify"] },
+  { href: "/staff/analytics", label: "Platform analytics", permissions: ["report.sales"] },
+  { href: "/staff/report-builder", label: "Report builder", permissions: ["report.sales"] },
   { href: "/staff/reports", label: "Reports", permissions: ["report.sales"] },
   { href: "/staff/audit", label: "Audit log", permissions: ["report.audit"] },
   { href: "/staff/pricing", label: "Pricing and plans", permissions: ["pricing.manage"] },

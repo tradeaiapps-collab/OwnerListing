@@ -22,6 +22,16 @@ export async function staffGate(req: Request, permission: StaffPermission): Prom
   return staff;
 }
 
+/** staffGate for a screen that opens with any one of several permissions (the response is then shaped by what the role holds). */
+export async function staffGateAny(req: Request, permissions: readonly StaffPermission[]): Promise<StaffActor | NextResponse> {
+  const blocked = csrfGuard(req);
+  if (blocked) return blocked;
+  const staff = await getStaff(req);
+  if (!staff) return fail(401, "Sign in as staff.");
+  if (!permissions.some(p => staffCan(staff, p))) return fail(403, "Not allowed.");
+  return staff;
+}
+
 export async function readJsonObject(req: Request): Promise<Record<string, unknown> | null> {
   const body: unknown = await req.json().catch(() => null);
   return body !== null && typeof body === "object" && !Array.isArray(body) ? (body as Record<string, unknown>) : null;
