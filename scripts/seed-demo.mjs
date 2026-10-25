@@ -212,11 +212,14 @@ try {
   await msg(e3, buyerEmail, "Hi, is the Bondi cottage open for inspection this week?", 15);
 
   // Two submitted formal offers (single-use links already spent) on Sarah's sale listings.
-  for (const [lid, price, deposit, days] of [[listing[0], 165000000, 16500000, 42], [listing[2], 318000000, 31800000, 60]]) {
+  // Paddington has an earlier offer the owner asked James to improve (offer history and timeline on the offer page).
+  for (const [lid, price, deposit, days, ago, status] of [[listing[0], 160000000, 16000000, 42, "3 days", "countered"], [listing[0], 165000000, 16500000, 42, "1 day", "submitted"], [listing[2], 318000000, 31800000, 60, "1 day", "submitted"]]) {
     const hash = randomBytes(32).toString("hex");
-    await q(`INSERT INTO offer_link (token_hash, listing_id, buyer_user_id, expires_at, used_at) VALUES ($1, $2, $3, now() + interval '7 days', now())`, [hash, lid, buyerVerified]);
-    await q(`INSERT INTO formal_offer (listing_id, buyer_user_id, price_cents, conditions, settlement_days, deposit_cents, confirmed_final, link_token_hash)
-             VALUES ($1, $2, $3, '["Subject to finance","Subject to building and pest inspection"]'::jsonb, $5, $4, true, $6)`, [lid, buyerVerified, price, deposit, days, hash]);
+    await q(`INSERT INTO offer_link (token_hash, listing_id, buyer_user_id, expires_at, used_at) VALUES ($1, $2, $3, now() + interval '7 days', now() - $4::interval)`, [hash, lid, buyerVerified, ago]);
+    const [o] = await q(`INSERT INTO formal_offer (listing_id, buyer_user_id, price_cents, conditions, settlement_days, deposit_cents, confirmed_final, link_token_hash, status, submitted_at)
+             VALUES ($1, $2, $3, '["Subject to finance","Subject to building and pest inspection"]'::jsonb, $5, $4, true, $6, $7, now() - $8::interval) RETURNING id, submitted_at`, [lid, buyerVerified, price, deposit, days, hash, status, ago]);
+    await q(`INSERT INTO offer_event (offer_id, event_type, actor_kind, actor_user_id, price_cents, settlement_days, occurred_at) VALUES ($1, 'submitted', 'buyer', $2, $3, $4, $5)`, [o.id, buyerVerified, price, days, o.submitted_at]);
+    if (status === "countered") await q(`INSERT INTO offer_event (offer_id, event_type, actor_kind, actor_user_id, occurred_at) VALUES ($1, 'countered', 'owner', $2, $3::timestamptz + interval '5 hours')`, [o.id, ownerA, o.submitted_at]);
   }
 
   // ID review queue: two buyers waiting for staff review (no images locally: storage is off).
@@ -224,7 +227,7 @@ try {
     await q(`INSERT INTO id_submission (user_id, document_kind, document_country, expiry_date, selfie_captured_in_app) VALUES ($1, $2, 'AU', (now() + interval '2 years')::date, true)`, [uid, kind]);
   }
   await db.query("COMMIT");
-  console.log(`Demo data created: 6 staff, 2 owners, 1 agent, 3 buyers, ${listing.length} listings, 3 enquiries, 2 offers, 2 invoices, 2 ID reviews. (run ${randomUUID().slice(0, 8)})`);
+  console.log(`Demo data created: 6 staff, 2 owners, 1 agent, 3 buyers, ${listing.length} listings, 3 enquiries, 3 offers, 2 invoices, 2 ID reviews. (run ${randomUUID().slice(0, 8)})`);
   await seedPhotos(db);
 } catch (e) {
   await db.query("ROLLBACK").catch(() => undefined);
