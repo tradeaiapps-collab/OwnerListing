@@ -2,6 +2,8 @@
 .skip-link { position: absolute; left: var(--space-2); top: -100px; z-index: 30; padding: var(--space-3) var(--space-4); background: var(--brand); color: var(--brand-text); border-radius: 8px; font-weight: 600; }
 .skip-link:focus { top: var(--space-2); }
 #main-content:focus { outline: none; }
+/* Visually hidden but still read and focusable. !important: global input rules have higher specificity (width: 100%, min-height). */
+.sr-only { position: absolute !important; width: 1px !important; height: 1px !important; min-width: 0 !important; min-height: 0 !important; padding: 0 !important; margin: -1px !important; overflow: hidden !important; clip: rect(0 0 0 0) !important; white-space: nowrap !important; border: 0 !important; }
 :focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
 main :is(p, div) > a:not(.button) { display: inline-block; padding-block: 10px; }
 @media (prefers-reduced-motion: reduce) {

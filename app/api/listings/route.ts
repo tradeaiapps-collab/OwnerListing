@@ -2,7 +2,10 @@ import { NextResponse } from "next/server";
 import { createDraft, parseDraftInput, searchPublished, toPublicListing } from "../../../src/domain/listing-service";
 import { parseSearchQuery } from "../../../src/domain/listing-search";
 import { forbiddenFor } from "../../../src/domain/access";
-import { getActor, getDeps } from "../../../src/server/context";
+import { getActor, getDb, getDeps } from "../../../src/server/context";
+import { cardPhoto } from "../../../src/domain/listing-photos";
+import type { PhotoStore } from "../../../src/domain/photo-service";
+import { createPgPhotoStore } from "../../../src/server/photos-db";
 import { failure, unauthenticated } from "../../../src/server/http";
 import { csrfGuard } from "../../../src/server/csrf";
 import { requireCurrentTerms } from "../../../src/server/terms-guard";
@@ -11,7 +14,11 @@ import { requireCurrentTerms } from "../../../src/server/terms-guard";
 export async function GET(req: Request) {
   const query = parseSearchQuery(new URL(req.url).searchParams);
   const page = await searchPublished(getDeps(), query);
-  return NextResponse.json({ listings: page.items.map(toPublicListing), total: page.total, page: page.page, pageSize: page.pageSize });
+  // Cover photo and photo count per card. A photo lookup failure only means cards show without photos.
+  let covers: Awaited<ReturnType<PhotoStore["coversFor"]>> = new Map();
+  try { covers = await createPgPhotoStore(getDb()).coversFor(page.items.map(l => l.id)); } catch { /* cards without photos */ }
+  const listings = page.items.map(l => ({ ...toPublicListing(l), ...cardPhoto(covers.get(l.id)) }));
+  return NextResponse.json({ listings, total: page.total, page: page.page, pageSize: page.pageSize });
 }
 
 /** Creates a draft owned by the signed-in user. */

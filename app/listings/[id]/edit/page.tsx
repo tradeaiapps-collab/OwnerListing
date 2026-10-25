@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { BondPathwayField, ListingFields, type BondState, type ListingDefaults } from "../../fields";
 import { JSON_HEADERS, listingFormBody } from "../../ui";
+import { PhotoManager } from "../../photo-manager";
 
 type Loaded = ListingDefaults & { id: string; status: string };
 type Check = { allowed: boolean; reasons: string[] };
@@ -134,6 +135,7 @@ export default function EditListing() {
           </form>
           {saved && <p role="status">Changes saved.</p>}
           {error && <p role="alert">{error}</p>}
+          <PhotoManager listingId={listing.id} />
           <section className="panel">
             {listing.transactionType === "rent" && <BondPathwayField value={bond} state={bondState} onChange={saveBond} />}
             <button type="button" className="secondary" disabled={busy} onClick={runCheck}>Check if it can be published</button>

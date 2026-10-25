@@ -1,0 +1,244 @@
+import type { JobAssignment } from "./job-chat";
+import type { PhotoMime } from "./image-meta";
+
+/**
+ * Listing photo gallery rules (pure). Two records:
+ * - listing_photo: one immutable row per stored file (never updated, never deleted).
+ * - listing_photo_layout: append-only; each row is the whole ordered gallery at that moment (order, captions, alt text,
+ *   hidden flags, tour link). The newest row is the current gallery. The first visible photo is the cover.
+ * Before a listing has ever been published the owner may drop a photo from the gallery (it is then never served again).
+ * After that, a photo can only be hidden, reordered or replaced; its file and every earlier layout stay on record.
+ */
+export type PhotoKind = "photo" | "floorplan";
+export const PHOTO_KINDS: readonly PhotoKind[] = ["photo", "floorplan"];
+export const PHOTO_MIMES: readonly PhotoMime[] = ["image/jpeg", "image/png", "image/webp"];
+
+export const PHOTO_LIMITS = {
+  maxPhotos: 40,
+  maxFloorplans: 10,
+  /** Hidden entries count here too, so a published listing cannot grow without bound. */
+  maxEntries: 120,
+  maxBytes: 10_000_000,
+  minSide: 200,
+  maxSide: 12_000,
+  maxPixels: 60_000_000,
+  captionMax: 140,
+  altMax: 200,
+  tourUrlMax: 500
+} as const;
+
+export type PhotoSize = "thumb" | "medium" | "full";
+export const VARIANT_WIDTH: Record<Exclude<PhotoSize, "full">, number> = { thumb: 480, medium: 1280 };
+
+/** Immutable file record. Storage keys are never sent to a browser. */
+export interface PhotoRecord {
+  id: string;
+  listingId: string;
+  kind: PhotoKind;
+  uploadedBy: string;
+  contentType: PhotoMime;
+  width: number;
+  height: number;
+  /** Which resized copies exist (made with the optional image library). */
+  variants: Exclude<PhotoSize, "full">[];
+}
+
+export interface LayoutEntry { photoId: string; caption: string; alt: string; hidden: boolean }
+export interface Layout { version: number; entries: LayoutEntry[]; tourUrl: string | null }
+export const EMPTY_LAYOUT: Layout = { version: 0, entries: [], tourUrl: null };
+
+/** What the browser gets for one photo. */
+export interface PhotoView {
+  id: string; kind: PhotoKind; width: number; height: number; caption: string; alt: string; hidden: boolean;
+  sizes: PhotoSize[];
+}
+
+// --- Who may do what ---------------------------------------------------------------------------------------------
+
+const MEDIA_ROLES: readonly JobAssignment["kind"][] = ["photographer", "agent"];
+
+/** Owner, or an approved photographer/agent on this listing, may add photos. */
+export function canUploadPhotos(userId: string, ownerUserId: string, listingId: string, assignments: readonly JobAssignment[]): boolean {
+  if (userId === ownerUserId) return true;
+  return assignments.some(a => a.listingId === listingId && a.contractorUserId === userId && a.status === "approved" && MEDIA_ROLES.includes(a.kind));
+}
+
+/** Draft photos: the owner and an approved or completed photographer/agent on the listing (staff are checked separately). */
+export function canViewDraftPhotos(userId: string | undefined, ownerUserId: string, listingId: string, assignments: readonly JobAssignment[]): boolean {
+  if (userId === undefined) return false;
+  if (userId === ownerUserId) return true;
+  return assignments.some(a => a.listingId === listingId && a.contractorUserId === userId &&
+    (a.status === "approved" || a.status === "completed") && MEDIA_ROLES.includes(a.kind));
+}
+
+/** Withdrawn listings may have been live, so they count as published (same rule as documents). */
+export const everPublished = (status: string) => status === "published" || status === "withdrawn";
+/** Order, captions and hiding can change while the listing is a draft, in review or live. A withdrawn listing is read-only. */
+export const galleryEditable = (status: string) => status === "draft" || status === "pending_review" || status === "published";
+
+// --- Text cleaning -----------------------------------------------------------------------------------------------
+
+/** Trims, folds whitespace and drops control and bidi-override characters. */
+export function cleanText(v: unknown, max: number): string | null {
+  if (v === undefined || v === null) return "";
+  if (typeof v !== "string") return null;
+  const s = v.replace(/[\u0000-\u001f\u007f​-‏‪-‮⁦-⁩]/g, " ").replace(/\s+/g, " ").trim();
+  return s.length > max ? null : s;
+}
+
+/** Optional video or virtual tour link: https only, no credentials, no odd ports. */
+export function cleanTourUrl(v: unknown): string | null | undefined {
+  if (v === undefined || v === null || v === "") return null;
+  if (typeof v !== "string" || v.length > PHOTO_LIMITS.tourUrlMax) return undefined;
+  try {
+    const u = new URL(v.trim());
+    if (u.protocol !== "https:" || u.username || u.password || (u.port && u.port !== "443")) return undefined;
+    return u.toString();
+  } catch {
+    return undefined;
+  }
+}
+
+// --- Upload checks -----------------------------------------------------------------------------------------------
+
+/** Size and dimension checks on the stripped image (the type has already been sniffed from the bytes). */
+export function checkImage(info: { width: number; height: number }, sizeBytes: number): string | null {
+  if (!Number.isInteger(sizeBytes) || sizeBytes <= 0) return "The file is empty.";
+  if (sizeBytes > PHOTO_LIMITS.maxBytes) return "Each photo must be 10 MB or smaller.";
+  const { width: w, height: h } = info;
+  if (Math.min(w, h) < PHOTO_LIMITS.minSide) return `Photos must be at least ${PHOTO_LIMITS.minSide} pixels on each side.`;
+  if (Math.max(w, h) > PHOTO_LIMITS.maxSide || w * h > PHOTO_LIMITS.maxPixels) return "The image is too large in pixels.";
+  return null;
+}
+
+const countKind = (entries: readonly LayoutEntry[], photos: ReadonlyMap<string, PhotoRecord>, kind: PhotoKind) =>
+  entries.filter(e => !e.hidden && photos.get(e.photoId)?.kind === kind).length;
+
+/** Room for one more of this kind? Checked against the current layout before anything is stored. */
+export function roomFor(layout: Layout, photos: ReadonlyMap<string, PhotoRecord>, kind: PhotoKind, replacing = false): string | null {
+  if (layout.entries.length >= PHOTO_LIMITS.maxEntries) return "This gallery is full.";
+  if (replacing) return null;
+  if (kind === "photo" && countKind(layout.entries, photos, "photo") >= PHOTO_LIMITS.maxPhotos) return `A listing can show up to ${PHOTO_LIMITS.maxPhotos} photos.`;
+  if (kind === "floorplan" && countKind(layout.entries, photos, "floorplan") >= PHOTO_LIMITS.maxFloorplans) return `A listing can show up to ${PHOTO_LIMITS.maxFloorplans} floor plans.`;
+  return null;
+}
+
+/**
+ * The layout after an upload: a new photo goes at the end, a replacement takes the old one's place (keeping its caption
+ * and alt text) and the old one is hidden right after it, so it stays on record.
+ */
+export function layoutWithUpload(layout: Layout, photoId: string, replacesId?: string): LayoutEntry[] {
+  const fresh: LayoutEntry = { photoId, caption: "", alt: "", hidden: false };
+  if (!replacesId) return [...layout.entries, fresh];
+  const out: LayoutEntry[] = [];
+  for (const e of layout.entries) {
+    if (e.photoId === replacesId) out.push({ ...fresh, caption: e.caption, alt: e.alt }, { ...e, hidden: true });
+    else out.push(e);
+  }
+  return out;
+}
+
+// --- Layout changes ----------------------------------------------------------------------------------------------
+
+export type LayoutCheck = { ok: true; entries: LayoutEntry[]; tourUrl: string | null } | { ok: false; message: string };
+
+/**
+ * Validates a whole new layout sent by the owner (order, captions, alt text, hidden flags, tour link).
+ * Every entry must be a photo of this listing that is in the current layout, with no repeats. Leaving a photo out
+ * removes it, which is only allowed before the listing has ever been published; afterwards it must be hidden instead.
+ */
+export function checkLayoutChange(
+  current: Layout, photos: ReadonlyMap<string, PhotoRecord>, body: unknown, ctx: { everPublished: boolean }
+): LayoutCheck {
+  if (typeof body !== "object" || body === null) return { ok: false, message: "Invalid gallery." };
+  const raw = (body as Record<string, unknown>)["entries"];
+  if (!Array.isArray(raw) || raw.length > PHOTO_LIMITS.maxEntries) return { ok: false, message: "Invalid gallery." };
+  const inCurrent = new Set(current.entries.map(e => e.photoId));
+  const seen = new Set<string>();
+  const entries: LayoutEntry[] = [];
+  for (const r of raw) {
+    if (typeof r !== "object" || r === null) return { ok: false, message: "Invalid gallery." };
+    const o = r as Record<string, unknown>;
+    const id = o["photoId"];
+    if (typeof id !== "string" || !inCurrent.has(id) || !photos.has(id) || seen.has(id)) return { ok: false, message: "The gallery has changed. Reload and try again." };
+    seen.add(id);
+    const caption = cleanText(o["caption"], PHOTO_LIMITS.captionMax);
+    if (caption === null) return { ok: false, message: `Captions must be ${PHOTO_LIMITS.captionMax} characters or fewer.` };
+    const alt = cleanText(o["alt"], PHOTO_LIMITS.altMax);
+    if (alt === null) return { ok: false, message: `Descriptions must be ${PHOTO_LIMITS.altMax} characters or fewer.` };
+    if (o["hidden"] !== undefined && typeof o["hidden"] !== "boolean") return { ok: false, message: "Invalid gallery." };
+    entries.push({ photoId: id, caption, alt, hidden: o["hidden"] === true });
+  }
+  const dropped = current.entries.filter(e => !seen.has(e.photoId));
+  if (dropped.length && ctx.everPublished) return { ok: false, message: "Photos of a published listing cannot be deleted. Hide or replace them instead." };
+  if (countKind(entries, photos, "photo") > PHOTO_LIMITS.maxPhotos) return { ok: false, message: `A listing can show up to ${PHOTO_LIMITS.maxPhotos} photos.` };
+  if (countKind(entries, photos, "floorplan") > PHOTO_LIMITS.maxFloorplans) return { ok: false, message: `A listing can show up to ${PHOTO_LIMITS.maxFloorplans} floor plans.` };
+  const hasTour = Object.prototype.hasOwnProperty.call(body, "tourUrl");
+  const tourUrl = hasTour ? cleanTourUrl((body as Record<string, unknown>)["tourUrl"]) : current.tourUrl;
+  if (tourUrl === undefined) return { ok: false, message: "The tour link must be a full https:// address." };
+  return { ok: true, entries, tourUrl };
+}
+
+/** Pure reorder helper for the owner screen (also used by the up/down buttons). */
+export function moveEntry<T>(list: readonly T[], from: number, to: number): T[] {
+  if (from < 0 || from >= list.length || to < 0 || to >= list.length || from === to) return [...list];
+  const out = [...list];
+  const [item] = out.splice(from, 1);
+  out.splice(to, 0, item!);
+  return out;
+}
+
+/** Puts a photo first, which makes it the cover. */
+export function makeCover<T>(list: readonly T[], isIt: (t: T) => boolean): T[] {
+  const i = list.findIndex(isIt);
+  return i < 0 ? [...list] : moveEntry(list, i, 0);
+}
+
+// --- Views -------------------------------------------------------------------------------------------------------
+
+/** Gallery entries joined with their file records. Public viewers never get hidden entries. */
+export function viewsFor(layout: Layout, photos: ReadonlyMap<string, PhotoRecord>, includeHidden: boolean): PhotoView[] {
+  const out: PhotoView[] = [];
+  for (const e of layout.entries) {
+    const p = photos.get(e.photoId);
+    if (!p || (e.hidden && !includeHidden)) continue;
+    out.push({ id: p.id, kind: p.kind, width: p.width, height: p.height, caption: e.caption, alt: e.alt, hidden: e.hidden, sizes: [...p.variants, "full"] });
+  }
+  return out;
+}
+
+/** Cover photo and count for a browse card: the first visible photo (floor plans are never the cover). */
+export function coverOf(layout: Layout, photos: ReadonlyMap<string, PhotoRecord>): { cover: PhotoView | null; photoCount: number } {
+  const visible = viewsFor(layout, photos, false).filter(v => v.kind === "photo");
+  return { cover: visible[0] ?? null, photoCount: visible.length };
+}
+
+export interface CardPhoto { photoCount: number; cover?: { id: string; width: number; height: number; srcSet: string; alt: string } }
+
+/** Fields a browse card needs: cover image (with srcset) and the visible photo count. */
+export function cardPhoto(c: { cover: PhotoView | null; photoCount: number } | undefined): CardPhoto {
+  if (!c?.cover) return { photoCount: c?.photoCount ?? 0 };
+  const v = c.cover;
+  return { photoCount: c.photoCount, cover: { id: v.id, width: v.width, height: v.height, srcSet: srcSetFor(v), alt: v.alt || v.caption } };
+}
+
+/** Public, unguessable URL of one size of a photo. */
+export const photoUrl = (id: string, size: PhotoSize = "full") => (size === "full" ? `/api/photos/${id}` : `/api/photos/${id}?size=${size}`);
+
+/** srcset with the real width of each stored size (a resized copy is never wider than the original). */
+export function srcSetFor(v: Pick<PhotoView, "id" | "width" | "sizes">): string {
+  const parts: string[] = [];
+  for (const s of v.sizes) {
+    const w = s === "full" ? v.width : Math.min(VARIANT_WIDTH[s], v.width);
+    if (s !== "full" && w >= v.width) continue;
+    parts.push(`${photoUrl(v.id, s)} ${w}w`);
+  }
+  return parts.join(", ");
+}
+
+/** Text alternative for an image: the owner's description, else the caption, else a numbered fallback. */
+export function altFor(v: Pick<PhotoView, "alt" | "caption" | "kind">, index: number, total: number, title: string): string {
+  if (v.alt) return v.alt;
+  if (v.caption) return v.caption;
+  return `${v.kind === "floorplan" ? "Floor plan" : "Photo"} ${index + 1} of ${total}: ${title}`;
+}

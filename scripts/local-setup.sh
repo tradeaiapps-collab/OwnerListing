@@ -41,6 +41,22 @@ else
   echo "Created .env.local with fresh random secrets."
 fi
 
+# Local-kit values, also added to an older .env.local (only when the line is missing or empty; your own values are kept).
+# Dummy Google keys: without them the site treats sign-in as switched off, so /dev-login works but API calls look signed out.
+ensure_env() {
+  if grep -qE "^$1=.+" .env.local; then return; fi
+  [ -n "$(tail -c1 .env.local)" ] && echo >> .env.local
+  if grep -qE "^$1=" .env.local; then
+    tmp="$(mktemp)"; awk -v k="$1" -v v="$2" 'index($0, k "=") == 1 { print k "=" v; next } { print }' .env.local > "$tmp" && cat "$tmp" > .env.local && rm -f "$tmp"
+  else
+    echo "$1=$2" >> .env.local
+  fi
+}
+ensure_env GOOGLE_CLIENT_ID local-dummy
+ensure_env GOOGLE_CLIENT_SECRET local-dummy
+ensure_env LOCAL_STORAGE_DIR "$(pwd)/.local-storage"
+ensure_env MALWARE_SCAN_DRIVER local-noop
+
 echo "Starting the database..."
 docker compose -f docker-compose.local.yml up -d --wait || fail "The database did not start. Is port 5544 in use?"
 echo "Installing packages..."

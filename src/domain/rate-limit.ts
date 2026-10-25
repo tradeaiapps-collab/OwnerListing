@@ -31,6 +31,13 @@ export const UPLOAD_DAILY_BYTES = 500_000_000;
 export const UPLOAD_QUOTA_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 /**
+ * Listing photos are sent one file per request (a 40-photo gallery is 40 requests), so they have their own bucket.
+ * Rate: 120 photo uploads and 120 gallery saves per user per 10 minutes. Bytes count against the same 500 MB a day.
+ */
+export const PHOTO_UPLOAD_RATE = { windowMs: 10 * 60 * 1000, perUser: 120 } as const;
+export const PHOTO_LAYOUT_RATE = { windowMs: 10 * 60 * 1000, perUser: 120 } as const;
+
+/**
  * Per-user limits on document deletion requests (security review 2026-10, finding 1). Product can change the numbers.
  * Rate: 5 recorded requests per user per 10 minutes. Cap: 20 open requests per user; "open" is every request whose
  * outcome is not delete_now (amend_only, held and rejected wait for a person or the legal process; delete_now needs nothing).

@@ -2,8 +2,8 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { formatPrice } from "../../../src/domain/listing-details";
-import "../../styles/documents.css";
-import { actionHref, publicPhotos } from "../../../src/domain/listing-actions";
+import { actionHref } from "../../../src/domain/listing-actions";
+import { ListingGallery } from "../gallery";
 import { JSON_HEADERS } from "../ui";
 import "../../styles/cards.css";
 import "../../styles/detail.css";
@@ -25,41 +25,6 @@ interface Listing {
   status: string;
   disclosures: { key: string; satisfied: boolean }[];
   updatedAt: string;
-}
-
-type PublicDoc = { id: string; kind: string; visibility: string; status: string };
-
-/** Public photos, floor plans and videos of a published listing. Renders nothing when there are none or they cannot be loaded. */
-function Gallery({ listingId, title }: { listingId: string; title: string }) {
-  const [docs, setDocs] = useState<PublicDoc[]>([]);
-  useEffect(() => {
-    setDocs([]);
-    fetch(`/api/listings/${listingId}/documents`)
-      .then(async r => (r.ok ? (await r.json()).documents as PublicDoc[] : []))
-      .then(all => setDocs(all.filter(d => d.visibility === "public" && d.status === "active")))
-      .catch(() => setDocs([]));
-  }, [listingId]);
-  const images = publicPhotos(docs);
-  const links = [...docs.filter(d => d.kind === "floorplan").map(d => ({ d, label: "Floor plan" })), ...docs.filter(d => d.kind === "video" || d.kind === "video_360").map(d => ({ d, label: d.kind === "video" ? "Video" : "360 video" }))];
-  return (
-    <section aria-label="Photos and plans">
-      {images.length === 0 && <div className="detail-media" role="img" aria-label="No photos added yet"><span>No photos yet</span></div>}
-      {images.length > 0 && (
-        <ul className="gallery">
-          {images.map((d, i) => (
-            <li key={d.id}>
-              <img src={`/api/documents/${d.id}/file`} loading="lazy" alt={`${d.kind === "photo" ? "Photo" : "360 degree photo"} ${i + 1} of ${images.length}: ${title}`} />
-            </li>
-          ))}
-        </ul>
-      )}
-      {links.length > 0 && (
-        <ul className="gallery-links">
-          {links.map(({ d, label }, i) => <li key={d.id}><a href={`/api/documents/${d.id}/file`}>{label} {i + 1} (download)</a></li>)}
-        </ul>
-      )}
-    </section>
-  );
 }
 
 /** Bookmarks the listing for a signed-in buyer (no search is created). Signed-out visitors sign in and return here; owners and agents see no Save button. */
@@ -146,7 +111,7 @@ export default function ListingDetail() {
       <p className="detail-back"><a href="/listings">Back to listings</a></p>
       <div className="detail-layout">
         <div className="detail-main">
-          <Gallery listingId={listing.id} title={listing.title} />
+          <ListingGallery listingId={listing.id} title={listing.title} />
           <p><span className="lcard-tag detail-tag">{tx === "sale" ? "For sale" : "For rent"}</span></p>
           <h1>{listing.title}</h1>
           <p className="detail-address">{listing.address}</p>

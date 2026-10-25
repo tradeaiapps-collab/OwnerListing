@@ -1,12 +1,14 @@
 import { parseSearchQuery } from "../domain/listing-search";
 import { searchPublished, toPublicListing } from "../domain/listing-service";
+import { cardPhoto, type CardPhoto } from "../domain/listing-photos";
 import { getDb, getDeps } from "./context";
+import { createPgPhotoStore } from "./photos-db";
 
-/** A card on the home page. coverUrl stays undefined until listing cover photos exist; the card then shows the photo instead of the placeholder. */
-export interface HomeCard {
+/** A card on the home page, with the listing's cover photo and photo count when it has photos. */
+export type HomeCard = {
   id: string; title: string; suburb?: string; postcode?: string; jurisdiction: string; transactionType: "sale" | "rent";
-  propertyType: string; priceCents?: number; bedrooms?: number; bathrooms?: number; parking?: number; coverUrl?: string;
-}
+  propertyType: string; priceCents?: number; bedrooms?: number; bathrooms?: number; parking?: number;
+} & CardPhoto;
 
 /** Resolves to `fallback` on any error or after `ms`, so a slow or missing database never breaks the home page. */
 async function within<T>(p: () => Promise<T>, ms: number, fallback: T): Promise<T> {
@@ -25,7 +27,10 @@ async function within<T>(p: () => Promise<T>, ms: number, fallback: T): Promise<
 /** Latest published listings (public fields only). */
 export const loadLatest = (n = 8): Promise<HomeCard[]> => within(async () => {
   const page = await searchPublished(getDeps(), parseSearchQuery(new URLSearchParams({ pageSize: String(n) })));
+  // Cover photos are a nice-to-have: a lookup failure shows the cards without them.
+  const covers = await createPgPhotoStore(getDb()).coversFor(page.items.map(l => l.id)).catch(() => new Map<string, never>());
   return page.items.map(toPublicListing).map(l => ({
+    ...cardPhoto(covers.get(l.id)),
     id: l.id, title: l.title, jurisdiction: l.jurisdiction, transactionType: l.transactionType, propertyType: l.propertyType,
     ...(l.suburb ? { suburb: l.suburb } : {}), ...(l.postcode ? { postcode: l.postcode } : {}),
     ...(l.priceCents !== undefined ? { priceCents: l.priceCents } : {}), ...(l.bedrooms !== undefined ? { bedrooms: l.bedrooms } : {}),

@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { BondPathwayField, ListingFields, type BondState } from "../fields";
 import { JSON_HEADERS, listingFormBody } from "../ui";
+import { PhotoManager } from "../photo-manager";
 
 type Check = { allowed: boolean; reasons: string[] };
 
@@ -83,6 +84,7 @@ export default function NewListing() {
         <section role="status" className="panel">
           <h2>Draft saved</h2>
           <p><a href={`/listings/${draftId}/edit`}>Edit this draft</a></p>
+          <PhotoManager listingId={draftId} />
           {isRent && (
             <BondPathwayField value={bond} state={bondState} onChange={saveBond} />
           )}

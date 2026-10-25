@@ -2,12 +2,14 @@
 import { useEffect, useState } from "react";
 import { dollarsToCents, formatPrice } from "../../src/domain/listing-details";
 import { filtersFromParams } from "./url-params";
+import type { CardPhoto } from "../../src/domain/listing-photos";
+import { CardMedia } from "./card-media";
 import "../styles/cards.css";
 
-interface Row {
+type Row = {
   id: string; title: string; address: string; jurisdiction: string; transactionType: "sale" | "rent"; useClass: string;
   propertyType: string; suburb?: string; postcode?: string; priceCents?: number; bedrooms?: number; bathrooms?: number; parking?: number;
-}
+} & CardPhoto;
 
 const BLANK = { jurisdiction: "", transactionType: "", useClass: "", propertyType: "", location: "", minPrice: "", maxPrice: "", minBedrooms: "", minBathrooms: "", minParking: "" };
 type Form = typeof BLANK;
@@ -123,7 +125,7 @@ export default function Listings() {
         <ul className="lcards">
           {rows.map(r => (
             <li key={r.id} className="lcard">
-              <div className="lcard-media"><span className="lcard-tag">{r.transactionType === "sale" ? "For sale" : "For rent"}</span></div>
+              <CardMedia photo={r} transactionType={r.transactionType} />
               <div className="lcard-body">
                 {r.priceCents !== undefined && <p className="lcard-price">{formatPrice(r.priceCents, r.transactionType)}</p>}
                 <h2 className="lcard-title"><a href={`/listings/${r.id}`}>{r.title}</a></h2>

@@ -54,6 +54,24 @@ if (Test-Path ".env.local") {
   Write-Host "Created .env.local with fresh random secrets."
 }
 
+# 3b. Local-kit values, also added to an older .env.local (only when the line is missing or empty; your own values are kept).
+# Dummy Google keys: without them the site treats sign-in as switched off, so /dev-login works but API calls look signed out.
+function Ensure-Env($key, $value) {
+  $path = Join-Path (Get-Location).Path ".env.local"
+  $lines = @([System.IO.File]::ReadAllLines($path))
+  if ($lines | Where-Object { $_ -match "^$key=.+" }) { return }
+  if ($lines | Where-Object { $_ -eq "$key=" }) {
+    $lines = @($lines | ForEach-Object { if ($_ -eq "$key=") { "$key=$value" } else { $_ } })
+  } else {
+    $lines += "$key=$value"
+  }
+  [System.IO.File]::WriteAllText($path, (($lines -join "`n") + "`n"), (New-Object System.Text.UTF8Encoding($false)))
+}
+Ensure-Env "GOOGLE_CLIENT_ID" "local-dummy"
+Ensure-Env "GOOGLE_CLIENT_SECRET" "local-dummy"
+Ensure-Env "LOCAL_STORAGE_DIR" (Join-Path (Get-Location).Path ".local-storage")
+Ensure-Env "MALWARE_SCAN_DRIVER" "local-noop"
+
 # 4. Postgres
 Write-Host "Starting the database (first time downloads about 150 MB)..."
 docker compose -f docker-compose.local.yml up -d --wait

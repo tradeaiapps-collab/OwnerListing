@@ -6,6 +6,7 @@ import { assetUrl } from "../src/domain/site-theme";
 import { getLiveGuide } from "../src/server/guide-assistant-db";
 import { loadLatest, loadSuburbs, type HomeCard } from "../src/server/home-data";
 import HomeCarousel from "./home-carousel";
+import { CardMedia } from "./listings/card-media";
 import HomeSearch from "./home-search";
 import SavingsCalc from "./savings-calc";
 import "./styles/cards.css";
@@ -63,10 +64,7 @@ const HeroArt = () => (
 function Card({ l }: { l: HomeCard }) {
   return (
     <li className="lcard hc-item">
-      <div className={`lcard-media${l.coverUrl ? " has-photo" : ""}`}>
-        {l.coverUrl && <img src={l.coverUrl} alt="" loading="lazy" decoding="async" />}
-        <span className="lcard-tag">{l.transactionType === "sale" ? "For sale" : "For rent"}</span>
-      </div>
+      <CardMedia photo={l} transactionType={l.transactionType} />
       <div className="lcard-body">
         {l.priceCents !== undefined && <p className="lcard-price">{formatPrice(l.priceCents, l.transactionType)}</p>}
         <h3 className="lcard-title"><a href={`/listings/${l.id}`}>{l.title}</a></h3>
