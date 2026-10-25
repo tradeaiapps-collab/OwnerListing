@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { JSON_HEADERS } from "../../listings/ui";
+import { AiReplyPanel } from "../ai-reply-panel";
 import { MessageWarning, SafetySummary, useSafety } from "../safety-panel";
 import "../../styles/enquiries.css";
 
@@ -101,6 +102,7 @@ export default function Thread() {
               );
             })}
           </ul>
+          {olr?.role === "owner" && <AiReplyPanel enquiryId={id} onSent={async () => { await Promise.all([load(), reloadSafety()]); }} />}
           <form className="stack" onSubmit={onSend}>
             <textarea value={draft} onChange={e => setDraft(e.target.value)} rows={3} maxLength={4000} required aria-label="Reply" />
             <button type="submit" disabled={busy || !draft.trim()}>{busy ? "Sending…" : "Send"}</button>
