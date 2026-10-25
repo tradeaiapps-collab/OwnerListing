@@ -131,6 +131,9 @@ try {
     await q(`INSERT INTO staff_invite (email, role, accepted_at) VALUES ($1, $2, now())`, [email + D, role]);
   }
   const boss = staff.super_admin;
+  // Local demo only: investor projects module on (the live site stays off until counsel confirms in /staff/investments/settings).
+  await q(`INSERT INTO investment_setting (key, enabled, updated_by) VALUES ('investment_module_enabled', true, $1)`, [boss]);
+  await q(`INSERT INTO investment_setting_history (enabled, counsel_confirmed, disclosure_version, changed_by) VALUES (true, true, 'local-demo', $1)`, [boss]);
 
   // Users.
   const ownerA = await user("owner", "Sarah Mitchell", "sarah.owner");
