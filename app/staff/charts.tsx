@@ -51,7 +51,7 @@ export function BarList({ title, data, format = String }: { title: string; data:
 
 export interface Series { key: string; label: string; values: readonly number[] }
 
-const W = 640, H = 220, PAD = { l: 48, r: 12, t: 12, b: 28 };
+const W = 640, H = 240, PAD = { l: 64, r: 16, t: 12, b: 32 };
 
 /** Rounds the top of the y axis up to a 1/2/5 step so gridlines land on readable numbers. */
 export function niceMax(v: number): number {
@@ -106,7 +106,7 @@ export function LineChart({ title, labels, series, format = String }: {
               </g>
             ))}
             {labels.map((l, i) => (i % every === 0 || i === n - 1) && (
-              <text key={l + i} className="axis" x={x(i)} y={H - 8} textAnchor="middle">{l}</text>
+              <text key={l + i} className="axis" x={x(i)} y={H - 8} textAnchor={n > 1 && i === n - 1 ? "end" : i === 0 && n > 1 ? "start" : "middle"}>{l}</text>
             ))}
             {shown.map((s, si) => (
               <g key={s.key} className={`series s${si + 1}`}>
