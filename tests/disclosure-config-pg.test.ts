@@ -2,9 +2,10 @@ import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   activeListingDocumentPg, approveVersionPg, approvedVersionPg, createDraftVersionPg, disclosureRequirementsPg, listingDisclosuresPg,
-  listVersionsPg, reviewDisclosurePg, reviewQueuePg, submitDisclosurePg
+  listingRequiredKeysPg, listVersionsPg, markListingDisclosureVersionPg, reviewDisclosurePg, reviewQueuePg, submitDisclosurePg
 } from "../src/server/disclosure-config-db";
 import { createPgListingRepository } from "../src/server/db";
+import { listingComplianceFactsPg } from "../src/server/listing-compliance-db";
 import { addListing, addUser, createTestDb, DATABASE_URL, type TestDb } from "./helpers/pg-db";
 
 describe.skipIf(!DATABASE_URL)("state disclosures (Postgres)", () => {
@@ -92,5 +93,17 @@ describe.skipIf(!DATABASE_URL)("state disclosures (Postgres)", () => {
     await expect(db.query(
       "INSERT INTO listing_disclosure (listing_id, jurisdiction, disclosure_key, satisfied, not_applicable, submitted_by) VALUES ($1, 'QLD', 'x_key', true, true, $2)", [listingId, owner]
     )).rejects.toThrow(/listing_disclosure_satisfied_state/);
+  });
+
+  it("feeds the public compliance panel: approved keys today, the published version's keys once pinned, null when nothing is approved", async () => {
+    const owner = await addUser(db, "owner");
+    const rec = async (id: string) => (await createPgListingRepository(db).get(id))!.listing;
+    const qld = await rec(await addListing(db, owner, { jurisdiction: "QLD" }));
+    expect((await listingComplianceFactsPg(db, qld)).required).toEqual(["qld_seller_disclosure_statement"]);
+    const old = (await listVersionsPg(db)).find(v => v.jurisdiction === "QLD" && v.transactionType === "sale" && v.useClass === "residential" && v.version === 1)!;
+    await markListingDisclosureVersionPg(db, qld.id, old.id);
+    expect(await listingRequiredKeysPg(db, qld)).toEqual(expect.arrayContaining(["qld_seller_disclosure_statement", "qld_title_search"]));
+    const nsw = await rec(await addListing(db, owner, { jurisdiction: "NSW" }));
+    expect((await listingComplianceFactsPg(db, nsw)).required).toBeNull();
   });
 });

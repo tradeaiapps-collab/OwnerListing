@@ -39,6 +39,17 @@ export async function disclosureRequirementsPg(db: Queryable, l: PropertyListing
   return v ? { versionId: v.id, keys: requiredKeys(v.items, l.propertyType) } : null;
 }
 
+/**
+ * The keys a listing's public compliance panel measures against: the version it was published under, else the combination's
+ * approved version today. Null while nothing is approved (the panel then says requirements are not configured).
+ */
+export async function listingRequiredKeysPg(db: Queryable, l: PropertyListing): Promise<readonly string[] | null> {
+  const r = await db.query("SELECT disclosure_config_version_id FROM property_listing WHERE id = $1", [l.id]);
+  const pinned = r.rows[0]?.["disclosure_config_version_id"];
+  const v = typeof pinned === "string" ? await getVersionPg(db, pinned) : await approvedVersionPg(db, l.jurisdiction, l.transactionType, l.useClass);
+  return v ? requiredKeys(v.items, l.propertyType) : null;
+}
+
 export async function markListingDisclosureVersionPg(db: Queryable, listingId: string, versionId: string): Promise<void> {
   await db.query("UPDATE property_listing SET disclosure_config_version_id = $2 WHERE id = $1", [listingId, versionId]);
 }
