@@ -3,7 +3,6 @@ import { malwareScannerFromEnv } from "../adapters/malware-scan";
 import { objectStorageFromEnv } from "../adapters/object-storage";
 import { randomUUID } from "node:crypto";
 import pg from "pg";
-import { getRequiredDisclosureKeys } from "../config/disclosures";
 import type { Actor, ListingServiceDeps } from "../domain/listing-service";
 import { actorFromRequestChecked } from "./auth/actor";
 import { readAuthEnv } from "./auth/config";
@@ -12,6 +11,8 @@ import { createPgBillingStore } from "./billing-db";
 import { staffFromRequest } from "./staff-auth";
 import { createPgPublishAlertHook } from "./publish-alerts-db";
 import { hasCurrentTermsPg } from "./terms-db";
+import { disclosureRequirementsPg, markListingDisclosureVersionPg } from "./disclosure-config-db";
+import { clearedWordingFlagsPg, recordWordingFlagsPg } from "./wording-flags-db";
 import { appendAuditPg, appointmentForPg, createPgListingRepository, trustAccountDecisionPg, verifiedLicencesPg, type Queryable } from "./db";
 
 interface Wired { db: Queryable; deps: ListingServiceDeps }
@@ -55,11 +56,16 @@ function wire(): Wired {
       appendAudit: e => appendAuditPg(db, e),
       now: () => new Date().toISOString(),
       newId: () => randomUUID(),
-      requiredDisclosures: getRequiredDisclosureKeys,
+      // Superseded by disclosureRequirements (database, Compliance-approved versions); kept closed as a backstop.
+      requiredDisclosures: () => null,
+      disclosureRequirements: listing => disclosureRequirementsPg(db, listing),
+      markDisclosureVersion: (listingId, versionId) => markListingDisclosureVersionPg(db, listingId, versionId),
       appointmentFor: (listingId, agentUserId) => appointmentForPg(db, listingId, agentUserId),
       trustAccountFor: listingId => trustAccountDecisionPg(db, listingId),
       termsCurrentFor: userId => hasCurrentTermsPg(db, userId, new Date().toISOString()),
-      afterPublish: createPgPublishAlertHook(db)
+      afterPublish: createPgPublishAlertHook(db),
+      clearedWordingFlags: listingId => clearedWordingFlagsPg(db, listingId),
+      recordWordingFlags: (listingId, actorUserId, fields) => recordWordingFlagsPg(db, listingId, actorUserId, fields)
     }
   };
 }

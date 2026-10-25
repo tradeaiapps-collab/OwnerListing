@@ -1,3 +1,5 @@
+import { dollarsToCents } from "../../src/domain/listing-details";
+
 /** Initial browse filters from the URL (home page search, shared links). Unknown or invalid values are dropped, never an error. */
 export interface UrlFilters {
   jurisdiction?: string; transactionType?: "sale" | "rent"; useClass?: "residential" | "commercial";
@@ -23,4 +25,23 @@ export function filtersFromParams(p: URLSearchParams): UrlFilters {
   // Price only means something with sale or rent chosen (a sale price and a weekly rent are not comparable).
   if (out.transactionType && price && /^\d{1,10}$/.test(price) && Number(price) > 0) out.maxPrice = price;
   return out;
+}
+
+/** The browse filter form. Text values exactly as typed; prices are whole dollars. */
+export const BLANK_FILTERS = { jurisdiction: "", transactionType: "", useClass: "", propertyType: "", location: "", minPrice: "", maxPrice: "", minBedrooms: "", minBathrooms: "", minParking: "" };
+export type FilterForm = typeof BLANK_FILTERS;
+
+/** Form values to API parameters (shared by the list and the map). Price fields are dollars in the form and cents in the API; only used with sale or rent. */
+export function filterParams(f: FilterForm): URLSearchParams {
+  const p = new URLSearchParams();
+  for (const k of ["jurisdiction", "transactionType", "useClass", "propertyType", "minBedrooms", "minBathrooms", "minParking"] as const) if (f[k]) p.set(k, f[k]);
+  const loc = f.location.trim();
+  if (loc) p.set(/^\d{4}$/.test(loc) ? "postcode" : "suburb", loc);
+  if (f.transactionType) {
+    const lo = f.minPrice ? dollarsToCents(f.minPrice) : undefined;
+    const hi = f.maxPrice ? dollarsToCents(f.maxPrice) : undefined;
+    if (lo !== undefined) p.set("minPriceCents", String(lo));
+    if (hi !== undefined) p.set("maxPriceCents", String(hi));
+  }
+  return p;
 }

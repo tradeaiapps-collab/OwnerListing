@@ -2,7 +2,7 @@ export type StaffRole = "super_admin" | "compliance" | "accountant" | "support" 
 
 export type PermissionArea =
   | "cases" | "trust_accounts" | "identity" | "reports" | "personal_data" | "pricing" | "messaging"
-  | "staff" | "website" | "platform" | "overrides" | "investments";
+  | "staff" | "website" | "platform" | "overrides" | "investments" | "disclosures";
 
 /** Groups shown in the role builder, in display order. */
 export const PERMISSION_AREAS: readonly { key: PermissionArea; label: string }[] = [
@@ -17,7 +17,8 @@ export const PERMISSION_AREAS: readonly { key: PermissionArea; label: string }[]
   { key: "website", label: "Website" },
   { key: "platform", label: "Platform and technical" },
   { key: "overrides", label: "Overrides" },
-  { key: "investments", label: "Investor projects" }
+  { key: "investments", label: "Investor projects" },
+  { key: "disclosures", label: "Property disclosures" }
 ];
 
 export interface PermissionInfo { key: string; area: PermissionArea; label: string; description: string; sensitive: boolean }
@@ -29,6 +30,7 @@ export interface PermissionInfo { key: string; area: PermissionArea; label: stri
  */
 export const PERMISSION_CATALOGUE = [
   { key: "case.manage", area: "cases", label: "Work admin cases", description: "Claim and resolve admin cases. Trust account and licence cases still need a second person.", sensitive: false },
+  { key: "wording.review", area: "cases", label: "Review discriminatory wording flags", description: "Clear or uphold listing wording the anti-discrimination filter blocked, with a reason. Nobody reviews their own listing.", sensitive: false },
   { key: "dispute.read_chat", area: "cases", label: "Read job chat in a dispute", description: "Read the saved job chat for a disputed job. Every view is logged.", sensitive: true },
   { key: "trust_account.approve", area: "trust_accounts", label: "Approve trust accounts", description: "Approve or reject a solicitor trust account. New or changed details always need two different people.", sensitive: true },
   { key: "licence.verify", area: "trust_accounts", label: "Verify agent licences", description: "Check and record agent licence verification.", sensitive: false },
@@ -56,7 +58,10 @@ export const PERMISSION_CATALOGUE = [
   { key: "override.request", area: "overrides", label: "Request an override", description: "Ask for a logged override with a reason. Someone else must approve it.", sensitive: false },
   { key: "override.approve", area: "overrides", label: "Approve another person's override", description: "Be the second person on an override, never on your own.", sensitive: true },
   { key: "investment.review", area: "investments", label: "Review investor projects", description: "Approve, reject or send back investor projects, check signed agreements, and see the investor counts. Only while the module is on.", sensitive: false },
-  { key: "investment.manage", area: "investments", label: "Investor module switch and fees", description: "Turn the investor module on or off (with the counsel confirmation), set the posting model and fees, and mark platform fees paid or waived.", sensitive: true }
+  { key: "investment.manage", area: "investments", label: "Investor module switch and fees", description: "Turn the investor module on or off (with the counsel confirmation), set the posting model and fees, and mark platform fees paid or waived.", sensitive: true },
+  { key: "disclosure.config_edit", area: "disclosures", label: "Draft disclosure requirements", description: "Draft a new version of a state's required disclosures at /staff/disclosures. A draft does nothing until someone else approves it.", sensitive: false },
+  { key: "disclosure.config_approve", area: "disclosures", label: "Approve disclosure requirements", description: "Approve a drafted version so it becomes the publish requirement for that state, sale or rent and use. Never your own draft.", sensitive: true },
+  { key: "disclosure.verify", area: "disclosures", label: "Verify owner disclosures", description: "Check the evidence an owner gave for each required disclosure and verify or reject it, with a reason. Never on your own listing.", sensitive: false }
 ] as const satisfies readonly PermissionInfo[];
 
 export type StaffPermission = (typeof PERMISSION_CATALOGUE)[number]["key"];
@@ -72,7 +77,8 @@ export const isSensitivePermission = (p: string): boolean => SENSITIVE.has(p);
 const ROLE_PERMISSIONS: Record<StaffRole, readonly StaffPermission[]> = {
   super_admin: ALL,
   compliance: ["report.audit", "report.solicitor", "report.broker", "pii.view_full", "case.manage",
-    "trust_account.approve", "licence.verify", "dispute.read_chat", "override.request", "identity.review", "investment.review"],
+    "trust_account.approve", "licence.verify", "dispute.read_chat", "override.request", "identity.review", "investment.review",
+    "disclosure.config_edit", "disclosure.config_approve", "disclosure.verify", "wording.review"],
   accountant: ["report.financial", "report.sales", "pii.view_masked"],
   support: ["report.buyer", "report.seller", "pii.view_masked", "case.manage", "override.request"],
   technical: ["logs.technical", "report.operations", "config.edit"],
