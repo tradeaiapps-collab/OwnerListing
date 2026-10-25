@@ -98,6 +98,22 @@ async function seedPhotos(client) {
   console.log(rows.length ? `Demo photos added: ${made} images on ${rows.length} listings.` : "Demo photos already present.");
 }
 
+// ---- Demo map locations (search map) ------------------------------------------------------------------------------
+// Approximate street positions for the eight demo listings. Only fills listings that have no pin yet, so an owner's own pin is kept.
+const DEMO_LOCATIONS = [
+  ["12 Jacaranda St, Paddington QLD 4064", -27.4603, 152.9998], ["8/21 Moray St, New Farm QLD 4005", -27.4669, 153.0495],
+  ["45 Beach Rd, Bondi NSW 2026", -33.8917, 151.2731], ["3/17 Darley Rd, Randwick NSW 2031", -33.9124, 151.2402],
+  ["28 Station St, Fitzroy North VIC 3068", -37.7838, 144.9786], ["6/102 Chapel St, Windsor VIC 3181", -37.8552, 144.9925],
+  ["9/4 Park Ave, Chermside QLD 4032", -27.3857, 153.0303], ["14/50 Kent St, Sydney NSW 2000", -33.8682, 151.2047]
+];
+async function seedLocations(client) {
+  let n = 0;
+  for (const [address, lat, lng] of DEMO_LOCATIONS) {
+    n += (await client.query(`UPDATE property_listing SET latitude = $2, longitude = $3 WHERE address_text = $1 AND latitude IS NULL`, [address, lat, lng])).rowCount ?? 0;
+  }
+  if (n) console.log(`Demo map locations added: ${n} listings.`);
+}
+
 const url = process.env.DATABASE_URL;
 if (process.env.NODE_ENV === "production") { console.error("Refusing to seed: NODE_ENV is production."); process.exit(2); }
 if (!url) { console.error("DATABASE_URL is required."); process.exit(2); }
@@ -114,6 +130,7 @@ try {
   if (exists.rows.length) {
     console.log("Demo data already present. (Use local-reset to start again.)");
     await seedPhotos(db);
+    await seedLocations(db);
     await db.end();
     process.exit(0);
   }
@@ -212,11 +229,14 @@ try {
   await msg(e3, buyerEmail, "Hi, is the Bondi cottage open for inspection this week?", 15);
 
   // Two submitted formal offers (single-use links already spent) on Sarah's sale listings.
-  for (const [lid, price, deposit, days] of [[listing[0], 165000000, 16500000, 42], [listing[2], 318000000, 31800000, 60]]) {
+  // Paddington has an earlier offer the owner asked James to improve (offer history and timeline on the offer page).
+  for (const [lid, price, deposit, days, ago, status] of [[listing[0], 160000000, 16000000, 42, "3 days", "countered"], [listing[0], 165000000, 16500000, 42, "1 day", "submitted"], [listing[2], 318000000, 31800000, 60, "1 day", "submitted"]]) {
     const hash = randomBytes(32).toString("hex");
-    await q(`INSERT INTO offer_link (token_hash, listing_id, buyer_user_id, expires_at, used_at) VALUES ($1, $2, $3, now() + interval '7 days', now())`, [hash, lid, buyerVerified]);
-    await q(`INSERT INTO formal_offer (listing_id, buyer_user_id, price_cents, conditions, settlement_days, deposit_cents, confirmed_final, link_token_hash)
-             VALUES ($1, $2, $3, '["Subject to finance","Subject to building and pest inspection"]'::jsonb, $5, $4, true, $6)`, [lid, buyerVerified, price, deposit, days, hash]);
+    await q(`INSERT INTO offer_link (token_hash, listing_id, buyer_user_id, expires_at, used_at) VALUES ($1, $2, $3, now() + interval '7 days', now() - $4::interval)`, [hash, lid, buyerVerified, ago]);
+    const [o] = await q(`INSERT INTO formal_offer (listing_id, buyer_user_id, price_cents, conditions, settlement_days, deposit_cents, confirmed_final, link_token_hash, status, submitted_at)
+             VALUES ($1, $2, $3, '["Subject to finance","Subject to building and pest inspection"]'::jsonb, $5, $4, true, $6, $7, now() - $8::interval) RETURNING id, submitted_at`, [lid, buyerVerified, price, deposit, days, hash, status, ago]);
+    await q(`INSERT INTO offer_event (offer_id, event_type, actor_kind, actor_user_id, price_cents, settlement_days, occurred_at) VALUES ($1, 'submitted', 'buyer', $2, $3, $4, $5)`, [o.id, buyerVerified, price, days, o.submitted_at]);
+    if (status === "countered") await q(`INSERT INTO offer_event (offer_id, event_type, actor_kind, actor_user_id, occurred_at) VALUES ($1, 'countered', 'owner', $2, $3::timestamptz + interval '5 hours')`, [o.id, ownerA, o.submitted_at]);
   }
 
   // ID review queue: two buyers waiting for staff review (no images locally: storage is off).
@@ -224,8 +244,9 @@ try {
     await q(`INSERT INTO id_submission (user_id, document_kind, document_country, expiry_date, selfie_captured_in_app) VALUES ($1, $2, 'AU', (now() + interval '2 years')::date, true)`, [uid, kind]);
   }
   await db.query("COMMIT");
-  console.log(`Demo data created: 6 staff, 2 owners, 1 agent, 3 buyers, ${listing.length} listings, 3 enquiries, 2 offers, 2 invoices, 2 ID reviews. (run ${randomUUID().slice(0, 8)})`);
+  console.log(`Demo data created: 6 staff, 2 owners, 1 agent, 3 buyers, ${listing.length} listings, 3 enquiries, 3 offers, 2 invoices, 2 ID reviews. (run ${randomUUID().slice(0, 8)})`);
   await seedPhotos(db);
+  await seedLocations(db);
 } catch (e) {
   await db.query("ROLLBACK").catch(() => undefined);
   console.error(`Seed failed: ${e.message}`);

@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { JSON_HEADERS } from "../../listings/ui";
+import { MessageWarning, SafetySummary, useSafety } from "../safety-panel";
 import "../../styles/enquiries.css";
 
 type Message = { id: string; senderUserId: string | null; automated: boolean; body: string; sentAt: string };
@@ -20,6 +21,7 @@ export default function Thread() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [draft, setDraft] = useState("");
+  const { safety, reload: reloadSafety } = useSafety(id);
 
   const load = useCallback(async () => {
     setLoadError("");
@@ -66,7 +68,7 @@ export default function Thread() {
       const d = await r.json();
       if (r.ok) {
         setDraft("");
-        await load();
+        await Promise.all([load(), reloadSafety()]);
       } else setError(d.error ?? "Could not send the message.");
     } catch {
       setError("Could not send the message.");
@@ -84,13 +86,20 @@ export default function Thread() {
       {!loadError && !data && <p className="muted" role="status">Loading…</p>}
       {data && (
         <>
+          {safety && olr?.role === "owner" && <SafetySummary enquiryId={id} safety={safety} onChange={reloadSafety} />}
           <ul className="enq-thread">
-            {data.messages.map(m => (
-              <li key={m.id} className={`enq-msg${m.automated ? " system" : ""}`}>
-                {m.body}
-                <small>{m.automated ? "Automated notice, " : ""}{new Date(m.sentAt).toLocaleString("en-AU")}</small>
-              </li>
-            ))}
+            {data.messages.map(m => {
+              const flag = safety?.flags.find(f => f.messageId === m.id);
+              return (
+                <li key={m.id}>
+                  <div className={`enq-msg${m.automated ? " system" : ""}`}>
+                    {m.body}
+                    <small>{m.automated ? "Automated notice, " : ""}{new Date(m.sentAt).toLocaleString("en-AU")}</small>
+                  </div>
+                  {flag && <MessageWarning flag={flag} />}
+                </li>
+              );
+            })}
           </ul>
           <form className="stack" onSubmit={onSend}>
             <textarea value={draft} onChange={e => setDraft(e.target.value)} rows={3} maxLength={4000} required aria-label="Reply" />

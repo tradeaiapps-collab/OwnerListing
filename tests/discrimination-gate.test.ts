@@ -184,3 +184,17 @@ describe("routes", () => {
     expect(d.wordingFlags[0].flags[0].match).toBe("No students");
   });
 });
+
+describe("AI pipeline wording filter", () => {
+  it("is the real filter: installed, holds discriminatory drafts, passes clean ones", async () => {
+    const { getWordingFilter } = await import("../src/server/wording-filter");
+    const { guardDraft } = await import("../src/domain/ai-output-guard");
+    const f = getWordingFilter();
+    expect(f("Thanks for asking, inspections are on Saturday.")).toEqual({ blocked: false, flags: [], installed: true });
+    const hit = f("Sorry, the owner prefers no kids.");
+    expect(hit).toMatchObject({ blocked: true, installed: true, flags: [expect.objectContaining({ category: "familial_status" })] });
+    expect(f("Perfect for families.").blocked).toBe(false);
+    expect(f("a".repeat(20_001)).blocked).toBe(true);
+    expect(guardDraft("Suits Christians only.", { wordingFilter: f, allowedAmountsCents: [] }).violations.map(v => v.code)).toContain("wording_filter");
+  });
+});

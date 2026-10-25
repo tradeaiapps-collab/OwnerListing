@@ -313,7 +313,7 @@ function normalise(text: string): string {
   return text.replace(/[‘’]/g, "'").replace(/[“”]/g, "\"").replace(/[–—]/g, "-").replace(/ /g, " ");
 }
 
-const MAX_SCAN_LENGTH = 20_000;
+export const MAX_SCAN_LENGTH = 20_000;
 
 /**
  * Scans text for discriminatory wording. Overlapping matches keep the longest (then the most severe). Results are in text order.

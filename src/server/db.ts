@@ -24,6 +24,7 @@ interface ListingRow {
   rental_bond_pathway: string | null;
   suburb: string | null; postcode: string | null; price_cents: string | number | null;
   bedrooms: number | null; bathrooms: number | null; parking: number | null; description: string | null;
+  latitude: string | number | null; longitude: string | number | null;
 }
 interface DisclosureRow { listing_id: string; jurisdiction: string; disclosure_key: string; satisfied: boolean; evidence_reference: string | null }
 
@@ -32,7 +33,7 @@ const iso = (v: Date | string) => (v instanceof Date ? v.toISOString() : new Dat
 const SELECT = `SELECT l.id, l.owner_user_id, u.user_type AS owner_user_type, l.jurisdiction, l.status, l.title,
   l.property_type, l.use_class, l.transaction_type, l.address_text, l.created_at, l.updated_at,
   l.listing_fee_paid, l.terms_accepted, l.rental_bond_pathway,
-  l.suburb, l.postcode, l.price_cents, l.bedrooms, l.bathrooms, l.parking, l.description
+  l.suburb, l.postcode, l.price_cents, l.bedrooms, l.bathrooms, l.parking, l.latitude, l.longitude, l.description
   FROM property_listing l JOIN app_user u ON u.id = l.owner_user_id`;
 
 function toRecord(r: ListingRow, disclosures: DisclosureRow[]): ListingRecord {
@@ -47,6 +48,8 @@ function toRecord(r: ListingRow, disclosures: DisclosureRow[]): ListingRecord {
     ...(r.bathrooms !== null ? { bathrooms: r.bathrooms } : {}),
     ...(r.parking !== null ? { parking: r.parking } : {}),
     ...(r.description !== null ? { description: r.description } : {}),
+    // NUMERIC arrives as a string; the pair is stored together (table CHECK), so both or neither.
+    ...(r.latitude !== null && r.longitude !== null ? { latitude: Number(r.latitude), longitude: Number(r.longitude) } : {}),
     disclosures: disclosures.map(d => ({
       key: d.disclosure_key, jurisdiction: d.jurisdiction.trim(), satisfied: d.satisfied,
       ...(d.evidence_reference ? { evidenceReference: d.evidence_reference } : {})
@@ -59,12 +62,13 @@ function toRecord(r: ListingRow, disclosures: DisclosureRow[]): ListingRecord {
   };
 }
 
-const COLS = "(id, owner_user_id, jurisdiction, transaction_type, use_class, property_type, title, address_text, status, created_at, updated_at, listing_fee_paid, terms_accepted, rental_bond_pathway, suburb, postcode, price_cents, bedrooms, bathrooms, parking, description)";
+const COLS = "(id, owner_user_id, jurisdiction, transaction_type, use_class, property_type, title, address_text, status, created_at, updated_at, listing_fee_paid, terms_accepted, rental_bond_pathway, suburb, postcode, price_cents, bedrooms, bathrooms, parking, latitude, longitude, description)";
 const params = (r: ListingRecord) => {
   const l = r.listing;
   return [l.id, l.ownerUserId, l.jurisdiction, l.transactionType, l.useClass, l.propertyType, l.title, l.address,
     l.status, l.createdAt, l.updatedAt, r.listingFeePaid, r.termsAccepted, r.rentalBondPathway ?? null,
-    l.suburb ?? null, l.postcode ?? null, l.priceCents ?? null, l.bedrooms ?? null, l.bathrooms ?? null, l.parking ?? null, l.description ?? null];
+    l.suburb ?? null, l.postcode ?? null, l.priceCents ?? null, l.bedrooms ?? null, l.bathrooms ?? null, l.parking ?? null,
+    l.latitude ?? null, l.longitude ?? null, l.description ?? null];
 };
 
 /**
@@ -89,17 +93,19 @@ export function createPgListingRepository(db: Queryable): ListingRepository {
 
   return {
     async insert(r) {
-      await db.query(`INSERT INTO property_listing ${COLS} VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)`, params(r));
+      await db.query(`INSERT INTO property_listing ${COLS} VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)`, params(r));
     },
     async save(r) {
       const l = r.listing;
       await db.query(
         `UPDATE property_listing SET jurisdiction=$3, transaction_type=$4, use_class=$5, property_type=$6, title=$7,
          address_text=$8, status=$9, updated_at=$10, listing_fee_paid=$11, terms_accepted=$12, rental_bond_pathway=$13,
-         suburb=$14, postcode=$15, price_cents=$16, bedrooms=$17, bathrooms=$18, parking=$19, description=$20 WHERE id=$1 AND owner_user_id=$2`,
+         suburb=$14, postcode=$15, price_cents=$16, bedrooms=$17, bathrooms=$18, parking=$19,
+         latitude=$20, longitude=$21, description=$22 WHERE id=$1 AND owner_user_id=$2`,
         [l.id, l.ownerUserId, l.jurisdiction, l.transactionType, l.useClass, l.propertyType, l.title, l.address,
           l.status, l.updatedAt, r.listingFeePaid, r.termsAccepted, r.rentalBondPathway ?? null,
-          l.suburb ?? null, l.postcode ?? null, l.priceCents ?? null, l.bedrooms ?? null, l.bathrooms ?? null, l.parking ?? null, l.description ?? null]
+          l.suburb ?? null, l.postcode ?? null, l.priceCents ?? null, l.bedrooms ?? null, l.bathrooms ?? null, l.parking ?? null,
+          l.latitude ?? null, l.longitude ?? null, l.description ?? null]
       );
     },
     async get(id) {

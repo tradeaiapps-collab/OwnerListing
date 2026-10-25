@@ -112,10 +112,10 @@ export default function Offers() {
       <ul className="card-list">
         {offers?.map(o => (
           <li key={o.id}>
-            <strong>{dollars(o.priceCents)}</strong> <span className={`badge badge-${o.status}`}>{label(o.status)}</span>
+            <strong><a href={`/listings/${id}/offers/${o.id}`}>{dollars(o.priceCents)}</a></strong> <span className={`badge badge-${o.status}`}>{label(o.status)}</span>
             <div>Deposit {dollars(o.depositCents)} · Settlement {o.settlementDays} days</div>
             <div>{o.conditions.length > 0 ? `Conditions: ${o.conditions.join("; ")}` : "No conditions"}</div>
-            <small className="muted">Submitted {new Date(o.submittedAt).toLocaleString("en-AU")}</small>
+            <small className="muted">Submitted {new Date(o.submittedAt).toLocaleString("en-AU")} · <a href={`/listings/${id}/offers/${o.id}`}>View offer, timeline and messages</a></small>
             {o.aiAnalysis ? <div className="ai-note"><strong>AI analysis</strong> (a note only; you decide)<br />{o.aiAnalysis}</div> : null}
             {open(o.status) && pending?.offerId === o.id ? (
               <div className="confirm-box" role="alertdialog" aria-label={CONFIRM[pending.decision].title}>
