@@ -2,7 +2,7 @@ import type { Queryable } from "./db";
 import { trustAccountDecisionPg } from "./db";
 import { isJurisdiction } from "../domain/jurisdiction";
 import type { AgentLicence } from "../domain/licence";
-import { getRequiredDisclosureKeys } from "../config/disclosures";
+import { listingRequiredKeysPg } from "./disclosure-config-db";
 import type { ComplianceFacts } from "../domain/listing-compliance";
 import type { PropertyListing } from "../domain/listing";
 
@@ -11,7 +11,7 @@ import type { PropertyListing } from "../domain/listing";
  * The caller has already decided the listing may be seen (getListing), so this never checks visibility itself.
  */
 export async function listingComplianceFactsPg(db: Queryable, l: PropertyListing): Promise<ComplianceFacts> {
-  const [appt, created, disc, firm, trust] = await Promise.all([
+  const [appt, created, disc, firm, trust, required] = await Promise.all([
     db.query(
       `SELECT agent_user_id, appointed_at FROM listing_agent_appointment WHERE listing_id = $1 AND revoked_at IS NULL`,
       [l.id]
@@ -26,7 +26,8 @@ export async function listingComplianceFactsPg(db: Queryable, l: PropertyListing
         WHERE c.listing_id = $1 ORDER BY c.checked_at DESC, c.id LIMIT 1`,
       [l.id]
     ),
-    trustAccountDecisionPg(db, l.id)
+    trustAccountDecisionPg(db, l.id),
+    listingRequiredKeysPg(db, l)
   ]);
   const iso = (v: unknown) => (v instanceof Date ? v.toISOString() : String(v));
   const facts: ComplianceFacts = {
@@ -37,7 +38,7 @@ export async function listingComplianceFactsPg(db: Queryable, l: PropertyListing
       if (r["verified_at"] != null) d.verifiedAt = iso(r["verified_at"]);
       return d;
     }),
-    required: getRequiredDisclosureKeys(l.jurisdiction, l.transactionType, l.useClass)
+    required
   };
   if (trust) facts.trust = trust;
   const firmName = firm.rows[0]?.["name"];
