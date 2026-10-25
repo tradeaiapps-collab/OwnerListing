@@ -9,6 +9,12 @@ type Scope = "enquiries_and_offers" | "full";
 type Active = { id: string; agentName: string; scope: Scope; appointedAt: string; licensed: boolean; granted: AgentPermission[] };
 type Invite = { id: string; agentName: string; scope: Scope; createdAt: string; licensed: boolean; granted: AgentPermission[] };
 type View = { active: Active | null; invites: Invite[] };
+type Suggestion = { agentUserId: string; displayName: string; reasons: string[]; activeListings: number; maxActiveListings: number; bio: string };
+
+const REASON_LABELS: Record<string, string> = {
+  postcode: "Covers this postcode", suburb: "Covers this suburb", transaction_type: "Handles this kind of sale or rental",
+  use_class: "Residential or commercial match", property_type: "Handles this property type", capacity: "Has room for more listings"
+};
 
 const SCOPE_LABELS: Record<string, string> = {
   enquiries_and_offers: "Enquiries and offers",
@@ -26,6 +32,7 @@ export default function ListingAgent() {
   const [scope, setScope] = useState<Scope>("enquiries_and_offers");
   const [perms, setPerms] = useState<AgentPermission[]>([...SCOPE_PERMISSIONS["enquiries_and_offers"]]);
   const [editing, setEditing] = useState<AgentPermission[] | null>(null);
+  const [suggestions, setSuggestions] = useState<Suggestion[] | null>(null);
 
   const load = useCallback(async () => {
     setLoadError("");
@@ -40,6 +47,13 @@ export default function ListingAgent() {
   }, [id]);
 
   useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    fetch(`/api/listings/${id}/agent-suggestions`)
+      .then(async r => (r.ok ? setSuggestions(((await r.json()) as { suggestions: Suggestion[] }).suggestions) : setSuggestions([])))
+      .catch(() => setSuggestions([]));
+  }, [id]);
+
+  const permissionsBody = () => (perms.length === SCOPE_PERMISSIONS[scope].length ? {} : { permissions: perms });
 
   async function send(url: string, body: unknown, fallback: string): Promise<boolean> {
     setBusy(true);
@@ -60,8 +74,7 @@ export default function ListingAgent() {
   async function onInvite(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const value = contact.trim();
-    const permissions = perms.length === SCOPE_PERMISSIONS[scope].length ? undefined : perms;
-    const body = { ...(value.includes("@") ? { email: value } : { agentUserId: value }), scope, ...(permissions ? { permissions } : {}) };
+    const body = { ...(value.includes("@") ? { email: value } : { agentUserId: value }), scope, ...permissionsBody() };
     if (await send(`/api/listings/${id}/agent-appointments`, body, "Could not send the invitation.")) setContact("");
   }
 
@@ -127,6 +140,31 @@ export default function ListingAgent() {
           <PermissionPicker scope={scope} value={perms} onChange={setPerms} disabled={busy} />
           <button type="submit" disabled={busy || perms.length === 0}>{busy ? "Working…" : "Send invitation"}</button>
         </form>
+      )}
+      {view && !view.active && (
+        <section>
+          <h2>Suggested agents</h2>
+          <p className="muted">Licensed for this state, taking new listings, ranked by area, experience and spare capacity. Invitations use the scope and permissions chosen above.</p>
+          {suggestions === null && <p className="muted" role="status">Loading…</p>}
+          {suggestions?.length === 0 && <p className="empty">No matching agents yet.</p>}
+          <ul className="card-list">
+            {suggestions?.map(s => (
+              <li key={s.agentUserId}>
+                <strong>{s.displayName}</strong> <small className="muted">{s.activeListings} of {s.maxActiveListings} listings</small>
+                {s.bio && <p>{s.bio}</p>}
+                <ul>{s.reasons.map(r => <li key={r}>{REASON_LABELS[r] ?? r}</li>)}</ul>
+                <div className="actions">
+                  <button type="button" disabled={busy || perms.length === 0}
+                    onClick={() => void send(`/api/listings/${id}/agent-appointments`, { agentUserId: s.agentUserId, scope, ...permissionsBody() }, "Could not send the invitation.")}>Invite</button>
+                </div>
+              </li>
+            ))}
+          </ul>
+          {suggestions && suggestions.length > 0 && (
+            <button type="button" className="secondary" disabled={busy || perms.length === 0}
+              onClick={() => void send(`/api/listings/${id}/agent-suggestions`, { action: "invite_best", scope, ...permissionsBody() }, "Could not invite an agent.")}>Invite the best match for me</button>
+          )}
+        </section>
       )}
       {error && <p role="alert">{error}</p>}
     </main>
