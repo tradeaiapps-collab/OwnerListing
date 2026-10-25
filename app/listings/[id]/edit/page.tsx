@@ -5,8 +5,9 @@ import { BondPathwayField, ListingFields, type BondState, type ListingDefaults }
 import { JSON_HEADERS, listingFormBody } from "../../ui";
 import { PhotoManager } from "../../photo-manager";
 import { PriceGuidanceCard } from "../../price-guidance-card";
+import { LocationPicker } from "../../location-picker";
 
-type Loaded = ListingDefaults & { id: string; status: string };
+type Loaded = ListingDefaults & { id: string; status: string; latitude?: number; longitude?: number };
 type Check = { allowed: boolean; reasons: string[] };
 type Suggestion = { state: "ready"; text: string; label: string } | { state: "unavailable"; message: string };
 
@@ -137,6 +138,7 @@ export default function EditListing() {
           {saved && <p role="status">Changes saved.</p>}
           {error && <p role="alert">{error}</p>}
           <PhotoManager listingId={listing.id} />
+          <LocationPicker listingId={listing.id} latitude={listing.latitude} longitude={listing.longitude} />
           <section className="panel">
             {listing.transactionType === "rent" && <BondPathwayField value={bond} state={bondState} onChange={saveBond} />}
             <button type="button" className="secondary" disabled={busy} onClick={runCheck}>Check if it can be published</button>

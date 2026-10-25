@@ -1,7 +1,8 @@
 "use client";
 import { useEffect, useState } from "react";
-import { dollarsToCents, formatPrice } from "../../src/domain/listing-details";
-import { filtersFromParams } from "./url-params";
+import { formatPrice } from "../../src/domain/listing-details";
+import { BLANK_FILTERS, filterParams, filtersFromParams, type FilterForm } from "./url-params";
+import { MapView } from "./map-view";
 import type { CardPhoto } from "../../src/domain/listing-photos";
 import { CardMedia } from "./card-media";
 import "../styles/cards.css";
@@ -11,27 +12,19 @@ type Row = {
   propertyType: string; suburb?: string; postcode?: string; priceCents?: number; bedrooms?: number; bathrooms?: number; parking?: number;
 } & CardPhoto;
 
-const BLANK = { jurisdiction: "", transactionType: "", useClass: "", propertyType: "", location: "", minPrice: "", maxPrice: "", minBedrooms: "", minBathrooms: "", minParking: "" };
-type Form = typeof BLANK;
+const BLANK = BLANK_FILTERS;
+type Form = FilterForm;
 const TYPES = ["house", "unit", "townhouse", "land", "office", "retail", "industrial", "warehouse", "hospitality", "other"];
 const COUNTS = ["1", "2", "3", "4", "5"];
 
-/** Form values to API parameters. Price fields are dollars in the form and cents in the API; only used with sale or rent. */
 function toParams(f: Form, sort: string, page: number): URLSearchParams {
-  const p = new URLSearchParams();
-  for (const k of ["jurisdiction", "transactionType", "useClass", "propertyType", "minBedrooms", "minBathrooms", "minParking"] as const) if (f[k]) p.set(k, f[k]);
-  const loc = f.location.trim();
-  if (loc) p.set(/^\d{4}$/.test(loc) ? "postcode" : "suburb", loc);
-  if (f.transactionType) {
-    const lo = f.minPrice ? dollarsToCents(f.minPrice) : undefined;
-    const hi = f.maxPrice ? dollarsToCents(f.maxPrice) : undefined;
-    if (lo !== undefined) p.set("minPriceCents", String(lo));
-    if (hi !== undefined) p.set("maxPriceCents", String(hi));
-  }
+  const p = filterParams(f);
   p.set("sort", sort);
   p.set("page", String(page));
   return p;
 }
+
+type View = "list" | "map";
 
 export default function Listings() {
   const [form, setForm] = useState<Form>(BLANK);
@@ -43,24 +36,34 @@ export default function Listings() {
   const [pageSize, setPageSize] = useState(12);
   const [error, setError] = useState("");
   const [ready, setReady] = useState(false);
+  const [view, setView] = useState<View>("list");
 
   // Initial filters from the URL (home page search, shared links); invalid values are dropped.
   useEffect(() => {
     const init = { ...BLANK, ...filtersFromParams(new URLSearchParams(window.location.search)) };
     setForm(init);
     setApplied(init);
+    if (new URLSearchParams(window.location.search).get("view") === "map") setView("map");
     setReady(true);
   }, []);
 
+  // The chosen view goes in the address bar, so a shared or reloaded link opens the same view.
+  const pick = (v: View) => {
+    setView(v);
+    const u = new URL(window.location.href);
+    if (v === "map") u.searchParams.set("view", "map"); else u.searchParams.delete("view");
+    window.history.replaceState(null, "", u);
+  };
+
   useEffect(() => {
-    if (!ready) return;
+    if (!ready || view !== "list") return;
     setRows(null);
     setError("");
     fetch(`/api/listings?${toParams(applied, sort, page)}`)
       .then(r => r.json())
       .then(d => { setRows(d.listings ?? []); setTotal(d.total ?? 0); setPageSize(d.pageSize ?? 12); })
       .catch(() => setError("Could not load listings."));
-  }, [ready, applied, sort, page]);
+  }, [ready, applied, sort, page, view]);
 
   const set = (k: keyof Form) => (e: React.ChangeEvent<HTMLSelectElement | HTMLInputElement>) => setForm(f => ({ ...f, [k]: e.target.value }));
   const pages = Math.max(1, Math.ceil(total / pageSize));
@@ -110,14 +113,24 @@ export default function Listings() {
         </div>
       </form>
       <div className="result-bar">
-        <span className="muted" role="status">{rows === null && !error ? "Loading..." : `${total} ${total === 1 ? "listing" : "listings"}`}</span>
-        <select aria-label="Sort" value={sort} onChange={e => { setSort(e.target.value); setPage(1); }}>
-          <option value="newest">Newest</option>
-          <option value="price_asc">Price: low to high</option>
-          <option value="price_desc">Price: high to low</option>
-          <option value="bedrooms_desc">Most bedrooms</option>
-        </select>
+        <div className="view-toggle" role="group" aria-label="Show results as">
+          <button type="button" className="secondary" aria-pressed={view === "list"} onClick={() => pick("list")}><span className="vt-icon vt-list" aria-hidden="true" />List</button>
+          <button type="button" className="secondary" aria-pressed={view === "map"} onClick={() => pick("map")}><span className="vt-icon vt-map" aria-hidden="true" />Map</button>
+        </div>
+        {view === "list" && (
+          <div className="result-bar-end">
+            <span className="muted" role="status">{rows === null && !error ? "Loading..." : `${total} ${total === 1 ? "listing" : "listings"}`}</span>
+            <select aria-label="Sort" value={sort} onChange={e => { setSort(e.target.value); setPage(1); }}>
+              <option value="newest">Newest</option>
+              <option value="price_asc">Price: low to high</option>
+              <option value="price_desc">Price: high to low</option>
+              <option value="bedrooms_desc">Most bedrooms</option>
+            </select>
+          </div>
+        )}
       </div>
+      {ready && view === "map" && <MapView filters={applied} />}
+      {view === "list" && <>
       {error && <p role="alert">{error}</p>}
       {rows === null && !error && <ul className="lcards" aria-hidden="true">{[0, 1, 2].map(i => <li key={i} className="lcard lcard-skel"><div className="lcard-media" /><div className="lcard-body"><p className="lcard-price">&nbsp;</p></div></li>)}</ul>}
       {rows && rows.length === 0 && <p className="empty">No published listings match. Try fewer filters or a nearby suburb.</p>}
@@ -148,6 +161,7 @@ export default function Listings() {
           <button type="button" className="secondary" disabled={page >= pages} onClick={() => setPage(p => p + 1)}>Next</button>
         </nav>
       )}
+      </>}
     </main>
   );
 }
