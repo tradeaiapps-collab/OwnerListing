@@ -4,7 +4,9 @@ import type { ListingStatus, PropertyListing, PublishDecision } from "./listing"
 const ALLOWED: Record<ListingStatus, readonly ListingStatus[]> = {
   draft: ["pending_review", "withdrawn"],
   pending_review: ["draft", "published", "withdrawn"],
-  published: ["withdrawn"],
+  published: ["withdrawn", "suspended"],
+  /** Set by staff (listing moderation). Reinstating goes back through the publish gate; the owner may still withdraw. */
+  suspended: ["published", "withdrawn"],
   withdrawn: []
 };
 
