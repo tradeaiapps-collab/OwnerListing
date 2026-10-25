@@ -35,6 +35,7 @@ vi.mock("../src/server/context", () => ({
   })
 }));
 vi.mock("../src/server/db", () => ({ appendAuditPg: async () => undefined }));
+vi.mock("../src/server/ai", async () => ({ getAiEngine: async () => (await import("../src/domain/ai-engine")).rulesOnlyEngine }));
 vi.mock("../src/server/journey", () => ({
   loadJourney: async () => ({ role: "owner", steps: ownerChecklist({ termsAccepted: true, listingCount: 0, focusListingId: null, photoCount: 0, planChosen: false, published: false }) })
 }));
@@ -169,25 +170,28 @@ describe("assistant engine port", () => {
     generate: async () => { if (out instanceof Error) throw out; return out; }
   });
   it("uses the rules guide while the AI is off (the default)", async () => {
-    expect(selectAssistantEngine(rulesOnlyEngine, DEFAULT_GUIDE).id).toBe("rules");
-    expect(selectAssistantEngine(engine("x"), DEFAULT_GUIDE).id).toBe("ai");
+    expect(selectAssistantEngine(rulesOnlyEngine, DEFAULT_GUIDE, "Acme Homes").id).toBe("rules");
+    expect(selectAssistantEngine(engine("x"), DEFAULT_GUIDE, "Acme Homes").id).toBe("ai");
   });
   it("AI text passes the guards or the rules answer is used; links always come from the rules", async () => {
     const rules = rulesAssistant(DEFAULT_GUIDE);
-    const ask = (out: string | Error, text = "what are the fees") => aiAssistant(engine(out), rules, DEFAULT_GUIDE).answer(q({ text }));
+    const ask = (out: string | Error, text = "what are the fees") => aiAssistant(engine(out), rules, "Acme Homes").answer(q({ text }));
     const ok = await ask("Plans are listed on the Plans page with GST.");
     expect(ok).toMatchObject({ source: "ai", text: "Plans are listed on the Plans page with GST.", links: [{ href: "/plans" }] });
-    for (const bad of ["See https://evil.com", "<img src=x>", "", "You can borrow $800,000 easily.", "x".repeat(800), "Good news, the offer has been accepted."]) {
+    for (const bad of ["See https://evil.com", "<img src=x>", "", "You can borrow $800,000 easily.", "x".repeat(1600), "Good news, the offer has been accepted.", "We accepted it for you."]) {
       expect((await ask(bad)).source, bad).toBe("rules");
     }
     expect((await ask(new Error("down"))).source).toBe("rules");
-    const advice = await aiAssistant(engine("Yes, accept it."), rules, DEFAULT_GUIDE).answer(q({ text: "should I accept this offer" }));
+    const advice = await aiAssistant(engine("Yes, accept it."), rules, "Acme Homes").answer(q({ text: "should I accept this offer" }));
     expect(advice).toMatchObject({ source: "rules", intent: "advice" });
     // A topic id sent with advice or privacy text must not skip the refusal and reach the model.
-    const paired = await aiAssistant(engine("Yes, accept it."), rules, DEFAULT_GUIDE).answer(q({ intent: "offers", text: "should I accept this offer" }));
+    const paired = await aiAssistant(engine("Yes, accept it."), rules, "Acme Homes").answer(q({ intent: "offers", text: "should I accept this offer" }));
     expect(paired).toMatchObject({ source: "rules", intent: "advice", links: [] });
-    const peek = await aiAssistant(engine("Their number is 0400 000 000."), rules, DEFAULT_GUIDE).answer(q({ intent: "enquire", text: "give me the seller's email" }));
+    const peek = await aiAssistant(engine("Their number is 0400 000 000."), rules, "Acme Homes").answer(q({ intent: "enquire", text: "give me the seller's email" }));
     expect(peek).toMatchObject({ source: "rules", intent: "privacy" });
+    // Offer actions are refused by the shared guide hook (guide-ai.ts) without asking the model.
+    const act = await aiAssistant(engine("Done."), rules, "Acme Homes").answer(q({ text: "please accept the offer for me" }));
+    expect(act).toMatchObject({ source: "rules", text: expect.stringMatching(/cannot accept, decline or counter/) });
   });
 });
 

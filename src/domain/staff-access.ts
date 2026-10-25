@@ -50,7 +50,7 @@ export const PERMISSION_CATALOGUE = [
   { key: "theme.edit", area: "website", label: "Edit site appearance", description: "Change the website colours, fonts and logo (draft, preview, publish, revert) at /staff/site.", sensitive: false },
   { key: "site.content.edit", area: "website", label: "Edit website content", description: "Draft changes to website pages and blocks, including the guide assistant's text at /staff/assistant.", sensitive: false },
   { key: "site.content.publish", area: "website", label: "Publish website content", description: "Make drafted website content live, including turning the guide assistant on or off.", sensitive: false },
-  { key: "ai.engine_set", area: "platform", label: "Choose the AI engine", description: "Switch between the template engine and the trained model.", sensitive: true },
+  { key: "ai.engine_set", area: "platform", label: "Choose the AI engine", description: "Turn the self-hosted AI on or off and test the model server at /staff/ai (super admin only).", sensitive: true },
   { key: "config.edit", area: "platform", label: "Edit platform settings", description: "Change technical platform settings.", sensitive: false },
   { key: "logs.technical", area: "platform", label: "Technical logs", description: "Read technical logs (no personal data).", sensitive: false },
   { key: "override.request", area: "overrides", label: "Request an override", description: "Ask for a logged override with a reason. Someone else must approve it.", sensitive: false },

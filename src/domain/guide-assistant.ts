@@ -1,5 +1,5 @@
 import { isEngineUsable, type AiEnginePort } from "./ai-engine";
-import { checkPublicOutput, PUBLIC_AI_RULES } from "./ai-public-guard";
+import { answerGuideQuestion } from "./guide-ai";
 import type { JourneyStep } from "./journey";
 
 /**
@@ -316,43 +316,30 @@ export interface AssistantEngine { readonly id: "rules" | "ai"; answer(q: GuideQ
 
 export const rulesAssistant = (content: GuideContent): AssistantEngine => ({ id: "rules", answer: async q => guideAnswer(content, q) });
 
-const MAX_AI_TEXT = 700;
-
 /**
- * The self-hosted AI behind the same port. It only rewrites the answer text for a typed question: the topic, the links and the
- * chips still come from the rules (AI never produces a link or an action). Advice and privacy questions never reach the model.
- * Any failure, empty output, a link, markup or a public-guard violation falls back to the rules answer.
+ * The self-hosted AI behind the same port, through the shared guide hook (answerGuideQuestion in guide-ai.ts: its own scope prompt,
+ * offer-action and advice refusals, output checks, fail closed). It only rewrites the answer text for a typed question: the topic,
+ * links and chips still come from the rules (AI never produces a link or an action). Advice and privacy questions are answered by
+ * the rules first and never reach the model. Anything other than a checked answer without links or markup falls back to the rules.
  */
-export function aiAssistant(ai: AiEnginePort, rules: AssistantEngine, content: GuideContent): AssistantEngine {
+export function aiAssistant(ai: AiEnginePort, rules: AssistantEngine, siteName: string): AssistantEngine {
   return {
     id: "ai",
     async answer(q) {
       const fallback = await rules.answer(q);
       if (!q.text || fallback.intent === "advice" || fallback.intent === "privacy") return fallback;
-      const facts = fallback.intent === "unknown" ? GUIDE_INTENTS.map(i => content.faq[i].answer).join("\n") : fallback.text;
-      const prompt = [
-        PUBLIC_AI_RULES,
-        "You are a website guide. Answer only from the facts below, in at most three short sentences of plain text. No links.",
-        "Never give legal, financial or tax advice. Never say an offer is accepted or should be accepted. Never mention any other person.",
-        `Facts:\n${facts}`,
-        `Question: ${q.text.slice(0, GUIDE_LIMITS.message)}`
-      ].join("\n\n");
-      try {
-        const out = (await ai.generate(prompt)).trim();
-        if (!out || out.length > MAX_AI_TEXT || /[<>{}`]|https?:\/\/|www\./i.test(out) || !checkPublicOutput(out).ok) return fallback;
-        if (/\b(offer\s+(is|has\s+been)\s+accepted|i\s+(have\s+)?accepted)\b/i.test(out)) return fallback;
-        return { ...fallback, text: out, source: "ai" };
-      } catch {
-        return fallback;
-      }
+      const r = await answerGuideQuestion(q.text, { engine: ai, siteName, page: q.path });
+      if (r.state === "refused") return { ...fallback, text: r.message };
+      if (r.state !== "ready" || /[<>{}`]|https?:\/\/|www\./i.test(r.text) || /\boffers?\s+(is|are|was|were|has\s+been|have\s+been)\s+(accepted|declined|rejected)\b/i.test(r.text)) return fallback;
+      return { ...fallback, text: r.text, source: "ai" };
     }
   };
 }
 
-/** The AI is used only when a self-hosted engine is installed (off by default: rulesOnlyEngine); otherwise the rules guide. */
-export function selectAssistantEngine(ai: AiEnginePort, content: GuideContent): AssistantEngine {
+/** The AI is used only when the self-hosted engine is configured and switched on at /staff/ai (off by default); otherwise the rules guide. */
+export function selectAssistantEngine(ai: AiEnginePort, content: GuideContent, siteName: string): AssistantEngine {
   const rules = rulesAssistant(content);
-  return isEngineUsable(ai) ? aiAssistant(ai, rules, content) : rules;
+  return isEngineUsable(ai) ? aiAssistant(ai, rules, siteName) : rules;
 }
 
 /** The FAQ entries shown on the home page (same staff-edited answers as the assistant). */
