@@ -38,28 +38,8 @@ const STATES: readonly [string, string, string][] = [
   ["act", "Australian Capital Territory", "Canberra"], ["nt", "Northern Territory", "Darwin and Alice Springs"]
 ];
 
-/** Built-in hero background until a licensed photo is uploaded at /staff/site: an illustrated street of houses, no external image. */
-const HeroArt = () => (
-  <svg className="hx-art" viewBox="0 0 1440 600" preserveAspectRatio="xMidYMax slice" aria-hidden="true" focusable="false">
-    <defs>
-      <linearGradient id="hx-sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" className="hx-sky1" /><stop offset="1" className="hx-sky2" /></linearGradient>
-    </defs>
-    <rect width="1440" height="600" fill="url(#hx-sky)" />
-    <circle className="hx-sun" cx="1120" cy="170" r="70" />
-    <path className="hx-far" d="M0 420 Q240 360 480 400 T960 390 T1440 380 V600 H0Z" />
-    <g className="hx-house">
-      <path d="M140 470 V360 L250 290 L360 360 V470Z" /><path d="M520 470 V330 L650 250 L780 330 V470Z" />
-      <path d="M900 470 V370 L990 310 L1080 370 V470Z" /><path d="M1180 470 V350 L1290 280 L1400 350 V470Z" />
-    </g>
-    <g className="hx-win">
-      <rect x="180" y="390" width="40" height="34" rx="3" /><rect x="282" y="390" width="40" height="34" rx="3" />
-      <rect x="560" y="360" width="46" height="40" rx="3" /><rect x="694" y="360" width="46" height="40" rx="3" />
-      <rect x="935" y="395" width="36" height="30" rx="3" /><rect x="1220" y="380" width="40" height="34" rx="3" /><rect x="1320" y="380" width="40" height="34" rx="3" />
-    </g>
-    <g className="hx-tree"><circle cx="440" cy="420" r="46" /><circle cx="840" cy="430" r="38" /><circle cx="1130" cy="425" r="42" /><circle cx="60" cy="430" r="44" /></g>
-    <path className="hx-ground" d="M0 466 H1440 V600 H0Z" />
-  </svg>
-);
+/** Default hero photo until another is uploaded at /staff/site (Hero slot). */
+const DEFAULT_HERO = "/hero-default.jpg";
 
 function Card({ l }: { l: HomeCard }) {
   return (
@@ -85,13 +65,13 @@ export default async function Home() {
   const [latest, suburbs, guide] = await Promise.all([loadLatest(), loadSuburbs(), getLiveGuide()]);
   const preview = process.env["NODE_ENV"] !== "production";
   const heroId = theme.settings.brand.hero;
-  const heroSrc = heroId ? assetUrl("hero", heroId, theme.previewToken ?? undefined) : null;
+  const heroSrc = heroId ? assetUrl("hero", heroId, theme.previewToken ?? undefined) : DEFAULT_HERO;
   return (
     <main className="home">
       {/* React hoists this into <head>: the hero photo is the largest paint, so fetch it first. */}
-      {heroSrc && <link rel="preload" as="image" href={heroSrc} fetchPriority="high" />}
-      <section className={`hx${heroSrc ? " hx-photo" : ""}`} aria-labelledby="home-title">
-        {heroSrc ? <img className="hx-img" src={heroSrc} alt="" fetchPriority="high" decoding="async" /> : <HeroArt />}
+      <link rel="preload" as="image" href={heroSrc} fetchPriority="high" />
+      <section className="hx hx-photo" aria-labelledby="home-title">
+        <img className="hx-img" src={heroSrc} alt="" fetchPriority="high" decoding="async" />
         <div className="hx-shade" aria-hidden="true" />
         <div className="home-wrap hx-inner">
           {preview && <p className="home-badge">Preview</p>}

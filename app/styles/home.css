@@ -11,7 +11,7 @@ a.home-link { display: inline-flex; align-items: center; min-height: 44px; }
 
 /* ---- Hero: full-bleed photo (or the built-in illustration) under a dark overlay; white text; the search card on top ---- */
 .hx { position: relative; isolation: isolate; overflow: hidden; color: var(--hero-ink); background: var(--hero-shade); min-height: 520px; display: flex; align-items: center; padding: var(--space-8) 0; }
-.hx-img, .hx-art { position: absolute; inset: 0; width: 100%; height: 100%; z-index: -2; }
+.hx-img { position: absolute; inset: 0; width: 100%; height: 100%; z-index: -2; }
 .hx-img { object-fit: cover; object-position: var(--hero-focus, 50%) 50%; }
 .hx-shade {
   position: absolute; inset: 0; z-index: -1;
@@ -25,14 +25,6 @@ a.home-link { display: inline-flex; align-items: center; min-height: 44px; }
 .hx-lead { color: var(--hero-ink); font-size: 1.125rem; max-width: 36rem; margin: 0 0 var(--space-4); text-shadow: 0 1px 10px color-mix(in srgb, var(--hero-shade) 60%, transparent); }
 
 /* illustrated fallback, coloured from the theme */
-.hx-art .hx-sky1 { stop-color: color-mix(in srgb, var(--brand) 50%, var(--hero-shade)); }
-.hx-art .hx-sky2 { stop-color: color-mix(in srgb, var(--brand) 22%, var(--hero-shade)); }
-.hx-art .hx-sun { fill: color-mix(in srgb, var(--hero-ink) 30%, transparent); }
-.hx-art .hx-far { fill: color-mix(in srgb, var(--brand) 30%, var(--hero-shade)); }
-.hx-art .hx-house path { fill: color-mix(in srgb, var(--brand) 16%, var(--hero-shade)); }
-.hx-art .hx-win rect { fill: color-mix(in srgb, var(--hero-ink) 22%, transparent); }
-.hx-art .hx-tree circle { fill: color-mix(in srgb, var(--ok) 30%, var(--hero-shade)); }
-.hx-art .hx-ground { fill: var(--hero-shade); }
 
 /* search card */
 .hs { max-width: 760px; background: var(--bg); color: var(--text); border-radius: calc(var(--radius) + 6px); box-shadow: var(--shadow-2); padding: var(--space-3) var(--space-4) var(--space-4); }

@@ -42,11 +42,10 @@ describe("home page", () => {
     expect(renderToStaticMarkup(await Home())).toContain("Preview");
   });
 
-  it("has the full-length sections, the illustrated hero fallback and no invented figures", async () => {
+  it("has the full-length sections, the default hero photo and no invented figures", async () => {
     vi.stubEnv("DATABASE_URL", "");
     const html = renderToStaticMarkup(await Home());
-    for (const t of ["hx-art", "Sell your home", "List your home yourself", "Browse by state", "/listings?state=qld", "Questions", "How do offers work?", "Illustrative only", "Secure chat", "Compare the cost"]) expect(html, t).toContain(t);
-    expect(html).not.toContain("hx-img");
+    for (const t of ["/hero-default.jpg", "Sell your home", "List your home yourself", "Browse by state", "/listings?state=qld", "Questions", "How do offers work?", "Illustrative only", "Secure chat", "Compare the cost"]) expect(html, t).toContain(t);
     expect(html).not.toMatch(/testimonial|\d+% of (owners|buyers)|rated \d/i);
   });
 
