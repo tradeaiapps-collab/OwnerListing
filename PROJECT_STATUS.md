@@ -214,3 +214,9 @@ Light-first design system in `app/globals.css` (all colours from theme variables
 - Buyer: /offers (My offers, buyer nav) and /offers/[offerId]; `POST /api/offers/[offerId]/counter`, `/agree` (agrees to the owner's open counter; the owner still accepts: the buyer never accepts), `/withdraw`. Counter and agree re-check terms and buyer verification; withdraw is always allowed while open.
 - Counters lapse after 1-14 days (default 3). Expiry is settled lazily on every read and action (`expireCountersPg`); a scheduled sweep can call it with no scope but none is wired yet.
 - Open: owner MFA step-up on accept (spec 4.2), agent-drafted counters, mandate checks on owner counters (no mandate table yet), notifying the other side (no delivery provider), offer-analysis and contract draft use the buyer's standing terms.
+
+## Offer timeline (25 Oct 2026, PR feature/offer-timeline, on top of feature/counter-offers)
+- Insert-only `offer_event` (db/20261025200000, append-only trigger): one row per offer state change (submitted, counter_requested, countered, buyer_countered, buyer_agreed, accepted, rejected, withdrawn, expired) with actor role, counter round, the terms put on the table or accepted, from and to status. Written in the same SQL statement as the change, so a status never moves without its event. DB checks: only the owner accepts; expiry is a system event.
+- Backfilled on migration from formal_offer, the audit log and lapsed counters.
+- Returned as `timeline` on the owner detail and buyer detail APIs (roles only, no user ids) and shown on both offer pages (`src/domain/offer-timeline.ts` wording).
+- Not recorded yet (spec 3.2): viewed, ai_analysed, handoff, superseded, MFA flag on accept.

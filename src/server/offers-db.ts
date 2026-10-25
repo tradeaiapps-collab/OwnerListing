@@ -43,10 +43,15 @@ export async function submitOfferPg(db: Queryable, o: NewOffer): Promise<{ id: s
        RETURNING token_hash, buyer_user_id
      ), wipe AS (
        UPDATE offer_link_request SET link_ciphertext = NULL WHERE token_hash IN (SELECT token_hash FROM spent)
+     ), offer AS (
+       INSERT INTO formal_offer (listing_id, buyer_user_id, price_cents, conditions, settlement_days, deposit_cents, confirmed_final, link_token_hash)
+       SELECT $3, buyer_user_id, $4, $5::jsonb, $6, $7, TRUE, token_hash FROM spent
+       RETURNING id, buyer_user_id, submitted_at
+     ), ev AS (
+       INSERT INTO offer_event (offer_id, event_type, actor_kind, actor_user_id, price_cents, conditions, settlement_days, deposit_cents, to_status, occurred_at)
+       SELECT id, 'submitted', 'buyer', buyer_user_id, $4, $5::jsonb, $6, $7, 'submitted', submitted_at FROM offer
      )
-     INSERT INTO formal_offer (listing_id, buyer_user_id, price_cents, conditions, settlement_days, deposit_cents, confirmed_final, link_token_hash)
-     SELECT $3, buyer_user_id, $4, $5::jsonb, $6, $7, TRUE, token_hash FROM spent
-     RETURNING id, submitted_at`,
+     SELECT id, submitted_at FROM offer`,
     [o.tokenHash, o.now, o.listingId, o.priceCents, JSON.stringify(o.conditions), o.settlementDays, o.depositCents]
   );
   const r = rows[0];

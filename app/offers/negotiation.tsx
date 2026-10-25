@@ -1,7 +1,8 @@
 "use client";
 import { useState } from "react";
 import { DEFAULT_COUNTER_DAYS, MAX_COUNTER_DAYS } from "../../src/domain/offer-counter";
-import { counterStatusLabel, partyLabel } from "../../src/domain/offer-display";
+import { offerStatusLabel } from "../../src/domain/offer-display";
+import { describeEvent, type TimelineEvent } from "../../src/domain/offer-timeline";
 import { dollarsToCents, parseConditionLines } from "../../src/domain/offer-form";
 
 export type Terms = { priceCents: number; depositCents: number; settlementDays: number; conditions: string[] };
@@ -19,20 +20,16 @@ export function TermsLine({ t }: { t: Terms }) {
   );
 }
 
-/** Every round of the negotiation, oldest first, starting with the buyer's original offer. Sides are named by role only. */
-export function NegotiationHistory({ original, submittedAt, counters, viewer }: { original: Terms; submittedAt: string; counters: Counter[]; viewer: "owner" | "buyer" }) {
+/** The offer's full history, oldest first: every step, who took it (by role only) and the terms it put on the table. */
+export function OfferTimeline({ events, viewer }: { events: TimelineEvent[]; viewer: "owner" | "buyer" }) {
+  if (events.length === 0) return <p className="muted">No history yet.</p>;
   return (
-    <ol className="card-list negotiation">
-      <li>
-        <small className="muted">Original offer · {partyLabel("buyer", viewer)} · {when(submittedAt)}</small>
-        <TermsLine t={original} />
-      </li>
-      {counters.map(c => (
-        <li key={c.id}>
-          <small className="muted">Round {c.round} · {partyLabel(c.fromParty, viewer)} countered · {when(c.createdAt)}</small>
-          <TermsLine t={c} />
-          <span className={`badge badge-${c.status}`}>{counterStatusLabel(c.status)}</span>
-          {c.status === "open" ? <small className="muted"> Reply by {when(c.expiresAt)}</small> : null}
+    <ol className="timeline">
+      {events.map(e => (
+        <li key={e.id} className={`timeline-${e.type}`}>
+          <time dateTime={e.occurredAt}>{when(e.occurredAt)}</time>
+          <div><strong>{describeEvent(e, viewer)}</strong> <span className={`badge badge-${e.toStatus}`}>{offerStatusLabel(e.toStatus, viewer)}</span></div>
+          {e.terms ? <TermsLine t={e.terms} /> : null}
         </li>
       ))}
     </ol>

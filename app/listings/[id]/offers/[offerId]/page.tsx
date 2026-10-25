@@ -3,12 +3,13 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { MAX_COUNTER_ROUNDS } from "../../../../../src/domain/offer-counter";
 import { offerStatusLabel } from "../../../../../src/domain/offer-display";
-import { CounterForm, dollars, NegotiationHistory, TermsLine, when, type Counter, type Terms } from "../../../../offers/negotiation";
+import type { TimelineEvent } from "../../../../../src/domain/offer-timeline";
+import { CounterForm, dollars, OfferTimeline, TermsLine, when, type Counter, type Terms } from "../../../../offers/negotiation";
 import { JSON_HEADERS } from "../../../ui";
 import "../../../../styles/offers.css";
 
 type Offer = Terms & { id: string; status: string; submittedAt: string; round: number; awaiting: "owner" | "buyer" | null; openCounter?: Terms & { id: string; expiresAt: string } };
-type Detail = { offer: Offer; original: Terms; counters: Counter[]; canDecide: boolean };
+type Detail = { offer: Offer; counters: Counter[]; timeline: TimelineEvent[]; canDecide: boolean };
 type Pending = "accept" | "reject" | "counter" | null;
 
 /**
@@ -50,7 +51,7 @@ export default function OfferDetail() {
 
   if (error) return <main><h1>Offer</h1><p role="alert">{error}</p></main>;
   if (!data) return <main><p className="muted" role="status">Loading offer…</p></main>;
-  const { offer, original, counters, canDecide } = data;
+  const { offer, counters, timeline, canDecide } = data;
   const latest = counters.at(-1);
   const ownersTurn = offer.awaiting === "owner";
   // After a plain "request a counter" the owner may still accept or reject the buyer's terms while waiting.
@@ -102,9 +103,8 @@ export default function OfferDetail() {
       ) : null}
       {!canDecide ? <p className="muted">You can view this negotiation. Only the owner can accept, reject or counter.</p> : null}
 
-      <h2>Negotiation</h2>
-      {counters.length === 0 ? <p className="muted">No counter-offers yet.</p> : null}
-      <NegotiationHistory original={original} submittedAt={offer.submittedAt} counters={counters} viewer="owner" />
+      <h2>Timeline</h2>
+      <OfferTimeline events={timeline} viewer="owner" />
     </main>
   );
 }

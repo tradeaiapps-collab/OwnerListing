@@ -41,24 +41,39 @@ export async function decideOfferPg(
 ): Promise<boolean> {
   const r = await db.query(
     `WITH target AS (
-       SELECT o.id FROM formal_offer o JOIN property_listing l ON l.id = o.listing_id
+       SELECT o.id, o.status AS from_status, o.price_cents, o.conditions, o.settlement_days, o.deposit_cents
+       FROM formal_offer o JOIN property_listing l ON l.id = o.listing_id
        WHERE o.id = $1 AND o.listing_id = $2 AND l.owner_user_id = $3 AND o.status = ANY($4::text[])
          AND ($5 <> 'accepted' OR NOT EXISTS (
            SELECT 1 FROM offer_counter c WHERE c.offer_id = o.id AND c.status = 'open' AND c.from_party = 'owner'))
        FOR UPDATE OF o
      ), basis AS (
-       SELECT c.id FROM offer_counter c JOIN target t ON t.id = c.offer_id
+       SELECT c.id, c.round, c.price_cents, c.conditions, c.settlement_days, c.deposit_cents
+       FROM offer_counter c JOIN target t ON t.id = c.offer_id
        WHERE (c.status = 'open' AND c.from_party = 'buyer') OR c.status = 'agreed'
        ORDER BY c.round DESC LIMIT 1
      ), closed AS (
        UPDATE offer_counter c SET status = CASE WHEN $5 = 'accepted' THEN 'accepted' ELSE 'rejected' END, closed_at = $6
        FROM target t WHERE c.offer_id = t.id AND c.status = 'open' AND $5 IN ('accepted', 'rejected')
        RETURNING c.id
+     ), moved AS (
+       UPDATE formal_offer o SET status = $5,
+         accepted_counter_id = CASE WHEN $5 = 'accepted' THEN (SELECT id FROM basis) ELSE o.accepted_counter_id END
+       FROM target t WHERE o.id = t.id
+       RETURNING o.id
      )
-     UPDATE formal_offer o SET status = $5,
-       accepted_counter_id = CASE WHEN $5 = 'accepted' THEN (SELECT id FROM basis) ELSE o.accepted_counter_id END
-     FROM target t WHERE o.id = t.id
-     RETURNING o.id`,
+     -- The timeline row: an acceptance carries the terms accepted (the basis counter, or the original offer).
+     INSERT INTO offer_event (offer_id, event_type, actor_kind, actor_user_id, counter_id, counter_round,
+       price_cents, conditions, settlement_days, deposit_cents, from_status, to_status, occurred_at)
+     SELECT m.id, CASE $5 WHEN 'countered' THEN 'counter_requested' ELSE $5 END, 'owner', $3,
+       b.id, b.round,
+       CASE WHEN $5 = 'accepted' THEN COALESCE(b.price_cents, t.price_cents) END,
+       CASE WHEN $5 = 'accepted' THEN COALESCE(b.conditions, t.conditions) END,
+       CASE WHEN $5 = 'accepted' THEN COALESCE(b.settlement_days, t.settlement_days) END,
+       CASE WHEN $5 = 'accepted' THEN COALESCE(b.deposit_cents, t.deposit_cents) END,
+       t.from_status, $5, $6
+     FROM moved m JOIN target t ON t.id = m.id LEFT JOIN basis b ON $5 = 'accepted'
+     RETURNING offer_id AS id`,
     [offerId, listingId, ownerUserId, from, to, now]
   );
   return r.rows.length === 1;
