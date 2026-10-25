@@ -235,3 +235,10 @@ Light-first design system in `app/globals.css` (all colours from theme variables
 - API: POST /api/listings/[id]/offers/[offerId]/ai/suggestions (owner or appointed agent, 20 per hour). Drafts are sent into the buyer's enquiry thread with POST /api/ai/drafts/[draftId]/send; an agent may send one only when it is within the mandate. Sending a counter message does not change the offer status: the owner still uses "Request counter".
 - Screen: "AI suggestions" on each open offer at /listings/[id]/offers.
 - Open: wire the negotiation mandate (table not built yet; until then every response needs the owner) and stored price guidance into the route; spec 5.2 owner-approval tracking (95% unchanged before auto mode).
+
+## AI price guidance (built 25 Oct 2026, feature/ai-price-guidance)
+- src/domain/price-guidance.ts (model comparables-v1): comparable sales or leases of the same kind and property group, within 1.5 km when the source has distances (else same suburb or postcode), in the last 6 months (12 with lower confidence if fewer than 3). Each is adjusted for bedrooms, bathrooms and parking, weighted by recency and likeness; low, mid and high are weighted 20th, 50th and 80th percentiles (at least about 3% either side), rounded to $5k ($25k over $2m, $10 a week for rent). Fewer than 3 comparables or confidence under 0.3 = "Estimate unavailable" (spec 5.4).
+- Comparables source port: PRICE_DATA_SOURCE=file with PRICE_DATA_FILE (a JSON export, for local testing or a licensed provider's export). Default none. Open: choose and license a property data provider (spec 5.2).
+- The AI only writes an optional explanation (prompt price-explainer@1); any amount not in the estimate, advice wording or contact details drops it.
+- db/20261025200000_price_estimate.sql: insert-only price_estimate (stored when the numbers change or daily). API: GET /api/listings/[id]/price-guidance (rules only), POST adds the AI explanation (20 per hour). Owner or appointed agent only, never public. Card on the draft edit page.
+- Open: accuracy against the spec thresholds (median error 6% metro, 9% regional) once real data is connected; show the card on published listings too.

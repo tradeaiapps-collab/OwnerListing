@@ -4,6 +4,7 @@ import { useParams } from "next/navigation";
 import { BondPathwayField, ListingFields, type BondState, type ListingDefaults } from "../../fields";
 import { JSON_HEADERS, listingFormBody } from "../../ui";
 import { PhotoManager } from "../../photo-manager";
+import { PriceGuidanceCard } from "../../price-guidance-card";
 import { WordingFlagList, type WordingFlagView } from "../../wording-hint";
 import { LocationPicker } from "../../location-picker";
 
@@ -154,6 +155,7 @@ export default function EditListing() {
               </div>
             )}
           </section>
+          <PriceGuidanceCard listingId={listing.id} rent={listing.transactionType === "rent"} />
           <SuggestDescription id={id} />
         </>
       )}
