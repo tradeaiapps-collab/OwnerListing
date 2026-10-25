@@ -128,12 +128,20 @@ describe("checkAbn (fails closed)", () => {
 describe("runAbnCheck rate limit", () => {
   it("refuses past the limit and when the counter gives nothing usable", async () => {
     const port: AbnLookupPort = { lookup: vi.fn(async () => null) };
-    let n = 0;
-    const deps = { hit: async () => ++n, port };
+    const counts = new Map<string, number>();
+    const deps = { hit: async (b: string) => { counts.set(b, (counts.get(b) ?? 0) + 1); return counts.get(b); }, port };
     for (let i = 0; i < ABN_CHECK_RATE.perPerson; i++) expect((await runAbnCheck(deps, "u1", VALID)).ok).toBe(true);
     expect(await runAbnCheck(deps, "u1", VALID)).toMatchObject({ ok: false, code: "rate_limited" });
     expect(port.lookup).toHaveBeenCalledTimes(ABN_CHECK_RATE.perPerson);
     expect(await runAbnCheck({ hit: async () => undefined, port }, "u1", VALID)).toMatchObject({ ok: false, code: "rate_limited" });
+  });
+  it("also limits per address, so many accounts from one IP share a budget", async () => {
+    const port: AbnLookupPort = { lookup: vi.fn(async () => null) };
+    const counts = new Map<string, number>();
+    const deps = { hit: async (b: string) => { counts.set(b, (counts.get(b) ?? 0) + 1); return counts.get(b); }, port };
+    for (let i = 0; i < ABN_CHECK_RATE.perIp; i++) expect((await runAbnCheck(deps, `user${i}`, VALID, "203.0.113.9")).ok).toBe(true);
+    expect(await runAbnCheck(deps, "another", VALID, "203.0.113.9")).toMatchObject({ ok: false, code: "rate_limited" });
+    expect((await runAbnCheck(deps, "another", VALID, "203.0.113.10")).ok).toBe(true);
   });
 });
 

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { csrfGuard } from "../../../../src/server/csrf";
 import { abnCheckDeps, runAbnCheck } from "../../../../src/server/abn-check";
 import { getActor, getDb, getStaff } from "../../../../src/server/context";
+import { clientIp } from "../../../../src/server/client-ip";
 import { failure, unauthenticated } from "../../../../src/server/http";
 
 /**
@@ -18,6 +19,6 @@ export async function POST(req: Request) {
   if (!personId) return unauthenticated();
   const body: unknown = await req.json().catch(() => null);
   const abn = body !== null && typeof body === "object" ? (body as Record<string, unknown>)["abn"] : undefined;
-  const r = await runAbnCheck(abnCheckDeps(getDb()), personId, abn);
+  const r = await runAbnCheck(abnCheckDeps(getDb()), personId, abn, clientIp(req));
   return r.ok ? NextResponse.json(r.value, { headers: { "cache-control": "no-store" } }) : failure(r);
 }
