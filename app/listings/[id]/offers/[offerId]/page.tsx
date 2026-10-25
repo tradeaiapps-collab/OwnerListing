@@ -3,9 +3,13 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { formatAud, formatPrice } from "../../../../../src/domain/listing-details";
 import type { OwnerDecision } from "../../../../../src/domain/offer-decision";
+import { MAX_COUNTER_ROUNDS } from "../../../../../src/domain/offer-counter";
 import {
-  actorText, depositBps, eventText, formatBps, historyWithDeltas, isOpen, timelineFor, versusAsking, type OfferDetail
+  depositBps, formatBps, historyWithDeltas, isOpen, versusAsking, type OfferDetail
 } from "../../../../../src/domain/offer-detail";
+import { offerStatusLabel } from "../../../../../src/domain/offer-display";
+import { describeEvent, type TimelineEvent } from "../../../../../src/domain/offer-timeline";
+import { CounterForm, type Counter, type Terms } from "../../../../offers/negotiation";
 import { JSON_HEADERS } from "../../../ui";
 import "../../../../styles/cards.css";
 import "../../../../styles/offers.css";
@@ -14,21 +18,39 @@ const label = (s: string) => s.charAt(0).toUpperCase() + s.slice(1).replace(/_/g
 const when = (iso: string) => new Date(iso).toLocaleString("en-AU", { day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit" });
 const day = (iso: string) => new Date(iso).toLocaleDateString("en-AU", { day: "numeric", month: "short", year: "numeric" });
 
-const ACTIONS: Record<OwnerDecision, { button: string; title: string; text: string; confirm: string; tone: "primary" | "secondary" | "danger" }> = {
+type Negotiation = {
+  awaiting: "owner" | "buyer" | null; standing: Terms; round: number;
+  openCounter?: Terms & { id: string; expiresAt: string }; counters: Counter[]; timeline: TimelineEvent[];
+};
+type Detail = OfferDetail & { negotiation: Negotiation };
+type Action = OwnerDecision | "counter";
+
+const ACTIONS: Record<Action, { button: string; title: string; text: string; confirm: string; tone: "primary" | "secondary" | "danger" }> = {
   accept: { button: "Accept offer", title: "Accept this offer?", confirm: "Yes, accept this offer", tone: "primary",
     text: "This records your decision. No money moves on this site; the deposit goes to your solicitor's trust account." },
   counter_request: { button: "Ask for a better offer", title: "Ask the buyer to improve their offer?", confirm: "Yes, ask for a counter", tone: "secondary",
     text: "The buyer is asked to send a new offer. Nothing is accepted, and this offer stays on record." },
   reject: { button: "Reject offer", title: "Reject this offer?", confirm: "Yes, reject", tone: "danger",
-    text: "The buyer is told it was not accepted. This cannot be undone; they can still make a new offer." }
+    text: "The buyer is told it was not accepted. This cannot be undone; they can still make a new offer." },
+  counter: { button: "Counter with your terms", title: "Send a counter-offer", confirm: "Send counter-offer", tone: "secondary",
+    text: "The buyer can agree, counter back or withdraw. Nothing is accepted until you accept." }
 };
+
+/** What the owner may do now. While the owner's own counter waits for the buyer there is nothing to do but wait. */
+function allowedActions(status: string, n: Negotiation): Action[] {
+  const canCounter = n.round < MAX_COUNTER_ROUNDS;
+  if (status === "countered") return n.openCounter ? [] : ["accept", "reject"];
+  if (status === "buyer_countered") return canCounter ? ["accept", "counter", "reject"] : ["accept", "reject"];
+  if (status === "submitted" || status === "under_review") return canCounter ? ["accept", "counter", "counter_request", "reject"] : ["accept", "counter_request", "reject"];
+  return [];
+}
 
 /** Owner and appointed-agent view of one formal offer. Only the owner decides; the AI never accepts and is not an actor here. */
 export default function OfferDetailPage() {
   const { id, offerId } = useParams<{ id: string; offerId: string }>();
-  const [d, setD] = useState<OfferDetail | null>(null);
+  const [d, setD] = useState<Detail | null>(null);
   const [error, setError] = useState("");
-  const [pending, setPending] = useState<OwnerDecision | null>(null);
+  const [pending, setPending] = useState<Action | null>(null);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
 
@@ -42,15 +64,15 @@ export default function OfferDetailPage() {
 
   useEffect(() => { setD(null); setError(""); load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [id, offerId]);
 
-  async function decide() {
-    if (!pending) return;
+  async function send(url: string, payload: unknown, ok: string) {
     setBusy(true); setNotice("");
-    const r = await fetch(`/api/listings/${id}/offers/${offerId}/decision`, { method: "POST", headers: JSON_HEADERS, body: JSON.stringify({ decision: pending }) }).catch(() => null);
+    const r = await fetch(url, { method: "POST", headers: JSON_HEADERS, body: JSON.stringify(payload) }).catch(() => null);
     const body = r ? await r.json().catch(() => ({})) : {};
     setBusy(false); setPending(null);
-    setNotice(r?.ok ? "Decision recorded." : body.error ?? "Could not record that decision.");
+    setNotice(r?.ok ? ok : body.error ?? "Could not record that decision.");
     load();
   }
+  const decide = () => { if (pending && pending !== "counter") void send(`/api/listings/${id}/offers/${offerId}/decision`, { decision: pending }, "Decision recorded."); };
 
   const crumbs = (
     <nav className="crumbs" aria-label="Breadcrumb">
@@ -63,10 +85,12 @@ export default function OfferDetailPage() {
   const o = d.offer;
   const tx = d.listing.transactionType;
   const vs = versusAsking(o.priceCents, d.listing.askingPriceCents);
-  const timeline = timelineFor(o, d.events);
+  const n = d.negotiation;
+  const s = n.standing;
+  const latest = n.counters.at(-1);
   const history = historyWithDeltas(d.history);
   const open = isOpen(o.status);
-  const allowed: OwnerDecision[] = open ? (o.status === "countered" ? ["accept", "reject"] : ["accept", "counter_request", "reject"]) : [];
+  const allowed = open ? allowedActions(o.status, n) : [];
   const verified = [d.buyer.emailVerified && "Email", d.buyer.phoneVerified && "Phone", d.buyer.idVerified && "ID"].filter(Boolean) as string[];
 
   return (
@@ -75,7 +99,7 @@ export default function OfferDetailPage() {
       <header className="od-head">
         <div>
           <p className="od-eyebrow">Offer on <a href={`/listings/${d.listing.id}`}>{d.listing.title}</a></p>
-          <h1>{formatPrice(o.priceCents, tx)} <span className={`badge badge-${o.status}`}>{label(o.status)}</span></h1>
+          <h1>{formatPrice(o.priceCents, tx)} <span className={`badge badge-${o.status}`}>{offerStatusLabel(o.status, "owner", latest)}</span></h1>
           <p className="muted od-sub">{d.listing.address} · received {when(o.submittedAt)}</p>
         </div>
         {vs && (
@@ -101,15 +125,32 @@ export default function OfferDetailPage() {
             {o.conditions.length ? <ul className="chips od-conds">{o.conditions.map(c => <li key={c} className="chip">{c}</li>)}</ul> : <p className="muted">Unconditional offer.</p>}
           </section>
 
+          {n.round > 0 && (
+            <section aria-labelledby="od-negotiation">
+              <h2 id="od-negotiation">Negotiation</h2>
+              <p className="muted">{n.round} counter-offer{n.round === 1 ? "" : "s"} so far (at most {MAX_COUNTER_ROUNDS}).{" "}
+                {latest?.status === "agreed" ? "The buyer agreed to your counter. Accept it to finish, or reject." : ""}</p>
+              <h3>{latest?.status === "agreed" ? "Terms the buyer agreed to" : "The buyer's terms on the table"}</h3>
+              <dl className="od-terms">
+                <div><dt>Price</dt><dd>{formatPrice(s.priceCents, tx)}</dd></div>
+                <div><dt>Deposit</dt><dd>{formatAud(s.depositCents)}</dd></div>
+                <div><dt>Settlement</dt><dd>{s.settlementDays} days</dd></div>
+                <div><dt>Conditions</dt><dd>{s.conditions.length ? s.conditions.join("; ") : <span className="muted">None</span>}</dd></div>
+              </dl>
+              {n.openCounter && <p className="notice">Your counter of {formatPrice(n.openCounter.priceCents, tx)} is waiting for the buyer until {when(n.openCounter.expiresAt)}. If they do not answer by then, the offer expires.</p>}
+            </section>
+          )}
+
           <section aria-labelledby="od-timeline">
             <h2 id="od-timeline">Timeline</h2>
             <ol className="od-timeline">
-              {timeline.map((e, i) => (
-                <li key={`${e.type}-${e.at}-${i}`} className={`od-ev od-ev-${e.type}`}>
+              {n.timeline.map(e => (
+                <li key={e.id} className={`od-ev od-ev-${e.type}`}>
                   <span className="od-ev-dot" aria-hidden="true" />
                   <div>
-                    <p className="od-ev-title">{eventText(e.type)}{e.priceCents !== undefined && <> at <strong>{formatPrice(e.priceCents, tx)}</strong></>}</p>
-                    <p className="od-ev-meta">{actorText(e.actor)} · <time dateTime={e.at}>{when(e.at)}</time></p>
+                    <p className="od-ev-title">{describeEvent(e, "owner")}{e.terms && <> at <strong>{formatPrice(e.terms.priceCents, tx)}</strong></>}</p>
+                    {e.terms && <p className="od-ev-meta">Deposit {formatAud(e.terms.depositCents)} · {e.terms.settlementDays} days · {e.terms.conditions.length ? e.terms.conditions.join("; ") : "no conditions"}</p>}
+                    <p className="od-ev-meta"><time dateTime={e.occurredAt}>{when(e.occurredAt)}</time></p>
                   </div>
                 </li>
               ))}
@@ -160,8 +201,9 @@ export default function OfferDetailPage() {
         <aside className="od-aside" aria-labelledby="od-decide">
           <section className="panel od-decide">
             <h2 id="od-decide">{d.canDecide ? "Your decision" : "Owner decision"}</h2>
-            {!d.canDecide && <p className="muted">Only the owner can accept, reject or ask for a counter. As the appointed agent you can review the offer and talk to the buyer.</p>}
+            {!d.canDecide && <p className="muted">Only the owner can accept, reject or counter. As the appointed agent you can review the offer and talk to the buyer.</p>}
             {d.canDecide && !open && <p className="muted">This offer is {label(o.status).toLowerCase()}. No more decisions are needed on it.</p>}
+            {d.canDecide && open && allowed.length === 0 && <p className="muted">Waiting for the buyer to answer your counter-offer.</p>}
             {d.canDecide && open && !pending && (
               <div className="od-actions">
                 {allowed.map(a => (
@@ -169,14 +211,23 @@ export default function OfferDetailPage() {
                 ))}
               </div>
             )}
-            {d.canDecide && pending && (
+            {d.canDecide && pending === "counter" && (
+              <div className="confirm-box">
+                <p><strong>{ACTIONS.counter.title}</strong></p>
+                <p>{ACTIONS.counter.text}</p>
+                <CounterForm start={s} busy={busy} submitLabel={ACTIONS.counter.confirm}
+                  onSubmit={body => void send(`/api/listings/${id}/offers/${offerId}/counter`, body, "Counter-offer sent to the buyer.")} />
+                <div className="actions"><button type="button" className="secondary" onClick={() => setPending(null)} disabled={busy}>Cancel</button></div>
+              </div>
+            )}
+            {d.canDecide && pending && pending !== "counter" && (
               <div className="confirm-box" role="alertdialog" aria-labelledby="od-confirm-title" aria-describedby="od-confirm-text">
                 <p id="od-confirm-title"><strong>{ACTIONS[pending].title}</strong></p>
                 <dl className="od-confirm-terms">
-                  <dt>Price</dt><dd>{formatPrice(o.priceCents, tx)}</dd>
-                  <dt>Deposit</dt><dd>{formatAud(o.depositCents)}</dd>
-                  <dt>Settlement</dt><dd>{o.settlementDays} days</dd>
-                  <dt>Conditions</dt><dd>{o.conditions.length ? o.conditions.join("; ") : "None"}</dd>
+                  <dt>Price</dt><dd>{formatPrice(s.priceCents, tx)}</dd>
+                  <dt>Deposit</dt><dd>{formatAud(s.depositCents)}</dd>
+                  <dt>Settlement</dt><dd>{s.settlementDays} days</dd>
+                  <dt>Conditions</dt><dd>{s.conditions.length ? s.conditions.join("; ") : "None"}</dd>
                 </dl>
                 <p id="od-confirm-text">{ACTIONS[pending].text}</p>
                 <div className="actions">
@@ -187,7 +238,7 @@ export default function OfferDetailPage() {
             )}
             <p className="od-note">The AI never accepts an offer. Deposits are paid to {d.canDecide ? "your" : "the owner's"} solicitor&apos;s trust account, never to this site.</p>
           </section>
-          <p className="od-links"><a href={`/listings/${id}/offer-analysis`}>Compare all offers</a> · <a href={`/listings/${id}/contract-draft`}>Contract draft preview</a></p>
+          <p className="od-links"><a href={`/listings/${id}/offer-analysis`}>Compare all offers</a> · <a href={`/listings/${id}/mandate`}>Negotiation mandate</a> · <a href={`/listings/${id}/contract-draft`}>Contract draft preview</a></p>
         </aside>
       </div>
     </main>
