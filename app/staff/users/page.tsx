@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { labelFor } from "../../../src/domain/admin-dashboard";
-import { ReasonAction } from "../reason-action";
+import { ReasonAction, type ActionChoice } from "../reason-action";
 import { loadError } from "../staff-api";
 import "../../styles/admin.css";
 
@@ -14,6 +14,14 @@ const TYPES = ["owner", "agent", "buyer", "vendor", "project_owner", "investor"]
 const STATUSES = ["active", "suspended", "pending", "closed"];
 const pill = (s: string) => (s === "active" ? "good" : s === "suspended" ? "bad" : s === "pending" ? "warn" : "");
 const yes = (b: boolean) => (b ? "Yes" : "No");
+const SUSPEND_CHOICE: ActionChoice = {
+  field: "listings", legend: "Their live listings",
+  options: [{ value: "suspend", label: "Suspend them too (hidden from search and their pages)" }, { value: "keep", label: "Keep them live" }]
+};
+const REINSTATE_CHOICE: ActionChoice = {
+  field: "listings", legend: "Listings suspended with this account",
+  options: [{ value: "reinstate", label: "Put them back live (each must pass the publish checks)" }, { value: "keep", label: "Leave them suspended" }]
+};
 
 /** User accounts with their verification and compliance facts. Suspend or reinstate with a reason. Staff accounts are not listed here. */
 export default function UserAccounts() {
@@ -24,6 +32,7 @@ export default function UserAccounts() {
   const [open, setOpen] = useState<Detail | null>(null);
   const [error, setError] = useState("");
   const [loaded, setLoaded] = useState(false);
+  const [notice, setNotice] = useState<{ text: string; held: { id: string; title: string; reasons: string[] }[] } | null>(null);
 
   async function load(cursor?: string) {
     setError("");
@@ -42,6 +51,14 @@ export default function UserAccounts() {
     setOpen(await r.json());
   }
   const refresh = async (id: string) => { await load(); await details(id); };
+  const afterAction = (id: string) => (d: Record<string, unknown>) => {
+    const held = Array.isArray(d["listingsNotRestored"]) ? (d["listingsNotRestored"] as { id: string; title: string; reasons: string[] }[]) : [];
+    const n = (k: string) => (typeof d[k] === "number" ? (d[k] as number) : 0);
+    const plural = (c: number) => `${c} listing${c === 1 ? "" : "s"}`;
+    if (d["status"] === "suspended") setNotice({ text: `Account suspended. ${n("listingsSuspended") > 0 ? `${plural(n("listingsSuspended"))} suspended with it.` : "No live listings were changed."}`, held: [] });
+    else setNotice({ text: `Account reinstated. ${plural(n("listingsRestored"))} back on the site.${held.length > 0 ? ` ${plural(held.length)} stayed suspended because they would not pass the publish checks today:` : ""}`, held });
+    void refresh(id);
+  };
   useEffect(() => { void load(); }, []);
 
   const sel = (k: "userType" | "status", label: string, opts: string[]) => (
@@ -57,8 +74,8 @@ export default function UserAccounts() {
       <h1>User accounts</h1>
       <p><a href="/staff/dashboard">Back to the admin dashboard</a></p>
       <p className="muted">
-        A suspended account is signed out on its next request and cannot sign back in until reinstated. Its listings stay as they are; suspend a
-        listing separately in Listing moderation. {full ? "You can see full names and emails." : "Names and emails are partly hidden for your role; search by account id."}
+        A suspended account is signed out on its next request and cannot sign back in until reinstated. You choose each time whether its
+        listings are suspended and later reinstated with it. {full ? "You can see full names and emails." : "Names and emails are partly hidden for your role; search by account id."}
       </p>
       <form className="filters" onSubmit={e => { e.preventDefault(); void load(); }}>
         <label>Search <input value={f.q} placeholder={full ? "Name, email or account id" : "Account id"} onChange={e => setF({ ...f, q: e.target.value })} /></label>
@@ -66,6 +83,12 @@ export default function UserAccounts() {
         <button type="submit">Search</button>
       </form>
       {error && <p role="alert">{error}</p>}
+      {notice && (
+        <div role="status" className="admin-notice">
+          <p>{notice.text}</p>
+          {notice.held.length > 0 && <ul>{notice.held.map(h => <li key={h.id}><strong>{h.title}</strong>: {h.reasons.join(" ")}</li>)}</ul>}
+        </div>
+      )}
       {open && (
         <section className="account-detail" aria-label="Account details">
           <h2>{open.user.name || "Unnamed account"} <span className={`status-pill ${pill(open.user.status)}`}>{labelFor(open.user.status)}</span></h2>
@@ -81,8 +104,8 @@ export default function UserAccounts() {
             <><h3>Suspension history</h3><ul>{open.history.map(h => <li key={h.occurredAt}>{new Date(h.occurredAt).toLocaleString("en-AU")}: {h.eventType === "user.suspended" ? "Suspended" : "Reinstated"}{h.reason ? `, ${h.reason}` : ""}</li>)}</ul></>
           )}
           <div className="row-actions">
-            {open.user.status === "active" && <ReasonAction label="Suspend account" action="suspend" danger url={`/api/staff/users/${open.user.id}/action`} onDone={() => void refresh(open.user.id)} />}
-            {open.user.status === "suspended" && <ReasonAction label="Reinstate account" action="reinstate" url={`/api/staff/users/${open.user.id}/action`} onDone={() => void refresh(open.user.id)} />}
+            {open.user.status === "active" && <ReasonAction label="Suspend account" action="suspend" danger url={`/api/staff/users/${open.user.id}/action`} choice={SUSPEND_CHOICE} onDone={afterAction(open.user.id)} />}
+            {open.user.status === "suspended" && <ReasonAction label="Reinstate account" action="reinstate" url={`/api/staff/users/${open.user.id}/action`} choice={REINSTATE_CHOICE} onDone={afterAction(open.user.id)} />}
             <button type="button" className="secondary" onClick={() => setOpen(null)}>Close</button>
           </div>
         </section>

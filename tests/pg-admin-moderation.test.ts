@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { signSession } from "../src/server/auth/session";
 import { actorFromRequestChecked } from "../src/server/auth/actor";
-import { loadUser, moderateListing, searchListings, searchUsers, setUserStatus } from "../src/server/admin-moderation-db";
+import { listingsSuspendedWithAccount, loadUser, moderateListing, searchListings, searchUsers, setUserStatus } from "../src/server/admin-moderation-db";
 import type { Queryable } from "../src/server/db";
 import { addListing, addUser, createTestDb, DATABASE_URL, type TestDb } from "./helpers/pg-db";
 
@@ -55,18 +55,43 @@ describe.skipIf(!DATABASE_URL)("admin moderation (Postgres)", () => {
     const secret = "s".repeat(40);
     const req = new Request("http://x", { headers: { cookie: `ol_session=${signSession({ uid: buyer, ut: "buyer", exp: 2_000_000_000 }, secret)}` } });
     expect(await actorFromRequestChecked(db, req, secret, 1_900_000_000)).not.toBeNull();
-    expect(await setUserStatus(db, staff, buyer, "active", "suspended", "Repeated abusive messages.")).toBe(true);
+    expect(await setUserStatus(db, staff, buyer, "active", "suspended", "Repeated abusive messages.")).toEqual({ listingIds: [] });
     expect(await actorFromRequestChecked(db, req, secret, 1_900_000_000)).toBeNull();
-    expect(await setUserStatus(db, staff, buyer, "active", "suspended", "Again.")).toBe(false);
-    expect(await setUserStatus(db, staff, buyer, "suspended", "active", "Apology received.")).toBe(true);
+    expect(await setUserStatus(db, staff, buyer, "active", "suspended", "Again.")).toBeNull();
+    expect(await setUserStatus(db, staff, buyer, "suspended", "active", "Apology received.")).toEqual({ listingIds: [] });
     const detail = await loadUser(db, buyer, async () => false);
     expect(detail?.history.map(h => [h.eventType, h.reason])).toEqual([["user.reinstated", "Apology received."], ["user.suspended", "Repeated abusive messages."]]);
     expect(detail?.user.termsCurrent).toBe(false);
   });
 
+  it("suspends an account's live listings with it, audited together, and remembers which ones", async () => {
+    const owner = await addUser(db, "owner");
+    const live1 = await addListing(db, owner, { status: "published" });
+    const live2 = await addListing(db, owner, { status: "published" });
+    const draft = await addListing(db, owner, { status: "draft" });
+    const done = await setUserStatus(db, staff, owner, "active", "suspended", "Fraudulent listings reported.", { suspendListings: true });
+    expect(done?.listingIds.sort()).toEqual([live1, live2].sort());
+    const st = await db.query(`SELECT id, status FROM property_listing WHERE owner_user_id = $1`, [owner]);
+    expect(Object.fromEntries(st.rows.map(r => [r["id"], r["status"]]))).toEqual({ [live1]: "suspended", [live2]: "suspended", [draft]: "draft" });
+    const ev = await db.query(`SELECT aggregate_id, payload FROM audit_event WHERE aggregate_id = ANY($1::text[]) AND event_type = 'listing.suspended'`, [[live1, live2]]);
+    expect(ev.rows.map(r => (r["payload"] as Record<string, unknown>)["withAccount"])).toEqual([owner, owner]);
+    expect((await listingsSuspendedWithAccount(db, owner)).sort()).toEqual([live1, live2].sort());
+    // A listing that left "suspended" since (e.g. withdrawn) is not brought back.
+    await db.query(`UPDATE property_listing SET status = 'withdrawn' WHERE id = $1`, [live2]);
+    expect(await listingsSuspendedWithAccount(db, owner)).toEqual([live1]);
+  });
+
+  it("keeps the listings live when staff choose to, and nothing is remembered for reinstatement", async () => {
+    const owner = await addUser(db, "owner");
+    const live = await addListing(db, owner, { status: "published" });
+    expect(await setUserStatus(db, staff, owner, "active", "suspended", "Pause the account only.", { suspendListings: false })).toEqual({ listingIds: [] });
+    expect((await db.query(`SELECT status FROM property_listing WHERE id = $1`, [live])).rows[0]!["status"]).toBe("published");
+    expect(await listingsSuspendedWithAccount(db, owner)).toEqual([]);
+  });
+
   it("never changes or returns a staff account", async () => {
     const admin = await addUser(db, "admin");
-    expect(await setUserStatus(db, staff, admin, "active", "suspended", "Should not work.")).toBe(false);
+    expect(await setUserStatus(db, staff, admin, "active", "suspended", "Should not work.")).toBeNull();
     expect(await loadUser(db, admin, async () => true)).toBeNull();
     expect((await searchUsers(db, { q: admin, searchPersonal: false })).rows).toEqual([]);
   });

@@ -127,18 +127,54 @@ export async function userTarget(db: Queryable, id: string): Promise<{ id: strin
   return r ? { id: String(r["id"]), userType: String(r["user_type"]), status: String(r["status"]) } : null;
 }
 
-/** Guarded status change for a non-staff account, audited in the same transaction. False when the account changed in between. */
+/**
+ * Guarded status change for a non-staff account, audited in the same transaction. Null when the account changed in between.
+ * With suspendListings, every live listing of the account is suspended in the same transaction, each with its own audit event, and
+ * their ids are kept on the account's event so a later reinstatement can bring back exactly those listings.
+ */
 export async function setUserStatus(
-  db: Queryable, staff: { id: string; role: string }, id: string, from: string, to: "suspended" | "active", reason: string
-): Promise<boolean> {
+  db: Queryable, staff: { id: string; role: string }, id: string, from: string, to: "suspended" | "active", reason: string,
+  opts: { suspendListings?: boolean } = {}
+): Promise<{ listingIds: string[] } | null> {
   return inTx(db, async tx => {
     const done = await tx.query(`UPDATE app_user SET status = $3 WHERE id = $1 AND status = $2 AND user_type <> 'admin' RETURNING id`, [id, from, to]);
-    if (done.rows.length === 0) return false;
+    if (done.rows.length === 0) return null;
+    const now = new Date().toISOString();
+    const correlationId = randomUUID();
+    const listingIds = to === "suspended" && opts.suspendListings
+      ? (await tx.query(
+          `UPDATE property_listing SET status = 'suspended', updated_at = now() WHERE owner_user_id = $1 AND status = 'published' RETURNING id`, [id]
+        )).rows.map(r => String(r["id"]))
+      : [];
+    for (const listingId of listingIds) {
+      await appendAuditPg(tx, {
+        id: randomUUID(), occurredAt: now, actorType: "user", actorId: staff.id, aggregateType: "listing", aggregateId: listingId,
+        eventType: "listing.suspended", correlationId,
+        payload: { from: "published", to: "suspended", role: staff.role, action: "suspend", reason, moderation: true, withAccount: id }
+      });
+    }
     await appendAuditPg(tx, {
-      id: randomUUID(), occurredAt: new Date().toISOString(), actorType: "user", actorId: staff.id, aggregateType: "user", aggregateId: id,
-      eventType: to === "suspended" ? "user.suspended" : "user.reinstated", correlationId: randomUUID(),
-      payload: { role: staff.role, from, to, reason, moderation: true }
+      id: randomUUID(), occurredAt: now, actorType: "user", actorId: staff.id, aggregateType: "user", aggregateId: id,
+      eventType: to === "suspended" ? "user.suspended" : "user.reinstated", correlationId,
+      payload: {
+        role: staff.role, from, to, reason, moderation: true,
+        ...(to === "suspended" ? { listings: opts.suspendListings ? "suspended" : "kept", listingIds } : {})
+      }
     });
-    return true;
+    return { listingIds };
   });
+}
+
+/** Listings suspended together with the account's latest suspension that are still suspended (and still the account's). */
+export async function listingsSuspendedWithAccount(db: Queryable, id: string): Promise<string[]> {
+  const ev = (await db.query(
+    `SELECT payload->'listingIds' AS ids FROM audit_event
+      WHERE aggregate_type = 'user' AND aggregate_id = $1 AND event_type = 'user.suspended' ORDER BY occurred_at DESC LIMIT 1`, [id]
+  )).rows[0];
+  const ids = Array.isArray(ev?.["ids"]) ? (ev["ids"] as unknown[]).filter((x): x is string => typeof x === "string") : [];
+  if (ids.length === 0) return [];
+  const res = await db.query(
+    `SELECT id FROM property_listing WHERE id = ANY($1::uuid[]) AND owner_user_id = $2 AND status = 'suspended' ORDER BY created_at, id`, [ids, id]
+  );
+  return res.rows.map(r => String(r["id"]));
 }

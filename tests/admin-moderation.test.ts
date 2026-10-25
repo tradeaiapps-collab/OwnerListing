@@ -13,17 +13,24 @@ const state = vi.hoisted(() => ({
   gate: { allowed: true, reasons: [] as string[] },
   target: null as Record<string, unknown> | null,
   writes: [] as unknown[][],
-  writeOk: true
+  writeOk: true,
+  suspendedIds: [] as string[],
+  withAccount: [] as string[],
+  recs: {} as Record<string, unknown>,
+  gates: {} as Record<string, { allowed: boolean; reasons: string[] }>
 }));
 vi.mock("../src/server/context", () => ({
   getDb: () => ({ query: async () => ({ rows: [] }) }), getStaff: async () => state.staff,
-  getDeps: () => ({ repo: { get: async () => state.rec }, now: () => "2026-10-25T00:00:00.000Z" })
+  getDeps: () => ({ repo: { get: async (id: string) => (id in state.recs ? state.recs[id] : state.rec) }, now: () => "2026-10-25T00:00:00.000Z" })
 }));
-vi.mock("../src/domain/listing-service", () => ({ evaluateListingPublish: async () => state.gate }));
+vi.mock("../src/domain/listing-service", () => ({
+  evaluateListingPublish: async (_d: unknown, rec: { listing: { id: string } }) => state.gates[rec.listing.id] ?? state.gate
+}));
 vi.mock("../src/server/admin-moderation-db", () => ({
   moderateListing: async (...a: unknown[]) => { state.writes.push(a); return state.writeOk; },
   userTarget: async () => state.target,
-  setUserStatus: async (...a: unknown[]) => { state.writes.push(a); return state.writeOk; },
+  setUserStatus: async (...a: unknown[]) => { state.writes.push(a); return state.writeOk ? { listingIds: state.suspendedIds } : null; },
+  listingsSuspendedWithAccount: async () => state.withAccount,
   searchListings: async () => ({ rows: [], nextCursor: null }), searchUsers: async () => ({ rows: [], nextCursor: null })
 }));
 
@@ -71,7 +78,7 @@ describe("listing moderation rules", () => {
 describe("account moderation rules", () => {
   const t = (o: Record<string, string> = {}) => ({ id: U(60), userType: "owner", status: "active", ...o });
   it("suspends active and reinstates suspended accounts only", () => {
-    expect(planUserAction(comp, t(), "suspend", REASON)).toEqual({ action: "suspend", from: "active", to: "suspended", reason: REASON });
+    expect(planUserAction(comp, t(), "suspend", REASON)).toEqual({ action: "suspend", from: "active", to: "suspended", reason: REASON, withListings: true });
     expect(planUserAction(comp, t({ status: "suspended" }), "reinstate", REASON)).toMatchObject({ to: "active" });
     expect(planUserAction(comp, t({ status: "pending" }), "suspend", REASON)).toMatchObject({ status: 409 });
     expect(planUserAction(comp, t({ status: "closed" }), "reinstate", REASON)).toMatchObject({ status: 409 });
@@ -81,6 +88,18 @@ describe("account moderation rules", () => {
     expect(planUserAction(comp, t({ id: comp.id }), "suspend", REASON)).toMatchObject({ status: 403 });
     expect(planUserAction(support, t(), "suspend", REASON)).toMatchObject({ status: 403 });
     expect(planUserAction(comp, t(), "suspend", "")).toMatchObject({ status: 400 });
+  });
+  it("lets staff choose per case what happens to the account's listings (default: with the account)", () => {
+    expect(planUserAction(comp, t(), "suspend", REASON, "keep")).toMatchObject({ withListings: false });
+    expect(planUserAction(comp, t(), "suspend", REASON, "suspend")).toMatchObject({ withListings: true });
+    expect(planUserAction(comp, t({ status: "suspended" }), "reinstate", REASON)).toMatchObject({ withListings: true });
+    expect(planUserAction(comp, t({ status: "suspended" }), "reinstate", REASON, "keep")).toMatchObject({ withListings: false });
+    expect(planUserAction(comp, t(), "suspend", REASON, "reinstate")).toMatchObject({ status: 400 });
+    expect(planUserAction(comp, t(), "suspend", REASON, "delete")).toMatchObject({ status: 400 });
+    // Changing listings also needs listing.moderate; without it only "keep" is allowed.
+    const usersOnly: StaffActor = { id: U(9), role: "custom_u", permissions: ["user.manage"] };
+    expect(planUserAction(usersOnly, t(), "suspend", REASON)).toMatchObject({ status: 403 });
+    expect(planUserAction(usersOnly, t(), "suspend", REASON, "keep")).toMatchObject({ withListings: false });
   });
   it("masks personal details unless the role may see them in full", () => {
     expect(maskEmail("jane.citizen@gmail.com")).toBe("j***n@gmail.com");
@@ -103,6 +122,7 @@ describe("moderation routes", () => {
   beforeEach(() => {
     state.staff = null; state.rec = { listing: listing("published") }; state.gate = { allowed: true, reasons: [] };
     state.target = { id: U(60), userType: "owner", status: "active" }; state.writes = []; state.writeOk = true;
+    state.suspendedIds = []; state.withAccount = []; state.recs = {}; state.gates = {};
   });
   const ctx = (id = U(100)) => ({ params: Promise.resolve({ id }) });
   const post = (route: { POST: (r: Request, c: ReturnType<typeof ctx>) => Promise<Response> }, body: unknown, id?: string, headers: Record<string, string> = { "content-type": "application/json", origin: "http://test" }) =>
@@ -148,8 +168,42 @@ describe("moderation routes", () => {
   it("suspends an account with a reason", async () => {
     state.staff = comp;
     expect((await post(userAction, { action: "suspend", reason: REASON }, U(60))).status).toBe(200);
-    expect(state.writes[0]).toEqual([expect.anything(), comp, U(60), "active", "suspended", REASON]);
+    expect(state.writes[0]).toEqual([expect.anything(), comp, U(60), "active", "suspended", REASON, { suspendListings: true }]);
     state.target = { id: U(61), userType: "admin", status: "active" };
     expect((await post(userAction, { action: "suspend", reason: REASON }, U(61))).status).toBe(409);
+  });
+  it("suspends the account's live listings with it unless staff keep them live", async () => {
+    state.staff = comp;
+    state.suspendedIds = [U(101), U(102)];
+    const r = await post(userAction, { action: "suspend", reason: REASON }, U(60));
+    expect(await r.json()).toMatchObject({ status: "suspended", listingsSuspended: 2 });
+    state.writes = []; state.suspendedIds = [];
+    const kept = await post(userAction, { action: "suspend", reason: REASON, listings: "keep" }, U(60));
+    expect(await kept.json()).toMatchObject({ listingsSuspended: 0 });
+    expect(state.writes[0]).toEqual([expect.anything(), comp, U(60), "active", "suspended", REASON, { suspendListings: false }]);
+  });
+  it("reinstating brings back the listings suspended with the account, each only through the publish checks", async () => {
+    state.staff = comp;
+    state.target = { id: U(60), userType: "owner", status: "suspended" };
+    state.withAccount = [U(101), U(102)];
+    state.recs = { [U(101)]: { listing: { ...listing("suspended"), id: U(101), title: "Passes" } }, [U(102)]: { listing: { ...listing("suspended"), id: U(102), title: "Unpaid" } } };
+    state.gates = { [U(102)]: { allowed: false, reasons: ["The listing fee or plan has not been paid."] } };
+    const r = await post(userAction, { action: "reinstate", reason: REASON }, U(60));
+    expect(await r.json()).toEqual({
+      ok: true, status: "active", listingsRestored: 1,
+      listingsNotRestored: [{ id: U(102), title: "Unpaid", reasons: ["The listing fee or plan has not been paid."] }]
+    });
+    const [, id, from, to, event] = state.writes[1] as [unknown, string, string, string, { eventType: string; payload: Record<string, unknown> }];
+    expect([id, from, to]).toEqual([U(101), "suspended", "published"]);
+    expect(event).toMatchObject({ eventType: "listing.published", payload: { action: "reinstate", withAccount: U(60), reason: REASON, moderation: true } });
+    expect(state.writes).toHaveLength(2);
+  });
+  it("leaves the listings suspended when staff choose to", async () => {
+    state.staff = comp;
+    state.target = { id: U(60), userType: "owner", status: "suspended" };
+    state.withAccount = [U(101)];
+    const r = await post(userAction, { action: "reinstate", reason: REASON, listings: "keep" }, U(60));
+    expect(await r.json()).toMatchObject({ status: "active", listingsRestored: 0 });
+    expect(state.writes).toHaveLength(1);
   });
 });
