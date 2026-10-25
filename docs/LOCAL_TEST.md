@@ -126,9 +126,29 @@ Tick each line. "Expected" is what you should see; anything else is a bug to rep
 | Email | No SMTP server. Email verification and alerts send nothing (alerts are only logged in the site window). |
 | ID check | No provider and no image storage or scanner. Photo ID upload is "not available yet"; staff ID review has two seeded items without images. |
 | File storage and photos | Off (`STORAGE_DRIVER` unset). Uploads answer "not available". |
-| AI | Self-hosted AI engine is not installed. AI features say they are off; the rules-only offer analysis and draft contract still work. |
+| AI | Off by default: AI features say "AI unavailable"; the rules-only offer analysis and draft contract still work. To test real AI on this PC, see "Optional: AI with Ollama" below. |
 | Google sign-in | Replaced by `/dev-login`. Real Google sign-in stays off (no Google keys). |
 | Disclosure rules for publishing | Not configured in code, so publishing a new listing is blocked on purpose. |
+
+## Optional: AI with Ollama (this PC only)
+
+The site's AI runs on a model server we control, never an outside AI account. For the PC test that server is Ollama on this computer.
+
+1. Install Ollama for Windows from https://ollama.com/download and start it (it runs in the system tray and listens on `http://127.0.0.1:11434`).
+2. In PowerShell, download a model (about 5 GB the first time): `ollama pull llama3.1:8b`
+3. Check what is installed: `ollama list`. Use the NAME column exactly (for example `llama3.1:8b`) as `AI_MODEL`.
+4. Check it is running: open `http://127.0.0.1:11434` in a browser; it should say "Ollama is running". `ollama ps` shows a model loaded after the first request.
+5. Edit `.env.local`: remove the `#` in front of `AI_ENGINE=ollama`, `AI_ENDPOINT=http://127.0.0.1:11434` and `AI_MODEL=llama3.1:8b` (change the model name to match step 3). Older `.env.local` files: add the three lines yourself.
+6. Close both site windows and run `local-start.ps1` again.
+7. Admin site (`http://localhost:3006/dev-login`, sign in as the super admin): open **Staff > AI engine** (`/staff/ai`), press **Test connection** (should say "Connected"), type a reason and press **Turn AI on**.
+8. Public site, as an owner: open a draft listing's **Edit** page and press **Suggest description**. The text is marked "AI suggestion, check before publishing" and is never saved for you. On a listing's offer analysis, ask for the AI summary. The AI never accepts, declines or counters an offer.
+
+Expected safety behaviour:
+- Turn AI off at `/staff/ai`, or quit Ollama: the same buttons say "AI unavailable" and nothing else breaks.
+- `AI_ENDPOINT` must be `localhost`/`127.0.0.1` or a private-network IP. Anything else is refused unless `AI_ALLOW_REMOTE_ENDPOINT=1` (and https).
+- A slow model (more than 30 seconds, `AI_TIMEOUT_MS`) or a reply that fails the safety checks gives "AI unavailable".
+
+This only works for the PC test. The cloud site cannot reach Ollama on your PC: before AI is used online it needs its own model server (our GPU server or private network), its own `AI_*` settings, and the security review.
 
 ## How the test sign-in is kept out of production
 

@@ -53,3 +53,7 @@ export const INVESTMENT_RATE = {
   toggle: { windowMs: 60 * 60 * 1000, perUser: 10 },
   contractUpload: { windowMs: 24 * 60 * 60 * 1000, perUser: 5 }
 } as const;
+
+/** AI: the staff "Test connection" button, and the owner's "Suggest description" button (each call uses the shared model server). */
+export const AI_TEST_RATE = { windowMs: 60 * 60 * 1000, perStaff: 10, allStaff: 30 } as const;
+export const AI_DESCRIPTION_RATE = { windowMs: 60 * 60 * 1000, perUser: 10 } as const;
