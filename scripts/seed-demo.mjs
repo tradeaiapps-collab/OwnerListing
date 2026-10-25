@@ -98,6 +98,22 @@ async function seedPhotos(client) {
   console.log(rows.length ? `Demo photos added: ${made} images on ${rows.length} listings.` : "Demo photos already present.");
 }
 
+// ---- Demo map locations (search map) ------------------------------------------------------------------------------
+// Approximate street positions for the eight demo listings. Only fills listings that have no pin yet, so an owner's own pin is kept.
+const DEMO_LOCATIONS = [
+  ["12 Jacaranda St, Paddington QLD 4064", -27.4603, 152.9998], ["8/21 Moray St, New Farm QLD 4005", -27.4669, 153.0495],
+  ["45 Beach Rd, Bondi NSW 2026", -33.8917, 151.2731], ["3/17 Darley Rd, Randwick NSW 2031", -33.9124, 151.2402],
+  ["28 Station St, Fitzroy North VIC 3068", -37.7838, 144.9786], ["6/102 Chapel St, Windsor VIC 3181", -37.8552, 144.9925],
+  ["9/4 Park Ave, Chermside QLD 4032", -27.3857, 153.0303], ["14/50 Kent St, Sydney NSW 2000", -33.8682, 151.2047]
+];
+async function seedLocations(client) {
+  let n = 0;
+  for (const [address, lat, lng] of DEMO_LOCATIONS) {
+    n += (await client.query(`UPDATE property_listing SET latitude = $2, longitude = $3 WHERE address_text = $1 AND latitude IS NULL`, [address, lat, lng])).rowCount ?? 0;
+  }
+  if (n) console.log(`Demo map locations added: ${n} listings.`);
+}
+
 const url = process.env.DATABASE_URL;
 if (process.env.NODE_ENV === "production") { console.error("Refusing to seed: NODE_ENV is production."); process.exit(2); }
 if (!url) { console.error("DATABASE_URL is required."); process.exit(2); }
@@ -114,6 +130,7 @@ try {
   if (exists.rows.length) {
     console.log("Demo data already present. (Use local-reset to start again.)");
     await seedPhotos(db);
+    await seedLocations(db);
     await db.end();
     process.exit(0);
   }
@@ -226,6 +243,7 @@ try {
   await db.query("COMMIT");
   console.log(`Demo data created: 6 staff, 2 owners, 1 agent, 3 buyers, ${listing.length} listings, 3 enquiries, 2 offers, 2 invoices, 2 ID reviews. (run ${randomUUID().slice(0, 8)})`);
   await seedPhotos(db);
+  await seedLocations(db);
 } catch (e) {
   await db.query("ROLLBACK").catch(() => undefined);
   console.error(`Seed failed: ${e.message}`);

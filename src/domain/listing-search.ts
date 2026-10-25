@@ -7,6 +7,11 @@ export type Sort = (typeof SORTS)[number];
 export const SEARCH_PAGE_SIZE = 12;
 export const MAX_SEARCH_PAGE_SIZE = 50;
 export const MAX_PAGE = 10_000;
+/** Pins the map asks for at once. Beyond this the map tells the person to zoom in or filter. */
+export const MAX_MAP_PINS = 500;
+
+/** Visible map area in decimal degrees. Never crosses the antimeridian (Australia does not). */
+export interface Bbox { south: number; west: number; north: number; east: number }
 
 /** Browse filters for published listings. Price filters are AUD cents and only apply together with transactionType. */
 export interface SearchQuery {
@@ -22,6 +27,10 @@ export interface SearchQuery {
   /** Prefix match, case-insensitive. */
   suburb?: string;
   postcode?: string;
+  /** Only listings with a map pin inside this box. */
+  bbox?: Bbox;
+  /** Only listings that have a map pin. Set by the map endpoint, never read from the URL. */
+  located?: boolean;
   sort: Sort;
   page: number;
   pageSize: number;
@@ -64,6 +73,8 @@ export function parseSearchQuery(p: URLSearchParams): SearchQuery {
   if (suburb && suburb.length <= 80) q.suburb = suburb;
   const postcode = p.get("postcode");
   if (postcode && /^\d{4}$/.test(postcode)) q.postcode = postcode;
+  const bbox = parseBbox(p.get("bbox"));
+  if (bbox) q.bbox = bbox;
   const sort = SORTS.find(s => s === p.get("sort"));
   if (sort) q.sort = sort;
   const size = int(p.get("pageSize"), 1, MAX_SEARCH_PAGE_SIZE);
@@ -71,6 +82,16 @@ export function parseSearchQuery(p: URLSearchParams): SearchQuery {
   const page = int(p.get("page"), 1, MAX_PAGE);
   if (page !== undefined) q.page = page;
   return q;
+}
+
+/** "south,west,north,east" in decimal degrees. Undefined when malformed, inverted or out of range. */
+export function parseBbox(v: string | null): Bbox | undefined {
+  if (!v) return undefined;
+  const parts = v.split(",");
+  if (parts.length !== 4 || !parts.every(x => /^-?\d{1,3}(\.\d{1,8})?$/.test(x.trim()))) return undefined;
+  const [south, west, north, east] = parts.map(Number) as [number, number, number, number];
+  if (south < -90 || north > 90 || west < -180 || east > 180 || south >= north || west >= east) return undefined;
+  return { south, west, north, east };
 }
 
 /** True when the listing passes every filter. Status is not checked here. */
@@ -86,6 +107,8 @@ export function matchesQuery(l: PropertyListing, q: SearchQuery): boolean {
   if (q.minParking !== undefined && (l.parking === undefined || l.parking < q.minParking)) return false;
   if (q.suburb && !(l.suburb ?? "").toLowerCase().startsWith(q.suburb.toLowerCase())) return false;
   if (q.postcode && l.postcode !== q.postcode) return false;
+  if ((q.located || q.bbox) && (l.latitude === undefined || l.longitude === undefined)) return false;
+  if (q.bbox && !(l.latitude! >= q.bbox.south && l.latitude! <= q.bbox.north && l.longitude! >= q.bbox.west && l.longitude! <= q.bbox.east)) return false;
   return true;
 }
 

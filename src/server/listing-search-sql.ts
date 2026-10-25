@@ -32,5 +32,12 @@ export function buildSearch(q: SearchQuery): { where: string; params: unknown[];
   if (q.minParking !== undefined) add(p => `l.parking >= ${p}`, q.minParking);
   if (q.suburb) add(p => `lower(l.suburb) LIKE ${p} ESCAPE '\\'`, `${escapeLike(q.suburb!.toLowerCase())}%`);
   if (q.postcode) add(p => `l.postcode = ${p}`, q.postcode);
+  if (q.located || q.bbox) clauses.push("l.latitude IS NOT NULL AND l.longitude IS NOT NULL");
+  if (q.bbox) {
+    add(p => `l.latitude >= ${p}`, q.bbox.south);
+    add(p => `l.latitude <= ${p}`, q.bbox.north);
+    add(p => `l.longitude >= ${p}`, q.bbox.west);
+    add(p => `l.longitude <= ${p}`, q.bbox.east);
+  }
   return { where: clauses.join(" AND "), params, orderBy: ORDER[q.sort] };
 }
