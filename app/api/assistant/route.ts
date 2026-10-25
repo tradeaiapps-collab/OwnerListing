@@ -3,6 +3,7 @@ import { GUIDE_LIMITS, isGuideIntent, matchIntent, selectAssistantEngine, type G
 import { nextStep } from "../../../src/domain/journey";
 import { hashToken } from "../../../src/domain/offer-intake";
 import { GUIDE_RATE, windowStart, withinLimit } from "../../../src/domain/rate-limit";
+import { readBrand } from "../../../src/config/brand";
 import { getAiEngine } from "../../../src/server/ai";
 import { clientIp } from "../../../src/server/client-ip";
 import { getActor, getDb } from "../../../src/server/context";
@@ -62,7 +63,7 @@ export async function POST(req: Request) {
     next = j ? nextStep(j.steps) : null;
   }
   const signInHref = devLoginAllowed(req) ? "/dev-login" : undefined;
-  const engine = selectAssistantEngine(await getAiEngine(), content);
+  const engine = selectAssistantEngine(await getAiEngine(), content, readBrand().name);
   const answer = await engine.answer({
     ...(isGuideIntent(topic) ? { intent: topic } : {}), ...(typeof text === "string" ? { text: text.trim() } : {}),
     path: page, user, next, ...(signInHref ? { signInHref } : {})

@@ -23,7 +23,7 @@ export function appOriginFor(mode: AppMode, env: Record<string, string | undefin
 
 // Only built assets. /_next/data and the rest of /_next/ are not exempt, so they cannot be a way around the split.
 const STATIC = /^\/(_next\/static\/|_next\/image$|favicon\.ico$|robots\.txt$)/;
-const SITE_ASSET = /^\/api\/site\/asset\/(logo-light|logo-dark|favicon)$/;
+const SITE_ASSET = /^\/api\/site\/asset\/(logo-light|logo-dark|favicon|hero)$/;
 const isStaffPath = (p: string) => p === "/staff" || p.startsWith("/staff/") || p === "/api/staff" || p.startsWith("/api/staff/");
 
 /**
