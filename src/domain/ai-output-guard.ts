@@ -29,7 +29,7 @@ export interface DraftGuardContext {
 const MAX_DRAFT_CHARS = 2500;
 
 /** Words that sound like the seller is bound or the deal is done. The AI never accepts (CLAUDE.md, spec 5.3). */
-const BINDING = /\b(we|i|the (seller|owner|vendor)s?)\s+(have\s+|has\s+|will\s+|would\s+|can\s+|hereby\s+)?(accept(ed)?|agree(d)?\s+to\s+(sell|lease|rent|your)|approve(d)?\s+your)\b|\byou(['’]ve| have)?\s+got\s+(a|the)\s+(deal|house|property)\b|\b(it'?s|that'?s)\s+a\s+deal\b|\bsold\s+to\s+you\b|\bthe\s+(property|house|home|place)\s+is\s+yours\b|\boffer\s+(is\s+)?accepted\b|\bconsider\s+it\s+(sold|done)\b/i;
+const BINDING = /\b(we|i|the (seller|owner|vendor)s?)\s+(have\s+|has\s+|will\s+|would\s+|can\s+|hereby\s+)?(accept(ed)?|agree(d)?\s+to\s+(sell|lease|rent|your)|approve(d)?\s+your)\b|\byou(['’]ve| have)?\s+got\s+(a|the)\s+(deal|house|property)\b|\b(it'?s|that'?s)\s+a\s+deal\b|\b(it'?s|it\s+is)\s+(all\s+)?yours\b|\b(done\s+deal|deal\s+done)\b|^\s*deal\b|\bsold\s+to\s+you\b|\bthe\s+(property|house|home|place)\s+is\s+yours\b|\boffer\s+(is\s+)?accepted\b|\bconsider\s+it\s+(sold|done)\b/i;
 
 /** Floor, reserve or "lowest price" talk. The number itself is also checked when the server passes it. */
 const FLOOR_WORDS = /\b(floor\s+price|reserve\s+price|our\s+reserve|the\s+reserve|walk-?away\s+price|bottom\s+line|lowest\s+(price\s+)?(we|they|the\s+(seller|owner|vendor))\s+(will|would|can)\s+(take|accept|go)|minimum\s+(we|they|the\s+(seller|owner))\s+(will|would)\s+accept)\b/i;

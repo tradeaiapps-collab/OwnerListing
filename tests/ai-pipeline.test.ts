@@ -57,6 +57,7 @@ describe("draft guard", () => {
     ["We accept your offer of $850,000.", "binding_language"],
     ["Great news, the property is yours.", "binding_language"],
     ["It's a deal!", "binding_language"],
+    ["Deal, it's yours.", "binding_language"],
     ["The owner has agreed to sell to you.", "binding_language"],
     ["Our reserve price is firm.", "floor_leak"],
     ["The lowest the owner will accept is close to asking.", "floor_leak"],
