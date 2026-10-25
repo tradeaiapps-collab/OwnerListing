@@ -53,3 +53,6 @@ export const INVESTMENT_RATE = {
   toggle: { windowMs: 60 * 60 * 1000, perUser: 10 },
   contractUpload: { windowMs: 24 * 60 * 60 * 1000, perUser: 5 }
 } as const;
+
+/** Guide assistant questions (public, signed in or not), per client IP hash. Counted before anything else; fails closed. */
+export const GUIDE_RATE = { windowMs: 10 * 60 * 1000, perIp: 60 } as const;

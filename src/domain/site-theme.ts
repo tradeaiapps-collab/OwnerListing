@@ -74,16 +74,18 @@ export interface NavItem { id: string; label: string; visible: boolean }
 export interface FooterLink { label: string; href: string }
 
 export interface ThemeSettings {
-  brand: { siteName: string | null; tagline: string | null; logoLight: number | null; logoDark: number | null; favicon: number | null };
+  /** hero: uploaded home hero photo id (null = the built-in illustrated background). */
+  brand: { siteName: string | null; tagline: string | null; logoLight: number | null; logoDark: number | null; favicon: number | null; hero: number | null };
   colours: { light: ModeColours; dark: ModeColours };
   typography: { bodyFont: string; headingFont: string; baseSize: number; headingScale: number };
-  layout: { density: Density; radius: number; headerHeight: number; logoHeight: number; buttonSize: ButtonSize; iconStyle: IconStyle };
+  /** heroOverlay: darkness of the overlay on the hero photo in percent (a floor keeps white text readable). heroFocus: horizontal crop point in percent (mobile). */
+  layout: { density: Density; radius: number; headerHeight: number; logoHeight: number; buttonSize: ButtonSize; iconStyle: IconStyle; heroOverlay: number; heroFocus: number };
   navigation: NavItem[];
   footer: { text: string; links: FooterLink[] };
 }
 
 export const DEFAULT_THEME: ThemeSettings = {
-  brand: { siteName: null, tagline: null, logoLight: null, logoDark: null, favicon: null },
+  brand: { siteName: null, tagline: null, logoLight: null, logoDark: null, favicon: null, hero: null },
   colours: {
     light: {
       primary: "#0b5fd6", secondary: "#14181f", accent: "#0b5fd6",
@@ -97,14 +99,14 @@ export const DEFAULT_THEME: ThemeSettings = {
     }
   },
   typography: { bodyFont: "system", headingFont: "system", baseSize: 16, headingScale: 1 },
-  layout: { density: "comfortable", radius: 10, headerHeight: 68, logoHeight: 28, buttonSize: "medium", iconStyle: "outline" },
+  layout: { density: "comfortable", radius: 10, headerHeight: 68, logoHeight: 28, buttonSize: "medium", iconStyle: "outline", heroOverlay: 55, heroFocus: 50 },
   navigation: NAV_CATALOG.map(n => ({ id: n.id, label: n.label, visible: true })),
   footer: { text: "", links: [] }
 };
 
 // ---- Ranges (numbers outside are rejected, never silently clipped) ----
 export const RANGES = {
-  baseSize: [14, 20], headingScale: [1, 1.6], radius: [0, 24], headerHeight: [48, 120], logoHeight: [16, 96]
+  baseSize: [14, 20], headingScale: [1, 1.6], radius: [0, 24], headerHeight: [48, 120], logoHeight: [16, 96], heroOverlay: [45, 85], heroFocus: [0, 100]
 } as const;
 export const LIMITS = { siteName: 60, tagline: 120, navLabel: 30, footerText: 200, footerLinkLabel: 30, footerLinks: 6, urlLength: 300 } as const;
 
@@ -213,13 +215,14 @@ export function validateTheme(input: unknown): ThemeResult {
   const b = input["brand"];
   let brand: ThemeSettings["brand"] | null = null;
   if (isObj(b)) {
-    checkKeys(b, ["siteName", "tagline", "logoLight", "logoDark", "favicon"], "brand", errors);
+    checkKeys(b, ["siteName", "tagline", "logoLight", "logoDark", "favicon", "hero"], "brand", errors);
     brand = {
       siteName: plainText(b["siteName"], LIMITS.siteName, "brand.siteName", errors, { nullable: true }),
       tagline: plainText(b["tagline"], LIMITS.tagline, "brand.tagline", errors, { nullable: true }),
       logoLight: assetId(b["logoLight"], "brand.logoLight", errors),
       logoDark: assetId(b["logoDark"], "brand.logoDark", errors),
-      favicon: assetId(b["favicon"], "brand.favicon", errors)
+      favicon: assetId(b["favicon"], "brand.favicon", errors),
+      hero: assetId(b["hero"], "brand.hero", errors)
     };
   } else errors["brand"] = "Missing.";
 
@@ -250,7 +253,7 @@ export function validateTheme(input: unknown): ThemeResult {
   const l = input["layout"];
   let layout: ThemeSettings["layout"] | null = null;
   if (isObj(l)) {
-    checkKeys(l, ["density", "radius", "headerHeight", "logoHeight", "buttonSize", "iconStyle"], "layout", errors);
+    checkKeys(l, ["density", "radius", "headerHeight", "logoHeight", "buttonSize", "iconStyle", "heroOverlay", "heroFocus"], "layout", errors);
     const pick = <T extends string>(k: string, list: readonly T[]): T | null => {
       const v = l[k];
       if (typeof v !== "string" || !(list as readonly string[]).includes(v)) { errors[`layout.${k}`] = `Choose one of: ${list.join(", ")}.`; return null; }
@@ -260,8 +263,10 @@ export function validateTheme(input: unknown): ThemeResult {
     const radius = num(l["radius"], RANGES.radius, "layout.radius", errors, true);
     const headerHeight = num(l["headerHeight"], RANGES.headerHeight, "layout.headerHeight", errors, true);
     const logoHeight = num(l["logoHeight"], RANGES.logoHeight, "layout.logoHeight", errors, true);
-    if (density && buttonSize && iconStyle && radius !== null && headerHeight !== null && logoHeight !== null) {
-      layout = { density, radius, headerHeight, logoHeight, buttonSize, iconStyle };
+    const heroOverlay = num(l["heroOverlay"], RANGES.heroOverlay, "layout.heroOverlay", errors, true);
+    const heroFocus = num(l["heroFocus"], RANGES.heroFocus, "layout.heroFocus", errors, true);
+    if (density && buttonSize && iconStyle && radius !== null && headerHeight !== null && logoHeight !== null && heroOverlay !== null && heroFocus !== null) {
+      layout = { density, radius, headerHeight, logoHeight, buttonSize, iconStyle, heroOverlay, heroFocus };
     }
   } else errors["layout"] = "Missing.";
 
@@ -316,9 +321,12 @@ export function validateTheme(input: unknown): ThemeResult {
   return { ok: true, value: { brand, colours, typography, layout, navigation, footer } };
 }
 
-/** Settings read back from storage: anything that no longer validates falls back to the defaults. */
+/**
+ * Settings read back from storage: anything that no longer validates falls back to the defaults. Versions saved before the hero
+ * settings existed get the default hero values (only keys that are absent are filled; present values are still validated).
+ */
 export function parseStoredTheme(raw: unknown): ThemeSettings {
-  const r = validateTheme(raw);
+  const r = validateTheme(withNewKeys(raw));
   return r.ok ? r.value : structuredClone(DEFAULT_THEME);
 }
 
@@ -334,6 +342,15 @@ export function changedFields(a: ThemeSettings, b: ThemeSettings): string[] {
   };
   walk(a, b, "");
   return out;
+}
+
+function withNewKeys(raw: unknown): unknown {
+  if (!isObj(raw) || !isObj(raw["brand"]) || !isObj(raw["layout"])) return raw;
+  return {
+    ...raw,
+    brand: { hero: DEFAULT_THEME.brand.hero, ...raw["brand"] },
+    layout: { heroOverlay: DEFAULT_THEME.layout.heroOverlay, heroFocus: DEFAULT_THEME.layout.heroFocus, ...raw["layout"] }
+  };
 }
 
 // ---- CSS generation ----
@@ -363,7 +380,8 @@ export function buildThemeCss(settings: ThemeSettings): string {
     SPACE_BASE.map((b, i) => `--space-${[1, 2, 3, 4, 6, 8][i]}:${Math.round(b * f)}px;`).join("") +
     `--radius:${t.layout.radius}px;--radius-sm:${Math.round(t.layout.radius * 0.8)}px;` +
     `--font-body:${body.stack};--font-heading:${head.stack};--fs:${t.typography.baseSize}px;--hs:${t.typography.headingScale};` +
-    `--header-h:${t.layout.headerHeight}px;--logo-h:${t.layout.logoHeight}px;--btn-h:${btn.h}px;--btn-px:${btn.px}px;--btn-fs:${btn.fs};`;
+    `--header-h:${t.layout.headerHeight}px;--logo-h:${t.layout.logoHeight}px;--btn-h:${btn.h}px;--btn-px:${btn.px}px;--btn-fs:${btn.fs};` +
+    `--hero-overlay:${t.layout.heroOverlay / 100};--hero-focus:${t.layout.heroFocus}%;`;
   const light = colourVars(t.colours.light), dark = colourVars(t.colours.dark);
   const css =
     `:root:root{${shared}${light}}` +
@@ -373,5 +391,5 @@ export function buildThemeCss(settings: ThemeSettings): string {
   return css.replace(/</g, "");
 }
 
-export const assetUrl = (name: "logo-light" | "logo-dark" | "favicon", id: number, previewToken?: string): string =>
+export const assetUrl = (name: "logo-light" | "logo-dark" | "favicon" | "hero", id: number, previewToken?: string): string =>
   `/api/site/asset/${name}?v=${id}${previewToken ? `&theme_preview=${encodeURIComponent(previewToken)}` : ""}`;

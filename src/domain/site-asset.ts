@@ -1,12 +1,20 @@
 import { sniffMime } from "./file-sniff";
 
-/** Logo and favicon uploads. The type comes from the bytes; the declared content type must agree and the filename is never used. SVG is refused. */
-export type SiteAssetName = "logo-light" | "logo-dark" | "favicon";
-export const SITE_ASSET_NAMES: readonly SiteAssetName[] = ["logo-light", "logo-dark", "favicon"];
+/**
+ * Logo, favicon and home hero photo uploads. The type comes from the bytes; the declared content type must agree and the filename is never used.
+ * SVG is refused. The hero photo is cleaned of EXIF/XMP/text metadata (cleanIdImage) before it is checked and stored.
+ */
+export type SiteAssetName = "logo-light" | "logo-dark" | "favicon" | "hero";
+export const SITE_ASSET_NAMES: readonly SiteAssetName[] = ["logo-light", "logo-dark", "favicon", "hero"];
 export const MAX_ASSET_BYTES = 512 * 1024;
+/** The hero is a full-width photo, so it may be larger (keep in step with the CHECK in db/20261025160000_hero_and_guide_assistant.sql). */
+export const MAX_HERO_BYTES = 1536 * 1024;
+export const maxAssetBytes = (name: SiteAssetName): number => (name === "hero" ? MAX_HERO_BYTES : MAX_ASSET_BYTES);
 export type AssetMime = "image/png" | "image/jpeg" | "image/webp" | "image/x-icon";
 
-const MAX_DIM: Record<SiteAssetName, number> = { "logo-light": 2000, "logo-dark": 2000, favicon: 512 };
+const MAX_DIM: Record<SiteAssetName, number> = { "logo-light": 2000, "logo-dark": 2000, favicon: 512, hero: 4000 };
+/** A hero narrower than this would look blurred across a desktop screen. */
+const HERO_MIN_WIDTH = 1200;
 const MIN_DIM = 16;
 
 export type AssetCheck = { ok: true; contentType: AssetMime; width: number; height: number } | { ok: false; error: string };
@@ -61,7 +69,7 @@ export function inspectSiteAsset(name: unknown, declaredType: unknown, bytes: Ui
   if (typeof name !== "string" || !(SITE_ASSET_NAMES as readonly string[]).includes(name)) return bad("Unknown image slot.");
   const slot = name as SiteAssetName;
   if (bytes.length === 0) return bad("The file is empty.");
-  if (bytes.length > MAX_ASSET_BYTES) return bad("The file is larger than 512 KB.");
+  if (bytes.length > maxAssetBytes(slot)) return bad(slot === "hero" ? "The file is larger than 1.5 MB." : "The file is larger than 512 KB.");
   const head = ascii(bytes, 0, Math.min(bytes.length, 512)).trimStart().toLowerCase();
   if (head.startsWith("<svg") || head.startsWith("<?xml") || head.startsWith("<!doctype") || head.includes("<svg")) return bad("SVG images are not accepted. Use PNG, JPEG or WebP.");
 
@@ -82,5 +90,6 @@ export function inspectSiteAsset(name: unknown, declaredType: unknown, bytes: Ui
   const [w, h] = size;
   if (w < MIN_DIM || h < MIN_DIM) return bad(`The image must be at least ${MIN_DIM} by ${MIN_DIM} pixels.`);
   if (w > MAX_DIM[slot] || h > MAX_DIM[slot]) return bad(`The image must be at most ${MAX_DIM[slot]} by ${MAX_DIM[slot]} pixels.`);
+  if (slot === "hero" && (w < HERO_MIN_WIDTH || w < h)) return bad(`The hero photo must be landscape and at least ${HERO_MIN_WIDTH} pixels wide.`);
   return { ok: true, contentType: type, width: w, height: h };
 }

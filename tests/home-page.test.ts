@@ -42,6 +42,29 @@ describe("home page", () => {
     expect(renderToStaticMarkup(await Home())).toContain("Preview");
   });
 
+  it("has the full-length sections, the illustrated hero fallback and no invented figures", async () => {
+    vi.stubEnv("DATABASE_URL", "");
+    const html = renderToStaticMarkup(await Home());
+    for (const t of ["hx-art", "Sell your home", "List your home yourself", "Browse by state", "/listings?state=qld", "Questions", "How do offers work?", "Illustrative only", "Secure chat", "Compare the cost"]) expect(html, t).toContain(t);
+    expect(html).not.toContain("hx-img");
+    expect(html).not.toMatch(/testimonial|\d+% of (owners|buyers)|rated \d/i);
+  });
+
+  it("uses the uploaded hero photo with a preload when one is published", async () => {
+    vi.resetModules();
+    vi.doMock("../src/server/request-theme", async () => {
+      const { DEFAULT_THEME } = await import("../src/domain/site-theme");
+      return { getRequestTheme: async () => ({ settings: { ...DEFAULT_THEME, brand: { ...DEFAULT_THEME.brand, hero: 42 } }, source: "published", previewToken: null }) };
+    });
+    vi.stubEnv("DATABASE_URL", "");
+    const { default: HomeWithHero } = await import("../app/page");
+    const html = renderToStaticMarkup(await HomeWithHero());
+    expect(html).toContain('class="hx-img" src="/api/site/asset/hero?v=42"');
+    expect(html).toContain('rel="preload"');
+    expect(html).not.toContain("hx-art");
+    vi.doUnmock("../src/server/request-theme");
+  });
+
   it("keeps its styles in home.css and the old hero rules are gone", () => {
     expect(readFileSync(path.join(root, "app/globals.css"), "utf8")).not.toMatch(/\.hero\b/);
     expect(readFileSync(path.join(root, "app/page.tsx"), "utf8")).toContain('./styles/home.css');

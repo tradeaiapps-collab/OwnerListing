@@ -1,15 +1,25 @@
 import type { ReactNode } from "react";
+import { headers } from "next/headers";
 import "./globals.css";
+import GuideAssistant from "./guide-assistant";
 import SiteNav from "./site-nav";
 import ThemePreviewBridge from "./theme-preview-bridge";
 import "./styles/a11y.css";
 import { appOriginFor, readAppMode } from "../src/config/app-mode";
+import { GUIDE_DISCLAIMER } from "../src/domain/guide-assistant";
 import { assetUrl, buildThemeCss, fontStylesheetUrl } from "../src/domain/site-theme";
+import { devLoginAllowed } from "../src/server/dev-login";
+import { getLiveGuide } from "../src/server/guide-assistant-db";
 import { getRequestTheme } from "../src/server/request-theme";
 import { brandFor } from "../src/server/site-theme";
 
 const admin = readAppMode() === "admin";
-const DEFAULT_FOOTER_LINKS = [{ label: "Browse", href: "/listings" }, { label: "Plans and fees", href: "/plans" }, { label: "List a property", href: "/listings/new" }, { label: "Terms", href: "/terms" }];
+/** Footer columns used until an admin sets footer links at /staff/site (then those links replace the columns). */
+const FOOTER_COLUMNS = [
+  { title: "Buy or rent", links: [{ label: "Browse listings", href: "/listings" }, { label: "Saved searches", href: "/buyer/saved-searches" }, { label: "Verify your account", href: "/buyer/verification" }] },
+  { title: "Owners", links: [{ label: "List your property", href: "/listings/new" }, { label: "Plans and fees", href: "/plans" }, { label: "My listings", href: "/listings/mine" }] },
+  { title: "Help", links: [{ label: "How it works", href: "/#home-how" }, { label: "Questions", href: "/#home-faq" }, { label: "Dashboard", href: "/dashboard" }, { label: "Terms", href: "/terms" }] }
+];
 
 const getTheme = getRequestTheme;
 
@@ -41,6 +51,10 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   ) : null;
   const footer = settings.footer;
   const bridgeOrigin = t.source === "draft" ? appOriginFor(admin ? "admin" : "all") : null;
+  const guide = admin ? null : await getLiveGuide();
+  // "Sign in" goes to the local test kit's dev sign-in only where devLoginAllowed() holds (never in production); otherwise unchanged.
+  const h = await headers();
+  const devSignIn = !admin && devLoginAllowed({ url: `http://${h.get("host") ?? ""}/`, headers: { get: n => h.get(n) } });
 
   return (
     <html lang="en-AU">
@@ -65,7 +79,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
             ) : (
               <>
                 <a className="brand" href="/">{logo ?? brand.name}</a>
-                <SiteNav items={settings.navigation} iconStyle={settings.layout.iconStyle} />
+                <SiteNav items={settings.navigation} iconStyle={settings.layout.iconStyle} {...(devSignIn ? { signInHref: "/dev-login" as const } : {})} />
               </>
             )}
           </div>
@@ -73,16 +87,28 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
         <div className="page" id="main-content" tabIndex={-1}>{children}</div>
         <footer className="site-footer">
           <div className="site-footer-inner">
-            <p>{footer.text || `© ${new Date().getFullYear()} ${brand.name}`}</p>
-            {(footer.links.length > 0 || !admin) && (
+            <div className="site-footer-brand">
+              <p className="site-footer-name">{brand.name}</p>
+              {!admin && <p className="site-footer-tag">{brand.tagline}. Deposits go to the solicitor&apos;s trust account; we never hold your money.</p>}
+            </div>
+            {footer.links.length > 0 ? (
               <nav aria-label="Footer">
-                <ul>
-                  {(footer.links.length > 0 ? footer.links : DEFAULT_FOOTER_LINKS).map(l => <li key={`${l.label}|${l.href}`}><a href={l.href}>{l.label}</a></li>)}
-                </ul>
+                <ul>{footer.links.map(l => <li key={`${l.label}|${l.href}`}><a href={l.href}>{l.label}</a></li>)}</ul>
+              </nav>
+            ) : !admin && (
+              <nav aria-label="Footer" className="site-footer-cols">
+                {FOOTER_COLUMNS.map(c => (
+                  <div key={c.title}>
+                    <h2>{c.title}</h2>
+                    <ul>{c.links.map(l => <li key={l.href}><a href={l.href}>{l.label}</a></li>)}</ul>
+                  </div>
+                ))}
               </nav>
             )}
           </div>
+          <div className="site-footer-base"><p>{footer.text || `© ${new Date().getFullYear()} ${brand.name}`}</p></div>
         </footer>
+        {guide?.enabled && <GuideAssistant greeting={guide.greeting} chips={guide.chips} disclaimer={GUIDE_DISCLAIMER} />}
         {bridgeOrigin && <ThemePreviewBridge allowedOrigin={bridgeOrigin} />}
       </body>
     </html>
