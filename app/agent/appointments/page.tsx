@@ -74,6 +74,7 @@ export default function AgentAppointments() {
             {live.map(i => (
               <li key={i.id}>
                 <a href={`/listings/${i.listingId}`}>{i.listingTitle}</a> <small className="muted">({i.jurisdiction}) for {i.ownerName} · {SCOPE_LABELS[i.scope] ?? i.scope}</small>
+                <div className="actions"><a className="button secondary" href={`/agent-appointments/${i.id}/messages`}>Messages with owner</a></div>
               </li>
             ))}
           </ul>
