@@ -88,7 +88,7 @@ export default function Offers() {
     <main>
       <h1>Offers</h1>
       <p>Formal offers submitted through the offer form. The AI never accepts an offer: you decide.</p>
-      <p><a href={`/listings/${id}/offer-analysis`}>Compare offers</a> · <a href={`/listings/${id}/contract-draft`}>Preview a contract draft</a></p>
+      <p><a href={`/listings/${id}/offer-analysis`}>Compare offers</a> · <a href={`/listings/${id}/mandate`}>Negotiation mandate</a> · <a href={`/listings/${id}/contract-draft`}>Preview a contract draft</a></p>
       {error ? <p role="alert">{error}</p> : null}
       {notice ? <p role="status">{notice}</p> : null}
       <section className="panel">
@@ -113,10 +113,10 @@ export default function Offers() {
       <ul className="card-list">
         {offers?.map(o => (
           <li key={o.id}>
-            <strong>{dollars(o.priceCents)}</strong> <span className={`badge badge-${o.status}`}>{label(o.status)}</span>
+            <strong><a href={`/listings/${id}/offers/${o.id}`}>{dollars(o.priceCents)}</a></strong> <span className={`badge badge-${o.status}`}>{label(o.status)}</span>
             <div>Deposit {dollars(o.depositCents)} · Settlement {o.settlementDays} days</div>
             <div>{o.conditions.length > 0 ? `Conditions: ${o.conditions.join("; ")}` : "No conditions"}</div>
-            <small className="muted">Submitted {new Date(o.submittedAt).toLocaleString("en-AU")}</small>
+            <small className="muted">Submitted {new Date(o.submittedAt).toLocaleString("en-AU")} · <a href={`/listings/${id}/offers/${o.id}`}>View offer, timeline and messages</a></small>
             {open(o.status) ? <AiSuggestions listingId={id} offerId={o.id} /> : null}
             {o.aiAnalysis ? <div className="ai-note"><strong>AI analysis</strong> (a note only; you decide)<br />{o.aiAnalysis}</div> : null}
             {open(o.status) && pending?.offerId === o.id ? (

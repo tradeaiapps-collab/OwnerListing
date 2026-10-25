@@ -13,8 +13,17 @@ export interface ListingDetails {
   bedrooms?: number;
   bathrooms?: number;
   parking?: number;
+  /** Map pin, WGS84 decimal degrees. Always set or cleared as a pair, and only inside Australia's bounds. */
+  latitude?: number;
+  longitude?: number;
 }
-export const DETAIL_KEYS = ["suburb", "postcode", "priceCents", "bedrooms", "bathrooms", "parking"] as const;
+export const DETAIL_KEYS = ["suburb", "postcode", "priceCents", "bedrooms", "bathrooms", "parking", "latitude", "longitude"] as const;
+
+/** Australia including Tasmania and the external territories' mainland approaches. A pin outside is a typo. */
+export const AU_BOUNDS = { south: -44, west: 112, north: -9, east: 154 } as const;
+const COORD_RE = /^-?\d{1,3}(\.\d{1,6})?$/;
+const coordOk = (v: unknown, min: number, max: number): v is number =>
+  typeof v === "number" && Number.isFinite(v) && v >= min && v <= max && COORD_RE.test(String(v));
 export type DetailKey = (typeof DETAIL_KEYS)[number];
 
 export function maxPriceCents(tx: "sale" | "rent"): number {
@@ -81,6 +90,12 @@ export function parseDetails(b: Record<string, unknown>, tx: "sale" | "rent"): {
     if (v === null) out[k] = null;
     else if (isInt(v, 0, MAX_ROOMS)) out[k] = v;
     else return { ok: false, message: `${label} must be a whole number from 0 to ${MAX_ROOMS}.` };
+  }
+  if ("latitude" in b || "longitude" in b) {
+    const lat = b["latitude"], lng = b["longitude"];
+    if (lat === null && lng === null) { out.latitude = null; out.longitude = null; }
+    else if (coordOk(lat, AU_BOUNDS.south, AU_BOUNDS.north) && coordOk(lng, AU_BOUNDS.west, AU_BOUNDS.east)) { out.latitude = lat; out.longitude = lng; }
+    else return { ok: false, message: "Map location must be a latitude and longitude pair inside Australia (up to 6 decimal places)." };
   }
   return { ok: true, value: out };
 }

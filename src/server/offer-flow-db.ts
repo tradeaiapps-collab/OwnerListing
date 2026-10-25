@@ -31,14 +31,22 @@ export async function ownerOfferStatusPg(db: Queryable, listingId: string, offer
   return typeof s === "string" ? s : undefined;
 }
 
-/** Moves the status in one guarded statement. No row back means it changed under us. Moves no money. */
+/**
+ * Moves the status and writes the matching offer_event in one guarded statement, so the history can never miss a
+ * decision. No row back means it changed under us. Moves no money. `to` is accepted, rejected or countered.
+ */
 export async function decideOfferPg(
   db: Queryable, listingId: string, offerId: string, ownerUserId: string, from: string[], to: string
 ): Promise<boolean> {
   const r = await db.query(
-    `UPDATE formal_offer o SET status = $5 FROM property_listing l
-     WHERE o.id = $1 AND o.listing_id = $2 AND l.id = o.listing_id AND l.owner_user_id = $3 AND o.status = ANY($4::text[])
-     RETURNING o.id`,
+    `WITH upd AS (
+       UPDATE formal_offer o SET status = $5 FROM property_listing l
+       WHERE o.id = $1 AND o.listing_id = $2 AND l.id = o.listing_id AND l.owner_user_id = $3 AND o.status = ANY($4::text[])
+       RETURNING o.id
+     ), ev AS (
+       INSERT INTO offer_event (offer_id, event_type, actor_kind, actor_user_id) SELECT id, $5, 'owner', $3 FROM upd
+     )
+     SELECT id FROM upd`,
     [offerId, listingId, ownerUserId, from, to]
   );
   return r.rows.length === 1;
