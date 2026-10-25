@@ -7,6 +7,15 @@
 .copy-row { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
 .copy-row code { flex: 1 1 200px; padding: var(--space-2); border: 1px solid var(--border); border-radius: 8px; background: var(--bg); }
 .compare-table { min-width: 36rem; }
+.negotiation small { display: block; }
+.badge-buyer_countered, .badge-open, .badge-agreed { color: var(--brand-strong); border-color: color-mix(in srgb, var(--brand) 45%, var(--bg)); background: var(--tint); }
+.badge-expired, .badge-withdrawn { color: var(--muted); }
+.timeline { list-style: none; margin: 0 0 var(--space-4); padding: 0 0 0 var(--space-4); border-left: 2px solid var(--border); display: grid; gap: var(--space-3); }
+.timeline > li { position: relative; }
+.timeline > li::before { content: ""; position: absolute; left: calc(-1 * var(--space-4) - 6px); top: 0.35rem; width: 10px; height: 10px; border-radius: 50%; background: var(--brand); }
+.timeline > li.timeline-expired::before, .timeline > li.timeline-withdrawn::before, .timeline > li.timeline-rejected::before { background: var(--muted); }
+.timeline time { display: block; color: var(--muted); font-size: 0.875rem; }
+.timeline .badge { margin-left: var(--space-2); }
 
 /* Offer detail (app/listings/[id]/offers/[offerId]) */
 .od-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: var(--space-3) var(--space-6); margin-bottom: var(--space-4); }

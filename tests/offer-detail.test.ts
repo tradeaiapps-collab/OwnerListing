@@ -34,7 +34,7 @@ describe("offer detail shaping", () => {
     expect(h[1]!.deltaCents).toBe(3_000_000);
   });
   it("knows which statuses are still open", () => {
-    expect(["submitted", "under_review", "countered"].every(isOpen)).toBe(true);
+    expect(["submitted", "under_review", "countered", "buyer_countered"].every(isOpen)).toBe(true);
     expect(["accepted", "rejected", "withdrawn"].some(isOpen)).toBe(false);
   });
 });
@@ -60,10 +60,10 @@ describe.skipIf(!DATABASE_URL)("offer history in Postgres", () => {
 
   it("writes the submitted event with the offer and the decision event with the status change", async () => {
     const first = await submit(95_000_000, "2026-10-20T01:00:00.000Z");
-    expect(await decideOfferPg(t.db, listing, first.id, owner, ["submitted"], "countered")).toBe(true);
+    expect(await decideOfferPg(t.db, listing, first.id, owner, ["submitted"], "countered", "2026-10-20T02:00:00.000Z")).toBe(true);
     const second = await submit(98_000_000, "2026-10-21T01:00:00.000Z");
     // A decision that does not apply writes nothing, not even history.
-    expect(await decideOfferPg(t.db, listing, first.id, owner, ["submitted"], "rejected")).toBe(false);
+    expect(await decideOfferPg(t.db, listing, first.id, owner, ["submitted"], "rejected", "2026-10-21T02:00:00.000Z")).toBe(false);
 
     const d = (await offerDetailPg(t.db, listing, second.id))!;
     expect(d.offer.priceCents).toBe(98_000_000);

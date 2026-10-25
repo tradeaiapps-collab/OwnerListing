@@ -5,11 +5,13 @@ import { getActor, getDb, getDeps } from "../../../../../../../src/server/contex
 import { failure, unauthenticated } from "../../../../../../../src/server/http";
 import { decideOfferPg, ownerOfferStatusPg } from "../../../../../../../src/server/offer-flow-db";
 import { csrfGuard } from "../../../../../../../src/server/csrf";
+import { CAN_EXPIRE } from "../../../../../../../src/domain/offer-counter";
+import { expireCountersPg } from "../../../../../../../src/server/offer-counter-db";
 
 type Ctx = { params: Promise<{ id: string; offerId: string }> };
 
 const notFound = { ok: false, code: "not_found", message: "Offer not found." } as const;
-const conflict = { ok: false, code: "conflict", message: "This offer can no longer be changed that way." } as const;
+const conflict = { ok: false, code: "conflict", message: "This offer can no longer be changed that way. If your counter-offer is waiting for the buyer, wait for their answer or for it to expire." } as const;
 
 /**
  * The owner accepts, rejects or asks for a counter on an offer. Owner only; the AI has no route here and never accepts.
@@ -31,13 +33,15 @@ export async function POST(req: Request, { params }: Ctx) {
   if (!rec || rec.listing.ownerUserId !== actor.userId) return failure(notFound);
 
   const db = getDb();
-  const current = await ownerOfferStatusPg(db, id, offerId, actor.userId);
+  const now = deps.now();
+  let current = await ownerOfferStatusPg(db, id, offerId, actor.userId);
   if (!current) return failure(notFound);
+  // A counter may have run out of time since the owner last looked: settle that first.
+  if (CAN_EXPIRE.includes(current) && (await expireCountersPg(db, now, { offerId })).length > 0) current = "expired";
   const to = nextStatus(current, decision);
   if (!to) return failure(conflict);
-  if (!(await decideOfferPg(db, id, offerId, actor.userId, statusesAllowing(decision), to))) return failure(conflict);
+  if (!(await decideOfferPg(db, id, offerId, actor.userId, statusesAllowing(decision), to, now))) return failure(conflict);
 
-  const now = deps.now();
   await deps.appendAudit({
     id: deps.newId(), occurredAt: now, actorType: "user", actorId: actor.userId,
     aggregateType: "formal_offer", aggregateId: offerId, eventType: `offer.${to}`,

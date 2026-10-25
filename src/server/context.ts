@@ -11,6 +11,7 @@ import { createPgBillingStore } from "./billing-db";
 import { staffFromRequest } from "./staff-auth";
 import { createPgPublishAlertHook } from "./publish-alerts-db";
 import { hasCurrentTermsPg } from "./terms-db";
+import { clearedWordingFlagsPg, recordWordingFlagsPg } from "./wording-flags-db";
 import { disclosureRequirementsPg, markListingDisclosureVersionPg } from "./disclosure-config-db";
 import { appendAuditPg, appointmentForPg, createPgListingRepository, trustAccountDecisionPg, verifiedLicencesPg, type Queryable } from "./db";
 
@@ -62,7 +63,9 @@ function wire(): Wired {
       appointmentFor: (listingId, agentUserId) => appointmentForPg(db, listingId, agentUserId),
       trustAccountFor: listingId => trustAccountDecisionPg(db, listingId),
       termsCurrentFor: userId => hasCurrentTermsPg(db, userId, new Date().toISOString()),
-      afterPublish: createPgPublishAlertHook(db)
+      afterPublish: createPgPublishAlertHook(db),
+      clearedWordingFlags: listingId => clearedWordingFlagsPg(db, listingId),
+      recordWordingFlags: (listingId, actorUserId, fields) => recordWordingFlagsPg(db, listingId, actorUserId, fields)
     }
   };
 }

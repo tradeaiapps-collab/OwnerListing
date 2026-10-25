@@ -2,15 +2,16 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { isUuid, type OwnerDecision } from "../../../../src/domain/offer-decision";
+import { offerStatusLabel } from "../../../../src/domain/offer-display";
 import { buildOfferUrl } from "../../../../src/domain/offer-form";
 import { JSON_HEADERS } from "../../ui";
+import { AiSuggestions } from "./ai-suggestions";
 import "../../../styles/offers.css";
 
 /** aiAnalysis is shown read-only if the API ever returns one. It never carries a decision. */
-type Offer = { id: string; priceCents: number; conditions: string[]; settlementDays: number; depositCents: number; status: string; submittedAt: string; aiAnalysis?: string };
+type Offer = { id: string; priceCents: number; conditions: string[]; settlementDays: number; depositCents: number; status: string; submittedAt: string; round?: number; openCounter?: { priceCents: number }; aiAnalysis?: string };
 
 const dollars = (cents: number) => new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD" }).format(cents / 100);
-const label = (s: string) => s.charAt(0).toUpperCase() + s.slice(1).replace(/_/g, " ");
 
 const CONFIRM: Record<OwnerDecision, { title: string; text: string; button: string }> = {
   accept: { title: "Accept this offer?", text: "This records your decision only. No money moves on this site; deposits go to the solicitor's trust account.", button: "Yes, accept" },
@@ -80,13 +81,13 @@ export default function Offers() {
 
   const copy = () => navigator.clipboard.writeText(link).then(() => setCopied(true), () => setNotice("Copy failed. Select the link and copy it."));
 
-  const open = (s: string) => s === "submitted" || s === "under_review" || s === "countered";
+  const open = (s: string) => s === "submitted" || s === "under_review" || s === "countered" || s === "buyer_countered";
   const idOk = isUuid(buyerId.trim());
 
   return (
     <main>
       <h1>Offers</h1>
-      <p>Formal offers submitted through the offer form. The AI never accepts an offer: you decide.</p>
+      <p>Formal offers submitted through the offer form. The AI never accepts an offer: you decide. Open an offer to send a counter-offer with your own terms.</p>
       <p><a href={`/listings/${id}/offer-analysis`}>Compare offers</a> · <a href={`/listings/${id}/mandate`}>Negotiation mandate</a> · <a href={`/listings/${id}/contract-draft`}>Preview a contract draft</a></p>
       {error ? <p role="alert">{error}</p> : null}
       {notice ? <p role="status">{notice}</p> : null}
@@ -112,10 +113,12 @@ export default function Offers() {
       <ul className="card-list">
         {offers?.map(o => (
           <li key={o.id}>
-            <strong><a href={`/listings/${id}/offers/${o.id}`}>{dollars(o.priceCents)}</a></strong> <span className={`badge badge-${o.status}`}>{label(o.status)}</span>
+            <strong><a href={`/listings/${id}/offers/${o.id}`}>{dollars(o.priceCents)}</a></strong> <span className={`badge badge-${o.status}`}>{offerStatusLabel(o.status, "owner", o.openCounter ? { fromParty: "owner", status: "open" } : undefined)}</span>
             <div>Deposit {dollars(o.depositCents)} · Settlement {o.settlementDays} days</div>
             <div>{o.conditions.length > 0 ? `Conditions: ${o.conditions.join("; ")}` : "No conditions"}</div>
-            <small className="muted">Submitted {new Date(o.submittedAt).toLocaleString("en-AU")} · <a href={`/listings/${id}/offers/${o.id}`}>View offer, timeline and messages</a></small>
+            <small className="muted">Submitted {new Date(o.submittedAt).toLocaleString("en-AU")}{o.round ? ` · ${o.round} counter-offer${o.round === 1 ? "" : "s"}` : ""} · <a href={`/listings/${id}/offers/${o.id}`}>{open(o.status) ? "Open, negotiate and see the timeline" : "View offer, timeline and messages"}</a></small>
+            {o.openCounter ? <div className="muted">Your counter of {dollars(o.openCounter.priceCents)} is waiting for the buyer.</div> : null}
+            {open(o.status) ? <AiSuggestions listingId={id} offerId={o.id} /> : null}
             {o.aiAnalysis ? <div className="ai-note"><strong>AI analysis</strong> (a note only; you decide)<br />{o.aiAnalysis}</div> : null}
             {open(o.status) && pending?.offerId === o.id ? (
               <div className="confirm-box" role="alertdialog" aria-label={CONFIRM[pending.decision].title}>
@@ -126,11 +129,11 @@ export default function Offers() {
                   <button type="button" className="secondary" onClick={() => setPending(null)} disabled={deciding}>Cancel</button>
                 </div>
               </div>
-            ) : open(o.status) ? (
+            ) : open(o.status) && !o.openCounter ? (
               <div className="actions">
                 <button type="button" onClick={() => setPending({ offerId: o.id, decision: "accept" })}>Accept</button>
                 <button type="button" className="secondary" onClick={() => setPending({ offerId: o.id, decision: "reject" })}>Reject</button>
-                {o.status !== "countered" ? <button type="button" className="secondary" onClick={() => setPending({ offerId: o.id, decision: "counter_request" })}>Request counter</button> : null}
+                {o.status === "submitted" || o.status === "under_review" ? <button type="button" className="secondary" onClick={() => setPending({ offerId: o.id, decision: "counter_request" })}>Request counter</button> : null}
               </div>
             ) : null}
           </li>

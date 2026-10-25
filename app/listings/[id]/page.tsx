@@ -22,6 +22,7 @@ interface Listing {
   bedrooms?: number;
   bathrooms?: number;
   parking?: number;
+  description?: string;
   status: string;
   disclosures: { key: string; satisfied: boolean }[];
   updatedAt: string;
@@ -287,6 +288,12 @@ export default function ListingDetail() {
           <ul className="pd-facts" aria-label="Key facts">
             {facts.map(([v, l]) => <li key={l}><strong>{v}</strong><span>{l}</span></li>)}
           </ul>
+          {listing.description && (
+            <section aria-label="Description">
+              <h2>About this property</h2>
+              {listing.description.split(/\n{2,}/).map((p, i) => <p key={i} className="detail-description">{p}</p>)}
+            </section>
+          )}
 
           <h2>Property details</h2>
           <dl className="details detail-facts">

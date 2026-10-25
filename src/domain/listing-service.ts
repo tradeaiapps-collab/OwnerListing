@@ -8,6 +8,7 @@ import { searchInMemory, type SearchPage, type SearchQuery } from "./listing-sea
 import { transitionListing } from "./listing-transitions";
 import type { TrustAccountDecision } from "./trust-account";
 import type { AgentLicence } from "./licence";
+import { scanFields, wordingBlockReasons, type FieldFlags } from "./discrimination-filter";
 
 export const PROPERTY_TYPES = [
   "house", "unit", "townhouse", "land",
@@ -16,6 +17,7 @@ export const PROPERTY_TYPES = [
 export const USE_CLASSES = ["residential", "commercial"] as const satisfies readonly UseClass[];
 export const TRANSACTION_TYPES = ["sale", "rent"] as const;
 export const BOND_PATHWAYS = ["state_bond_authority", "solicitor_trust", "bank_guarantee", "no_bond"] as const;
+export const MAX_DESCRIPTION_LENGTH = 5000;
 
 export interface Actor {
   userId: string;
@@ -59,6 +61,10 @@ export interface ListingServiceDeps {
   termsCurrentFor?: (userId: string) => Promise<boolean>;
   /** Post-publish hook (saved-search alerts). Runs after the listing is saved as published; it can never block or fail publishing. */
   afterPublish?: (listing: PropertyListing) => Promise<unknown>;
+  /** Wording matches staff cleared for this listing (flagKey values). Unreadable = none cleared (fails closed). */
+  clearedWordingFlags?: (listingId: string) => Promise<ReadonlySet<string>>;
+  /** Records blocking wording flags from a real publish attempt so staff can review them. Best effort; never unblocks. */
+  recordWordingFlags?: (listingId: string, actorUserId: string, fields: readonly FieldFlags[]) => Promise<void>;
   /**
    * Versioned, Compliance-approved requirements (spec 6.1). When wired it replaces `requiredDisclosures`: the approved version's id
    * and the keys for the listing's property type, or null when that combination has no approved version (publishing blocked).
@@ -93,10 +99,10 @@ export interface DraftInput {
   useClass: UseClass;
   propertyType: PropertyType;
 }
-export type DraftCreate = DraftInput & ListingDetails;
+export type DraftCreate = DraftInput & ListingDetails & { description?: string };
 
 /** rentalBondPathway is stored on the record, not the listing; see updateDraft. A null detail clears it. */
-export type DraftPatch = Partial<DraftInput> & DetailsPatch & { rentalBondPathway?: BondPathway };
+export type DraftPatch = Partial<DraftInput> & DetailsPatch & { rentalBondPathway?: BondPathway; description?: string | null };
 
 export type Failure = { ok: false; code: "invalid" | "not_found" | "forbidden" | "conflict" | "rate_limited" | "unavailable"; message: string };
 export type Result<T> = { ok: true; value: T } | Failure;
@@ -108,6 +114,17 @@ function str(v: unknown, max: number): string | undefined {
   const t = v.trim();
   return t.length > 0 && t.length <= max ? t : undefined;
 }
+
+/** Optional description: blank clears it (null), otherwise trimmed text up to MAX_DESCRIPTION_LENGTH. */
+function description(v: unknown): { ok: true; value: string | null } | { ok: false } {
+  if (v === null) return { ok: true, value: null };
+  if (typeof v !== "string") return { ok: false };
+  const t = v.trim();
+  if (t.length > MAX_DESCRIPTION_LENGTH) return { ok: false };
+  return { ok: true, value: t.length > 0 ? t : null };
+}
+
+const DESCRIPTION_ERROR = `Description must be text of up to ${MAX_DESCRIPTION_LENGTH} characters.`;
 
 function oneOf<T extends string>(v: unknown, allowed: readonly T[]): T | undefined {
   return typeof v === "string" ? allowed.find(a => a === v) : undefined;
@@ -128,7 +145,10 @@ export function parseDraftInput(body: unknown): Result<DraftCreate> {
   }
   const details = parseDetails(b, transactionType);
   if (!details.ok) return fail("invalid", details.message);
-  return { ok: true, value: applyDetails<DraftCreate>({ title, address, jurisdiction, transactionType, useClass, propertyType }, details.value) };
+  const desc = b["description"] === undefined ? { ok: true as const, value: null } : description(b["description"]);
+  if (!desc.ok) return fail("invalid", DESCRIPTION_ERROR);
+  const value = applyDetails<DraftCreate>({ title, address, jurisdiction, transactionType, useClass, propertyType }, details.value);
+  return { ok: true, value: desc.value !== null ? { ...value, description: desc.value } : value };
 }
 
 /** Validates a partial update. Only known fields are kept; unknown fields are ignored. */
@@ -152,6 +172,7 @@ export function parseDraftPatch(body: unknown): Result<DraftPatch> {
     if (!details.ok) return fail("invalid", details.message);
     Object.assign(patch, details.value);
   }
+  if ("description" in b) { const v = description(b["description"]); if (!v.ok) return fail("invalid", DESCRIPTION_ERROR); patch.description = v.value; }
   if ("rentalBondPathway" in b) { const v = oneOf(b["rentalBondPathway"], BOND_PATHWAYS); if (!v) return fail("invalid", "Invalid bond pathway."); patch.rentalBondPathway = v; }
   if (Object.keys(patch).length === 0) return fail("invalid", "Nothing to update.");
   return { ok: true, value: patch };
@@ -159,7 +180,7 @@ export function parseDraftPatch(body: unknown): Result<DraftPatch> {
 
 export async function createDraft(deps: ListingServiceDeps, actor: Actor, input: DraftCreate): Promise<PropertyListing> {
   const now = deps.now();
-  const { title, address, jurisdiction, transactionType, useClass, propertyType, ...details } = input;
+  const { title, address, jurisdiction, transactionType, useClass, propertyType, description: desc, ...details } = input;
   const listing: PropertyListing = applyDetails<PropertyListing>({
     id: deps.newId(),
     ownerUserId: actor.userId,
@@ -171,6 +192,7 @@ export async function createDraft(deps: ListingServiceDeps, actor: Actor, input:
     useClass: input.useClass,
     transactionType: input.transactionType,
     address: input.address,
+    ...(desc ? { description: desc } : {}),
     disclosures: [],
     createdAt: now,
     updatedAt: now
@@ -197,9 +219,11 @@ export async function updateDraft(deps: ListingServiceDeps, actor: Actor, id: st
   const rec = await deps.repo.get(id);
   if (!rec || rec.listing.ownerUserId !== actor.userId) return fail("not_found", "Listing not found.");
   if (rec.listing.status !== "draft") return fail("conflict", "Only a draft can be edited.");
-  const { rentalBondPathway, ...listingPatch } = patch;
+  const { rentalBondPathway, description: desc, ...listingPatch } = patch;
   const plain = Object.fromEntries(Object.entries(listingPatch).filter(([k]) => !(DETAIL_KEYS as readonly string[]).includes(k)));
   const listing: PropertyListing = { ...applyDetails({ ...rec.listing, ...plain }, listingPatch), updatedAt: deps.now() };
+  if (desc === null) delete listing.description;
+  else if (desc !== undefined) listing.description = desc;
   // The price limit depends on sale or rent, so check the result, not just the patch.
   if (listing.priceCents !== undefined) {
     const e = priceError(listing.priceCents, listing.transactionType);
@@ -229,7 +253,8 @@ export async function searchPublished(deps: ListingServiceDeps, q: SearchQuery):
 }
 
 /**
- * The publish gate for a stored listing: compliance disclosures, licences, terms, listing fee, bond pathway and trust account.
+ * The publish gate for a stored listing: compliance disclosures, licences, terms, listing fee, bond pathway, trust account and
+ * discriminatory wording.
  * `actorUserId` is whoever asks (their terms must be current too); `actingAgent` is set when an appointed agent publishes.
  * Also used when staff reinstate a suspended listing, so a listing only ever goes live through this one gate.
  */
@@ -239,8 +264,21 @@ export async function evaluateListingPublish(
   return (await runPublishGate(deps, rec, now, actorUserId, actingAgent)).decision;
 }
 
-/** The gate plus the approved requirements version it checked against (when versioned requirements are wired). */
+/** The whole gate, plus the wording flags it found and the approved requirements version it checked (when wired). */
 async function runPublishGate(
+  deps: ListingServiceDeps, rec: ListingRecord, now: string, actorUserId: string, actingAgent?: string
+): Promise<{ decision: PublishDecision; wordingFlags: FieldFlags[]; wordingBlocked: boolean; requirementsVersionId?: string }> {
+  const l = rec.listing;
+  const base = await complianceGate(deps, rec, now, actorUserId, actingAgent);
+  // Anti-discrimination wording (spec 6.4): blocking matches stop publishing unless staff cleared that exact match for this listing.
+  const wordingFlags = listingWordingFlags(l);
+  const cleared = deps.clearedWordingFlags ? await deps.clearedWordingFlags(l.id).catch(() => new Set<string>()) : new Set<string>();
+  const wordingReasons = wordingBlockReasons(wordingFlags, cleared);
+  const decision = wordingReasons.length > 0 ? { allowed: false, reasons: [...base.decision.reasons, ...wordingReasons] } : base.decision;
+  return { ...base, decision, wordingFlags, wordingBlocked: wordingReasons.length > 0 };
+}
+
+async function complianceGate(
   deps: ListingServiceDeps, rec: ListingRecord, now: string, actorUserId: string, actingAgent?: string
 ): Promise<{ decision: PublishDecision; requirementsVersionId?: string }> {
   const l = rec.listing;
@@ -274,7 +312,7 @@ async function runPublishGate(
  */
 export async function publishListing(
   deps: ListingServiceDeps, actor: Actor, id: string, dryRun: boolean
-): Promise<Result<{ decision: PublishDecision; listing: PropertyListing }>> {
+): Promise<Result<{ decision: PublishDecision; listing: PropertyListing; wordingFlags: FieldFlags[] }>> {
   const rec = await deps.repo.get(id);
   if (!rec) return fail("not_found", "Listing not found.");
   const l = rec.listing;
@@ -293,9 +331,10 @@ export async function publishListing(
   if (l.status === "suspended") return fail("conflict", "This listing has been suspended by our staff. Contact support to have it reviewed.");
 
   const now = deps.now();
-  const { decision, requirementsVersionId } = await runPublishGate(deps, rec, now, actor.userId, actingAgent);
+  const { decision, wordingFlags, wordingBlocked, requirementsVersionId } = await runPublishGate(deps, rec, now, actor.userId, actingAgent);
+  if (wordingBlocked && !dryRun && deps.recordWordingFlags) await deps.recordWordingFlags(l.id, actor.userId, wordingFlags).catch(() => undefined);
 
-  if (dryRun || !decision.allowed) return { ok: true, value: { decision, listing: l } };
+  if (dryRun || !decision.allowed) return { ok: true, value: { decision, listing: l, wordingFlags } };
 
   const ctx = { correlationId: deps.newId(), actorType: "user" as const, actorId: actor.userId, now };
   let current = l;
@@ -309,7 +348,12 @@ export async function publishListing(
   await deps.repo.save({ ...rec, listing: done.listing });
   if (requirementsVersionId && deps.markDisclosureVersion) await deps.markDisclosureVersion(l.id, requirementsVersionId);
   if (deps.afterPublish) await runAfterPublish(deps.afterPublish, done.listing);
-  return { ok: true, value: { decision, listing: done.listing } };
+  return { ok: true, value: { decision, listing: done.listing, wordingFlags } };
+}
+
+/** Wording flags (block and warn) for the listing's owner-written text. */
+export function listingWordingFlags(l: Pick<PropertyListing, "title" | "description">): FieldFlags[] {
+  return scanFields({ title: l.title, description: l.description });
 }
 
 export function createInMemoryListingRepository(): ListingRepository & { clear(): void } {
