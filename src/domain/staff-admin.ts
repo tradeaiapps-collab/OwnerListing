@@ -10,8 +10,11 @@ export interface StaffSection { href: string; label: string; permissions: readon
 export const STAFF_SECTIONS: readonly StaffSection[] = [
   { href: "/staff/dashboard", label: "Admin dashboard", permissions: ["report.sales", "report.operations", "listing.moderate", "user.manage"] },
   { href: "/staff/cases", label: "Admin cases", permissions: ["case.manage"] },
+  { href: "/staff/safety", label: "Message safety review", permissions: ["case.manage"] },
   { href: "/staff/trust-accounts", label: "Trust account approvals", permissions: ["trust_account.approve"] },
   { href: "/staff/id-review", label: "Identity review", permissions: ["identity.review"] },
+  { href: "/staff/disclosures", label: "Disclosure requirements", permissions: ["disclosure.config_edit", "disclosure.config_approve"] },
+  { href: "/staff/disclosures/reviews", label: "Disclosure evidence review", permissions: ["disclosure.verify"] },
   { href: "/staff/analytics", label: "Platform analytics", permissions: ["report.sales"] },
   { href: "/staff/report-builder", label: "Report builder", permissions: ["report.sales"] },
   { href: "/staff/reports", label: "Reports", permissions: ["report.sales"] },

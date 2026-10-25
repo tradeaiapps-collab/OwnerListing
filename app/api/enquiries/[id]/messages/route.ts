@@ -5,6 +5,7 @@ import { getActor } from "../../../../../src/server/context";
 import { csrfGuard } from "../../../../../src/server/csrf";
 import { getEnquiryDeps } from "../../../../../src/server/enquiry-db";
 import { failure, unauthenticated } from "../../../../../src/server/http";
+import { screenWithDefaults } from "../../../../../src/server/message-safety";
 import { requireCurrentTerms } from "../../../../../src/server/terms-guard";
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -37,5 +38,9 @@ export async function POST(req: Request, { params }: Ctx) {
   const body = parseMessageBody(await req.json().catch(() => null));
   if (!body.ok) return failure(body);
   const r = await reply(deps, actor, id, body.value);
-  return r.ok ? NextResponse.json({ message: r.value }, { status: 201 }) : failure(r);
+  if (!r.ok) return failure(r);
+  // Buyer messages only (the helper checks). The message is already stored; a flag never blocks or changes it.
+  const enquiry = await deps.enquiries.get(id);
+  if (enquiry) await screenWithDefaults(enquiry, r.value);
+  return NextResponse.json({ message: r.value }, { status: 201 });
 }
