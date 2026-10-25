@@ -59,6 +59,14 @@ export interface ListingServiceDeps {
   termsCurrentFor?: (userId: string) => Promise<boolean>;
   /** Post-publish hook (saved-search alerts). Runs after the listing is saved as published; it can never block or fail publishing. */
   afterPublish?: (listing: PropertyListing) => Promise<unknown>;
+  /**
+   * Versioned, Compliance-approved requirements (spec 6.1). When wired it replaces `requiredDisclosures`: the approved version's id
+   * and the keys for the listing's property type, or null when that combination has no approved version (publishing blocked).
+   * A failure to read it blocks publishing too.
+   */
+  disclosureRequirements?: (listing: PropertyListing) => Promise<{ versionId: string; keys: readonly string[] } | null>;
+  /** Stores the requirements version a listing passed when it was published, so later versions never unpublish it. */
+  markDisclosureVersion?: (listingId: string, versionId: string) => Promise<void>;
 }
 
 /** Hook budget: a slow hook is abandoned (not awaited further) so publishing returns promptly. */
@@ -228,13 +236,21 @@ export async function searchPublished(deps: ListingServiceDeps, q: SearchQuery):
 export async function evaluateListingPublish(
   deps: ListingServiceDeps, rec: ListingRecord, now: string, actorUserId: string, actingAgent?: string
 ): Promise<PublishDecision> {
+  return (await runPublishGate(deps, rec, now, actorUserId, actingAgent)).decision;
+}
+
+/** The gate plus the approved requirements version it checked against (when versioned requirements are wired). */
+async function runPublishGate(
+  deps: ListingServiceDeps, rec: ListingRecord, now: string, actorUserId: string, actingAgent?: string
+): Promise<{ decision: PublishDecision; requirementsVersionId?: string }> {
   const l = rec.listing;
-  const required = deps.requiredDisclosures(l.jurisdiction, l.transactionType, l.useClass);
+  const requirements = deps.disclosureRequirements ? await deps.disclosureRequirements(l).catch(() => null) : undefined;
+  const required = requirements !== undefined ? (requirements?.keys ?? null) : deps.requiredDisclosures(l.jurisdiction, l.transactionType, l.useClass);
   if (required === null) {
-    return {
+    return { decision: {
       allowed: false,
       reasons: [`No compliance-approved disclosure configuration for ${l.jurisdiction} ${l.transactionType} (${l.useClass}) yet.`]
-    };
+    } };
   }
   const trustAccount = deps.trustAccountFor ? await deps.trustAccountFor(l.id) : undefined;
   const licences = deps.licences ? await deps.licences() : [];
@@ -242,13 +258,14 @@ export async function evaluateListingPublish(
   const termsAccepted = deps.termsCurrentFor
     ? (await Promise.all([...new Set([l.ownerUserId, actorUserId])].map(deps.termsCurrentFor))).every(Boolean)
     : rec.termsAccepted;
-  return decidePublish(l, required, licences, now, {
+  const decision = decidePublish(l, required, licences, now, {
     termsAccepted,
     listingFeePaid: rec.listingFeePaid,
     ...(rec.rentalBondPathway ? { rentalBondPathway: rec.rentalBondPathway } : {}),
     ...(actingAgent ? { actingAgentId: actingAgent } : {}),
     ...(trustAccount ? { trustAccount } : {})
   });
+  return requirements ? { decision, requirementsVersionId: requirements.versionId } : { decision };
 }
 
 /**
@@ -276,7 +293,7 @@ export async function publishListing(
   if (l.status === "suspended") return fail("conflict", "This listing has been suspended by our staff. Contact support to have it reviewed.");
 
   const now = deps.now();
-  const decision = await evaluateListingPublish(deps, rec, now, actor.userId, actingAgent);
+  const { decision, requirementsVersionId } = await runPublishGate(deps, rec, now, actor.userId, actingAgent);
 
   if (dryRun || !decision.allowed) return { ok: true, value: { decision, listing: l } };
 
@@ -290,6 +307,7 @@ export async function publishListing(
   const done = transitionListing(current, "published", { ...ctx, eventId: deps.newId() }, decision);
   await deps.appendAudit(done.event);
   await deps.repo.save({ ...rec, listing: done.listing });
+  if (requirementsVersionId && deps.markDisclosureVersion) await deps.markDisclosureVersion(l.id, requirementsVersionId);
   if (deps.afterPublish) await runAfterPublish(deps.afterPublish, done.listing);
   return { ok: true, value: { decision, listing: done.listing } };
 }

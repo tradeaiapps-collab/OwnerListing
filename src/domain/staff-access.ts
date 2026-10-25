@@ -2,7 +2,7 @@ export type StaffRole = "super_admin" | "compliance" | "accountant" | "support" 
 
 export type PermissionArea =
   | "cases" | "trust_accounts" | "identity" | "reports" | "personal_data" | "pricing" | "messaging"
-  | "staff" | "website" | "platform" | "overrides" | "investments" | "marketplace";
+  | "staff" | "website" | "platform" | "overrides" | "investments" | "disclosures" | "marketplace";
 
 /** Groups shown in the role builder, in display order. */
 export const PERMISSION_AREAS: readonly { key: PermissionArea; label: string }[] = [
@@ -18,6 +18,7 @@ export const PERMISSION_AREAS: readonly { key: PermissionArea; label: string }[]
   { key: "platform", label: "Platform and technical" },
   { key: "overrides", label: "Overrides" },
   { key: "investments", label: "Investor projects" },
+  { key: "disclosures", label: "Property disclosures" },
   { key: "marketplace", label: "Listings and accounts" }
 ];
 
@@ -58,6 +59,9 @@ export const PERMISSION_CATALOGUE = [
   { key: "override.approve", area: "overrides", label: "Approve another person's override", description: "Be the second person on an override, never on your own.", sensitive: true },
   { key: "investment.review", area: "investments", label: "Review investor projects", description: "Approve, reject or send back investor projects, check signed agreements, and see the investor counts. Only while the module is on.", sensitive: false },
   { key: "investment.manage", area: "investments", label: "Investor module switch and fees", description: "Turn the investor module on or off (with the counsel confirmation), set the posting model and fees, and mark platform fees paid or waived.", sensitive: true },
+  { key: "disclosure.config_edit", area: "disclosures", label: "Draft disclosure requirements", description: "Draft a new version of a state's required disclosures at /staff/disclosures. A draft does nothing until someone else approves it.", sensitive: false },
+  { key: "disclosure.config_approve", area: "disclosures", label: "Approve disclosure requirements", description: "Approve a drafted version so it becomes the publish requirement for that state, sale or rent and use. Never your own draft.", sensitive: true },
+  { key: "disclosure.verify", area: "disclosures", label: "Verify owner disclosures", description: "Check the evidence an owner gave for each required disclosure and verify or reject it, with a reason. Never on your own listing.", sensitive: false },
   { key: "listing.moderate", area: "marketplace", label: "Moderate listings", description: "Search every listing, suspend a published listing, lift a suspension (the owner must publish again) and send a listing under review back to draft. Always with a reason; every action is logged.", sensitive: false },
   { key: "user.manage", area: "marketplace", label: "Manage user accounts", description: "See user accounts with their verification and compliance status, and suspend or reinstate an account with a reason. Staff accounts are managed in Staff access.", sensitive: true }
 ] as const satisfies readonly PermissionInfo[];
@@ -76,7 +80,7 @@ const ROLE_PERMISSIONS: Record<StaffRole, readonly StaffPermission[]> = {
   super_admin: ALL,
   compliance: ["report.audit", "report.solicitor", "report.broker", "pii.view_full", "case.manage",
     "trust_account.approve", "licence.verify", "dispute.read_chat", "override.request", "identity.review", "investment.review",
-    "listing.moderate", "user.manage"],
+    "disclosure.config_edit", "disclosure.config_approve", "disclosure.verify", "listing.moderate", "user.manage"],
   accountant: ["report.financial", "report.sales", "pii.view_masked"],
   support: ["report.buyer", "report.seller", "pii.view_masked", "case.manage", "override.request", "listing.moderate"],
   technical: ["logs.technical", "report.operations", "config.edit"],

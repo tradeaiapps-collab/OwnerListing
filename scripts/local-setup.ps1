@@ -72,6 +72,7 @@ Ensure-Env "GOOGLE_CLIENT_ID" "local-dummy"
 Ensure-Env "GOOGLE_CLIENT_SECRET" "local-dummy"
 Ensure-Env "LOCAL_STORAGE_DIR" (Join-Path (Get-Location).Path ".local-storage")
 Ensure-Env "MALWARE_SCAN_DRIVER" "local-noop"
+Ensure-Env "MANDATE_FLOOR_KEY" (B64 32)
 
 # 4. Postgres
 Write-Host "Starting the database (first time downloads about 150 MB)..."
