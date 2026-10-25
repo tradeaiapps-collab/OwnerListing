@@ -107,7 +107,7 @@ export async function GET(req: Request, { params }: Ctx) {
   const denied = forbiddenFor({ id: actor.userId, role: actor.userType }, "offer.analyse");
   if (denied) return failure(denied);
   const { id } = await params;
-  const handler = await requireListingHandler(req, id);
+  const handler = await requireListingHandler(req, id, "offers.view");
   if (handler instanceof NextResponse) return handler;
   const db = getDb();
   await expireCountersPg(db, getDeps().now(), { listingId: id });

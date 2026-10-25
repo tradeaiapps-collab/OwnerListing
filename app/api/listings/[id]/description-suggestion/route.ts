@@ -18,7 +18,7 @@ export async function POST(req: Request, { params }: Ctx) {
   const blocked = csrfGuard(req);
   if (blocked) return blocked;
   const id = (await params).id;
-  const handler = await requireListingHandler(req, id);
+  const handler = await requireListingHandler(req, id, "listing.describe");
   if (handler instanceof NextResponse) return handler;
   const body: unknown = await req.json().catch(() => null);
   const notes = body !== null && typeof body === "object" ? (body as Record<string, unknown>)["notes"] : undefined;
