@@ -5,6 +5,7 @@ import { isUuid, type OwnerDecision } from "../../../../src/domain/offer-decisio
 import { offerStatusLabel } from "../../../../src/domain/offer-display";
 import { buildOfferUrl } from "../../../../src/domain/offer-form";
 import { JSON_HEADERS } from "../../ui";
+import { AiSuggestions } from "./ai-suggestions";
 import "../../../styles/offers.css";
 
 /** aiAnalysis is shown read-only if the API ever returns one. It never carries a decision. */
@@ -117,6 +118,7 @@ export default function Offers() {
             <div>{o.conditions.length > 0 ? `Conditions: ${o.conditions.join("; ")}` : "No conditions"}</div>
             <small className="muted">Submitted {new Date(o.submittedAt).toLocaleString("en-AU")}{o.round ? ` · ${o.round} counter-offer${o.round === 1 ? "" : "s"}` : ""} · <a href={`/listings/${id}/offers/${o.id}`}>{open(o.status) ? "Open, negotiate and see the timeline" : "View offer, timeline and messages"}</a></small>
             {o.openCounter ? <div className="muted">Your counter of {dollars(o.openCounter.priceCents)} is waiting for the buyer.</div> : null}
+            {open(o.status) ? <AiSuggestions listingId={id} offerId={o.id} /> : null}
             {o.aiAnalysis ? <div className="ai-note"><strong>AI analysis</strong> (a note only; you decide)<br />{o.aiAnalysis}</div> : null}
             {open(o.status) && pending?.offerId === o.id ? (
               <div className="confirm-box" role="alertdialog" aria-label={CONFIRM[pending.decision].title}>

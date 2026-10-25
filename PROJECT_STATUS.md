@@ -215,8 +215,23 @@ Light-first design system in `app/globals.css` (all colours from theme variables
 - Counters lapse after 1-14 days (default 3). Expiry is settled lazily on every read and action (`expireCountersPg`); a scheduled sweep can call it with no scope but none is wired yet.
 - Open: owner MFA step-up on accept (spec 4.2), agent-drafted counters, mandate checks on owner counters (no mandate table yet), notifying the other side (no delivery provider), offer-analysis and contract draft use the buyer's standing terms.
 
-## Offer timeline (25 Oct 2026, PR feature/offer-timeline, on top of feature/counter-offers)
-- Insert-only `offer_event` (db/20261025200000, append-only trigger): one row per offer state change (submitted, counter_requested, countered, buyer_countered, buyer_agreed, accepted, rejected, withdrawn, expired) with actor role, counter round, the terms put on the table or accepted, from and to status. Written in the same SQL statement as the change, so a status never moves without its event. DB checks: only the owner accepts; expiry is a system event.
-- Backfilled on migration from formal_offer, the audit log and lapsed counters.
-- Returned as `timeline` on the owner detail and buyer detail APIs (roles only, no user ids) and shown on both offer pages (`src/domain/offer-timeline.ts` wording).
+## Offer timeline (25 Oct 2026, merged into feature/counter-offers)
+- Builds on main's insert-only `offer_event` (db/20261025200000). db/20261025220000 adds `owner_countered` (owner counter with terms) and `buyer_agreed` events, plus counter id and round, conditions, deposit and from/to status columns (NULL on older rows). `countered` keeps main's meaning: the owner asked for a better offer. Expiry must be a system event.
+- Every counter, agreement, withdrawal, lapse and decision writes its event in the same SQL statement as the change. Owner decisions made before offer_event existed are copied once from the audit log.
+- Returned as `negotiation.timeline` on the owner detail API and `timeline` on the buyer detail API (roles only, no user ids), and shown on both offer pages (`src/domain/offer-timeline.ts` wording).
 - Not recorded yet (spec 3.2): viewed, ai_analysed, handoff, superseded, MFA flag on accept.
+
+## AI enquiry reply drafting (built 25 Oct 2026, feature/ai-reply-drafting)
+- Intent classification (src/domain/enquiry-intent.ts): rules first (availability, inspection, price, documents, offer, complaint), the self-hosted model only when rules find nothing and only a fixed label is accepted.
+- Reply drafts (src/domain/ai-reply-draft.ts, prompt enquiry-reply@1): built from listing facts, the last 8 thread lines and the owner's approved template, all fenced as data. Offers, complaints, safety handoffs and paused threads are never drafted. Every draft passes the draft guard; a failure is stored as "held" with reasons. AI off = "AI unavailable" plus the owner's template.
+- APIs: POST /api/enquiries/[id]/ai/draft (owner or appointed agent, 30 per hour), POST /api/ai/drafts/[draftId]/send ({mode: as_is | edited}; edited text is re-checked; the AI footer is always added; the seller sends, never the AI), POST /api/ai/drafts/[draftId]/discard. Every draft is an ai_draft row with engine, model, prompt version and input hash.
+- Screen: "AI reply assistant" panel on the seller side of /enquiries/[id] (app/enquiries/ai-reply-panel.tsx), with quiet-hours note.
+- Open: evaluation against the spec 5.2 thresholds (reviewer pass 95%, 100% on critical facts) once a model is installed; per-listing auto-reply settings (spec) still per owner.
+
+## AI offer suggestions (built 25 Oct 2026, feature/ai-suggestions)
+- src/domain/offer-suggestions.ts (prompt offer-response@1). Analysis by rules, the same with AI on or off: gap to asking price, deposit %, rank among open offers, flags (low deposit, long settlement, finance or building conditions, subject to sale, superseded by the same buyer's later offer, buyer has raised before, below or above the price guidance range), and a suggested counter with a range and plain reasons. Counter = a share of the gap between offer and asking (or mandate target), adjusted for terms, momentum and price guidance; rounded to $1k ($10k over $2m, $5 a week for rent); clamped by the mandate floor and per-round concession when a mandate exists, without naming the floor.
+- Spec 5.3 handoffs (at or above asking/target, best offer so far, outside mandate, round limit, far below floor) mean no counter draft; the owner decides. Up to 3 AI drafts (counter, ask for details, decline), never accept; each guarded (floor leak included) and stored in ai_draft.
+- "Buyer history" is only this buyer's other offers on this listing (amounts, dates, statuses). No identity or personal data is used or returned.
+- API: POST /api/listings/[id]/offers/[offerId]/ai/suggestions (owner or appointed agent, 20 per hour). Drafts are sent into the buyer's enquiry thread with POST /api/ai/drafts/[draftId]/send; an agent may send one only when it is within the mandate. Sending a counter message does not change the offer status: the owner still uses "Request counter".
+- Screen: "AI suggestions" on each open offer at /listings/[id]/offers.
+- Open: wire the negotiation mandate (table not built yet; until then every response needs the owner) and stored price guidance into the route; spec 5.2 owner-approval tracking (95% unchanged before auto mode).
