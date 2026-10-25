@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 interface Row { id: string; occurredAt: string; actorType: string; actorId: string; aggregateType: string; aggregateId: string; eventType: string; payload: unknown }
 
@@ -31,6 +31,9 @@ export default function StaffAudit() {
     setNext(body.nextCursor);
     setLoaded(true);
   }
+
+  // Show the latest entries straight away (newest first, paged); the filters then narrow them.
+  useEffect(() => { void load(); }, []);
 
   const field = (k: keyof typeof f, label: string, type = "text") => (
     <label>{label} <input type={type} value={f[k]} onChange={e => setF({ ...f, [k]: e.target.value })} /></label>

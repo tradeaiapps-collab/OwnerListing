@@ -1,12 +1,14 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
+import AbnField from "../../abn-field";
+import { abnLiveState } from "../../../src/domain/abn";
 import { loadError, postStaff } from "../staff-api";
 import "../../styles/staff.css";
 
 interface Check {
   checkId: string; checkedAt: string; evidence: Record<string, unknown>; reasons: string[]; firmName: string; tier: string;
   jurisdiction: string; accountName: string; bsb: string; newOrChanged: boolean; approvals: { staffId: string; outcome: string }[];
-  decision: string; checksToPerform: string[];
+  decision: string; checksToPerform: string[]; firmId: string; abn: string | null;
 }
 const EVIDENCE_LABELS: [string, string][] = [
   ["practisingCertificateCurrent", "Practising certificate current"], ["firmEmailVerified", "Firm confirmed by email"],
@@ -18,6 +20,7 @@ export default function StaffTrustAccounts() {
   const [checks, setChecks] = useState<Check[]>([]);
   const [me, setMe] = useState("");
   const [reasons, setReasons] = useState<Record<string, string>>({});
+  const [abns, setAbns] = useState<Record<string, string>>({});
   const [message, setMessage] = useState("");
   const [loaded, setLoaded] = useState(false);
 
@@ -28,6 +31,14 @@ export default function StaffTrustAccounts() {
     setChecks(b.checks); setMe(b.me); setLoaded(true);
   }, []);
   useEffect(() => { void load(); }, [load]);
+
+  async function saveAbn(c: Check) {
+    setMessage("");
+    const r = await fetch(`/api/staff/law-firms/${c.firmId}/abn`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ abn: abns[c.checkId] ?? "" }) }).catch(() => null);
+    const body = r ? await r.json().catch(() => ({})) : {};
+    setMessage(r?.ok ? "ABN saved." : String(body.error ?? "Could not save the ABN."));
+    if (r?.ok) await load();
+  }
 
   async function decide(id: string, outcome: "approve" | "reject") {
     setMessage("");
@@ -49,6 +60,10 @@ export default function StaffTrustAccounts() {
             <li key={c.checkId} className="card">
               <h2>{c.firmName} <span className="muted">({c.tier}, {c.jurisdiction})</span></h2>
               <p>Account name: {c.accountName} · BSB {c.bsb}</p>
+              <form className="stack" onSubmit={e => { e.preventDefault(); void saveAbn(c); }}>
+                <AbnField value={abns[c.checkId] ?? c.abn ?? ""} onChange={v => setAbns({ ...abns, [c.checkId]: v })} label="Firm ABN (optional)" />
+                <button type="submit" className="secondary" disabled={abnLiveState(abns[c.checkId] ?? c.abn ?? "").state === "invalid" || abnLiveState(abns[c.checkId] ?? c.abn ?? "").state === "incomplete"}>Save ABN</button>
+              </form>
               <p className={c.newOrChanged ? "staff-notice" : "muted"}>{c.newOrChanged ? `New or changed details: two different people must approve (${c.approvals.filter(a => a.outcome === "approve").length} of 2 so far).` : "Details unchanged since a person last approved them."}</p>
               <ul className="plain-list">
                 {EVIDENCE_LABELS.map(([k, label]) => <li key={k}>{label}: {show(c.evidence[k])}</li>)}

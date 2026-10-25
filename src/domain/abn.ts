@@ -96,3 +96,55 @@ export function abnRecheckDue(lastCheckedAt: Date | null, now: Date): boolean {
   if (lastCheckedAt === null) return true;
   return now.getTime() - lastCheckedAt.getTime() >= ABN_RECHECK_DAYS * 86_400_000;
 }
+
+/** "51824753556" -> "51 824 753 556" (display only; storage is digits only). */
+export function formatAbn(digits: string): string {
+  const d = digits.replace(/\s+/g, "");
+  return d.length === 11 ? `${d.slice(0, 2)} ${d.slice(2, 5)} ${d.slice(5, 8)} ${d.slice(8)}` : d;
+}
+
+export type AbnLiveState = { state: "empty" | "incomplete" | "invalid" | "valid"; message: string; abn?: string };
+
+/** Live feedback while typing (same checksum as the server). A blank field is fine: the ABN is optional. */
+export function abnLiveState(text: string): AbnLiveState {
+  if (text.trim() === "") return { state: "empty", message: "" };
+  const stripped = text.replace(/\s+/g, "");
+  if (/^\d+$/.test(stripped) && stripped.length < 11) return { state: "incomplete", message: `${stripped.length} of 11 digits.` };
+  const v = validateAbn(text);
+  return v.ok ? { state: "valid", message: "Checksum valid.", abn: v.abn } : { state: "invalid", message: v.error };
+}
+
+/** Server-side parse of an optional ABN: blank or null clears it, anything else must pass the checksum. Returns digits only. */
+export function parseOptionalAbn(v: unknown): { ok: true; abn: string | null } | { ok: false; error: string } {
+  if (v === null || v === undefined || (typeof v === "string" && v.trim() === "")) return { ok: true, abn: null };
+  const r = validateAbn(v);
+  return r.ok ? { ok: true, abn: r.abn } : r;
+}
+
+export const ABN_UNVERIFIED_NOTE = "Checksum valid, not verified with ABR yet.";
+
+/** What the screen shows for a checked ABN. Built only from the register's reply, never from anything the client sent. */
+export type AbnCheckResult =
+  | { checksumValid: false; error: string }
+  | { checksumValid: true; abn: string; formatted: string; verification: { status: "not_verified"; note: string } }
+  | { checksumValid: true; abn: string; formatted: string; verification: { status: "not_found"; note: string } }
+  | { checksumValid: true; abn: string; formatted: string; verification: { status: "verified"; entityName: string; active: boolean; gstRegistered: boolean | null } };
+
+/**
+ * Checksum first, then (only when a lookup port is configured) the register. Fails closed: no port, an unreachable
+ * register or an odd reply all give "not verified". The entity name shown is the register's, never a client value.
+ */
+export async function checkAbn(text: unknown, port: AbnLookupPort | null): Promise<AbnCheckResult> {
+  const v = validateAbn(text);
+  if (!v.ok) return { checksumValid: false, error: v.error };
+  const base = { checksumValid: true as const, abn: v.abn, formatted: formatAbn(v.abn) };
+  const unverified = { ...base, verification: { status: "not_verified" as const, note: ABN_UNVERIFIED_NOTE } };
+  if (port === null) return unverified;
+  try {
+    const rec = await port.lookup(v.abn);
+    if (rec === null) return { ...base, verification: { status: "not_found", note: "Not found on the Australian Business Register." } };
+    return { ...base, verification: { status: "verified", entityName: rec.entityName, active: rec.active, gstRegistered: rec.gstRegistered ?? null } };
+  } catch {
+    return unverified;
+  }
+}

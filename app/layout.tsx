@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { headers } from "next/headers";
 import "./globals.css";
 import GuideAssistant from "./guide-assistant";
+import AdminNav from "./admin-nav";
 import SiteNav from "./site-nav";
 import ThemePreviewBridge from "./theme-preview-bridge";
 import "./styles/a11y.css";
@@ -71,10 +72,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
             {admin ? (
               <>
                 <a className="brand" href="/staff">{logo}{brand.name} Admin</a>
-                <nav className="site-nav" aria-label="Admin">
-                  <a href="/staff">Staff home</a>
-                  <a href="/api/auth/google/start?as=staff">Sign in</a>
-                </nav>
+                <AdminNav />
               </>
             ) : (
               <>
