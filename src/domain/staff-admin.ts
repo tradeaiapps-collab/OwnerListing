@@ -12,6 +12,8 @@ export const STAFF_SECTIONS: readonly StaffSection[] = [
   { href: "/staff/cases", label: "Admin cases", permissions: ["case.manage"] },
   { href: "/staff/trust-accounts", label: "Trust account approvals", permissions: ["trust_account.approve"] },
   { href: "/staff/id-review", label: "Identity review", permissions: ["identity.review"] },
+  { href: "/staff/analytics", label: "Platform analytics", permissions: ["report.sales"] },
+  { href: "/staff/report-builder", label: "Report builder", permissions: ["report.sales"] },
   { href: "/staff/reports", label: "Reports", permissions: ["report.sales"] },
   { href: "/staff/audit", label: "Audit log", permissions: ["report.audit"] },
   { href: "/staff/pricing", label: "Pricing and plans", permissions: ["pricing.manage"] },
