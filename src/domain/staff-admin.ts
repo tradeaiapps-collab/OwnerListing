@@ -19,6 +19,7 @@ export const STAFF_SECTIONS: readonly StaffSection[] = [
   { href: "/staff/messaging", label: "Messaging settings", permissions: ["messaging.settings"] },
   { href: "/staff/site", label: "Site appearance", permissions: ["theme.edit"] },
   { href: "/staff/ai", label: "AI engine", permissions: ["ai.engine_set"] },
+  { href: "/staff/assistant", label: "Guide assistant", permissions: ["site.content.edit", "site.content.publish"] },
   { href: "/staff/investments", label: "Investor projects review", permissions: ["investment.review"] },
   { href: "/staff/investments/settings", label: "Investor module switch", permissions: ["investment.manage"] }
 ];

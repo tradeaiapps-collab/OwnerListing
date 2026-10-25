@@ -1,7 +1,7 @@
 /* Listing cards (home, browse, saved, my listings) and the shared feature chips. Colours come from theme variables only. */
-.lcards { list-style: none; margin: 0 0 var(--space-6); padding: 0; display: grid; gap: var(--space-4); grid-template-columns: 1fr; }
+.lcards { list-style: none; margin: 0 0 var(--space-4); padding: 0; display: grid; gap: var(--space-4); grid-template-columns: 1fr; }
 @media (min-width: 600px) { .lcards { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@media (min-width: 960px) { .lcards { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-6); } }
+@media (min-width: 960px) { .lcards { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-4); } }
 
 .lcard {
   position: relative;

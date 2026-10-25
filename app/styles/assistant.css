@@ -1,0 +1,62 @@
+/* Guide assistant widget (every public page) and its staff editor. Theme variables only. */
+.ga-launcher {
+  position: fixed; right: var(--space-4); bottom: var(--space-4); z-index: 40;
+  display: inline-flex; align-items: center; gap: var(--space-2);
+  min-height: 48px; padding: 0 var(--space-4); border-radius: 999px;
+  background: var(--brand); color: var(--brand-text); border: 0; box-shadow: var(--shadow-2);
+  font-weight: 700; font-size: 0.9375rem; cursor: pointer;
+}
+.ga-launcher:hover { background: var(--brand-strong); }
+.ga-launcher:focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }
+
+.ga-panel {
+  position: fixed; z-index: 41; right: var(--space-4); bottom: calc(var(--space-4) + 60px);
+  width: min(380px, calc(100vw - 2 * var(--space-4))); max-height: min(620px, calc(100vh - 120px));
+  display: flex; flex-direction: column;
+  background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: calc(var(--radius) + 4px);
+  box-shadow: var(--shadow-2); overflow: hidden;
+}
+.ga-head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-2); padding: var(--space-3) var(--space-4); background: var(--tint); border-bottom: 1px solid var(--border); }
+.ga-head h2 { margin: 0; font-size: 1.0625rem; }
+.ga-head p { margin: 2px 0 0; font-size: 0.8125rem; color: var(--muted); }
+.ga-x { min-width: 44px; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; padding: 0; background: transparent; color: var(--text); border: 0; border-radius: var(--radius-sm, 8px); }
+.ga-x:hover { background: var(--tint-2); }
+.ga-log { list-style: none; margin: 0; padding: var(--space-3) var(--space-4); overflow-y: auto; flex: 1; display: grid; gap: var(--space-2); align-content: start; }
+.ga-msg { max-width: 92%; padding: var(--space-2) var(--space-3); border-radius: var(--radius); font-size: 0.9375rem; }
+.ga-msg p { margin: 0; white-space: pre-line; }
+.ga-who { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+.ga-guide { background: var(--surface); justify-self: start; border-bottom-left-radius: 4px; }
+.ga-you { background: var(--brand); color: var(--brand-text); justify-self: end; border-bottom-right-radius: 4px; }
+.ga-typing { color: var(--muted); }
+.ga-links { list-style: none; margin: var(--space-2) 0 0; padding: 0; display: grid; gap: var(--space-1); }
+.ga-links a { display: inline-flex; align-items: center; gap: var(--space-1); min-height: 36px; font-weight: 700; }
+.ga-chips { display: flex; flex-wrap: wrap; gap: var(--space-1); padding: var(--space-2) var(--space-4); border-top: 1px solid var(--line); }
+.ga-chips button { min-height: 36px; padding: 0 var(--space-3); border-radius: 999px; background: var(--bg); color: var(--brand-strong); border: 1px solid color-mix(in srgb, var(--brand) 45%, var(--border)); font-size: 0.875rem; font-weight: 600; }
+.ga-chips button:hover:not(:disabled) { background: var(--tint); }
+.ga-form { display: flex; gap: var(--space-2); padding: var(--space-2) var(--space-4); }
+.ga-form input { flex: 1; min-width: 0; min-height: 44px; }
+.ga-form button { min-height: 44px; }
+.ga-disclaimer { margin: 0; padding: 0 var(--space-4) var(--space-3); font-size: 0.75rem; color: var(--muted); }
+.ga-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+
+@media (max-width: 599px) {
+  .ga-launcher span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .ga-launcher { width: 56px; height: 56px; padding: 0; justify-content: center; }
+  .ga-panel { inset: 0; width: 100%; max-height: none; height: 100dvh; border-radius: 0; border: 0; }
+  body.ga-open { overflow: hidden; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .ga-panel { animation: ga-in 0.16s ease-out; }
+  @keyframes ga-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+}
+
+/* Staff editor */
+.ga-check { display: flex; align-items: center; gap: var(--space-2); min-height: 44px; font-weight: 600; }
+.ga-chip-list { margin: 0 0 var(--space-3); padding-left: var(--space-6); display: grid; gap: var(--space-3); }
+.ga-chip-list li { display: flex; flex-wrap: wrap; align-items: end; gap: var(--space-2); }
+.ga-chip-list label { display: grid; gap: var(--space-1); font-weight: 600; font-size: 0.875rem; }
+.ga-faq { border: 1px solid var(--line); border-radius: var(--radius); padding: 0 var(--space-4) var(--space-2); margin: 0 0 var(--space-3); }
+.ga-faq legend { font-weight: 700; padding: 0 var(--space-1); }
+.ga-faq textarea, .ga-staff textarea { width: 100%; }
+.ga-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); margin: var(--space-4) 0 var(--space-6); position: sticky; bottom: 0; padding: var(--space-2) 0; background: var(--bg); }
+.ga-error { color: var(--danger); font-weight: 600; }

@@ -5,7 +5,8 @@ import { fail } from "./staff-route";
 
 export const NO_STORE = { "cache-control": "no-store" } as const;
 export const MAX_SETTINGS_BYTES = 64 * 1024;
-export const MAX_UPLOAD_BODY_BYTES = 760 * 1024;
+/** Largest JSON upload body: the 1.5 MB hero photo as base64 plus the other fields. */
+export const MAX_UPLOAD_BODY_BYTES = 2100 * 1024;
 
 /** JSON object body with a hard size cap (checked on the declared length and again on the text actually read). */
 export async function readBoundedJson(req: Request, maxBytes: number): Promise<Record<string, unknown> | NextResponse> {

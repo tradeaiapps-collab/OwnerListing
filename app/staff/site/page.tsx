@@ -27,7 +27,7 @@ const COLOUR_LABELS: Record<ColourKey, [string, string]> = {
   buttonBg: ["Button background", "Main buttons"], buttonText: ["Button text", "Text on main buttons"], bg: ["Page background", ""], surface: ["Surface", "Cards and panels"],
   text: ["Text", "Body text"], heading: ["Headings", ""], muted: ["Muted text", "Hints and captions"], border: ["Border", "Lines and outlines"]
 };
-const SLOTS = [["logo-light", "logoLight", "Logo (light mode)"], ["logo-dark", "logoDark", "Logo (dark mode)"], ["favicon", "favicon", "Favicon"]] as const;
+const SLOTS = [["logo-light", "logoLight", "Logo (light mode)"], ["logo-dark", "logoDark", "Logo (dark mode)"], ["favicon", "favicon", "Favicon"], ["hero", "hero", "Home hero photo"]] as const;
 
 function setIn<T>(obj: T, path: string, value: unknown): T {
   const next = structuredClone(obj) as Record<string, unknown>;
@@ -126,7 +126,8 @@ export default function StaffSite() {
   async function upload(slot: (typeof SLOTS)[number], file: File | undefined) {
     if (!file) return;
     setError(""); setNote("");
-    if (file.size > 512 * 1024) { setError("That file is larger than 512 KB."); return; }
+    const max = slot[0] === "hero" ? 1536 * 1024 : 512 * 1024;
+    if (file.size > max) { setError(`That file is larger than ${slot[0] === "hero" ? "1.5 MB" : "512 KB"}.`); return; }
     const data = await new Promise<string>((res, rej) => {
       const fr = new FileReader();
       fr.onload = () => res(String(fr.result).split(",")[1] ?? "");
@@ -237,7 +238,7 @@ export default function StaffSite() {
               <div className="se-sec-head"><h2 id="h-brand">Brand</h2><button type="button" className="secondary" onClick={() => resetSection(["brand"])}>Reset section</button></div>
               {Text({ label: "Site name", path: "brand.siteName", max: LIMITS.siteName, nullable: true, hint: "Leave empty to use the server default." })}
               {Text({ label: "Tagline", path: "brand.tagline", max: LIMITS.tagline, nullable: true, hint: "Leave empty to use the server default." })}
-              <p className="muted">Images: PNG, JPEG or WebP up to 512 KB (favicon may also be ICO). SVG is not accepted.</p>
+              <p className="muted">Images: PNG, JPEG or WebP up to 512 KB (favicon may also be ICO). SVG is not accepted. The home hero photo may be up to 1.5 MB, landscape, at least 1200 pixels wide (about 2400 by 1200 is ideal); camera and location data are removed on upload. Use only a photo you own or are licensed to use.</p>
               {SLOTS.map(slot => {
                 const t = thumbFor(slot);
                 return (
@@ -289,6 +290,9 @@ export default function StaffSite() {
               {Num({ label: "Logo height", path: "layout.logoHeight", range: RANGES.logoHeight })}
               {Choice({ label: "Button size", path: "layout.buttonSize", options: BUTTON_SIZES })}
               {Choice({ label: "Icon style", path: "layout.iconStyle", options: ICON_STYLES })}
+              {Num({ label: "Hero photo overlay strength", path: "layout.heroOverlay", range: RANGES.heroOverlay, unit: "%" })}
+              {Num({ label: "Hero photo crop point on phones (left to right)", path: "layout.heroFocus", range: RANGES.heroFocus, unit: "%" })}
+              <p className="muted">The overlay darkens the home hero photo so the white heading stays readable. It cannot go below 45%.</p>
             </section>
           )}
 
