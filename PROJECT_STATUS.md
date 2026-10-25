@@ -208,6 +208,19 @@ Light-first design system in `app/globals.css` (all colours from theme variables
 - db/20261025190000_ai_records_and_message_safety.sql: ai_draft (permanent, status moves once), message_safety_flag (permanent, reviewed once), enquiry_ai_pause.
 - Open: Compliance to review the scam and handoff phrase lists; a larger labelled evaluation set before release.
 
+## Counter-offers (25 Oct 2026, PR feature/counter-offers; security review needed)
+- Back-and-forth negotiation on a formal offer (db/20261025195000, `offer_counter`; `src/domain/offer-counter.ts`, `src/server/offer-counter-db.ts`). New offer statuses `buyer_countered` (owner's move) and `expired`; `countered` is the buyer's move. Each counter is guarded by one SQL statement (owner/buyer check, turn, 10-round limit, one open counter per offer as a deferrable exclusion constraint) and its terms are never edited.
+- Owner: `POST /api/listings/[id]/offers/[offerId]/counter`, detail `GET /api/listings/[id]/offers/[offerId]` (appointed agents read only), page /listings/[id]/offers/[offerId]. Accept/reject now also work from `buyer_countered`; accept is refused while the owner's own counter waits; the accepted terms are recorded in `formal_offer.accepted_counter_id` (NULL = original offer).
+- Buyer: /offers (My offers, buyer nav) and /offers/[offerId]; `POST /api/offers/[offerId]/counter`, `/agree` (agrees to the owner's open counter; the owner still accepts: the buyer never accepts), `/withdraw`. Counter and agree re-check terms and buyer verification; withdraw is always allowed while open.
+- Counters lapse after 1-14 days (default 3). Expiry is settled lazily on every read and action (`expireCountersPg`); a scheduled sweep can call it with no scope but none is wired yet.
+- Open: owner MFA step-up on accept (spec 4.2), agent-drafted counters, mandate checks on owner counters (no mandate table yet), notifying the other side (no delivery provider), offer-analysis and contract draft use the buyer's standing terms.
+
+## Offer timeline (25 Oct 2026, merged into feature/counter-offers)
+- Builds on main's insert-only `offer_event` (db/20261025200000). db/20261025220000 adds `owner_countered` (owner counter with terms) and `buyer_agreed` events, plus counter id and round, conditions, deposit and from/to status columns (NULL on older rows). `countered` keeps main's meaning: the owner asked for a better offer. Expiry must be a system event.
+- Every counter, agreement, withdrawal, lapse and decision writes its event in the same SQL statement as the change. Owner decisions made before offer_event existed are copied once from the audit log.
+- Returned as `negotiation.timeline` on the owner detail API and `timeline` on the buyer detail API (roles only, no user ids), and shown on both offer pages (`src/domain/offer-timeline.ts` wording).
+- Not recorded yet (spec 3.2): viewed, ai_analysed, handoff, superseded, MFA flag on accept.
+
 ## AI enquiry reply drafting (built 25 Oct 2026, feature/ai-reply-drafting)
 - Intent classification (src/domain/enquiry-intent.ts): rules first (availability, inspection, price, documents, offer, complaint), the self-hosted model only when rules find nothing and only a fixed label is accepted.
 - Reply drafts (src/domain/ai-reply-draft.ts, prompt enquiry-reply@1): built from listing facts, the last 8 thread lines and the owner's approved template, all fenced as data. Offers, complaints, safety handoffs and paused threads are never drafted. Every draft passes the draft guard; a failure is stored as "held" with reasons. AI off = "AI unavailable" plus the owner's template.

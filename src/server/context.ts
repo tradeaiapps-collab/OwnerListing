@@ -11,8 +11,8 @@ import { createPgBillingStore } from "./billing-db";
 import { staffFromRequest } from "./staff-auth";
 import { createPgPublishAlertHook } from "./publish-alerts-db";
 import { hasCurrentTermsPg } from "./terms-db";
-import { disclosureRequirementsPg, markListingDisclosureVersionPg } from "./disclosure-config-db";
 import { clearedWordingFlagsPg, recordWordingFlagsPg } from "./wording-flags-db";
+import { disclosureRequirementsPg, markListingDisclosureVersionPg } from "./disclosure-config-db";
 import { appendAuditPg, appointmentForPg, createPgListingRepository, trustAccountDecisionPg, verifiedLicencesPg, type Queryable } from "./db";
 
 interface Wired { db: Queryable; deps: ListingServiceDeps }

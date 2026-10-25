@@ -78,7 +78,7 @@ const ROLE_PERMISSIONS: Record<StaffRole, readonly StaffPermission[]> = {
   super_admin: ALL,
   compliance: ["report.audit", "report.solicitor", "report.broker", "pii.view_full", "case.manage",
     "trust_account.approve", "licence.verify", "dispute.read_chat", "override.request", "identity.review", "investment.review",
-    "disclosure.config_edit", "disclosure.config_approve", "disclosure.verify", "wording.review"],
+    "wording.review", "disclosure.config_edit", "disclosure.config_approve", "disclosure.verify"],
   accountant: ["report.financial", "report.sales", "pii.view_masked"],
   support: ["report.buyer", "report.seller", "pii.view_masked", "case.manage", "override.request"],
   technical: ["logs.technical", "report.operations", "config.edit"],

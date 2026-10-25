@@ -61,6 +61,10 @@ export interface ListingServiceDeps {
   termsCurrentFor?: (userId: string) => Promise<boolean>;
   /** Post-publish hook (saved-search alerts). Runs after the listing is saved as published; it can never block or fail publishing. */
   afterPublish?: (listing: PropertyListing) => Promise<unknown>;
+  /** Wording matches staff cleared for this listing (flagKey values). Unreadable = none cleared (fails closed). */
+  clearedWordingFlags?: (listingId: string) => Promise<ReadonlySet<string>>;
+  /** Records blocking wording flags from a real publish attempt so staff can review them. Best effort; never unblocks. */
+  recordWordingFlags?: (listingId: string, actorUserId: string, fields: readonly FieldFlags[]) => Promise<void>;
   /**
    * Versioned, Compliance-approved requirements (spec 6.1). When wired it replaces `requiredDisclosures`: the approved version's id
    * and the keys for the listing's property type, or null when that combination has no approved version (publishing blocked).
@@ -69,10 +73,6 @@ export interface ListingServiceDeps {
   disclosureRequirements?: (listing: PropertyListing) => Promise<{ versionId: string; keys: readonly string[] } | null>;
   /** Stores the requirements version a listing passed when it was published, so later versions never unpublish it. */
   markDisclosureVersion?: (listingId: string, versionId: string) => Promise<void>;
-  /** Wording matches staff cleared for this listing (flagKey values). Unreadable = none cleared (fails closed). */
-  clearedWordingFlags?: (listingId: string) => Promise<ReadonlySet<string>>;
-  /** Records blocking wording flags from a real publish attempt so staff can review them. Best effort; never unblocks. */
-  recordWordingFlags?: (listingId: string, actorUserId: string, fields: readonly FieldFlags[]) => Promise<void>;
 }
 
 /** Hook budget: a slow hook is abandoned (not awaited further) so publishing returns promptly. */

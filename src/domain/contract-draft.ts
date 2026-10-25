@@ -24,7 +24,7 @@ export interface ContractDraft {
 }
 
 /** Offers in these statuses can be drafted. A rejected offer (or an unknown status) cannot. */
-export const DRAFTABLE_STATUSES: readonly string[] = ["submitted", "under_review", "countered", "accepted"];
+export const DRAFTABLE_STATUSES: readonly string[] = ["submitted", "under_review", "countered", "buyer_countered", "accepted"];
 export const canDraftFrom = (status: string): boolean => DRAFTABLE_STATUSES.includes(status);
 
 const aud = (cents: number) => new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD" }).format(cents / 100);
