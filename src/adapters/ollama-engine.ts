@@ -176,8 +176,8 @@ export function createOllamaEngine(cfg: OllamaConfig, fetchImpl: FetchFn = fetch
       });
       const content = (body as { message?: { content?: unknown } } | null)?.message?.content;
       if (typeof content !== "string") throw new AiUnavailableError("bad_response");
-      // Some open models print their reasoning in <think> tags first; that is never shown.
-      const text = content.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
+      // Some open models print their reasoning in <think> tags first; that is never shown (an unclosed tag hides the rest).
+      const text = content.replace(/<think>[\s\S]*?(?:<\/think>|$)/gi, "").trim();
       if (text.length === 0) throw new AiUnavailableError("bad_response");
       if (text.length > maxTokens * CHARS_PER_TOKEN) throw new AiUnavailableError("too_large");
       return text;

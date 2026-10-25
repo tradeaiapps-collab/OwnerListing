@@ -1,4 +1,4 @@
-import { fenceData, isEngineUsable, type AiEnginePort } from "./ai-engine";
+import { CONTACT_RE, fenceData, isEngineUsable, type AiEnginePort } from "./ai-engine";
 import { checkPublicOutput } from "./ai-public-guard";
 
 /** An offer as the owner sees it. No buyer identity: the report uses only price, deposit, settlement and conditions. */
@@ -62,7 +62,7 @@ const DECISION_WORDS = /\b(accept\w*|reject\w*|decline\w*|counter\w*|you should|
 
 export function checkAiSummary(text: string): boolean {
   const t = text.trim();
-  return t.length > 0 && t.length <= MAX_SUMMARY && !DECISION_WORDS.test(t) && checkPublicOutput(t).ok;
+  return t.length > 0 && t.length <= MAX_SUMMARY && !DECISION_WORDS.test(t) && !CONTACT_RE.test(t) && checkPublicOutput(t).ok;
 }
 
 export function buildSummaryPrompt(rows: readonly ComparisonRow[]): string {

@@ -1,4 +1,4 @@
-import { fenceData, isEngineUsable, type AiEnginePort } from "./ai-engine";
+import { CONTACT_RE, fenceData, isEngineUsable, type AiEnginePort } from "./ai-engine";
 import { checkPublicOutput } from "./ai-public-guard";
 
 /**
@@ -42,14 +42,13 @@ const OFFER_ACTION = /\b(accept|approve|decline|reject|refuse|counter|withdraw)\
 /** Obvious out-of-scope advice requests. */
 const ADVICE = /\b(how much (can|could|should) i (borrow|offer|pay)|should i (buy|sell|sign|accept|borrow|invest)|is (this|it) a good (deal|price|investment)|legal advice|tax advice)\b/i;
 
-/** Output backstops: claims of acting on offers, personal recommendations, contact details. */
+/** Output backstops: claims of acting on offers, personal recommendations (contact details: CONTACT_RE). */
 const ACTED = /\b(i|we)\s+(have\s+)?(accepted|declined|rejected|countered|approved|withdrew|sent|submitted)\b/i;
 const ADVISES = /\byou should (buy|sell|sign|accept|decline|reject|borrow|invest|offer)\b/i;
-const CONTACT = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}|(\+?61|\b0)[\s-]?\d(?:[\s-]?\d){7,9}/i;
 
 export function checkGuideAnswer(text: string): boolean {
   const t = text.trim();
-  return t.length > 0 && t.length <= MAX_GUIDE_ANSWER && checkPublicOutput(t).ok && !ACTED.test(t) && !ADVISES.test(t) && !CONTACT.test(t);
+  return t.length > 0 && t.length <= MAX_GUIDE_ANSWER && checkPublicOutput(t).ok && !ACTED.test(t) && !ADVISES.test(t) && !CONTACT_RE.test(t);
 }
 
 const PAGE_RE = /^\/[A-Za-z0-9/_-]{0,100}$/;

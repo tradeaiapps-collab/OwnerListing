@@ -46,11 +46,18 @@ export const BASE_SYSTEM_PROMPT = [
 const FENCE_RE = /<{3,}|>{3,}/g;
 // Control and invisible format characters (bidi overrides, zero width). Newline and tab are kept.
 const BAD_CHARS_RE = /[\p{Cc}\p{Cf}]/gu;
+// Chat-template control markers (<|im_start|>, <|eot_id|>, [INST], <<SYS>>, <s>, <start_of_turn>, <think>...). Model servers may parse these
+// as real role tokens even inside user text, so they are removed before the text reaches a prompt.
+const ROLE_MARKER_RE = /<\||\|>|\[\/?INST\]|<<\/?SYS>>|<\/?(?:s|bos|eos|think|start_of_turn|end_of_turn|turn)>/gi;
+
+/** Contact details or links in model output (emails, Australian phone numbers, URLs). Every AI output check refuses these. */
+export const CONTACT_RE = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}|(\+?61|\b0)[\s-]?\d(?:[\s-]?\d){7,9}|https?:\/\/|www\./i;
 
 /** Wraps user text as inert data: removes anything that could close the fence or hide text, and caps the length. */
 export function fenceData(text: string, maxChars = 2000): string {
-  let clean = text.normalize("NFC").replace(/\r\n?/g, "\n").replace(BAD_CHARS_RE, c => (c === "\n" || c === "\t" ? c : "")).slice(0, maxChars);
+  // NFKC folds look-alikes (fullwidth ＜｜, ＞＞＞) into the ASCII forms removed below.
+  let clean = text.normalize("NFKC").replace(/\r\n?/g, "\n").replace(BAD_CHARS_RE, c => (c === "\n" || c === "\t" ? c : "")).slice(0, maxChars);
   // Repeat until stable, so removing one run can never join two shorter runs into a new fence.
-  for (let prev = ""; prev !== clean;) { prev = clean; clean = clean.replace(FENCE_RE, ""); }
+  for (let prev = ""; prev !== clean;) { prev = clean; clean = clean.replace(FENCE_RE, "").replace(ROLE_MARKER_RE, ""); }
   return `<<<DATA\n${clean}\nDATA>>>`;
 }
