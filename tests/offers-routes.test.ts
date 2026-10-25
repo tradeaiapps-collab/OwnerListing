@@ -198,7 +198,7 @@ describe("GET /api/listings/[id]/offers (owner reviews)", () => {
     const body = await res.json();
     expect(body.offers).toEqual([{
       id: "offer-1", priceCents: 90_000_000, conditions: ["Finance approval"], settlementDays: 30,
-      depositCents: 9_000_000, status: "submitted", submittedAt: NOW
+      depositCents: 9_000_000, status: "submitted", submittedAt: NOW, round: 0
     }]);
     const text = JSON.stringify(body);
     expect(text).not.toContain("buyer-9");

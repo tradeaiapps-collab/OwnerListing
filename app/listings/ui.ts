@@ -20,7 +20,7 @@ const ROOM_FIELDS = [["bedrooms", "Bedrooms"], ["bathrooms", "Bathrooms"], ["par
 export function listingFormBody(fd: FormData): { body: Record<string, unknown> } | { error: string } {
   const body: Record<string, unknown> = {};
   for (const [k, v] of fd.entries()) if (typeof v === "string" && k !== "price") body[k] = v;
-  for (const k of ["suburb", "postcode"]) body[k] = String(body[k] ?? "").trim() || null;
+  for (const k of ["suburb", "postcode", "description"]) body[k] = String(body[k] ?? "").trim() || null;
   const price = String(fd.get("price") ?? "").trim();
   if (price === "") body["priceCents"] = null;
   else {

@@ -55,7 +55,7 @@ beforeEach(() => { state.staff = null; state.case = caseRow(); state.trust = tru
 
 describe("dashboard sections follow permissions", () => {
   it("shows each role only what it may use", () => {
-    expect(sectionsFor(comp).map(s => s.href)).toEqual(["/staff/dashboard", "/staff/cases", "/staff/safety", "/staff/trust-accounts", "/staff/id-review", "/staff/disclosures", "/staff/disclosures/reviews", "/staff/audit", "/staff/investments"]);
+    expect(sectionsFor(comp).map(s => s.href)).toEqual(["/staff/dashboard", "/staff/cases", "/staff/safety", "/staff/trust-accounts", "/staff/id-review", "/staff/wording-flags", "/staff/disclosures", "/staff/disclosures/reviews", "/staff/audit", "/staff/investments"]);
     expect(sectionsFor(support).map(s => s.href)).toEqual(["/staff/dashboard", "/staff/cases", "/staff/safety"]);
     expect(sectionsFor(tech).map(s => s.href)).toEqual(["/staff/dashboard"]);
   });

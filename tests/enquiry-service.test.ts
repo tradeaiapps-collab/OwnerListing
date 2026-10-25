@@ -243,3 +243,27 @@ describe("auto-reply preview drafts", () => {
     expect(await updateAutoReply(deps, owner, null)).toMatchObject({ ok: false, code: "invalid" });
   });
 });
+
+describe("anti-discrimination wording on owner messages", () => {
+  it("refuses an owner reply with discriminatory wording, stores nothing, and allows a neutral one", async () => {
+    const { enquiry } = await start();
+    const before = (await deps.enquiries.messages(enquiry.id)).length;
+    const r = await reply(deps, owner, enquiry.id, "Sorry, no kids in this unit.");
+    expect(r).toMatchObject({ ok: false, code: "invalid" });
+    expect(!r.ok && r.message).toMatch(/can't be sent because "[^"]*no kids" may be discriminatory/);
+    expect((await deps.enquiries.messages(enquiry.id)).length).toBe(before);
+    expect((await reply(deps, owner, enquiry.id, "The unit has two bedrooms and a lift.")).ok).toBe(true);
+  });
+
+  it("does not filter the buyer's own words (escalation is the AI handoff's job)", async () => {
+    const { enquiry } = await start();
+    expect((await reply(deps, buyer, enquiry.id, "Is it true there are no kids allowed?")).ok).toBe(true);
+  });
+
+  it("refuses an auto-reply template with discriminatory wording", async () => {
+    const r = await updateAutoReply(deps, owner, { templateBody: "Thanks! Note: professionals only." });
+    expect(r).toMatchObject({ ok: false, code: "invalid" });
+    expect(!r.ok && r.message).toMatch(/template can't be saved/);
+    expect((await updateAutoReply(deps, owner, { templateBody: "Thanks, inspections are on Saturday at 10." })).ok).toBe(true);
+  });
+});
