@@ -7,3 +7,6 @@
 .copy-row { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
 .copy-row code { flex: 1 1 200px; padding: var(--space-2); border: 1px solid var(--border); border-radius: 8px; background: var(--bg); }
 .compare-table { min-width: 36rem; }
+.negotiation small { display: block; }
+.badge-buyer_countered, .badge-open, .badge-agreed { color: var(--brand-strong); border-color: color-mix(in srgb, var(--brand) 45%, var(--bg)); background: var(--tint); }
+.badge-expired, .badge-withdrawn { color: var(--muted); }

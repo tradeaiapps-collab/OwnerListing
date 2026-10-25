@@ -3,8 +3,8 @@ export type OwnerDecision = "accept" | "reject" | "counter_request";
 
 const TARGET: Record<OwnerDecision, string> = { accept: "accepted", reject: "rejected", counter_request: "countered" };
 const FROM: Record<OwnerDecision, readonly string[]> = {
-  accept: ["submitted", "under_review", "countered"],
-  reject: ["submitted", "under_review", "countered"],
+  accept: ["submitted", "under_review", "countered", "buyer_countered"],
+  reject: ["submitted", "under_review", "countered", "buyer_countered"],
   counter_request: ["submitted", "under_review"]
 };
 

@@ -130,7 +130,7 @@ export default function NewOffer() {
         <h1>Offer sent</h1>
         <p role="status">The owner has your formal offer of {priceCents !== undefined ? dollars(priceCents) : "the amount entered"}. They will decide; you will be told the outcome.</p>
         <p className="notice"><strong>An offer is not a contract</strong>{OFFER_FORM_NOTICE}</p>
-        <p><a href="/listings">Back to listings</a></p>
+        <p><a href="/offers">See my offers</a> · <a href="/listings">Back to listings</a></p>
       </main>
     );
   }

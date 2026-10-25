@@ -53,7 +53,11 @@ export async function submitOfferPg(db: Queryable, o: NewOffer): Promise<{ id: s
   return r ? { id: String(r["id"]), submittedAt: iso(r["submitted_at"] as Date | string) } : undefined;
 }
 
-/** What an owner sees about an offer. Deliberately no buyer identity (no id, name or email) and nothing from the negotiation mandate. */
+/**
+ * What an owner sees about an offer. Deliberately no buyer identity (no id, name or email) and nothing from the negotiation mandate.
+ * The terms are the buyer's standing terms: once accepted, the accepted ones; otherwise the buyer's latest counter (or an owner
+ * counter the buyer agreed to), falling back to the original offer. `round` counts counters so far.
+ */
 export interface OwnerOfferView {
   id: string;
   priceCents: number;
@@ -62,24 +66,52 @@ export interface OwnerOfferView {
   depositCents: number;
   status: string;
   submittedAt: string;
+  round: number;
+  /** The owner's own counter waiting for the buyer, if any. */
+  openCounter?: { id: string; priceCents: number; depositCents: number; settlementDays: number; conditions: string[]; expiresAt: string };
 }
 
+const strings = (v: unknown): string[] => (Array.isArray(v) ? v.map(String) : []);
+
 /** Offers on one listing, newest first. The owner check is part of the query, so another user's listing returns nothing. */
-export async function offersForOwnerPg(db: Queryable, listingId: string, ownerUserId: string): Promise<OwnerOfferView[]> {
+export async function offersForOwnerPg(db: Queryable, listingId: string, ownerUserId: string, offerId?: string): Promise<OwnerOfferView[]> {
   const { rows } = await db.query(
-    `SELECT o.id, o.price_cents, o.conditions, o.settlement_days, o.deposit_cents, o.status, o.submitted_at
+    `SELECT o.id, o.status, o.submitted_at,
+       COALESCE(t.price_cents, o.price_cents) AS price_cents, COALESCE(t.conditions, o.conditions) AS conditions,
+       COALESCE(t.settlement_days, o.settlement_days) AS settlement_days, COALESCE(t.deposit_cents, o.deposit_cents) AS deposit_cents,
+       (SELECT count(*) FROM offer_counter n WHERE n.offer_id = o.id) AS round,
+       oc.id AS oc_id, oc.price_cents AS oc_price_cents, oc.deposit_cents AS oc_deposit_cents,
+       oc.settlement_days AS oc_settlement_days, oc.conditions AS oc_conditions, oc.expires_at AS oc_expires_at
      FROM formal_offer o JOIN property_listing l ON l.id = o.listing_id
-     WHERE o.listing_id = $1 AND l.owner_user_id = $2
+     LEFT JOIN LATERAL (
+       SELECT c.price_cents, c.conditions, c.settlement_days, c.deposit_cents FROM offer_counter c
+       WHERE c.offer_id = o.id AND CASE WHEN o.status = 'accepted' THEN c.id = o.accepted_counter_id
+                                        ELSE c.from_party = 'buyer' OR c.status = 'agreed' END
+       ORDER BY c.round DESC LIMIT 1
+     ) t ON TRUE
+     LEFT JOIN offer_counter oc ON oc.offer_id = o.id AND oc.status = 'open' AND oc.from_party = 'owner'
+     WHERE o.listing_id = $1 AND l.owner_user_id = $2${offerId === undefined ? "" : " AND o.id = $3"}
      ORDER BY o.submitted_at DESC LIMIT 200`,
-    [listingId, ownerUserId]
+    offerId === undefined ? [listingId, ownerUserId] : [listingId, ownerUserId, offerId]
   );
   return rows.map(r => ({
     id: String(r["id"]),
     priceCents: Number(r["price_cents"]),
-    conditions: Array.isArray(r["conditions"]) ? (r["conditions"] as unknown[]).map(String) : [],
+    conditions: strings(r["conditions"]),
     settlementDays: Number(r["settlement_days"]),
     depositCents: Number(r["deposit_cents"]),
     status: String(r["status"]),
-    submittedAt: iso(r["submitted_at"] as Date | string)
+    submittedAt: iso(r["submitted_at"] as Date | string),
+    round: Number(r["round"] ?? 0),
+    ...(r["oc_id"] ? {
+      openCounter: {
+        id: String(r["oc_id"]),
+        priceCents: Number(r["oc_price_cents"]),
+        depositCents: Number(r["oc_deposit_cents"]),
+        settlementDays: Number(r["oc_settlement_days"]),
+        conditions: strings(r["oc_conditions"]),
+        expiresAt: iso(r["oc_expires_at"] as Date | string)
+      }
+    } : {})
   }));
 }

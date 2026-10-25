@@ -7,6 +7,7 @@ import { getActor, getDb, getDeps } from "../../../../../src/server/context";
 import { failure, unauthenticated } from "../../../../../src/server/http";
 import { OFFER_RATE, windowStart, withinLimit } from "../../../../../src/domain/rate-limit";
 import { countHitPg, eligibleBuyerPg } from "../../../../../src/server/offer-flow-db";
+import { expireCountersPg } from "../../../../../src/server/offer-counter-db";
 import { offerLinkPg, offersForOwnerPg, submitOfferPg } from "../../../../../src/server/offers-db";
 import { csrfGuard } from "../../../../../src/server/csrf";
 import { requireListingHandler } from "../../../../../src/server/owner-listing";
@@ -108,5 +109,7 @@ export async function GET(req: Request, { params }: Ctx) {
   const { id } = await params;
   const handler = await requireListingHandler(req, id);
   if (handler instanceof NextResponse) return handler;
-  return NextResponse.json({ offers: await offersForOwnerPg(getDb(), id, handler.rec.listing.ownerUserId) });
+  const db = getDb();
+  await expireCountersPg(db, getDeps().now(), { listingId: id });
+  return NextResponse.json({ offers: await offersForOwnerPg(db, id, handler.rec.listing.ownerUserId) });
 }

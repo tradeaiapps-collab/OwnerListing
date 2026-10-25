@@ -31,15 +31,35 @@ export async function ownerOfferStatusPg(db: Queryable, listingId: string, offer
   return typeof s === "string" ? s : undefined;
 }
 
-/** Moves the status in one guarded statement. No row back means it changed under us. Moves no money. */
+/**
+ * Moves the status in one guarded statement. No row back means it changed under us. Moves no money.
+ * Accepting is refused while the owner's own counter waits for the buyer. On accept, the terms accepted are the buyer's
+ * latest (their open counter, an owner counter they agreed to, or else their original offer); any open counter closes.
+ */
 export async function decideOfferPg(
-  db: Queryable, listingId: string, offerId: string, ownerUserId: string, from: string[], to: string
+  db: Queryable, listingId: string, offerId: string, ownerUserId: string, from: string[], to: string, now: string
 ): Promise<boolean> {
   const r = await db.query(
-    `UPDATE formal_offer o SET status = $5 FROM property_listing l
-     WHERE o.id = $1 AND o.listing_id = $2 AND l.id = o.listing_id AND l.owner_user_id = $3 AND o.status = ANY($4::text[])
+    `WITH target AS (
+       SELECT o.id FROM formal_offer o JOIN property_listing l ON l.id = o.listing_id
+       WHERE o.id = $1 AND o.listing_id = $2 AND l.owner_user_id = $3 AND o.status = ANY($4::text[])
+         AND ($5 <> 'accepted' OR NOT EXISTS (
+           SELECT 1 FROM offer_counter c WHERE c.offer_id = o.id AND c.status = 'open' AND c.from_party = 'owner'))
+       FOR UPDATE OF o
+     ), basis AS (
+       SELECT c.id FROM offer_counter c JOIN target t ON t.id = c.offer_id
+       WHERE (c.status = 'open' AND c.from_party = 'buyer') OR c.status = 'agreed'
+       ORDER BY c.round DESC LIMIT 1
+     ), closed AS (
+       UPDATE offer_counter c SET status = CASE WHEN $5 = 'accepted' THEN 'accepted' ELSE 'rejected' END, closed_at = $6
+       FROM target t WHERE c.offer_id = t.id AND c.status = 'open' AND $5 IN ('accepted', 'rejected')
+       RETURNING c.id
+     )
+     UPDATE formal_offer o SET status = $5,
+       accepted_counter_id = CASE WHEN $5 = 'accepted' THEN (SELECT id FROM basis) ELSE o.accepted_counter_id END
+     FROM target t WHERE o.id = t.id
      RETURNING o.id`,
-    [offerId, listingId, ownerUserId, from, to]
+    [offerId, listingId, ownerUserId, from, to, now]
   );
   return r.rows.length === 1;
 }
