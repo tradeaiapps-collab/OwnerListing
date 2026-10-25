@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { FieldFlags } from "../src/domain/discrimination-filter";
 import {
-  createDraft, createInMemoryListingRepository, parseDraftInput, parseDraftPatch, publishListing, updateDraft,
+  createDraft, createInMemoryListingRepository, evaluateListingPublish, parseDraftInput, parseDraftPatch, publishListing, updateDraft,
   type Actor, type DraftInput, type ListingServiceDeps
 } from "../src/domain/listing-service";
 import { checkSuggestion } from "../src/domain/ai-description";
@@ -124,6 +124,16 @@ describe("publish gate", () => {
     const broken = { ...deps, recordWordingFlags: async () => { throw new Error("db down"); } };
     const r = await publishListing(broken, owner, l.id, false);
     expect(r.ok && r.value.decision.allowed).toBe(false);
+  });
+
+  it("is part of the shared gate, so staff reinstating a listing get the same block and nothing is recorded", async () => {
+    const l = await ready("Lovely home. No kids.");
+    const rec = (await deps.repo.get(l.id))!;
+    const d = await evaluateListingPublish(deps, rec, deps.now(), owner.userId);
+    expect(d.allowed).toBe(false);
+    expect(d.reasons.join(" ")).toMatch(/"No kids"/);
+    expect(recorded).toHaveLength(0);
+    expect((await evaluateListingPublish(deps, (await deps.repo.get((await ready("Lovely home.")).id))!, deps.now(), owner.userId)).allowed).toBe(true);
   });
 
   it("adds the wording reasons alongside other blockers", async () => {

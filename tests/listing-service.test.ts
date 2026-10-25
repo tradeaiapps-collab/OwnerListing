@@ -127,6 +127,16 @@ describe("publishing", () => {
     expect(audit.map(e => e.eventType)).toEqual(["listing.created", "listing.pending_review", "listing.published"]);
   });
 
+  it("refuses to publish a listing staff have suspended, and leaves it suspended", async () => {
+    const l = await createDraft(deps, owner, { ...input, priceCents: 85_000_000 });
+    const rec = await repo.get(l.id);
+    await repo.save({ ...rec!, listing: { ...rec!.listing, status: "suspended" }, listingFeePaid: true, termsAccepted: true });
+    const ready = { ...deps, trustAccountFor: async () => ({ kind: "approved" as const, reasons: [] }) };
+    const r = await publishListing(ready, owner, l.id, false);
+    expect(!r.ok && r.code).toBe("conflict");
+    expect((await repo.get(l.id))?.listing.status).toBe("suspended");
+  });
+
   it("does not let another user publish", async () => {
     const l = await createDraft(deps, owner, input);
     const r = await publishListing(deps, other, l.id, false);

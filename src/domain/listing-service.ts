@@ -253,6 +253,60 @@ export async function searchPublished(deps: ListingServiceDeps, q: SearchQuery):
 }
 
 /**
+ * The publish gate for a stored listing: compliance disclosures, licences, terms, listing fee, bond pathway, trust account and
+ * discriminatory wording.
+ * `actorUserId` is whoever asks (their terms must be current too); `actingAgent` is set when an appointed agent publishes.
+ * Also used when staff reinstate a suspended listing, so a listing only ever goes live through this one gate.
+ */
+export async function evaluateListingPublish(
+  deps: ListingServiceDeps, rec: ListingRecord, now: string, actorUserId: string, actingAgent?: string
+): Promise<PublishDecision> {
+  return (await runPublishGate(deps, rec, now, actorUserId, actingAgent)).decision;
+}
+
+/** The whole gate, plus the wording flags it found and the approved requirements version it checked (when wired). */
+async function runPublishGate(
+  deps: ListingServiceDeps, rec: ListingRecord, now: string, actorUserId: string, actingAgent?: string
+): Promise<{ decision: PublishDecision; wordingFlags: FieldFlags[]; wordingBlocked: boolean; requirementsVersionId?: string }> {
+  const l = rec.listing;
+  const base = await complianceGate(deps, rec, now, actorUserId, actingAgent);
+  // Anti-discrimination wording (spec 6.4): blocking matches stop publishing unless staff cleared that exact match for this listing.
+  const wordingFlags = listingWordingFlags(l);
+  const cleared = deps.clearedWordingFlags ? await deps.clearedWordingFlags(l.id).catch(() => new Set<string>()) : new Set<string>();
+  const wordingReasons = wordingBlockReasons(wordingFlags, cleared);
+  const decision = wordingReasons.length > 0 ? { allowed: false, reasons: [...base.decision.reasons, ...wordingReasons] } : base.decision;
+  return { ...base, decision, wordingFlags, wordingBlocked: wordingReasons.length > 0 };
+}
+
+async function complianceGate(
+  deps: ListingServiceDeps, rec: ListingRecord, now: string, actorUserId: string, actingAgent?: string
+): Promise<{ decision: PublishDecision; requirementsVersionId?: string }> {
+  const l = rec.listing;
+  const requirements = deps.disclosureRequirements ? await deps.disclosureRequirements(l).catch(() => null) : undefined;
+  const required = requirements !== undefined ? (requirements?.keys ?? null) : deps.requiredDisclosures(l.jurisdiction, l.transactionType, l.useClass);
+  if (required === null) {
+    return { decision: {
+      allowed: false,
+      reasons: [`No compliance-approved disclosure configuration for ${l.jurisdiction} ${l.transactionType} (${l.useClass}) yet.`]
+    } };
+  }
+  const trustAccount = deps.trustAccountFor ? await deps.trustAccountFor(l.id) : undefined;
+  const licences = deps.licences ? await deps.licences() : [];
+  // With the terms check wired, the accepted-version log decides (owner and actor); the stored flag is the fallback.
+  const termsAccepted = deps.termsCurrentFor
+    ? (await Promise.all([...new Set([l.ownerUserId, actorUserId])].map(deps.termsCurrentFor))).every(Boolean)
+    : rec.termsAccepted;
+  const decision = decidePublish(l, required, licences, now, {
+    termsAccepted,
+    listingFeePaid: rec.listingFeePaid,
+    ...(rec.rentalBondPathway ? { rentalBondPathway: rec.rentalBondPathway } : {}),
+    ...(actingAgent ? { actingAgentId: actingAgent } : {}),
+    ...(trustAccount ? { trustAccount } : {})
+  });
+  return requirements ? { decision, requirementsVersionId: requirements.versionId } : { decision };
+}
+
+/**
  * Runs the publish gate for the owner's listing. With dryRun nothing changes. Otherwise an allowed decision moves
  * the listing draft -> pending_review -> published, with an audit event for each step.
  */
@@ -274,39 +328,11 @@ export async function publishListing(
     actingAgent = actor.userId;
   }
 
-  const now = deps.now();
-  const requirements = deps.disclosureRequirements ? await deps.disclosureRequirements(l).catch(() => null) : undefined;
-  const required = requirements !== undefined ? (requirements?.keys ?? null) : deps.requiredDisclosures(l.jurisdiction, l.transactionType, l.useClass);
-  let decision: PublishDecision;
-  if (required === null) {
-    decision = {
-      allowed: false,
-      reasons: [`No compliance-approved disclosure configuration for ${l.jurisdiction} ${l.transactionType} (${l.useClass}) yet.`]
-    };
-  } else {
-    const trustAccount = deps.trustAccountFor ? await deps.trustAccountFor(l.id) : undefined;
-    const licences = deps.licences ? await deps.licences() : [];
-    // With the terms check wired, the accepted-version log decides (owner and actor); the stored flag is the fallback.
-    const termsAccepted = deps.termsCurrentFor
-      ? (await Promise.all([...new Set([l.ownerUserId, actor.userId])].map(deps.termsCurrentFor))).every(Boolean)
-      : rec.termsAccepted;
-    decision = decidePublish(l, required, licences, now, {
-      termsAccepted,
-      listingFeePaid: rec.listingFeePaid,
-      ...(rec.rentalBondPathway ? { rentalBondPathway: rec.rentalBondPathway } : {}),
-      ...(actingAgent ? { actingAgentId: actingAgent } : {}),
-      ...(trustAccount ? { trustAccount } : {})
-    });
-  }
+  if (l.status === "suspended") return fail("conflict", "This listing has been suspended by our staff. Contact support to have it reviewed.");
 
-  // Anti-discrimination wording (spec 6.4): blocking matches stop publishing unless staff cleared that exact match for this listing.
-  const wordingFlags = listingWordingFlags(l);
-  const cleared = deps.clearedWordingFlags ? await deps.clearedWordingFlags(l.id).catch(() => new Set<string>()) : new Set<string>();
-  const wordingReasons = wordingBlockReasons(wordingFlags, cleared);
-  if (wordingReasons.length > 0) {
-    decision = { allowed: false, reasons: [...decision.reasons, ...wordingReasons] };
-    if (!dryRun && deps.recordWordingFlags) await deps.recordWordingFlags(l.id, actor.userId, wordingFlags).catch(() => undefined);
-  }
+  const now = deps.now();
+  const { decision, wordingFlags, wordingBlocked, requirementsVersionId } = await runPublishGate(deps, rec, now, actor.userId, actingAgent);
+  if (wordingBlocked && !dryRun && deps.recordWordingFlags) await deps.recordWordingFlags(l.id, actor.userId, wordingFlags).catch(() => undefined);
 
   if (dryRun || !decision.allowed) return { ok: true, value: { decision, listing: l, wordingFlags } };
 
@@ -320,7 +346,7 @@ export async function publishListing(
   const done = transitionListing(current, "published", { ...ctx, eventId: deps.newId() }, decision);
   await deps.appendAudit(done.event);
   await deps.repo.save({ ...rec, listing: done.listing });
-  if (requirements && deps.markDisclosureVersion) await deps.markDisclosureVersion(l.id, requirements.versionId);
+  if (requirementsVersionId && deps.markDisclosureVersion) await deps.markDisclosureVersion(l.id, requirementsVersionId);
   if (deps.afterPublish) await runAfterPublish(deps.afterPublish, done.listing);
   return { ok: true, value: { decision, listing: done.listing, wordingFlags } };
 }

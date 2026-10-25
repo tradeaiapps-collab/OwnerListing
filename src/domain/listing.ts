@@ -1,7 +1,7 @@
 import type { Jurisdiction } from "./jurisdiction";
 import type { ListingDetails } from "./listing-details";
 
-export type ListingStatus = "draft" | "pending_review" | "published" | "withdrawn";
+export type ListingStatus = "draft" | "pending_review" | "published" | "suspended" | "withdrawn";
 
 export interface ListingDisclosure {
   key: string;
