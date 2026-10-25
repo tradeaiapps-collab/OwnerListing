@@ -148,6 +148,8 @@ describe("GET /api/listings/[id]/offers/[offerId] (owner detail)", () => {
     expect(body.offer.awaiting).toBe("owner");
     expect(body.counters.map((c: { fromParty: string }) => c.fromParty)).toEqual(["owner"]);
     expect(body.canDecide).toBe(true);
+    expect(body.timeline).toEqual([]);
+    expect(calls.some(c => c.text.includes("FROM offer_event WHERE offer_id = $1") && c.params[0] === OFFER)).toBe(true);
     expect(JSON.stringify(body)).not.toContain("buyer-9");
     state.actor = otherOwner;
     expect((await ownerDetail(get(`/x`), { params: Promise.resolve({ id: listingId, offerId: OFFER }) })).status).toBe(404);

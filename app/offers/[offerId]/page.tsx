@@ -3,7 +3,8 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { MAX_COUNTER_ROUNDS } from "../../../src/domain/offer-counter";
 import { offerStatusLabel } from "../../../src/domain/offer-display";
-import { CounterForm, NegotiationHistory, TermsLine, when, type Counter, type Terms } from "../negotiation";
+import type { TimelineEvent } from "../../../src/domain/offer-timeline";
+import { CounterForm, OfferTimeline, TermsLine, when, type Counter, type Terms } from "../negotiation";
 import { JSON_HEADERS } from "../../listings/ui";
 import "../../styles/offers.css";
 
@@ -18,7 +19,7 @@ const OPEN = ["submitted", "under_review", "countered", "buyer_countered"];
  */
 export default function MyOffer() {
   const { offerId } = useParams<{ offerId: string }>();
-  const [data, setData] = useState<{ offer: Offer; counters: Counter[] } | null>(null);
+  const [data, setData] = useState<{ offer: Offer; counters: Counter[]; timeline: TimelineEvent[] } | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [pending, setPending] = useState<Pending>(null);
@@ -49,7 +50,7 @@ export default function MyOffer() {
 
   if (error) return <main><h1>My offer</h1><p role="alert">{error}</p></main>;
   if (!data) return <main><p className="muted" role="status">Loading…</p></main>;
-  const { offer, counters } = data;
+  const { offer, counters, timeline } = data;
   const latest = counters.at(-1);
   const ownerCounter = latest && latest.fromParty === "owner" && latest.status === "open" ? latest : undefined;
   const myTurn = offer.awaiting === "buyer";
@@ -112,8 +113,8 @@ export default function MyOffer() {
         <div className="actions"><button type="button" className="secondary" onClick={() => setPending("withdraw")}>Withdraw offer</button></div>
       ) : null}
 
-      <h2>Negotiation</h2>
-      <NegotiationHistory original={offer} submittedAt={offer.submittedAt} counters={counters} viewer="buyer" />
+      <h2>Timeline</h2>
+      <OfferTimeline events={timeline} viewer="buyer" />
     </main>
   );
 }

@@ -16,13 +16,3 @@ export function offerStatusLabel(status: string, viewer: "owner" | "buyer", late
   }
   return OFFER_LABEL[status] ?? status;
 }
-
-const COUNTER_LABEL: Record<string, string> = {
-  open: "Waiting for a reply", agreed: "Agreed by the buyer", countered: "Countered", accepted: "Accepted",
-  rejected: "Rejected", withdrawn: "Withdrawn", expired: "Expired"
-};
-export const counterStatusLabel = (status: string): string => COUNTER_LABEL[status] ?? status;
-
-/** "Owner" or "Buyer", or "You" for the viewer's own side. Never a name. */
-export const partyLabel = (party: "owner" | "buyer", viewer: "owner" | "buyer"): string =>
-  party === viewer ? "You" : party === "owner" ? "Owner" : "Buyer";

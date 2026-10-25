@@ -4,7 +4,8 @@ import { awaiting } from "../../../../../../src/domain/offer-counter";
 import { isUuid } from "../../../../../../src/domain/offer-decision";
 import { getActor, getDb, getDeps } from "../../../../../../src/server/context";
 import { failure, unauthenticated } from "../../../../../../src/server/http";
-import { countersForOfferPg, expireCountersPg, originalTermsPg } from "../../../../../../src/server/offer-counter-db";
+import { countersForOfferPg, expireCountersPg } from "../../../../../../src/server/offer-counter-db";
+import { offerTimelinePg } from "../../../../../../src/server/offer-timeline-db";
 import { offersForOwnerPg } from "../../../../../../src/server/offers-db";
 import { requireListingHandler } from "../../../../../../src/server/owner-listing";
 
@@ -12,7 +13,7 @@ type Ctx = { params: Promise<{ id: string; offerId: string }> };
 
 const notFound = { ok: false, code: "not_found", message: "Offer not found." } as const;
 
-/** One offer with its counter-offer history, for the listing's owner or appointed agent. No buyer identity. Others get 404. */
+/** One offer with its counter-offers and full timeline, for the listing's owner or appointed agent. No buyer identity. Others get 404. */
 export async function GET(req: Request, { params }: Ctx) {
   const actor = await getActor(req);
   if (!actor) return unauthenticated();
@@ -28,8 +29,8 @@ export async function GET(req: Request, { params }: Ctx) {
   if (!offer) return failure(notFound);
   return NextResponse.json({
     offer: { ...offer, awaiting: awaiting(offer.status) },
-    original: await originalTermsPg(db, offerId),
     counters: await countersForOfferPg(db, offerId),
+    timeline: await offerTimelinePg(db, offerId),
     canDecide: !handler.asAgent
   });
 }

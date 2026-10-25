@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { counterStatusLabel, offerStatusLabel, partyLabel } from "../src/domain/offer-display";
+import { offerStatusLabel } from "../src/domain/offer-display";
 
 describe("offer display wording", () => {
   it("tells each side whose move it is", () => {
@@ -11,10 +11,5 @@ describe("offer display wording", () => {
     expect(offerStatusLabel("buyer_countered", "buyer", { fromParty: "buyer", status: "open" })).toBe("Your counter: waiting for the owner");
     expect(offerStatusLabel("expired", "buyer")).toBe("Expired");
     expect(offerStatusLabel("something_new", "owner")).toBe("something_new");
-  });
-  it("names sides by role only", () => {
-    expect(partyLabel("owner", "owner")).toBe("You");
-    expect(partyLabel("buyer", "owner")).toBe("Buyer");
-    expect(counterStatusLabel("agreed")).toBe("Agreed by the buyer");
   });
 });

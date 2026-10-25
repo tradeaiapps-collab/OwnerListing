@@ -30,17 +30,23 @@ export interface CounterView extends CounterTerms {
 export async function expireCountersPg(
   db: Queryable, now: string, scope: { offerId?: string; listingId?: string; buyerUserId?: string } = {}
 ): Promise<string[]> {
+  // Every part of one statement reads the same snapshot, so formal_offer read in the final INSERT still shows the old status.
   const r = await db.query(
     `WITH exp AS (
        UPDATE offer_counter c SET status = 'expired', closed_at = c.expires_at
        FROM formal_offer f
        WHERE f.id = c.offer_id AND c.status = 'open' AND c.expires_at <= $1
          AND ($2::uuid IS NULL OR f.id = $2) AND ($3::uuid IS NULL OR f.listing_id = $3) AND ($4::uuid IS NULL OR f.buyer_user_id = $4)
-       RETURNING c.offer_id
+       RETURNING c.offer_id, c.id, c.round, c.expires_at
+     ), moved AS (
+       UPDATE formal_offer f SET status = 'expired' FROM exp
+       WHERE f.id = exp.offer_id AND f.status IN ('countered', 'buyer_countered')
+       RETURNING f.id
      )
-     UPDATE formal_offer f SET status = 'expired' FROM exp
-     WHERE f.id = exp.offer_id AND f.status IN ('countered', 'buyer_countered')
-     RETURNING f.id`,
+     INSERT INTO offer_event (offer_id, event_type, actor_kind, counter_id, counter_round, from_status, to_status, occurred_at)
+     SELECT m.id, 'expired', 'system', exp.id, exp.round, f.status, 'expired', exp.expires_at
+     FROM moved m JOIN exp ON exp.offer_id = m.id JOIN formal_offer f ON f.id = m.id
+     RETURNING offer_id AS id`,
     [now, scope.offerId ?? null, scope.listingId ?? null, scope.buyerUserId ?? null]
   );
   return r.rows.map(x => String(x["id"]));
@@ -57,11 +63,19 @@ async function lostRace<T>(p: Promise<T>): Promise<T | undefined> {
   }
 }
 
-const INSERT_COUNTER = (party: "owner" | "buyer") => `
-  INSERT INTO offer_counter (offer_id, round, from_party, created_by, price_cents, conditions, settlement_days, deposit_cents, created_at, expires_at)
-  SELECT m.id, (SELECT COALESCE(MAX(round), 0) + 1 FROM offer_counter WHERE offer_id = m.id), '${party}', $3, $4, $5::jsonb, $6, $7, $8, $9
-  FROM moved m
-  RETURNING id, round`;
+/** Stores the counter and its timeline event. Needs CTEs `target` (id, from_status) and `moved` (id) before it. */
+const INSERT_COUNTER = (party: "owner" | "buyer") => `, ins AS (
+    INSERT INTO offer_counter (offer_id, round, from_party, created_by, price_cents, conditions, settlement_days, deposit_cents, created_at, expires_at)
+    SELECT m.id, (SELECT COALESCE(MAX(round), 0) + 1 FROM offer_counter WHERE offer_id = m.id), '${party}', $3, $4, $5::jsonb, $6, $7, $8, $9
+    FROM moved m
+    RETURNING id, offer_id, round
+  )
+  INSERT INTO offer_event (offer_id, event_type, actor_kind, actor_user_id, counter_id, counter_round,
+    price_cents, conditions, settlement_days, deposit_cents, from_status, to_status, occurred_at)
+  SELECT i.offer_id, '${party === "owner" ? "countered" : "buyer_countered"}', '${party}', $3, i.id, i.round, $4, $5::jsonb, $6, $7,
+    t.from_status, '${party === "owner" ? "countered" : "buyer_countered"}', $8
+  FROM ins i JOIN target t ON t.id = i.offer_id
+  RETURNING counter_id AS id, counter_round AS round`;
 
 /**
  * The owner's counter, in one statement: checks ownership, whose turn it is and the round limit, closes the buyer's open
@@ -72,7 +86,7 @@ export async function ownerCounterPg(
 ): Promise<{ id: string; round: number } | undefined> {
   const r = await lostRace(db.query(
     `WITH target AS (
-       SELECT o.id FROM formal_offer o JOIN property_listing l ON l.id = o.listing_id
+       SELECT o.id, o.status AS from_status FROM formal_offer o JOIN property_listing l ON l.id = o.listing_id
        WHERE o.id = $1 AND o.listing_id = $2 AND l.owner_user_id = $3 AND o.status = ANY($10::text[])
          AND (SELECT count(*) FROM offer_counter x WHERE x.offer_id = o.id) < $11
        FOR UPDATE OF o
@@ -98,7 +112,7 @@ export async function ownerCounterPg(
 export async function buyerCounterPg(db: Queryable, c: NewCounter): Promise<{ id: string; round: number } | undefined> {
   const r = await lostRace(db.query(
     `WITH target AS (
-       SELECT o.id FROM formal_offer o JOIN property_listing l ON l.id = o.listing_id
+       SELECT o.id, o.status AS from_status FROM formal_offer o JOIN property_listing l ON l.id = o.listing_id
        WHERE o.id = $1 AND o.buyer_user_id = $3 AND o.status = 'countered' AND l.status = $2
          AND (SELECT count(*) FROM offer_counter x WHERE x.offer_id = o.id) < $10
          AND NOT EXISTS (SELECT 1 FROM offer_counter x WHERE x.offer_id = o.id AND x.status = 'open' AND x.expires_at <= $8)
@@ -124,15 +138,22 @@ export async function buyerCounterPg(db: Queryable, c: NewCounter): Promise<{ id
 export async function buyerAgreePg(db: Queryable, offerId: string, buyerUserId: string, counterId: string, now: string): Promise<boolean> {
   const r = await db.query(
     `WITH target AS (
-       SELECT o.id FROM formal_offer o JOIN property_listing l ON l.id = o.listing_id
+       SELECT o.id, o.status AS from_status FROM formal_offer o JOIN property_listing l ON l.id = o.listing_id
        WHERE o.id = $1 AND o.buyer_user_id = $2 AND o.status = 'countered' AND l.status = 'published'
        FOR UPDATE OF o
      ), agreed AS (
        UPDATE offer_counter x SET status = 'agreed', closed_at = $4
        FROM target t WHERE x.offer_id = t.id AND x.id = $3 AND x.status = 'open' AND x.from_party = 'owner' AND x.expires_at > $4
-       RETURNING x.offer_id
+       RETURNING x.offer_id, x.id, x.round, x.price_cents, x.conditions, x.settlement_days, x.deposit_cents
+     ), moved AS (
+       UPDATE formal_offer o SET status = 'buyer_countered' FROM agreed a WHERE o.id = a.offer_id RETURNING o.id
      )
-     UPDATE formal_offer o SET status = 'buyer_countered' FROM agreed a WHERE o.id = a.offer_id RETURNING o.id`,
+     INSERT INTO offer_event (offer_id, event_type, actor_kind, actor_user_id, counter_id, counter_round,
+       price_cents, conditions, settlement_days, deposit_cents, from_status, to_status, occurred_at)
+     SELECT m.id, 'buyer_agreed', 'buyer', $2, a.id, a.round, a.price_cents, a.conditions, a.settlement_days, a.deposit_cents,
+       t.from_status, 'buyer_countered', $4
+     FROM moved m JOIN agreed a ON a.offer_id = m.id JOIN target t ON t.id = m.id
+     RETURNING offer_id AS id`,
     [offerId, buyerUserId, counterId, now]
   );
   return r.rows.length === 1;
@@ -142,12 +163,16 @@ export async function buyerAgreePg(db: Queryable, offerId: string, buyerUserId: 
 export async function buyerWithdrawPg(db: Queryable, offerId: string, buyerUserId: string, from: readonly string[], now: string): Promise<boolean> {
   const r = await db.query(
     `WITH target AS (
-       SELECT o.id FROM formal_offer o WHERE o.id = $1 AND o.buyer_user_id = $2 AND o.status = ANY($3::text[]) FOR UPDATE
+       SELECT o.id, o.status AS from_status FROM formal_offer o WHERE o.id = $1 AND o.buyer_user_id = $2 AND o.status = ANY($3::text[]) FOR UPDATE
      ), closed AS (
        UPDATE offer_counter x SET status = 'withdrawn', closed_at = $4 FROM target t WHERE x.offer_id = t.id AND x.status = 'open'
        RETURNING x.id
+     ), moved AS (
+       UPDATE formal_offer o SET status = 'withdrawn' FROM target t WHERE o.id = t.id RETURNING o.id
      )
-     UPDATE formal_offer o SET status = 'withdrawn' FROM target t WHERE o.id = t.id RETURNING o.id`,
+     INSERT INTO offer_event (offer_id, event_type, actor_kind, actor_user_id, from_status, to_status, occurred_at)
+     SELECT m.id, 'withdrawn', 'buyer', $2, t.from_status, 'withdrawn', $4 FROM moved m JOIN target t ON t.id = m.id
+     RETURNING offer_id AS id`,
     [offerId, buyerUserId, [...from], now]
   );
   return r.rows.length === 1;
@@ -206,12 +231,3 @@ export async function offersForBuyerPg(db: Queryable, buyerUserId: string, offer
   }));
 }
 
-/** The buyer's original terms as submitted. Callers check access first. */
-export async function originalTermsPg(db: Queryable, offerId: string): Promise<CounterTerms | undefined> {
-  const { rows } = await db.query("SELECT price_cents, conditions, settlement_days, deposit_cents FROM formal_offer WHERE id = $1", [offerId]);
-  const r = rows[0];
-  return r ? {
-    priceCents: Number(r["price_cents"]), conditions: strings(r["conditions"]),
-    settlementDays: Number(r["settlement_days"]), depositCents: Number(r["deposit_cents"])
-  } : undefined;
-}
