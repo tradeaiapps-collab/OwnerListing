@@ -57,6 +57,7 @@ ensure_env GOOGLE_CLIENT_ID local-dummy
 ensure_env GOOGLE_CLIENT_SECRET local-dummy
 ensure_env LOCAL_STORAGE_DIR "$(pwd)/.local-storage"
 ensure_env MALWARE_SCAN_DRIVER local-noop
+ensure_env MANDATE_FLOOR_KEY "$(openssl rand -base64 32)"
 
 echo "Starting the database..."
 docker compose -f docker-compose.local.yml up -d --wait || fail "The database did not start. Is port 5544 in use?"
