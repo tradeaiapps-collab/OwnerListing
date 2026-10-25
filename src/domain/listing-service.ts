@@ -221,6 +221,37 @@ export async function searchPublished(deps: ListingServiceDeps, q: SearchQuery):
 }
 
 /**
+ * The publish gate for a stored listing: compliance disclosures, licences, terms, listing fee, bond pathway and trust account.
+ * `actorUserId` is whoever asks (their terms must be current too); `actingAgent` is set when an appointed agent publishes.
+ * Also used when staff reinstate a suspended listing, so a listing only ever goes live through this one gate.
+ */
+export async function evaluateListingPublish(
+  deps: ListingServiceDeps, rec: ListingRecord, now: string, actorUserId: string, actingAgent?: string
+): Promise<PublishDecision> {
+  const l = rec.listing;
+  const required = deps.requiredDisclosures(l.jurisdiction, l.transactionType, l.useClass);
+  if (required === null) {
+    return {
+      allowed: false,
+      reasons: [`No compliance-approved disclosure configuration for ${l.jurisdiction} ${l.transactionType} (${l.useClass}) yet.`]
+    };
+  }
+  const trustAccount = deps.trustAccountFor ? await deps.trustAccountFor(l.id) : undefined;
+  const licences = deps.licences ? await deps.licences() : [];
+  // With the terms check wired, the accepted-version log decides (owner and actor); the stored flag is the fallback.
+  const termsAccepted = deps.termsCurrentFor
+    ? (await Promise.all([...new Set([l.ownerUserId, actorUserId])].map(deps.termsCurrentFor))).every(Boolean)
+    : rec.termsAccepted;
+  return decidePublish(l, required, licences, now, {
+    termsAccepted,
+    listingFeePaid: rec.listingFeePaid,
+    ...(rec.rentalBondPathway ? { rentalBondPathway: rec.rentalBondPathway } : {}),
+    ...(actingAgent ? { actingAgentId: actingAgent } : {}),
+    ...(trustAccount ? { trustAccount } : {})
+  });
+}
+
+/**
  * Runs the publish gate for the owner's listing. With dryRun nothing changes. Otherwise an allowed decision moves
  * the listing draft -> pending_review -> published, with an audit event for each step.
  */
@@ -242,29 +273,10 @@ export async function publishListing(
     actingAgent = actor.userId;
   }
 
+  if (l.status === "suspended") return fail("conflict", "This listing has been suspended by our staff. Contact support to have it reviewed.");
+
   const now = deps.now();
-  const required = deps.requiredDisclosures(l.jurisdiction, l.transactionType, l.useClass);
-  let decision: PublishDecision;
-  if (required === null) {
-    decision = {
-      allowed: false,
-      reasons: [`No compliance-approved disclosure configuration for ${l.jurisdiction} ${l.transactionType} (${l.useClass}) yet.`]
-    };
-  } else {
-    const trustAccount = deps.trustAccountFor ? await deps.trustAccountFor(l.id) : undefined;
-    const licences = deps.licences ? await deps.licences() : [];
-    // With the terms check wired, the accepted-version log decides (owner and actor); the stored flag is the fallback.
-    const termsAccepted = deps.termsCurrentFor
-      ? (await Promise.all([...new Set([l.ownerUserId, actor.userId])].map(deps.termsCurrentFor))).every(Boolean)
-      : rec.termsAccepted;
-    decision = decidePublish(l, required, licences, now, {
-      termsAccepted,
-      listingFeePaid: rec.listingFeePaid,
-      ...(rec.rentalBondPathway ? { rentalBondPathway: rec.rentalBondPathway } : {}),
-      ...(actingAgent ? { actingAgentId: actingAgent } : {}),
-      ...(trustAccount ? { trustAccount } : {})
-    });
-  }
+  const decision = await evaluateListingPublish(deps, rec, now, actor.userId, actingAgent);
 
   if (dryRun || !decision.allowed) return { ok: true, value: { decision, listing: l } };
 

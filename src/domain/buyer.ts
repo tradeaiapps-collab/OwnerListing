@@ -1,5 +1,5 @@
 import type { Jurisdiction } from "./jurisdiction";
-import type { PropertyListing, PropertyType, UseClass } from "./listing";
+import type { ListingStatus, PropertyListing, PropertyType, UseClass } from "./listing";
 
 /** Searches use only property facts. There are deliberately no demographic fields. */
 export interface SavedSearch {
@@ -18,7 +18,7 @@ export interface SavedSearch {
 
 export interface ListingSummary {
   id: string;
-  status: "draft" | "pending_review" | "published" | "withdrawn";
+  status: ListingStatus;
   jurisdiction: Jurisdiction;
   /** Missing until the owner fills it in. A search that names suburbs never matches a listing without one. */
   suburb?: string;
