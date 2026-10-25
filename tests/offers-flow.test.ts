@@ -12,7 +12,8 @@ import { clientIp, trustedProxyHops } from "../src/server/client-ip";
 const state = vi.hoisted(() => ({
   actor: null as Actor | null,
   deps: null as ListingServiceDeps | null,
-  db: null as Queryable | null
+  db: null as Queryable | null,
+  recentMfa: true
 }));
 
 vi.mock("../src/server/context", () => ({
@@ -20,6 +21,14 @@ vi.mock("../src/server/context", () => ({
   getDeps: () => state.deps,
   getDb: () => state.db
 }));
+
+// Step-up for accepting an offer: the session cookie check itself is covered in tests/mfa.test.ts.
+vi.mock("../src/server/mfa-context", async () => {
+  const { NextResponse } = await import("next/server");
+  return {
+    requireRecentMfa: async () => (state.recentMfa ? null : NextResponse.json({ error: "Confirm it's you.", code: "mfa_required" }, { status: 403 }))
+  };
+});
 
 import { POST as issuePost } from "../app/api/listings/[id]/offer-links/route";
 import { POST as decisionPost } from "../app/api/listings/[id]/offers/[offerId]/decision/route";
@@ -58,6 +67,7 @@ async function publishedListing(): Promise<string> {
 let termsOk = true;
 beforeEach(async () => {
   termsOk = true;
+  state.recentMfa = true;
   n = 0;
   audit = [];
   calls = [];
@@ -245,6 +255,15 @@ describe("POST /api/listings/[id]/offers/[offerId]/decision (owner decides)", ()
     updateRows = [];
     expect((await decide(listingId, OFFER, { decision: "accept" })).status).toBe(409);
     expect(audit.filter(a => a.eventType.startsWith("offer."))).toHaveLength(0);
+  });
+  it("needs a recent second-factor check to accept, but not to reject or ask for a counter", async () => {
+    state.actor = owner;
+    state.recentMfa = false;
+    const res = await decide(listingId, OFFER, { decision: "accept" });
+    expect(res.status).toBe(403);
+    expect((await res.json()).code).toBe("mfa_required");
+    expect(calls.filter(c => c.text.includes("UPDATE formal_offer"))).toHaveLength(0);
+    expect((await decide(listingId, OFFER, { decision: "reject" })).status).toBe(200);
   });
   it("accepts, rejects and counter-requests, each audited, with the owner id taken from the session", async () => {
     state.actor = owner;

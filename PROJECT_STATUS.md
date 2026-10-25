@@ -5,7 +5,7 @@ Brand name: **OwnerListing** (decided 23 Oct 2026). Domain not yet checked or bo
 Last updated: 2026-10-24, after PR #61 was merged (open: #59). Deploy and handover: docs/DEPLOYMENT.md, docs/HANDOVER.md. Earlier: PR #3 (listings), PR #4 (PostgreSQL migrations and Google login). Source: Implementation Playbook v1.0 (20 Oct 2026), Build 001 starter code and the merged code.
 
 ## Architecture (decided)
-- Login provider: Google (OIDC with MFA).
+- Login provider: Google (OIDC with MFA). MFA built 25 Oct 2026 (feature/mfa): authenticator app (TOTP) or SMS code after Google sign-in, 10 single-use recovery codes. Required for owners and agents, optional for buyers and vendors. A 15-minute fresh check (step-up) guards publish and offer accept. Needs MFA_SECRET_KEY before deploying (fails closed). Staff sign-in does not use MFA yet.
 - Local dev port: 3004 (others are taken).
 - TypeScript domain layer (pure functions, no framework), tested with Vitest.
 - PostgreSQL: migrations db/001 to db/016 plus a timestamped Google login and listing flags migration, run by scripts/migrate.mjs (PR #4).
@@ -143,7 +143,7 @@ Owners (fully verified) post projects; staff approve, reject or request changes 
 ## Next steps
 1. DONE 22 Oct on owner's machine: npm install, npm test (43 passed, 13 files), typecheck clean. npm audit (22 Oct): fixed. Upgraded to next 16.4.2, vitest 5.0.5, vite 8.3.5 on owner's machine; 43 tests pass, typecheck clean, 0 vulnerabilities. Do not use audit fix --force.
 2. Items 3 to 7, licence table, and targetPriceCents.
-3. DONE (PR #4): PostgreSQL migrations and Google login. Audit writes go to PostgreSQL (appendAuditPg in src/server/db.ts, wired in src/server/context.ts). Role checks are now enforced on the listing create and publish routes (#16, tested in #18). Audit reads now have a caller (#38 staff audit log). Still open: MFA is not implemented in code.
+3. DONE (PR #4): PostgreSQL migrations and Google login. Audit writes go to PostgreSQL (appendAuditPg in src/server/db.ts, wired in src/server/context.ts). Role checks are now enforced on the listing create and publish routes (#16, tested in #18). Audit reads now have a caller (#38 staff audit log). MFA built on feature/mfa (25 Oct 2026); staff MFA and a staff reset for a lost phone are still open.
 5. Compliance (Shirin) to supply state disclosure configuration.
 6. Australian legal review before any public launch (G0 and G1 controls).
 7. MERGED since #15: #16 role checks on the listing create and publish routes; #18 route-level role-check tests (401/403/400/201/404/200); #19 owner UI to set the rental bond pathway, on the new-listing page only.

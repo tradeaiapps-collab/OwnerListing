@@ -9,6 +9,14 @@ import { parseBootstrapEmails } from "../../../../../src/domain/staff-invite";
 import { staffSignIn } from "../../../../../src/server/staff-auth";
 import { upsertGoogleUser, vendorSignIn } from "../../../../../src/server/users";
 import { withApi } from "../../../../../src/server/api/with-api";
+import { mfaRequired } from "../../../../../src/domain/mfa";
+import { mfaEnrolledPg } from "../../../../../src/server/mfa-db";
+
+/** Where to go after Google: straight to `dest`, or first to the second sign-in step when this account needs one. */
+async function afterSignIn(userId: string, userType: "owner" | "agent" | "buyer" | "vendor", dest: string): Promise<string> {
+  const needs = mfaRequired(userType, userType === "owner" || userType === "agent" ? true : await mfaEnrolledPg(getDb(), userId));
+  return needs ? `/mfa?next=${encodeURIComponent(dest)}` : dest;
+}
 
 /** Finishes Google sign-in: checks state, exchanges the code, validates the ID token, then sets the session cookie. */
 async function handleGet(req: Request) {
@@ -46,7 +54,7 @@ async function handleGet(req: Request) {
     if (readCookie(req, "ol_role") === "vendor") {
       const vendor = await vendorSignIn(getDb(), who);
       if (!vendor) return failed();
-      const res = NextResponse.redirect(`${auth.appUrl}${safeNextFromCookie(readCookie(req, "ol_next")) ?? "/"}`);
+      const res = NextResponse.redirect(`${auth.appUrl}${await afterSignIn(vendor.id, "vendor", safeNextFromCookie(readCookie(req, "ol_next")) ?? "/")}`);
       res.cookies.set(SESSION_COOKIE, signSession({ uid: vendor.id, ut: "vendor", exp: now + SESSION_TTL_SECONDS }, auth.secret), {
         httpOnly: true, sameSite: "lax", secure: auth.secureCookies, path: "/", maxAge: SESSION_TTL_SECONDS
       });
@@ -57,7 +65,9 @@ async function handleGet(req: Request) {
     const user = await upsertGoogleUser(getDb(), who, readCookie(req, "ol_role") === "buyer" ? "buyer" : "owner");
     if (!user) return failed();
 
-    const res = NextResponse.redirect(`${auth.appUrl}${safeNextFromCookie(readCookie(req, "ol_next")) ?? (user.userType === "buyer" ? "/buyer/saved-searches" : "/listings/new")}`);
+    const dest = safeNextFromCookie(readCookie(req, "ol_next")) ?? (user.userType === "buyer" ? "/buyer/saved-searches" : "/listings/new");
+    // The session cookie is set now but counts as signed in only after the second step (see actorFromRequestChecked).
+    const res = NextResponse.redirect(`${auth.appUrl}${await afterSignIn(user.id, user.userType, dest)}`);
     res.cookies.set(SESSION_COOKIE, signSession({ uid: user.id, ut: user.userType, exp: now + SESSION_TTL_SECONDS }, auth.secret), {
       httpOnly: true, sameSite: "lax", secure: auth.secureCookies, path: "/", maxAge: SESSION_TTL_SECONDS
     });

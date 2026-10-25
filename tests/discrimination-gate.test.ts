@@ -8,6 +8,8 @@ import { checkSuggestion } from "../src/domain/ai-description";
 
 const state = vi.hoisted(() => ({ actor: null as Actor | null, deps: null as ListingServiceDeps | null }));
 vi.mock("../src/server/context", () => ({ getActor: () => state.actor, getDeps: () => state.deps }));
+// Publish step-up is covered in tests/mfa.test.ts; here the owner has just passed it.
+vi.mock("../src/server/mfa-context", () => ({ requireRecentMfa: async () => null }));
 
 import { POST as wordingCheck } from "../app/api/listings/wording-check/route";
 import { PATCH as patchRoute } from "../app/api/listings/[id]/route";

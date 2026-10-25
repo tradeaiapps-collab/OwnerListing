@@ -98,6 +98,14 @@ describe("POST /api/listings/[id]/publish", () => {
     state.actor = { userId: "owner-2", userType: "owner" };
     expect((await call(draft.id)).status).toBe(404);
   });
+  it("refuses a real publish without a recent second-factor check (403 mfa_required), leaving the draft as it was", async () => {
+    const draft = await createDraft(state.deps!, owner, input);
+    state.actor = owner;
+    const res = await call(draft.id, "");
+    expect(res.status).toBe(403);
+    expect((await res.json()).code).toBe("mfa_required");
+    expect((await state.deps!.repo.get(draft.id))?.listing.status).toBe("draft");
+  });
   it("returns 200 for the owner's dry run, without publishing", async () => {
     const draft = await createDraft(state.deps!, owner, input);
     state.actor = owner;
