@@ -54,6 +54,18 @@ describe.skipIf(!url)("Postgres listing repository", () => {
     expect((await deps.repo.get(l.id))?.listing.title).toBe("Renamed");
   });
 
+  it("stores a map pin, clears it, and the database refuses half a pair", async () => {
+    const actor = { userId: ownerId, userType: "owner" as const };
+    const l = await createDraft(deps, actor, input);
+    const set = await updateDraft(deps, actor, l.id, { latitude: -12.4634, longitude: 130.8456 });
+    expect(set.ok).toBe(true);
+    const got = (await deps.repo.get(l.id))?.listing;
+    expect([got?.latitude, got?.longitude]).toEqual([-12.4634, 130.8456]);
+    await updateDraft(deps, actor, l.id, { latitude: null, longitude: null });
+    expect((await deps.repo.get(l.id))?.listing.latitude).toBeUndefined();
+    await expect(db.query("UPDATE property_listing SET latitude = -12.5 WHERE id = $1", [l.id])).rejects.toThrow();
+  });
+
   it("lists only the given owner's listings", async () => {
     const sub = `sub-other-${Date.now()}`;
     const other = await upsertGoogleUser(db, { sub, email: `${sub}@example.test`, name: "Other Owner" });

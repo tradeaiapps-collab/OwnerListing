@@ -33,7 +33,7 @@ export default function MyListings() {
               <div className="muted">{r.address}</div>
               <div><span className={`badge${r.status === "published" ? " badge-accepted" : ""}`}>{STATUS_LABELS[r.status] ?? r.status}</span><span className="badge">{r.transactionType === "sale" ? "For sale" : "For rent"}</span></div>
               {r.status === "draft" && <div><a href={`/listings/${r.id}/edit`}>Edit this draft</a> · <a href={`/listings/${r.id}/photos`}>Photos</a> · <a href={`/listings/${r.id}/checkout`}>Pay and publish</a></div>}
-              {r.status !== "draft" && <div><a href={`/listings/${r.id}/photos`}>Photos</a></div>}
+              {r.status !== "draft" && <div><a href={`/listings/${r.id}/photos`}>Photos</a> · <a href={`/listings/${r.id}/offers`}>Offers</a> · <a href={`/listings/${r.id}/mandate`}>Negotiation mandate</a></div>}
             </li>
           ))}
         </ul>

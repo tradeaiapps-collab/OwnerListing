@@ -5,6 +5,7 @@ import { getActor } from "../../../../../src/server/context";
 import { csrfGuard } from "../../../../../src/server/csrf";
 import { getEnquiryDeps } from "../../../../../src/server/enquiry-db";
 import { failure, unauthenticated } from "../../../../../src/server/http";
+import { screenWithDefaults } from "../../../../../src/server/message-safety";
 import { requireCurrentTerms } from "../../../../../src/server/terms-guard";
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -23,5 +24,8 @@ export async function POST(req: Request, { params }: Ctx) {
   const body = parseMessageBody(await req.json().catch(() => null));
   if (!body.ok) return failure(body);
   const r = await startEnquiry(deps, actor, id, body.value);
-  return r.ok ? NextResponse.json(r.value, { status: 201 }) : failure(r);
+  if (!r.ok) return failure(r);
+  // The message is already stored; the safety filter only adds a warning for the owner and never blocks it.
+  await screenWithDefaults(r.value.enquiry, r.value.message);
+  return NextResponse.json(r.value, { status: 201 });
 }
