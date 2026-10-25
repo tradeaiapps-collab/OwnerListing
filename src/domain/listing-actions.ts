@@ -22,10 +22,3 @@ export function actionHref(listingId: string, action: ListingAction, signedIn: b
   const next = safeNext(path);
   return next ? `/api/auth/google/start?as=buyer&next=${next}` : "/api/auth/google/start?as=buyer";
 }
-
-export interface PublicDocLike { id: string; kind: string; visibility: string; status: string }
-
-/** Photos shown in the public gallery: active, public photo files only. Private, superseded and other kinds are dropped. */
-export function publicPhotos<T extends PublicDocLike>(docs: readonly T[]): T[] {
-  return docs.filter(d => d.visibility === "public" && d.status === "active" && (d.kind === "photo" || d.kind === "photo_360"));
-}

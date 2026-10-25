@@ -1,7 +1,6 @@
-/* Public listing detail: gallery, facts and the sticky contact card. Mobile first, one column. */
+/* Public listing detail: facts and the sticky contact card. Mobile first, one column. */
 .detail-back { margin: 0 0 var(--space-2); }
 .detail-layout { display: grid; gap: var(--space-6); }
-.detail-media { aspect-ratio: 16 / 9; display: grid; place-items: center; margin-bottom: var(--space-4); border-radius: var(--radius); background: linear-gradient(160deg, var(--tint-2), var(--tint)); color: var(--muted); font-weight: 600; border: 1px solid var(--border); }
 .detail-tag { position: static; display: inline-block; border: 1px solid var(--border); }
 .detail h1 { margin-bottom: var(--space-2); }
 .detail-address { margin: 0 0 var(--space-2); color: var(--muted); font-size: 1.0625rem; }
@@ -18,7 +17,6 @@
 .detail-facts dt, .detail-facts dd { margin: 0; padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--line); }
 .detail-facts dt { color: var(--muted); background: var(--surface); }
 .detail-facts dt:nth-last-of-type(1), .detail-facts dd:last-of-type { border-bottom: 0; }
-.gallery { margin-bottom: var(--space-4); }
 @media (min-width: 900px) {
   .detail-price-m { display: none; }
   .detail-aside .detail-price { display: block; }

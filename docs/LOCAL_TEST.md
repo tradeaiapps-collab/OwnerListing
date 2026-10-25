@@ -23,7 +23,7 @@ Then get the code (download the ZIP from GitHub and unzip it, or `git clone`). O
 powershell -ExecutionPolicy Bypass -File scripts\local-setup.ps1
 ```
 
-It checks Node and Docker (and tells you in plain English what is missing), creates `.env.local` with random secrets, starts the database, installs, sets up the tables and loads the demo data. Safe to run again.
+It checks Node and Docker (and tells you in plain English what is missing), creates `.env.local` with random secrets, starts the database, installs, sets up the tables and loads the demo data. Safe to run again: on an existing kit it keeps your `.env.local` and only adds missing local settings (`GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET=local-dummy`, so pages see you as signed in after `/dev-login`; `LOCAL_STORAGE_DIR`; `MALWARE_SCAN_DRIVER=local-noop`) and the demo photos. Run it again after updating the code.
 
 Mac/Linux: `bash scripts/local-setup.sh`.
 
@@ -76,7 +76,10 @@ Tick each line. "Expected" is what you should see; anything else is a bug to rep
 - [ ] `/listings/mine` shows 4 listings. Expected: all published.
 - [ ] `/listings/new`: create a draft listing (title, address, state, sale or rent, bedrooms, bathrooms, parking). Expected: saved as draft.
 - [ ] Set a price and save. Expected: price shown on the draft; a rent listing shows the bond pathway choice.
-- [ ] Try to add photos. Expected: "not available" (file storage is off locally; that is correct).
+- [ ] Photos: open `/listings/<id>/photos` (or the Photos link in `/listings/mine`, or the photo section of the draft edit page). Drag several JPEG/PNG/WebP images onto the drop area. Expected: each uploads with "added"; a PDF, a renamed non-image or a file over 10 MB is refused with a reason.
+- [ ] Reorder (drag a photo, or use Up/Down), "Make cover", type a caption and a description, Hide one, then "Save gallery". Expected: the browse card at `/listings` shows the new cover and the photo count; the listing page shows the hero and 2x2 grid; "View all N photos" opens the full-screen viewer (arrow keys, Esc, thumbnails, swipe on a phone).
+- [ ] On a published listing: no Remove button (published photos are kept on record); Hide and Replace work. On your new draft: Remove works before publishing.
+- [ ] Signed out (or as James), open a draft's photo address from the manager. Expected: 404 (draft photos are private).
 - [ ] Terms: all demo accounts have already accepted them. Open `/terms`. Expected: shows the current version as accepted. (To see the gate, run `local-reset` and delete a `terms_acceptance` row, or use a staff-created new account.)
 - [ ] Try to publish the new draft. Expected: blocked. The disclosure rules are not configured (`src/config/disclosures.ts` is empty, so it refuses on purpose), the listing fee is unpaid (payments are stubbed) and the trust account is not approved for it. This is the safe, fail-closed behaviour.
 - [ ] `/enquiries`: open the Paddington thread. Expected: three messages between Sarah and James; reply and see it appear.
@@ -125,9 +128,10 @@ Tick each line. "Expected" is what you should see; anything else is a bug to rep
 | SMS | No provider. Mobile verification says "not available yet". |
 | Email | No SMTP server. Email verification and alerts send nothing (alerts are only logged in the site window). |
 | ID check | No provider and no image storage or scanner. Photo ID upload is "not available yet"; staff ID review has two seeded items without images. |
-| File storage and photos | Off (`STORAGE_DRIVER` unset). Uploads answer "not available". |
+| File storage and photos | Stored on your PC in the `.local-storage` folder (`LOCAL_STORAGE_DIR` in `.env.local`). Each demo listing has 5 generated photos and a floor plan. |
+| Virus scan | No ClamAV locally: `MALWARE_SCAN_DRIVER=local-noop` accepts every file. Both settings are ignored on a real server (production or Vercel), where uploads stay off until real storage and ClamAV are set up. |
 | AI | Self-hosted AI engine is not installed. AI features say they are off; the rules-only offer analysis and draft contract still work. |
-| Google sign-in | Replaced by `/dev-login`. Real Google sign-in stays off (no Google keys). |
+| Google sign-in | Replaced by `/dev-login`. The kit sets dummy Google keys (`local-dummy`) so sessions work; the real "Sign in with Google" button will not work locally. |
 | Disclosure rules for publishing | Not configured in code, so publishing a new listing is blocked on purpose. |
 
 ## How the test sign-in is kept out of production

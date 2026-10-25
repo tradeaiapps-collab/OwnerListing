@@ -3,7 +3,7 @@ import { createUnconfiguredAlertDelivery } from "../src/adapters/alert-delivery"
 import { dispatchAlerts, planNewAlerts, type DeliveryLogEntry } from "../src/domain/alerts";
 import { matchesSearch, toListingSummary, type SavedSearch } from "../src/domain/buyer";
 import type { PropertyListing } from "../src/domain/listing";
-import { actionHref, actionPath, publicPhotos } from "../src/domain/listing-actions";
+import { actionHref, actionPath } from "../src/domain/listing-actions";
 import { safeNext } from "../src/server/auth/safe-next";
 import { savedSearchFormBody } from "../app/buyer/saved-searches/form";
 
@@ -93,15 +93,5 @@ describe("listing actions", () => {
       expect(actionPath(bad, "enquire")).toBeNull();
       expect(actionHref(bad, "enquire", false)).toBe("/listings");
     }
-  });
-  it("shows only active public photos", () => {
-    const docs = [
-      { id: "1", kind: "photo", visibility: "public", status: "active" },
-      { id: "2", kind: "photo", visibility: "owner_only", status: "active" },
-      { id: "3", kind: "photo", visibility: "public", status: "superseded" },
-      { id: "4", kind: "contract", visibility: "public", status: "active" },
-      { id: "5", kind: "photo_360", visibility: "public", status: "active" }
-    ];
-    expect(publicPhotos(docs).map(d => d.id)).toEqual(["1", "5"]);
   });
 });

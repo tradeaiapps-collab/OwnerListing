@@ -103,6 +103,7 @@ export default function ListingDocuments() {
     <main>
       {back}
       <h1>Files</h1>
+      <p className="muted">Gallery photos and floor plans are added on the <a href={`/listings/${id}/photos`}>Photos page</a>.</p>
       {access.kinds.length > 0 ? (
         <form className="doc-form" onSubmit={onUpload}>
           <label>File

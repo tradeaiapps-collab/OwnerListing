@@ -1,5 +1,5 @@
-import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { getLocalObject, localDevStorageDir, putLocalObject, removeLocalObject } from "./local-disk-core.mjs";
 
 /** Where uploaded file bytes live. Only the key and the SHA-256 are stored in the database, never the bytes or the filename. */
 export interface ObjectStoragePort {
@@ -24,43 +24,28 @@ export function createUnconfiguredStorage(): ObjectStoragePort {
   };
 }
 
-/** Keys are made by the server: listings/<uuid>/<uuid>, id/<hex>/<hex> or investments/<hex>/<hex>. Anything else is refused, so a key can never climb out of the storage folder. */
-const KEY = /^(listings|id|investments)\/[A-Za-z0-9_-]{1,64}\/[A-Za-z0-9_-]{1,64}$/;
-const ID_KEY = /^id\//;
-
 /**
  * Stores objects as files under one absolute folder. For development, staging and single-server installs; no external account.
  * put never overwrites (flag "wx"), files are owner-only (0600), and only identity images (id/ keys) can be deleted.
+ * Keys are checked against a fixed pattern so they can never leave the folder (see local-disk-core.mjs).
  * Bytes are NOT encrypted at rest here: use an encrypted volume. Refused in production unless STORAGE_LOCAL_ALLOW_PRODUCTION=1.
  */
 export function createLocalDiskStorage(root: string): ObjectStoragePort {
   if (!path.isAbsolute(root)) throw new Error("STORAGE_LOCAL_DIR must be an absolute path.");
   const base = path.resolve(root);
-  const resolve = (key: string): string => {
-    if (!KEY.test(key)) throw new Error("Invalid storage key.");
-    const full = path.resolve(base, key);
-    if (!full.startsWith(base + path.sep)) throw new Error("Invalid storage key.");
-    return full;
-  };
   return {
     configured: true,
-    async put(key, bytes) {
-      const full = resolve(key);
-      await mkdir(path.dirname(full), { recursive: true, mode: 0o700 });
-      await writeFile(full, bytes, { flag: "wx", mode: 0o600 });
-    },
-    async get(key) {
-      return new Uint8Array(await readFile(resolve(key)));
-    },
-    async remove(key) {
-      if (!ID_KEY.test(key)) throw new Error("Only identity images can be deleted.");
-      await unlink(resolve(key)).catch((e: NodeJS.ErrnoException) => { if (e.code !== "ENOENT") throw e; });
-    }
+    async put(key, bytes) { await putLocalObject(base, key, bytes); },
+    async get(key) { return getLocalObject(base, key); },
+    async remove(key) { await removeLocalObject(base, key); }
   };
 }
 
 /** Any unknown or missing setting fails closed (unconfigured, uploads answer 503). */
 export function objectStorageFromEnv(env: Readonly<Record<string, string | undefined>>): ObjectStoragePort {
+  // Local test kit: LOCAL_STORAGE_DIR, only outside production and never on Vercel (see localDevStorageDir).
+  const devDir = localDevStorageDir(env);
+  if (devDir && !env.STORAGE_DRIVER) return createLocalDiskStorage(devDir);
   if (env.STORAGE_DRIVER !== "local-disk") return createUnconfiguredStorage();
   if (env.NODE_ENV === "production" && env.STORAGE_LOCAL_ALLOW_PRODUCTION !== "1") return createUnconfiguredStorage();
   const dir = env.STORAGE_LOCAL_DIR;

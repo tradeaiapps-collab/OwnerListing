@@ -1,3 +1,4 @@
+import { imageVariantsFromEnv, type ImageVariantPort } from "../adapters/image-variants";
 import { malwareScannerFromEnv } from "../adapters/malware-scan";
 import { objectStorageFromEnv } from "../adapters/object-storage";
 import { randomUUID } from "node:crypto";
@@ -87,4 +88,11 @@ export async function getActor(req: Request): Promise<Actor | null> {
 /** File storage and malware scanner. Both fail closed (uploads refused) until real providers are configured. */
 export function getUploadPorts() {
   return { storage: objectStorageFromEnv(process.env), scanner: malwareScannerFromEnv(process.env) };
+}
+
+let variants: Promise<ImageVariantPort> | undefined;
+/** Upload ports plus the optional resizer for listing photos (smaller copies only when the image library is installed). */
+export async function getPhotoPorts() {
+  variants ??= imageVariantsFromEnv(process.env);
+  return { ...getUploadPorts(), variants: await variants };
 }

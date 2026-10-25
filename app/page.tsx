@@ -3,7 +3,10 @@ import { brandFor } from "../src/server/site-theme";
 import { formatPrice } from "../src/domain/listing-details";
 import { parseSearchQuery } from "../src/domain/listing-search";
 import { searchPublished, toPublicListing } from "../src/domain/listing-service";
-import { getDeps } from "../src/server/context";
+import { getDb, getDeps } from "../src/server/context";
+import { cardPhoto, type CardPhoto } from "../src/domain/listing-photos";
+import { createPgPhotoStore } from "../src/server/photos-db";
+import { CardMedia } from "./listings/card-media";
 import "./styles/cards.css";
 import "./styles/home.css";
 
@@ -12,7 +15,7 @@ export async function generateMetadata() {
   return { title: brandFor((await getRequestTheme()).settings).tagline, description: "List your own property, meet verified buyers and decide on every offer yourself." };
 }
 
-interface Latest { id: string; title: string; suburb?: string; postcode?: string; jurisdiction: string; transactionType: "sale" | "rent"; propertyType: string; priceCents?: number; bedrooms?: number; bathrooms?: number; parking?: number }
+type Latest = { id: string; title: string; suburb?: string; postcode?: string; jurisdiction: string; transactionType: "sale" | "rent"; propertyType: string; priceCents?: number; bedrooms?: number; bathrooms?: number; parking?: number } & CardPhoto;
 
 /** Latest published listings. Any failure (no database, slow database) gives an empty strip, never an error page. */
 async function loadLatest(): Promise<Latest[]> {
@@ -23,7 +26,11 @@ async function loadLatest(): Promise<Latest[]> {
     const search = searchPublished(getDeps(), q);
     search.catch(() => undefined);
     const page = await Promise.race([search, timeout]);
-    return page.items.map(toPublicListing);
+    // Cover photos are a nice-to-have: a lookup failure shows the cards without them.
+    const lookup = createPgPhotoStore(getDb()).coversFor(page.items.map(l => l.id));
+    lookup.catch(() => undefined);
+    const covers = await Promise.race([lookup, timeout]).catch(() => new Map<string, never>());
+    return page.items.map(l => ({ ...toPublicListing(l), ...cardPhoto(covers.get(l.id)) }));
   } catch {
     return [];
   } finally {
@@ -111,7 +118,7 @@ export default async function Home() {
             <ul className="lcards">
               {latest.map(l => (
                 <li key={l.id} className="lcard">
-                  <div className="lcard-media"><span className="lcard-tag">{l.transactionType === "sale" ? "For sale" : "For rent"}</span></div>
+                  <CardMedia photo={l} transactionType={l.transactionType} />
                   <div className="lcard-body">
                     {l.priceCents !== undefined && <p className="lcard-price">{formatPrice(l.priceCents, l.transactionType)}</p>}
                     <h3 className="lcard-title"><a href={`/listings/${l.id}`}>{l.title}</a></h3>
