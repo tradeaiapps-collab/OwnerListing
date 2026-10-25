@@ -9,7 +9,7 @@ type Who = "loading" | "out" | "staff" | "owner" | "buyer";
  * Links follow the signed-in type. This only hides links; every route still enforces access on the server.
  * `items` is the admin's navigation setting (order, labels, hidden items); targets and icons come from the fixed catalogue.
  */
-export default function SiteNav({ items, iconStyle }: { items?: NavItem[]; iconStyle?: IconStyle }) {
+export default function SiteNav({ items, iconStyle, signInHref }: { items?: NavItem[]; iconStyle?: IconStyle; signInHref?: "/dev-login" }) {
   const [who, setWho] = useState<Who>("loading");
   const [invest, setInvest] = useState(false);
 
@@ -42,7 +42,8 @@ export default function SiteNav({ items, iconStyle }: { items?: NavItem[]; iconS
       {list.map(it => {
         const def = NAV_CATALOG.find(n => n.id === it.id);
         if (!def || !it.visible || !shown[it.id]) return null;
-        return <a key={it.id} href={def.href}><Icon name={def.icon} style={style} />{it.label}</a>;
+        const href = it.id === "signin" && signInHref ? signInHref : def.href;
+        return <a key={it.id} href={href}><Icon name={def.icon} style={style} />{it.label}</a>;
       })}
       {/* Not in the admin nav catalogue on purpose: shown only while the investor module is live (status answers 404 when off). */}
       {invest && (who === "owner" || who === "buyer") && <a href="/investments">Investor projects</a>}

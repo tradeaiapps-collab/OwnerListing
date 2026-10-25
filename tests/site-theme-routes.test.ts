@@ -277,9 +277,41 @@ describe("logo and favicon upload", () => {
     expect((await up("logo-light", "image/png", Buffer.concat([png(), Buffer.alloc(524288 - 120 + 1)]))).status).toBe(400);
     expect((await up("logo-light", "image/png", "not base64 !!!")).status).toBe(400);
     expect((await up("logo-light", "image/png", "")).status).toBe(400);
-    expect((await up("logo-light", "image/png", "A".repeat(800_000))).status).toBe(413);
+    expect((await up("logo-light", "image/png", "A".repeat(800_000))).status).toBe(400); // over the 512 KB logo cap
+    expect((await up("hero", "image/png", "A".repeat(2_200_000))).status).toBe(413); // over the whole-body cap
     expect((await up("../../x", "image/png", png())).status).toBe(400);
     expect((await up("logo-light", "image/png", Buffer.from("GIF89a" + "x".repeat(100)))).status).toBe(400);
+    expect(state.calls).toEqual([]);
+  });
+});
+
+describe("hero photo upload", () => {
+  const chunk = (type: string, data: Buffer) => { const h = Buffer.alloc(8); h.writeUInt32BE(data.length, 0); h.write(type, 4, "latin1"); return Buffer.concat([h, data, Buffer.alloc(4)]); };
+  const png = (w: number, h: number, extra: Buffer[] = []) => {
+    const ihdr = Buffer.alloc(13); ihdr.writeUInt32BE(w, 0); ihdr.writeUInt32BE(h, 4); ihdr[8] = 8; ihdr[9] = 2;
+    return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk("IHDR", ihdr), ...extra, chunk("IDAT", Buffer.alloc(16, 7)), chunk("IEND", Buffer.alloc(0))]);
+  };
+  const up = (data: Buffer, name = "hero") => uploadRoute.POST(req("POST", { name, contentType: "image/png", data: data.toString("base64") }));
+
+  it("stores a landscape hero with its text metadata removed", async () => {
+    as("designer");
+    const r = await up(png(2400, 1200, [chunk("tEXt", Buffer.from("GPS\0-27.47,153.02"))]));
+    expect(r.status).toBe(201);
+    const call = state.calls.find(c => c.fn === "insertAsset")!;
+    const stored = (call.args[0] as { name: string; bytes: Buffer });
+    expect(stored.name).toBe("hero");
+    expect(stored.bytes.includes(Buffer.from("tEXt"))).toBe(false);
+    expect(stored.bytes.includes(Buffer.from("153.02"))).toBe(false);
+  });
+  it("refuses portrait, too-narrow, damaged or oversized heroes, and needs theme.edit", async () => {
+    as("designer");
+    expect((await up(png(1000, 2000))).status).toBe(400);
+    expect((await up(png(800, 400))).status).toBe(400);
+    expect((await up(png(5000, 2000))).status).toBe(400);
+    expect((await up(Buffer.from("not a png at all"))).status).toBe(400);
+    expect((await up(png(2400, 1200, [chunk("IDAT", Buffer.alloc(1_600_000))]))).status).toBe(400);
+    as("support");
+    expect((await up(png(2400, 1200))).status).toBe(403);
     expect(state.calls).toEqual([]);
   });
 });
@@ -337,6 +369,8 @@ describe("deployment split and the preview header", () => {
     for (const n of ["logo-light", "logo-dark", "favicon"]) expect(isAllowed("admin", `/api/site/asset/${n}`, null, undefined)).toBe(true);
     expect(isAllowed("admin", "/api/site/asset/../../listings", null, undefined)).toBe(false);
     expect(isAllowed("admin", "/api/site/asset/other", null, undefined)).toBe(false);
+    expect(isAllowed("admin", "/api/site/asset/hero", null, undefined)).toBe(true); // the staff page shows the hero thumbnail
+    expect(isAllowed("admin", "/api/assistant", null, undefined)).toBe(false); // the guide is public-site only
     expect(isAllowed("admin", "/api/site/asset/%6cogo-light", null, undefined)).toBe(true);
     expect(isAllowed("public", "/api/site/asset/logo-light", null, undefined)).toBe(true);
     expect(isAllowed("public", "/api/staff/site", null, undefined)).toBe(false);

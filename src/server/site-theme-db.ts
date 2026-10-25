@@ -82,7 +82,7 @@ const audit = (tx: Queryable, staff: StaffActor, eventType: string, version: num
 
 /** True when every asset id in the settings exists and was uploaded for that slot. */
 export async function assetsExist(db: Queryable, s: ThemeSettings): Promise<boolean> {
-  const wanted: [number | null, SiteAssetName][] = [[s.brand.logoLight, "logo-light"], [s.brand.logoDark, "logo-dark"], [s.brand.favicon, "favicon"]];
+  const wanted: [number | null, SiteAssetName][] = [[s.brand.logoLight, "logo-light"], [s.brand.logoDark, "logo-dark"], [s.brand.favicon, "favicon"], [s.brand.hero, "hero"]];
   for (const [id, name] of wanted) {
     if (id === null) continue;
     if ((await db.query(`SELECT 1 FROM site_theme_asset WHERE id = $1 AND name = $2`, [id, name])).rows.length === 0) return false;
@@ -183,7 +183,7 @@ export interface AssetFile { contentType: string; bytes: Buffer; sha256: string 
  * Anything else is null, so unpublished uploads are not readable by guessing ids.
  */
 export async function loadAssetFile(db: Queryable, name: SiteAssetName, id: number, scope: "published" | "draft"): Promise<AssetFile | null> {
-  const key = name === "logo-light" ? "logoLight" : name === "logo-dark" ? "logoDark" : "favicon";
+  const key = name === "logo-light" ? "logoLight" : name === "logo-dark" ? "logoDark" : name === "hero" ? "hero" : "favicon";
   const versionCol = scope === "published" ? "c.published_version" : "COALESCE(c.draft_version, c.published_version)";
   const r = await db.query(
     `SELECT a.content_type, a.bytes, a.sha256
