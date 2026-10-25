@@ -22,6 +22,7 @@ interface Listing {
   bedrooms?: number;
   bathrooms?: number;
   parking?: number;
+  description?: string;
   status: string;
   disclosures: { key: string; satisfied: boolean }[];
   updatedAt: string;
@@ -121,6 +122,12 @@ export default function ListingDetail() {
             {listing.bathrooms !== undefined && <li className="chip chip-bath">{listing.bathrooms} bath</li>}
             {listing.parking !== undefined && <li className="chip chip-car">{listing.parking} car</li>}
           </ul>
+          {listing.description && (
+            <section aria-label="Description">
+              <h2>About this property</h2>
+              {listing.description.split(/\n{2,}/).map((p, i) => <p key={i} className="detail-description">{p}</p>)}
+            </section>
+          )}
           <h2>Property details</h2>
           <dl className="details detail-facts">
             <dt>State</dt><dd>{listing.jurisdiction}</dd>

@@ -29,6 +29,7 @@ export interface PermissionInfo { key: string; area: PermissionArea; label: stri
  */
 export const PERMISSION_CATALOGUE = [
   { key: "case.manage", area: "cases", label: "Work admin cases", description: "Claim and resolve admin cases. Trust account and licence cases still need a second person.", sensitive: false },
+  { key: "wording.review", area: "cases", label: "Review discriminatory wording flags", description: "Clear or uphold listing wording the anti-discrimination filter blocked, with a reason. Nobody reviews their own listing.", sensitive: false },
   { key: "dispute.read_chat", area: "cases", label: "Read job chat in a dispute", description: "Read the saved job chat for a disputed job. Every view is logged.", sensitive: true },
   { key: "trust_account.approve", area: "trust_accounts", label: "Approve trust accounts", description: "Approve or reject a solicitor trust account. New or changed details always need two different people.", sensitive: true },
   { key: "licence.verify", area: "trust_accounts", label: "Verify agent licences", description: "Check and record agent licence verification.", sensitive: false },
@@ -72,7 +73,8 @@ export const isSensitivePermission = (p: string): boolean => SENSITIVE.has(p);
 const ROLE_PERMISSIONS: Record<StaffRole, readonly StaffPermission[]> = {
   super_admin: ALL,
   compliance: ["report.audit", "report.solicitor", "report.broker", "pii.view_full", "case.manage",
-    "trust_account.approve", "licence.verify", "dispute.read_chat", "override.request", "identity.review", "investment.review"],
+    "trust_account.approve", "licence.verify", "dispute.read_chat", "override.request", "identity.review", "investment.review",
+    "wording.review"],
   accountant: ["report.financial", "report.sales", "pii.view_masked"],
   support: ["report.buyer", "report.seller", "pii.view_masked", "case.manage", "override.request"],
   technical: ["logs.technical", "report.operations", "config.edit"],

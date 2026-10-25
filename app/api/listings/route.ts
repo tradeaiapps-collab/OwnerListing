@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createDraft, parseDraftInput, searchPublished, toPublicListing } from "../../../src/domain/listing-service";
+import { createDraft, listingWordingFlags, parseDraftInput, searchPublished, toPublicListing } from "../../../src/domain/listing-service";
 import { parseSearchQuery } from "../../../src/domain/listing-search";
 import { forbiddenFor } from "../../../src/domain/access";
 import { getActor, getDb, getDeps } from "../../../src/server/context";
@@ -33,5 +33,6 @@ export async function POST(req: Request) {
   if (noTerms) return failure(noTerms);
   const parsed = parseDraftInput(await req.json().catch(() => null));
   if (!parsed.ok) return failure(parsed);
-  return NextResponse.json({ listing: await createDraft(getDeps(), actor, parsed.value) }, { status: 201 });
+  const listing = await createDraft(getDeps(), actor, parsed.value);
+  return NextResponse.json({ listing, wordingFlags: listingWordingFlags(listing) }, { status: 201 });
 }
