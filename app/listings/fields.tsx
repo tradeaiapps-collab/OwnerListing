@@ -1,10 +1,12 @@
 import { useState } from "react";
 import { BOND_PATHWAY_LABELS, centsToInput } from "./ui";
+import { WordingHint } from "./wording-hint";
 
 export type BondState = "idle" | "saving" | "saved" | "error";
 
 export interface ListingDefaults {
   title?: string;
+  description?: string;
   address?: string;
   jurisdiction?: string;
   transactionType?: string;
@@ -21,6 +23,8 @@ export interface ListingDefaults {
 /** The draft fields, shared by the create and edit pages. Read the values with listingFormBody(FormData). */
 export function ListingFields({ defaults = {} }: { defaults?: ListingDefaults }) {
   const [tx, setTx] = useState(defaults.transactionType ?? "sale");
+  const [title, setTitle] = useState(defaults.title ?? "");
+  const [description, setDescription] = useState(defaults.description ?? "");
   const num = (name: string, label: string, v: number | undefined) => (
     <label className="field">{label}
       <input name={name} type="number" inputMode="numeric" min={0} max={20} step={1} defaultValue={v ?? ""} />
@@ -31,8 +35,9 @@ export function ListingFields({ defaults = {} }: { defaults?: ListingDefaults })
       <fieldset className="form-section">
         <legend>The basics</legend>
         <label className="field">Title
-          <input name="title" placeholder="e.g. Renovated family home with pool" maxLength={200} required defaultValue={defaults.title ?? ""} />
+          <input name="title" placeholder="e.g. Renovated home with pool" maxLength={200} required value={title} onChange={e => setTitle(e.target.value)} />
         </label>
+        <WordingHint text={title} field="title" />
         <label className="field">Street address
           <input name="address" placeholder="12 Jacaranda St, Paddington QLD 4064" maxLength={300} required defaultValue={defaults.address ?? ""} autoComplete="street-address" />
         </label>
@@ -77,6 +82,15 @@ export function ListingFields({ defaults = {} }: { defaults?: ListingDefaults })
             <input name="price" inputMode="decimal" placeholder={tx === "rent" ? "650" : "850000"} defaultValue={defaults.priceCents !== undefined ? centsToInput(defaults.priceCents) : ""} />
           </label>
         </div>
+      </fieldset>
+      <fieldset className="form-section">
+        <legend>Description</legend>
+        <label className="field">Describe the property
+          <textarea name="description" rows={8} maxLength={5000} value={description} onChange={e => setDescription(e.target.value)}
+            placeholder="Rooms, condition, outdoor space, what is nearby. Describe the property, not who should live there." />
+        </label>
+        <small className="muted">Listings can&apos;t say who may or may not buy or rent (for example by age, family, race, religion, sex or disability). We check the wording as you type.</small>
+        <WordingHint text={description} field="description" />
       </fieldset>
       <fieldset className="form-section">
         <legend>Features</legend>
