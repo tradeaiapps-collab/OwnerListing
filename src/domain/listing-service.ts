@@ -59,6 +59,14 @@ export interface ListingServiceDeps {
   termsCurrentFor?: (userId: string) => Promise<boolean>;
   /** Post-publish hook (saved-search alerts). Runs after the listing is saved as published; it can never block or fail publishing. */
   afterPublish?: (listing: PropertyListing) => Promise<unknown>;
+  /**
+   * Versioned, Compliance-approved requirements (spec 6.1). When wired it replaces `requiredDisclosures`: the approved version's id
+   * and the keys for the listing's property type, or null when that combination has no approved version (publishing blocked).
+   * A failure to read it blocks publishing too.
+   */
+  disclosureRequirements?: (listing: PropertyListing) => Promise<{ versionId: string; keys: readonly string[] } | null>;
+  /** Stores the requirements version a listing passed when it was published, so later versions never unpublish it. */
+  markDisclosureVersion?: (listingId: string, versionId: string) => Promise<void>;
 }
 
 /** Hook budget: a slow hook is abandoned (not awaited further) so publishing returns promptly. */
@@ -243,7 +251,8 @@ export async function publishListing(
   }
 
   const now = deps.now();
-  const required = deps.requiredDisclosures(l.jurisdiction, l.transactionType, l.useClass);
+  const requirements = deps.disclosureRequirements ? await deps.disclosureRequirements(l).catch(() => null) : undefined;
+  const required = requirements !== undefined ? (requirements?.keys ?? null) : deps.requiredDisclosures(l.jurisdiction, l.transactionType, l.useClass);
   let decision: PublishDecision;
   if (required === null) {
     decision = {
@@ -278,6 +287,7 @@ export async function publishListing(
   const done = transitionListing(current, "published", { ...ctx, eventId: deps.newId() }, decision);
   await deps.appendAudit(done.event);
   await deps.repo.save({ ...rec, listing: done.listing });
+  if (requirements && deps.markDisclosureVersion) await deps.markDisclosureVersion(l.id, requirements.versionId);
   if (deps.afterPublish) await runAfterPublish(deps.afterPublish, done.listing);
   return { ok: true, value: { decision, listing: done.listing } };
 }

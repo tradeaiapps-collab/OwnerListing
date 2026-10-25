@@ -138,6 +138,7 @@ export default function EditListing() {
           <PhotoManager listingId={listing.id} />
           <section className="panel">
             {listing.transactionType === "rent" && <BondPathwayField value={bond} state={bondState} onChange={saveBond} />}
+            <p><a href={`/listings/${listing.id}/disclosures`}>Required disclosures for your state</a></p>
             <button type="button" className="secondary" disabled={busy} onClick={runCheck}>Check if it can be published</button>
             {check && (
               <div>
