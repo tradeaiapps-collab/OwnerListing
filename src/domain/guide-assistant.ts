@@ -297,9 +297,13 @@ function textFor(intent: GuideIntent, q: GuideQuery, content: GuideContent): str
 const otherChips = (content: GuideContent, q: GuideQuery, not: MatchedIntent): GuideChip[] =>
   suggestedChips(content, q.path).filter(c => c.intent !== not).slice(0, 4);
 
-/** The rules answer for a topic or a typed question. Never reads or returns other users' data. */
+/**
+ * The rules answer for a topic or a typed question. Never reads or returns other users' data. An advice or privacy question in the
+ * typed text is refused even when a topic id is also sent, so a client cannot pair a topic with such text to reach the AI.
+ */
 export function guideAnswer(content: GuideContent, q: GuideQuery): GuideAnswer {
-  const intent: MatchedIntent = q.intent && isGuideIntent(q.intent) ? q.intent : matchIntent(q.text ?? "");
+  const fromText = matchIntent(q.text ?? "");
+  const intent: MatchedIntent = fromText === "advice" || fromText === "privacy" ? fromText : q.intent && isGuideIntent(q.intent) ? q.intent : fromText;
   const base = { disclaimer: GUIDE_DISCLAIMER, source: "rules" as const };
   if (intent === "advice") return { ...base, intent, text: ADVICE_ANSWER, links: [], chips: otherChips(content, q, intent) };
   if (intent === "privacy") return { ...base, intent, text: PRIVACY_ANSWER, links: [{ label: "Browse listings", href: "/listings" }], chips: otherChips(content, q, intent) };

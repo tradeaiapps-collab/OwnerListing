@@ -369,6 +369,8 @@ describe("deployment split and the preview header", () => {
     for (const n of ["logo-light", "logo-dark", "favicon"]) expect(isAllowed("admin", `/api/site/asset/${n}`, null, undefined)).toBe(true);
     expect(isAllowed("admin", "/api/site/asset/../../listings", null, undefined)).toBe(false);
     expect(isAllowed("admin", "/api/site/asset/other", null, undefined)).toBe(false);
+    expect(isAllowed("admin", "/api/site/asset/hero", null, undefined)).toBe(true); // the staff page shows the hero thumbnail
+    expect(isAllowed("admin", "/api/assistant", null, undefined)).toBe(false); // the guide is public-site only
     expect(isAllowed("admin", "/api/site/asset/%6cogo-light", null, undefined)).toBe(true);
     expect(isAllowed("public", "/api/site/asset/logo-light", null, undefined)).toBe(true);
     expect(isAllowed("public", "/api/staff/site", null, undefined)).toBe(false);

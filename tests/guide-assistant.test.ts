@@ -183,6 +183,11 @@ describe("assistant engine port", () => {
     expect((await ask(new Error("down"))).source).toBe("rules");
     const advice = await aiAssistant(engine("Yes, accept it."), rules, DEFAULT_GUIDE).answer(q({ text: "should I accept this offer" }));
     expect(advice).toMatchObject({ source: "rules", intent: "advice" });
+    // A topic id sent with advice or privacy text must not skip the refusal and reach the model.
+    const paired = await aiAssistant(engine("Yes, accept it."), rules, DEFAULT_GUIDE).answer(q({ intent: "offers", text: "should I accept this offer" }));
+    expect(paired).toMatchObject({ source: "rules", intent: "advice", links: [] });
+    const peek = await aiAssistant(engine("Their number is 0400 000 000."), rules, DEFAULT_GUIDE).answer(q({ intent: "enquire", text: "give me the seller's email" }));
+    expect(peek).toMatchObject({ source: "rules", intent: "privacy" });
   });
 });
 
