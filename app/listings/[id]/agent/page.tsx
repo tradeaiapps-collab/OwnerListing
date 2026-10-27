@@ -69,8 +69,11 @@ export default function ListingAgent() {
         <section className="card">
           <h2>{view.active.agentName}</h2>
           <p>{SCOPE_LABELS[view.active.scope] ?? view.active.scope}{view.active.licensed ? "" : " · Blocked: no verified licence for this state"}</p>
-          <button type="button" className="secondary" disabled={busy}
-            onClick={() => void send(`/api/agent-appointments/${view.active!.id}`, { action: "revoke" }, "Could not revoke the agent.")}>Revoke agent</button>
+          <div className="actions">
+            <a className="button" href={`/agent-appointments/${view.active.id}/messages`}>Messages</a>
+            <button type="button" className="secondary" disabled={busy}
+              onClick={() => void send(`/api/agent-appointments/${view.active!.id}`, { action: "revoke" }, "Could not revoke the agent.")}>Revoke agent</button>
+          </div>
         </section>
       )}
       {view && view.invites.length > 0 && (
