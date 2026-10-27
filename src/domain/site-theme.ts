@@ -86,20 +86,21 @@ export interface ThemeSettings {
 
 export const DEFAULT_THEME: ThemeSettings = {
   brand: { siteName: null, tagline: null, logoLight: null, logoDark: null, favicon: null, hero: null },
+  // Premium default (Oct 2026 redesign): ivory and deep navy with a champagne-gold accent; Playfair Display headings over Inter.
   colours: {
     light: {
-      primary: "#0b5fd6", secondary: "#14181f", accent: "#0b5fd6",
-      headerBg: "#f6f7f9", headerText: "#14181f", link: "#0b5fd6", buttonBg: "#0b5fd6", buttonText: "#ffffff",
-      bg: "#ffffff", surface: "#f6f7f9", text: "#14181f", heading: "#14181f", muted: "#5a6472", border: "#d5dae1"
+      primary: "#9a7536", secondary: "#14213d", accent: "#9a7536",
+      headerBg: "#fbfaf7", headerText: "#14213d", link: "#7a5a24", buttonBg: "#14213d", buttonText: "#fbfaf7",
+      bg: "#fbfaf7", surface: "#f3efe7", text: "#1c1f26", heading: "#0f1a30", muted: "#5d6271", border: "#e2dccf"
     },
     dark: {
-      primary: "#6ea8fe", secondary: "#eef1f5", accent: "#6ea8fe",
-      headerBg: "#181d26", headerText: "#eef1f5", link: "#6ea8fe", buttonBg: "#6ea8fe", buttonText: "#0b1220",
-      bg: "#0f1218", surface: "#181d26", text: "#eef1f5", heading: "#eef1f5", muted: "#a3adbb", border: "#2d3544"
+      primary: "#d4b37a", secondary: "#ece6da", accent: "#d4b37a",
+      headerBg: "#0b1020", headerText: "#ece6da", link: "#dcc08e", buttonBg: "#d4b37a", buttonText: "#0b1020",
+      bg: "#0b1020", surface: "#121a2e", text: "#e7e2d8", heading: "#f6f1e7", muted: "#a6abb8", border: "#26304a"
     }
   },
-  typography: { bodyFont: "system", headingFont: "system", baseSize: 16, headingScale: 1 },
-  layout: { density: "comfortable", radius: 10, headerHeight: 68, logoHeight: 28, buttonSize: "medium", iconStyle: "outline", heroOverlay: 55, heroFocus: 50 },
+  typography: { bodyFont: "inter", headingFont: "playfair", baseSize: 16, headingScale: 1 },
+  layout: { density: "comfortable", radius: 14, headerHeight: 72, logoHeight: 28, buttonSize: "medium", iconStyle: "outline", heroOverlay: 55, heroFocus: 50 },
   navigation: NAV_CATALOG.map(n => ({ id: n.id, label: n.label, visible: true })),
   footer: { text: "", links: [] }
 };
@@ -357,7 +358,7 @@ function withNewKeys(raw: unknown): unknown {
 const SPACE_BASE = [4, 8, 12, 16, 24, 32] as const;
 const DENSITY_FACTOR: Record<Density, number> = { compact: 0.75, comfortable: 1, spacious: 1.35 };
 const BUTTON: Record<ButtonSize, { h: number; px: number; fs: string }> = {
-  small: { h: 40, px: 12, fs: "0.9rem" }, medium: { h: 44, px: 16, fs: "1rem" }, large: { h: 52, px: 24, fs: "1.125rem" }
+  small: { h: 40, px: 12, fs: "0.9rem" }, medium: { h: 46, px: 22, fs: "0.9375rem" }, large: { h: 52, px: 24, fs: "1.125rem" }
 };
 
 function colourVars(c: ModeColours): string {

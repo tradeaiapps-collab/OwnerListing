@@ -1,9 +1,12 @@
 /* Staff and admin screens: link tiles, notices, checklists and the roles matrix. */
 .staff-links { display: grid; gap: var(--space-3); grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); }
-.staff-links a { display: block; padding: var(--space-4); border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); box-shadow: var(--shadow-1); color: var(--text); font-weight: 600; text-decoration: none; transition: border-color 0.12s ease, box-shadow 0.12s ease; }
-.staff-links a:hover { border-color: var(--brand); box-shadow: var(--shadow-2); color: var(--text); }
+.staff-links a { position: relative; display: block; padding: var(--space-4) var(--space-8) var(--space-4) var(--space-4); border: 1px solid var(--line); border-radius: var(--radius); background: var(--elevated); box-shadow: var(--shadow-1); color: var(--heading, var(--text)); font-weight: 600; text-decoration: none; transition: border-color var(--dur-2) var(--ease), box-shadow var(--dur-2) var(--ease), transform var(--dur-2) var(--ease); }
+.staff-links a::after { content: "\2192"; position: absolute; right: var(--space-4); top: 50%; transform: translate(-4px, -50%); color: var(--link, var(--gold)); opacity: 0; transition: opacity var(--dur-2) var(--ease), transform var(--dur-2) var(--ease); }
+.staff-links a:hover { border-color: color-mix(in srgb, var(--gold) 55%, var(--line)); box-shadow: var(--shadow-2); color: var(--heading, var(--text)); }
+.staff-links a:hover::after { opacity: 1; transform: translate(0, -50%); }
+@media (prefers-reduced-motion: no-preference) { .staff-links a:hover { transform: translateY(-2px); } }
 .staff-reason { width: 100%; min-height: 4rem; }
-.staff-notice { padding: var(--space-3) var(--space-4); border: 1px solid var(--border); border-left: 4px solid var(--brand); border-radius: var(--radius-sm, 8px); background: var(--tint); }
+.staff-notice { padding: var(--space-3) var(--space-4); border: 1px solid var(--line); border-left: 3px solid var(--gold); border-radius: var(--radius-sm, 8px); background: var(--gold-tint); }
 .staff-checks { display: grid; gap: var(--space-1); margin: var(--space-2) 0; }
 .stack-tight { display: grid; gap: var(--space-1); }
 .role-summary { margin: var(--space-6) 0; }

@@ -6,13 +6,15 @@
 }
 
 .kpis { display: grid; gap: var(--space-3); grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr)); margin: var(--space-4) 0 var(--space-6); }
-.kpi { display: grid; gap: var(--space-1); padding: var(--space-4); border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
-.kpi-label { color: var(--muted); font-size: 0.875rem; }
-.kpi-value { font-size: 1.75rem; line-height: 1.1; color: var(--text); font-variant-numeric: tabular-nums; }
+.kpi { position: relative; display: grid; gap: var(--space-1); padding: var(--space-6) var(--space-4) var(--space-4); border: 1px solid var(--line); border-radius: var(--radius); background: var(--elevated); box-shadow: var(--shadow-1); overflow: hidden; transition: box-shadow var(--dur-2) var(--ease); }
+.kpi::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 3px; background: linear-gradient(90deg, var(--gold), transparent); }
+.kpi:hover { box-shadow: var(--shadow-2); }
+.kpi-label { color: var(--muted); font-size: 0.6875rem; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; }
+.kpi-value { font-family: var(--font-display); font-size: 2.25rem; font-weight: 600; line-height: 1.1; color: var(--heading, var(--text)); font-variant-numeric: lining-nums tabular-nums; }
 .kpi-change { color: var(--muted); font-size: 0.8125rem; }
 
 .charts { display: grid; gap: var(--space-4); grid-template-columns: repeat(auto-fit, minmax(min(100%, 30rem), 1fr)); }
-.chart { margin: 0; padding: var(--space-4); border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); min-width: 0; }
+.chart { margin: 0; padding: var(--space-6) var(--space-4); border: 1px solid var(--line); border-radius: var(--radius); background: var(--elevated); box-shadow: var(--shadow-1); min-width: 0; }
 .chart figcaption { display: flex; justify-content: space-between; align-items: baseline; gap: var(--space-2); margin-bottom: var(--space-3); font-weight: 600; }
 .chart button.link-button { background: none; border: 0; box-shadow: none; min-height: 0; padding: 0; flex: none; color: var(--brand); font: inherit; font-size: 0.875rem; font-weight: 500; cursor: pointer; text-decoration: underline; }
 
@@ -20,7 +22,9 @@
 .bars li { display: grid; grid-template-columns: minmax(6rem, 9rem) 1fr auto; align-items: center; gap: var(--space-2); max-width: none; }
 .bar-label { color: var(--muted); font-size: 0.875rem; }
 .bar-track { height: 12px; }
-.bar-fill { display: block; height: 100%; min-width: 2px; background: var(--series-1); border-radius: 0 4px 4px 0; }
+.bar-fill { display: block; height: 100%; min-width: 2px; background: var(--series-1); border-radius: 0 6px 6px 0; transform-origin: left; }
+@media (prefers-reduced-motion: no-preference) { .bar-fill { animation: bar-grow 0.9s var(--ease) both; } }
+@keyframes bar-grow { from { transform: scaleX(0); } }
 .bar-value { font-variant-numeric: tabular-nums; font-size: 0.875rem; color: var(--text); }
 
 .legend { list-style: none; display: flex; flex-wrap: wrap; gap: var(--space-3); margin: 0 0 var(--space-2); padding: 0; font-size: 0.875rem; color: var(--muted); }
@@ -54,7 +58,7 @@ button.danger { background: var(--danger); border-color: var(--danger); color: #
 button.danger:hover:not(:disabled) { background: var(--danger); border-color: var(--danger); filter: brightness(0.92); }
 @media (prefers-color-scheme: dark) { button.danger { color: var(--bg); } }
 .notes { margin: 0; padding-left: 1.1rem; }
-.account-detail { margin: var(--space-2) 0 var(--space-4); padding: var(--space-4); border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+.account-detail { margin: var(--space-2) 0 var(--space-4); padding: var(--space-4); border: 1px solid var(--line); border-radius: var(--radius); background: var(--elevated); box-shadow: var(--shadow-1); }
 .admin-page fieldset { border: 1px solid var(--border); border-radius: var(--radius); padding: var(--space-3); margin: 0; min-width: 0; }
 .admin-page legend { font-size: 0.875rem; font-weight: 600; padding: 0 var(--space-1); }
 .admin-page label.radio { display: flex; gap: var(--space-2); align-items: center; font-size: 0.9375rem; }
