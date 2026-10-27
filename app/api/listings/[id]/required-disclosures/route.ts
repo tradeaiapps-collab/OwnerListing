@@ -13,7 +13,7 @@ type Ctx = { params: Promise<{ id: string }> };
  */
 export async function GET(req: Request, { params }: Ctx) {
   const { id } = await params;
-  const handler = await requireListingHandler(req, id);
+  const handler = await requireListingHandler(req, id, "listing.describe");
   if (handler instanceof NextResponse) return handler;
   const l = handler.rec.listing;
   const db = getDb();
