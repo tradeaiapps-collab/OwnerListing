@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+﻿import { readFileSync } from "node:fs";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { INVESTMENT_DISCLOSURE } from "../src/config/investment-disclosure";
 import { createInMemoryInvestmentRepository, type InvestmentDeps } from "../src/domain/investment-service";
@@ -13,6 +13,7 @@ vi.mock("../src/server/investments-db", () => ({ getInvestmentDeps: () => state.
 
 import * as statusRoute from "../app/api/investments/status/route";
 import * as projectsRoute from "../app/api/investments/projects/route";
+import * as publicRoute from "../app/api/investments/public/route";
 import * as projectRoute from "../app/api/investments/projects/[id]/route";
 import * as interestRoute from "../app/api/investments/projects/[id]/interest/route";
 import * as upfrontRoute from "../app/api/investments/projects/[id]/upfront-fee/route";
@@ -126,6 +127,7 @@ describe("two-key kill switch", () => {
         as(a);
         expect((await statusRoute.GET()).status).toBe(404);
         expect((await projectsRoute.GET(req("GET"))).status).toBe(404);
+        expect((await publicRoute.GET()).status).toBe(404);
         expect((await projectsRoute.POST(req("POST", project(), { ...H, origin: "http://evil.test" }))).status).toBe(404);
         expect((await projectRoute.GET(req("GET"), ctx(p.id))).status).toBe(404);
         expect((await threadsRoute.GET(req("GET"))).status).toBe(404);
@@ -477,5 +479,22 @@ describe("signed contract and platform fee", () => {
     expect(r.headers.get("content-type")).toMatch(/^text\/plain/);
     expect(r.headers.get("content-disposition")).toMatch(/DRAFT/);
     expect(await r.text()).toMatch(/^DRAFT - NOT FOR USE - NEEDS COUNSEL REVIEW/);
+  });
+});
+
+describe("public project list", () => {
+  it("shows every approved project to anyone, signed out included, with card fields only", async () => {
+    const w = await approved();
+    const open = await approved({ title: "Open to all verified", visibleTo: "all_verified" });
+    await posted({ title: "Still in review" });
+    for (const a of [null, unverified, retail, other]) {
+      as(a);
+      const r = await json(await publicRoute.GET());
+      expect(r.status).toBe(200);
+      expect(r.body["items"].map((p: { id: string }) => p.id).sort()).toEqual([w.id, open.id].sort());
+      for (const p of r.body["items"]) {
+        expect(Object.keys(p).sort()).toEqual(["fundingTargetCents", "id", "issuerName", "jurisdiction", "location", "minimumTicketCents", "projectType", "stage", "summary", "title"]);
+      }
+    }
   });
 });

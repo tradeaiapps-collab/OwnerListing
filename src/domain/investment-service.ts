@@ -142,6 +142,18 @@ export async function browse(deps: InvestmentDeps, actor: Actor): Promise<Result
   return { ok: true, value: all.filter(p => p.ownerUserId !== actor.userId && categoryMaySee(inv.value.category, p.visibleTo)).map(toView) };
 }
 
+/** What anyone may see, signed in or not: the card only. Timeline, risks, structure, issuer licence and contact stay with ready investors. */
+export type PublicProjectView = Pick<InvestmentProject, "id" | "title" | "location" | "jurisdiction" | "projectType" | "summary" | "stage" | "fundingTargetCents" | "minimumTicketCents" | "issuerName">;
+export const toPublicView = (p: InvestmentProject): PublicProjectView => ({
+  id: p.id, title: p.title, location: p.location, jurisdiction: p.jurisdiction, projectType: p.projectType, summary: p.summary, stage: p.stage,
+  fundingTargetCents: p.fundingTargetCents, minimumTicketCents: p.minimumTicketCents, issuerName: p.issuerName
+});
+
+/** Every approved project, for the public list. Only approved projects; the module switch still decides whether any of this is served. */
+export async function publicBrowse(deps: InvestmentDeps): Promise<PublicProjectView[]> {
+  return (await deps.repo.listByStatus("approved")).map(toPublicView);
+}
+
 /** The owner sees their own project in any status. Anyone else: approved, investor-ready and allowed by visibility, or 404. */
 export async function viewProject(deps: InvestmentDeps, actor: Actor, id: string): Promise<Result<{ project: ProjectView | InvestmentProject; mine: boolean }>> {
   const p = await deps.repo.getProject(id);

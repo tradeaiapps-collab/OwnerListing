@@ -14,7 +14,9 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
   useEffect(() => {
     void fetch(`/api/investments/projects/${id}`).then(async r => {
       const d = await r.json().catch(() => ({}));
-      if (r.ok) { setP(d.project); setMine(d.mine === true); } else setError(r.status === 404 ? "Project not found." : d.error ?? "Could not load.");
+      if (r.ok) { setP(d.project); setMine(d.mine === true); }
+      else setError(r.status === 401 ? "Sign in as an investor to see the full project, risks and contract terms."
+        : r.status === 404 ? "Project not found, or it is open only to verified investors who have made the investor declaration." : d.error ?? "Could not load.");
     }).catch(() => setError("Could not load."));
   }, [id]);
 
@@ -31,7 +33,12 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
     else setError(String(r.data["error"] ?? "Could not send."));
   }
 
-  if (!p) return <main><h1>Project</h1>{error ? <p role="alert">{error}</p> : <p className="muted" role="status">Loading…</p>}</main>;
+  if (!p) return (
+    <main><h1>Project</h1>
+      {error ? <p role="alert">{error} <a href="/investments/investor">Check your investor status</a></p> : <p className="muted" role="status">Loading…</p>}
+      {error && <p><a href="/investments">Back to all projects</a></p>}
+    </main>
+  );
   return (
     <main>
       <h1>{p.title}</h1>
