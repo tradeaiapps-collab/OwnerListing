@@ -26,6 +26,7 @@ export default function AgentListings() {
   return (
     <main>
       <h1>Appointed listings</h1>
+      <p><a href="/agent/appointments">Invitations and appointments</a></p>
       {error && <p role="alert">{error}</p>}
       {items === null && !error && <p className="muted" role="status">Loading…</p>}
       {items && items.length === 0 && <p className="empty">You have no active appointments.</p>}
