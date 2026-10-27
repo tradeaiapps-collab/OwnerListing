@@ -22,3 +22,7 @@
 .inv-history { width: 100%; border-collapse: collapse; font-size: 0.9375rem; }
 .inv-history th, .inv-history td { text-align: left; padding: var(--space-2); border-bottom: 1px solid var(--border); }
 .inv-table-wrap { overflow-x: auto; }
+.inv-filters { display: grid; grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); gap: var(--space-3); align-items: end; margin: 0 0 var(--space-4); padding: var(--space-4); border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+.inv-filters label { display: grid; gap: var(--space-1); font-weight: 600; min-width: 0; }
+.inv-filters input, .inv-filters select, .inv-filters button { min-height: 44px; font: inherit; padding: var(--space-2) var(--space-3); width: 100%; }
+.inv-filters .inv-filter-q { grid-column: 1 / -1; }
