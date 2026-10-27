@@ -1,9 +1,11 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
+import type { AgentPermission } from "../../../src/domain/access";
 import { JSON_HEADERS } from "../../listings/ui";
+import { PermissionList } from "../permission-picker";
 import "../../styles/enquiries.css";
 
-type Item = { kind: "invite" | "appointment"; id: string; listingId: string; listingTitle: string; jurisdiction: string; ownerName: string; scope: string; licensed: boolean };
+type Item = { kind: "invite" | "appointment"; id: string; listingId: string; listingTitle: string; jurisdiction: string; ownerName: string; scope: string; licensed: boolean; granted: AgentPermission[] };
 
 const SCOPE_LABELS: Record<string, string> = { enquiries_and_offers: "Enquiries and offers", full: "Full (can also publish)" };
 
@@ -60,6 +62,7 @@ export default function AgentAppointments() {
               <li key={i.id}>
                 <strong>{i.listingTitle}</strong> <small className="muted">({i.jurisdiction}) from {i.ownerName}</small>
                 <div>{SCOPE_LABELS[i.scope] ?? i.scope}</div>
+                <PermissionList granted={i.granted} />
                 {!i.licensed && <p className="muted">You need a verified licence for {i.jurisdiction} before you can accept.</p>}
                 <div className="actions">
                   <button type="button" disabled={busy || !i.licensed} onClick={() => void act(i.id, "accept")}>Accept</button>
@@ -74,6 +77,7 @@ export default function AgentAppointments() {
             {live.map(i => (
               <li key={i.id}>
                 <a href={`/listings/${i.listingId}`}>{i.listingTitle}</a> <small className="muted">({i.jurisdiction}) for {i.ownerName} · {SCOPE_LABELS[i.scope] ?? i.scope}</small>
+                <PermissionList granted={i.granted} />
                 <div className="actions"><a className="button secondary" href={`/agent-appointments/${i.id}/messages`}>Messages with owner</a></div>
               </li>
             ))}

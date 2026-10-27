@@ -1,10 +1,13 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
+import { SCOPE_PERMISSIONS, type AgentPermission } from "../../../../src/domain/access";
+import { PermissionList, PermissionPicker } from "../../../agent/permission-picker";
 import { JSON_HEADERS } from "../../ui";
 
-type Active = { id: string; agentName: string; scope: string; appointedAt: string; licensed: boolean };
-type Invite = { id: string; agentName: string; scope: string; createdAt: string; licensed: boolean };
+type Scope = "enquiries_and_offers" | "full";
+type Active = { id: string; agentName: string; scope: Scope; appointedAt: string; licensed: boolean; granted: AgentPermission[] };
+type Invite = { id: string; agentName: string; scope: Scope; createdAt: string; licensed: boolean; granted: AgentPermission[] };
 type View = { active: Active | null; invites: Invite[] };
 
 const SCOPE_LABELS: Record<string, string> = {
@@ -20,7 +23,9 @@ export default function ListingAgent() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [contact, setContact] = useState("");
-  const [scope, setScope] = useState("enquiries_and_offers");
+  const [scope, setScope] = useState<Scope>("enquiries_and_offers");
+  const [perms, setPerms] = useState<AgentPermission[]>([...SCOPE_PERMISSIONS["enquiries_and_offers"]]);
+  const [editing, setEditing] = useState<AgentPermission[] | null>(null);
 
   const load = useCallback(async () => {
     setLoadError("");
@@ -55,7 +60,8 @@ export default function ListingAgent() {
   async function onInvite(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const value = contact.trim();
-    const body = value.includes("@") ? { email: value, scope } : { agentUserId: value, scope };
+    const permissions = perms.length === SCOPE_PERMISSIONS[scope].length ? undefined : perms;
+    const body = { ...(value.includes("@") ? { email: value } : { agentUserId: value }), scope, ...(permissions ? { permissions } : {}) };
     if (await send(`/api/listings/${id}/agent-appointments`, body, "Could not send the invitation.")) setContact("");
   }
 
@@ -69,8 +75,22 @@ export default function ListingAgent() {
         <section className="card">
           <h2>{view.active.agentName}</h2>
           <p>{SCOPE_LABELS[view.active.scope] ?? view.active.scope}{view.active.licensed ? "" : " · Blocked: no verified licence for this state"}</p>
+          {editing === null && <PermissionList granted={view.active.granted} />}
+          {editing !== null && (
+            <form className="stack" onSubmit={async e => {
+              e.preventDefault();
+              if (await send(`/api/agent-appointments/${view.active!.id}`, { action: "set_permissions", permissions: editing }, "Could not save the permissions.")) setEditing(null);
+            }}>
+              <PermissionPicker scope={view.active.scope} value={editing} onChange={setEditing} disabled={busy} />
+              <div className="actions">
+                <button type="submit" disabled={busy || editing.length === 0}>Save permissions</button>
+                <button type="button" className="secondary" onClick={() => setEditing(null)}>Cancel</button>
+              </div>
+            </form>
+          )}
           <div className="actions">
             <a className="button" href={`/agent-appointments/${view.active.id}/messages`}>Messages</a>
+            {editing === null && <button type="button" className="secondary" disabled={busy} onClick={() => setEditing([...view.active!.granted])}>Change permissions</button>}
             <button type="button" className="secondary" disabled={busy}
               onClick={() => void send(`/api/agent-appointments/${view.active!.id}`, { action: "revoke" }, "Could not revoke the agent.")}>Revoke agent</button>
           </div>
@@ -99,12 +119,13 @@ export default function ListingAgent() {
             <input value={contact} onChange={e => setContact(e.target.value)} required maxLength={254} />
           </label>
           <label>What they can do
-            <select value={scope} onChange={e => setScope(e.target.value)}>
+            <select value={scope} onChange={e => { const s = e.target.value as Scope; setScope(s); setPerms([...SCOPE_PERMISSIONS[s]]); }}>
               <option value="enquiries_and_offers">{SCOPE_LABELS["enquiries_and_offers"]}</option>
               <option value="full">{SCOPE_LABELS["full"]}</option>
             </select>
           </label>
-          <button type="submit" disabled={busy}>{busy ? "Working…" : "Send invitation"}</button>
+          <PermissionPicker scope={scope} value={perms} onChange={setPerms} disabled={busy} />
+          <button type="submit" disabled={busy || perms.length === 0}>{busy ? "Working…" : "Send invitation"}</button>
         </form>
       )}
       {error && <p role="alert">{error}</p>}

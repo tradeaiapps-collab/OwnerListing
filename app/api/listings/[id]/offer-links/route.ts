@@ -32,7 +32,7 @@ export async function POST(req: Request, { params }: Ctx) {
   const noTerms = await requireCurrentTerms(deps.termsCurrentFor, actor.userId);
   if (noTerms) return failure(noTerms);
   // The owner, or the listing's appointed agent with a current licence. Everyone else gets 404.
-  const handler = await requireListingHandler(req, id);
+  const handler = await requireListingHandler(req, id, "offer_links.issue");
   if (handler instanceof NextResponse) return handler;
   const rec = handler.rec;
   if (rec.listing.status !== "published") return failure(notFound);

@@ -5,7 +5,7 @@ import type { BondPathway } from "../domain/publish";
 import { buildSearch } from "./listing-search-sql";
 import { isJurisdiction } from "../domain/jurisdiction";
 import type { AgentLicence } from "../domain/licence";
-import type { AgentAppointment } from "../domain/access";
+import { isAgentPermission, type AgentAppointment } from "../domain/access";
 import type { TrustAccountDecision } from "../domain/trust-account";
 
 /** The part of pg.Pool this app uses, so tests and the domain do not depend on the driver. */
@@ -162,14 +162,15 @@ export async function trustAccountDecisionPg(db: Queryable, listingId: string): 
 /** Active appointment of an agent to a listing. Parameterised; returns undefined when none is active. */
 export async function appointmentForPg(db: Queryable, listingId: string, agentUserId: string): Promise<AgentAppointment | undefined> {
   const res = await db.query(
-    "SELECT listing_id, agent_user_id, scope FROM listing_agent_appointment WHERE listing_id = $1 AND agent_user_id = $2 AND revoked_at IS NULL",
+    "SELECT listing_id, agent_user_id, scope, permissions FROM listing_agent_appointment WHERE listing_id = $1 AND agent_user_id = $2 AND revoked_at IS NULL",
     [listingId, agentUserId]
   );
   const row = res.rows[0];
   if (!row) return undefined;
   return {
     listingId: String(row["listing_id"]), agentUserId: String(row["agent_user_id"]),
-    scope: row["scope"] === "full" ? "full" : "enquiries_and_offers", revoked: false
+    scope: row["scope"] === "full" ? "full" : "enquiries_and_offers", revoked: false,
+    ...(Array.isArray(row["permissions"]) ? { permissions: (row["permissions"] as unknown[]).filter(isAgentPermission) } : {})
   };
 }
 

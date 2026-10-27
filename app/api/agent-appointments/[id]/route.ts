@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { revokeAppointment } from "../../../../src/domain/agent-appointment-service";
+import { revokeAppointment, setAgentPermissions } from "../../../../src/domain/agent-appointment-service";
 import { appointmentIds, getAgentAppointmentRepo } from "../../../../src/server/agent-appointment-db";
 import { getActor } from "../../../../src/server/context";
 import { failure, unauthenticated } from "../../../../src/server/http";
@@ -7,7 +7,11 @@ import { csrfGuard } from "../../../../src/server/csrf";
 
 type Ctx = { params: Promise<{ id: string }> };
 
-/** Body: { "action": "revoke" }. Owner only. The agent loses access at once. Appointments are never deleted. */
+/**
+ * Owner only. Body: { "action": "revoke" } ends the appointment at once, or
+ * { "action": "set_permissions", "permissions": [...] } changes what the agent may do within the scope.
+ * Appointments are never deleted.
+ */
 export async function POST(req: Request, { params }: Ctx) {
   const blocked = csrfGuard(req);
   if (blocked) return blocked;
@@ -15,7 +19,14 @@ export async function POST(req: Request, { params }: Ctx) {
   if (!actor) return unauthenticated();
   const { id } = await params;
   const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
-  if (body?.["action"] !== "revoke") return failure({ ok: false, code: "invalid", message: "Action must be revoke." });
-  const r = await revokeAppointment(getAgentAppointmentRepo(), actor, id, appointmentIds);
-  return r.ok ? NextResponse.json({ appointment: r.value }) : failure(r);
+  const action = body?.["action"];
+  if (action === "revoke") {
+    const r = await revokeAppointment(getAgentAppointmentRepo(), actor, id, appointmentIds);
+    return r.ok ? NextResponse.json({ appointment: r.value }) : failure(r);
+  }
+  if (action === "set_permissions") {
+    const r = await setAgentPermissions(getAgentAppointmentRepo(), actor, id, body, appointmentIds);
+    return r.ok ? NextResponse.json({ appointment: r.value }) : failure(r);
+  }
+  return failure({ ok: false, code: "invalid", message: "Action must be revoke or set_permissions." });
 }

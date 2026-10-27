@@ -29,7 +29,7 @@ export async function POST(req: Request, { params }: Ctx) {
   if (blocked) return blocked;
   const { id, offerId } = await params;
   if (!isUuid(offerId)) return failure(notFound);
-  const handler = await requireListingHandler(req, id);
+  const handler = await requireListingHandler(req, id, "offers.view");
   if (handler instanceof NextResponse) return handler;
   const db = getDb();
   const deps = getDeps();

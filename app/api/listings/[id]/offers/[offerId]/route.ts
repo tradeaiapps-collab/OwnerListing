@@ -22,7 +22,7 @@ const notFound = { ok: false, code: "not_found", message: "Offer not found." } a
  */
 export async function GET(req: Request, { params }: Ctx) {
   const { id, offerId } = await params;
-  const handler = await requireListingHandler(req, id);
+  const handler = await requireListingHandler(req, id, "offers.view");
   if (handler instanceof NextResponse) return handler;
   const denied = forbiddenFor({ id: handler.actor.userId, role: handler.actor.userType }, "offer.analyse");
   if (denied) return failure(denied);

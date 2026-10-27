@@ -18,7 +18,7 @@ export async function PUT(req: Request, { params }: Ctx) {
   const blocked = csrfGuard(req);
   if (blocked) return blocked;
   const { id, key } = await params;
-  const handler = await requireListingHandler(req, id);
+  const handler = await requireListingHandler(req, id, "listing.describe");
   if (handler instanceof NextResponse) return handler;
   const l = handler.rec.listing;
   if (l.status !== "draft" && l.status !== "pending_review") return fail(409, "Disclosures can only be changed before the listing is published.");
