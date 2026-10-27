@@ -79,7 +79,7 @@ main .pcard-body .pcard-summary { margin-bottom: var(--space-3); }
 .inv-where { margin: 0 !important; color: var(--muted); font-size: 1.0625rem; }
 .inv-photo-cta a { font-weight: 700; }
 .inv-layout { display: grid; gap: var(--space-4); grid-template-columns: minmax(0, 1fr); align-items: start; }
-@media (min-width: 960px) { .inv-layout { grid-template-columns: minmax(0, 1fr) 20rem; gap: var(--space-6); } .inv-aside { position: sticky; top: var(--space-4); grid-column: 2; grid-row: 1; } }
+@media (min-width: 960px) { .inv-layout { grid-template-columns: minmax(0, 1fr) 20rem; gap: var(--space-6); } .inv-media { grid-column: 1; grid-row: 1; } .inv-aside { position: sticky; top: var(--space-4); grid-column: 2; grid-row: 1 / span 2; } }
 .inv-main > .panel h2 { font-size: 1.125rem; }
 .inv-facts dl { display: grid; gap: var(--space-3); margin: 0 0 var(--space-3); }
 .inv-facts dl > div { display: grid; gap: 2px; padding-bottom: var(--space-3); border-bottom: 1px solid var(--line); min-width: 0; }
@@ -152,3 +152,31 @@ main .sr-section > h2 { margin-top: 0; }
 .sr-savebar { position: sticky; bottom: 0; z-index: 5; display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); padding: var(--space-3) var(--space-4); background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow-2); }
 .sr-savebar p { margin: 0; }
 .inv-switch + .panel { margin-top: var(--space-4); }
+
+/* Project photo slideshow (project-slider.tsx): sized to the content column, never full screen. */
+.inv-media { min-width: 0; }
+.inv-photo-cta { display: grid; place-items: center; aspect-ratio: 16 / 9; max-height: 260px; width: 100%; border: 1px dashed var(--border); border-radius: var(--radius); background: var(--surface); color: var(--muted); font-weight: 600; }
+.ps { display: grid; gap: var(--space-2); }
+.ps-stage { position: relative; overflow: hidden; border-radius: var(--radius); background: var(--surface); aspect-ratio: 3 / 2; max-height: 400px; width: 100%; touch-action: pan-y pinch-zoom; box-shadow: var(--shadow-1); }
+@media (max-width: 599px) { .ps-stage { aspect-ratio: 4 / 3; } }
+.ps-track { display: flex; height: 100%; margin: 0; padding: 0; list-style: none; }
+@media (prefers-reduced-motion: no-preference) { .ps-track { transition: transform 0.55s cubic-bezier(0.22, 0.61, 0.36, 1); } }
+.ps-slide { flex: 0 0 100%; height: 100%; max-width: none; }
+.ps-slide img { display: block; width: 100%; height: 100%; object-fit: cover; user-select: none; }
+.ps-caption { position: absolute; left: 0; right: 0; bottom: 0; margin: 0 !important; max-width: none !important; padding: var(--space-8) var(--space-4) var(--space-3); padding-right: 9rem; background: linear-gradient(transparent, rgb(0 0 0 / 0.6)); color: #fff; font-size: 0.9375rem; font-weight: 600; pointer-events: none; }
+.ps-nav { position: absolute; top: 50%; transform: translateY(-50%); width: 40px; height: 40px; min-height: 0; padding: 0; border-radius: 50%; border: 0; background: rgb(255 255 255 / 0.88); color: #14181f; font-size: 1.5rem; line-height: 1; box-shadow: var(--shadow-1); opacity: 0; transition: opacity 0.2s ease; }
+.ps-nav:hover:not(:disabled) { background: #fff; color: #14181f; }
+.ps-stage:hover .ps-nav, .ps-nav:focus-visible { opacity: 1; }
+@media (hover: none) { .ps-nav { display: none; } }
+.ps-prev { left: var(--space-3); }
+.ps-next { right: var(--space-3); }
+.ps-bar { position: absolute; right: var(--space-3); bottom: var(--space-3); display: flex; align-items: center; gap: var(--space-2); }
+.ps-count, .ps-play { padding: 2px var(--space-3); border-radius: 999px; background: rgb(0 0 0 / 0.55); color: #fff; font-size: 0.8125rem; font-weight: 700; line-height: 1.6; }
+.ps-play { min-height: 0; border: 0; box-shadow: none; cursor: pointer; }
+.ps-play:hover:not(:disabled) { background: rgb(0 0 0 / 0.75); color: #fff; }
+.ps-thumbs { display: flex; gap: var(--space-2); overflow-x: auto; padding: 2px; scrollbar-width: none; }
+.ps-thumbs::-webkit-scrollbar { display: none; }
+.ps-thumb { flex: 0 0 auto; width: 76px; height: 52px; min-height: 0; padding: 0; border: 2px solid transparent; border-radius: 6px; overflow: hidden; background: var(--surface); box-shadow: none; opacity: 0.6; transition: opacity 0.15s ease, border-color 0.15s ease; }
+.ps-thumb img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.ps-thumb:hover:not(:disabled) { opacity: 1; background: var(--surface); }
+.ps-thumb[aria-current="true"] { opacity: 1; border-color: var(--brand); }

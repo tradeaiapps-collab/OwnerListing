@@ -2,8 +2,8 @@
 import { use, useEffect, useState } from "react";
 import { dollarsToCents } from "../../../src/domain/listing-details";
 import type { PhotoView } from "../../../src/domain/listing-photos";
-import { PhotoGallery } from "../../listings/gallery";
 import { STAGE_TAG } from "../project-card";
+import { ProjectSlider } from "../project-slider";
 import { aud, label, send, STATUS_LABEL, type Project } from "../ui";
 
 export default function ProjectDetail({ params }: { params: Promise<{ id: string }> }) {
@@ -60,13 +60,12 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
       </header>
       {mine && p.reviewReason && <p className="inv-visitor">Staff note: {p.reviewReason}</p>}
 
-      {photos.length > 0
-        ? <PhotoGallery photos={photos} title={p.title} base="/api/investments/photos" info={`${where} · ${label(p.projectType)}`} />
-        : mine && p.status !== "rejected" && (
-          <div className="gl-empty inv-photo-cta"><span>No photos yet. <a href={`/investments/${p.id}/photos`}>Add project photos</a></span></div>
-        )}
-
       <div className="inv-layout">
+        {photos.length > 0 ? (
+          <div className="inv-media"><ProjectSlider photos={photos} title={p.title} /></div>
+        ) : mine && p.status !== "rejected" && (
+          <div className="inv-media inv-photo-cta"><span>No photos yet. <a href={`/investments/${p.id}/photos`}>Add project photos</a></span></div>
+        )}
         <aside className="inv-aside" aria-label="Key figures">
           <div className="panel inv-facts">
             <dl>
