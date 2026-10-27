@@ -39,14 +39,21 @@ export type UserAction = (typeof USER_ACTIONS)[number];
 export const isUserAction = (v: unknown): v is UserAction => typeof v === "string" && (USER_ACTIONS as readonly string[]).includes(v);
 
 export interface UserTarget { id: string; userType: string; status: string }
-export type UserPlan = Deny | { action: UserAction; from: string; to: "suspended" | "active"; reason: string };
+export type UserPlan = Deny | { action: UserAction; from: string; to: "suspended" | "active"; reason: string; withListings: boolean };
+
+/**
+ * What happens to the account's listings, chosen per case. Suspending: "suspend" (default) also suspends every live listing, "keep"
+ * leaves them live. Reinstating: "reinstate" (default) brings back the listings suspended with the account, each only if it passes the
+ * publish checks today; "keep" leaves them suspended.
+ */
+export const LISTING_CHOICES: Record<UserAction, readonly [string, string]> = { suspend: ["suspend", "keep"], reinstate: ["reinstate", "keep"] };
 
 /**
  * Suspend an active account or reinstate a suspended one. A suspended account is refused on its very next request (sessions are checked
  * against the database). Staff accounts are managed only through staff access (invites), and nobody acts on their own account.
  * Pending and closed accounts are left alone: a pending account has not finished sign-up and closing is permanent.
  */
-export function planUserAction(actor: StaffActor, target: UserTarget, action: unknown, reason: unknown): UserPlan {
+export function planUserAction(actor: StaffActor, target: UserTarget, action: unknown, reason: unknown, listings?: unknown): UserPlan {
   if (!staffCan(actor, "user.manage")) return deny(403, "Not allowed.");
   if (!isUserAction(action)) return deny(400, "Unknown action.");
   if (!reasonOk(reason)) return deny(400, REASON_ERROR);
@@ -54,7 +61,14 @@ export function planUserAction(actor: StaffActor, target: UserTarget, action: un
   if (target.userType === "admin") return deny(409, "Staff accounts are managed in Staff access.");
   if (action === "suspend" && target.status !== "active") return deny(409, "Only an active account can be suspended.");
   if (action === "reinstate" && target.status !== "suspended") return deny(409, "Only a suspended account can be reinstated.");
-  return { action, from: target.status, to: action === "suspend" ? "suspended" : "active", reason: reason.trim() };
+  const [change, keep] = LISTING_CHOICES[action];
+  const choice = listings ?? change;
+  if (choice !== change && choice !== keep) return deny(400, `Listings must be "${change}" or "${keep}".`);
+  const withListings = choice === change;
+  if (withListings && !staffCan(actor, "listing.moderate")) {
+    return deny(403, "Changing this account's listings also needs the listing moderation permission. Choose to keep them as they are.");
+  }
+  return { action, from: target.status, to: action === "suspend" ? "suspended" : "active", reason: reason.trim(), withListings };
 }
 
 /** "jane.citizen@gmail.com" -> "j***n@gmail.com"; anything without an @ is fully hidden. */
