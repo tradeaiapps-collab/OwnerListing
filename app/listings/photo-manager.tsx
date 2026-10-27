@@ -1,6 +1,6 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { PHOTO_LIMITS, makeCover, moveEntry, photoUrl, type PhotoKind, type PhotoView } from "../../src/domain/listing-photos";
+import { PHOTO_BASE, PHOTO_LIMITS, PROJECT_PHOTO_MAX, makeCover, moveEntry, photoUrl, type PhotoKind, type PhotoView } from "../../src/domain/listing-photos";
 import { JSON_HEADERS } from "./ui";
 import "../styles/gallery.css";
 
@@ -28,8 +28,14 @@ async function errorOf(r: Response): Promise<string> {
 /**
  * Owner screen for a listing's photos and floor plans: drag-and-drop multi-file upload, reorder (drag, or the up/down
  * buttons), make cover, caption and description per photo, hide, replace, and remove (drafts only), then one Save.
+ * With `projectId` it manages an investor project's photos instead: photos only, no tour link, never removable.
  */
-export function PhotoManager({ listingId }: { listingId: string }) {
+export function PhotoManager({ listingId, projectId }: { listingId?: string; projectId?: string }) {
+  const isProject = projectId !== undefined;
+  const listUrl = isProject ? `/api/investments/projects/${projectId}/photos` : `/api/listings/${listingId}/photos`;
+  const layoutUrl = isProject ? listUrl : `${listUrl}/layout`;
+  const base = isProject ? "/api/investments/photos" : PHOTO_BASE;
+  const noun = isProject ? "project" : "listing";
   const [data, setData] = useState<Gallery | null>(null);
   const [rows, setRows] = useState<Row[]>([]);
   const [tour, setTour] = useState("");
@@ -48,14 +54,15 @@ export function PhotoManager({ listingId }: { listingId: string }) {
   const load = useCallback(async () => {
     setLoadError("");
     try {
-      const r = await fetch(`/api/listings/${listingId}/photos`);
-      if (!r.ok) { setLoadError(r.status === 404 ? "Listing not found. If it is yours, sign in first." : await errorOf(r)); return; }
-      const d = await r.json() as Gallery;
+      const r = await fetch(listUrl);
+      if (!r.ok) { setLoadError(r.status === 404 ? `${isProject ? "Project" : "Listing"} not found. If it is yours, sign in first.` : await errorOf(r)); return; }
+      const raw = await r.json();
+      const d: Gallery = isProject ? { ...raw, tourUrl: null, canUpload: raw.canManage === true, everPublished: true, editable: raw.canManage === true } : raw;
       setData(d); setRows(d.photos); setTour(d.tourUrl ?? ""); setDirty(false);
     } catch {
       setLoadError("Could not load the photos.");
     }
-  }, [listingId]);
+  }, [listUrl, isProject]);
   useEffect(() => { void load(); }, [load]);
 
   const change = (next: Row[]) => { setRows(next); setDirty(true); setStatus(""); };
@@ -70,11 +77,11 @@ export function PhotoManager({ listingId }: { listingId: string }) {
     if (dirty) { setError("Save or undo your changes before adding photos."); return; }
     setError("");
     const showing = rows.filter(r => !r.hidden && r.kind === kind).length;
-    const room = (kind === "photo" ? PHOTO_LIMITS.maxPhotos : PHOTO_LIMITS.maxFloorplans) - showing;
+    const room = (isProject ? PROJECT_PHOTO_MAX : kind === "photo" ? PHOTO_LIMITS.maxPhotos : PHOTO_LIMITS.maxFloorplans) - showing;
     const items: QueueItem[] = files.map((f, i) => {
       const bad = precheck(f);
       if (bad) return { name: f.name, state: "error", message: bad };
-      if (!replacesId && i >= room) return { name: f.name, state: "error", message: "Over the limit for this listing." };
+      if (!replacesId && i >= room) return { name: f.name, state: "error", message: `Over the limit for this ${noun}.` };
       return { name: f.name, state: "waiting" };
     });
     setQueue(items);
@@ -89,7 +96,7 @@ export function PhotoManager({ listingId }: { listingId: string }) {
       fd.set("kind", replacesId ? (rows.find(r => r.id === replacesId)?.kind ?? kind) : kind);
       if (replacesId) fd.set("replacesId", replacesId);
       try {
-        const r = await fetch(`/api/listings/${listingId}/photos`, { method: "POST", body: fd });
+        const r = await fetch(listUrl, { method: "POST", body: fd });
         if (r.ok) { ok++; set(i, { state: "done" }); } else set(i, { state: "error", message: await errorOf(r) });
       } catch {
         set(i, { state: "error", message: "Network error." });
@@ -104,9 +111,14 @@ export function PhotoManager({ listingId }: { listingId: string }) {
     if (!data) return;
     setBusy(true); setError(""); setStatus("");
     try {
-      const body = { version: data.version, tourUrl: tour.trim() || null, entries: rows.map(r => ({ photoId: r.id, caption: r.caption, alt: r.alt, hidden: r.hidden })) };
-      const r = await fetch(`/api/listings/${listingId}/photos/layout`, { method: "PUT", headers: JSON_HEADERS, body: JSON.stringify(body) });
-      if (r.ok) { await load(); setStatus("Gallery saved."); } else setError(await errorOf(r));
+      const entries = rows.map(r => ({ photoId: r.id, caption: r.caption, alt: r.alt, hidden: r.hidden }));
+      const body = isProject ? { version: data.version, entries } : { version: data.version, tourUrl: tour.trim() || null, entries };
+      const r = await fetch(layoutUrl, { method: "PUT", headers: JSON_HEADERS, body: JSON.stringify(body) });
+      if (r.ok) {
+        const review = isProject && (await r.json().catch(() => ({}))).backToReview === true;
+        await load();
+        setStatus(review ? "Gallery saved. The project is back with staff for review." : "Gallery saved.");
+      } else setError(await errorOf(r));
     } catch {
       setError("Could not save. Check your connection and try again.");
     } finally {
@@ -122,13 +134,14 @@ export function PhotoManager({ listingId }: { listingId: string }) {
 
   return (
     <section className="gl-mgr" aria-labelledby="gl-mgr-h">
-      <h2 id="gl-mgr-h">Photos and floor plans</h2>
+      <h2 id="gl-mgr-h">{isProject ? "Gallery" : "Photos and floor plans"}</h2>
       <p className="muted">
-        {counts.photo} of {PHOTO_LIMITS.maxPhotos} photos, {counts.floorplan} of {PHOTO_LIMITS.maxFloorplans} floor plans. JPEG, PNG or WebP, up to {MB} MB each.
+        {isProject ? `${counts.photo} of ${PROJECT_PHOTO_MAX} photos.` : `${counts.photo} of ${PHOTO_LIMITS.maxPhotos} photos, ${counts.floorplan} of ${PHOTO_LIMITS.maxFloorplans} floor plans.`} JPEG, PNG or WebP, up to {MB} MB each.
         Location and camera details are removed from every image. The first photo is the cover.
       </p>
-      {data.everPublished && <p className="muted">This listing has been published, so its photos are kept on record: you can hide, reorder or replace them, but not delete them.</p>}
-      {!data.editable && <p role="status">This listing is withdrawn. Its photos can no longer be changed.</p>}
+      {isProject && <p className="muted">Photos are shown only to investors who can see the full project. They are kept on record: you can hide, reorder or replace them, but not delete them. Any change except hiding sends an approved project back to staff review.</p>}
+      {data.everPublished && !isProject && <p className="muted">This listing has been published, so its photos are kept on record: you can hide, reorder or replace them, but not delete them.</p>}
+      {!data.editable && !isProject && <p role="status">This listing is withdrawn. Its photos can no longer be changed.</p>}
 
       {data.canUpload && (
         <div className={over ? "gl-drop is-over" : "gl-drop"}
@@ -137,11 +150,15 @@ export function PhotoManager({ listingId }: { listingId: string }) {
           onDrop={e => { if (e.dataTransfer.files.length) { e.preventDefault(); setOver(false); void upload(Array.from(e.dataTransfer.files)); } }}>
           <p><strong>Drag images here</strong> or choose them from your device.</p>
           <div className="form-bar">
-            <label className="sr-only" htmlFor="gl-kind">Add as</label>
-            <select id="gl-kind" value={kind} onChange={e => setKind(e.target.value as PhotoKind)} disabled={busy}>
-              <option value="photo">Photos</option>
-              <option value="floorplan">Floor plans</option>
-            </select>
+            {!isProject && (
+              <>
+                <label className="sr-only" htmlFor="gl-kind">Add as</label>
+                <select id="gl-kind" value={kind} onChange={e => setKind(e.target.value as PhotoKind)} disabled={busy}>
+                  <option value="photo">Photos</option>
+                  <option value="floorplan">Floor plans</option>
+                </select>
+              </>
+            )}
             <input ref={input} id="gl-files" className="sr-only gl-file" type="file" multiple accept="image/jpeg,image/png,image/webp" disabled={busy}
               onChange={e => { const f = Array.from(e.target.files ?? []); e.target.value = ""; void upload(f); }} />
             <label className="button" htmlFor="gl-files">Choose images</label>
@@ -169,7 +186,7 @@ export function PhotoManager({ listingId }: { listingId: string }) {
                 onDrop={e => { if (drag !== null) { e.preventDefault(); move(drag, i); } setDrag(null); setTarget(null); }}
                 onDragEnd={() => { setDrag(null); setTarget(null); }}>
                 <div className="gl-thumbwrap">
-                  <img src={photoUrl(r.id, r.sizes.includes("thumb") ? "thumb" : "full")} alt={r.alt || r.caption || label} loading="lazy" width={r.width} height={r.height}
+                  <img src={photoUrl(r.id, r.sizes.includes("thumb") ? "thumb" : "full", base)} alt={r.alt || r.caption || label} loading="lazy" width={r.width} height={r.height}
                     className={r.kind === "floorplan" ? "gl-plan" : undefined} draggable={false} />
                   <span className="gl-badges">
                     <span className="gl-badge">{i + 1}</span>
@@ -212,7 +229,7 @@ export function PhotoManager({ listingId }: { listingId: string }) {
         </ol>
       )}
 
-      {manage && (
+      {manage && !isProject && (
         <div className="stack gl-tour">
           <label>Video or virtual tour link (optional)
             <input type="url" inputMode="url" placeholder="https://" maxLength={PHOTO_LIMITS.tourUrlMax} value={tour} onChange={e => { setTour(e.target.value); setDirty(true); }} />

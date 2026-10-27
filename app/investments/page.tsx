@@ -2,11 +2,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { AU_JURISDICTIONS } from "../../src/domain/jurisdiction";
 import { filterProjects, PROJECT_STAGES, PROJECT_TYPES, type ProjectFilter } from "../../src/domain/investor-projects";
-import { aud, label, STEP_LINK, type Project } from "./ui";
+import { ProjectCard, type CardProject } from "./project-card";
+import { aud, label, STEP_LINK } from "./ui";
 
 const MIN_TICKET_CAPS = [10_000, 50_000, 100_000, 250_000, 500_000, 1_000_000];
 
-type Card = Pick<Project, "id" | "title" | "location" | "jurisdiction" | "projectType" | "summary" | "stage" | "fundingTargetCents" | "minimumTicketCents" | "issuerName">;
+type Card = CardProject;
 
 /** Approved projects. Ready investors get their own list; everyone else gets the public cards and a pointer to the next step. Not an offer; interest is non-binding. */
 export default function BrowseProjects() {
@@ -36,13 +37,18 @@ export default function BrowseProjects() {
 
   const link = STEP_LINK[step];
   return (
-    <main>
-      <h1>Investor projects</h1>
-      <div className="actions">
-        <a href="/investments/threads">My conversations</a>
-        <a href="/investments/mine">My posted projects</a>
-        <a href="/investments/new">Post a project</a>
-      </div>
+    <main className="inv-browse">
+      <header className="inv-page-head">
+        <div>
+          <h1>Investor projects</h1>
+          <p className="muted">Property development projects posted by their owners and reviewed by our staff. Interest is non-binding.</p>
+        </div>
+        <nav className="inv-page-links" aria-label="Investor pages">
+          <a href="/investments/threads">My conversations</a>
+          <a href="/investments/mine">My posted projects</a>
+          <a className="button" href="/investments/new">Post a project</a>
+        </nav>
+      </header>
       {error && <p role="alert">{error} {link && <a href={link[0]}>{link[1]}</a>}</p>}
       {visitor && !error && <p className="inv-visitor">{visitor} {link && <a href={link[0]}>{link[1]}</a>}</p>}
       {items !== null && items.length > 0 && (
@@ -63,23 +69,15 @@ export default function BrowseProjects() {
           {filtered && <button type="button" onClick={() => setFilter({})}>Clear</button>}
         </form>
       )}
-      {items === null && !error && <p className="muted" role="status">Loading…</p>}
+      {items === null && !error && <p className="sr-only" role="status">Loading…</p>}
       {items?.length === 0 && <p className="empty">{visitor ? "No projects are listed right now." : "No projects are open to you right now."}</p>}
       {items !== null && items.length > 0 && <p className="muted" role="status">{shown?.length} of {items.length} projects</p>}
       {items !== null && items.length > 0 && shown?.length === 0 && <p className="empty">No projects match these filters.</p>}
-      <ul className="card-list">
-        {shown?.map(p => (
-          <li key={p.id}>
-            <h2><a href={`/investments/${p.id}`}>{p.title}</a></h2>
-            <ul className="inv-meta">
-              <li>{p.location}, {p.jurisdiction}</li><li>{label(p.projectType)}</li><li>Stage: {label(p.stage)}</li>
-            </ul>
-            <p className="muted">Issuer: {p.issuerName}</p>
-            <p className="inv-section">{p.summary.length > 240 ? `${p.summary.slice(0, 240)}…` : p.summary}</p>
-            <p className="muted">Indicative target {aud(p.fundingTargetCents)} · indicative minimum {aud(p.minimumTicketCents)}</p>
-            <a href={`/investments/${p.id}`}>View project and contract terms</a>
-          </li>
-        ))}
+      {items === null && !error && (
+        <ul className="pcards" aria-hidden="true">{[0, 1, 2].map(i => <li key={i} className="pcard is-skeleton"><span className="pcard-media" /><span className="pcard-body" /></li>)}</ul>
+      )}
+      <ul className="pcards">
+        {shown?.map(p => <ProjectCard key={p.id} p={p} />)}
       </ul>
     </main>
   );

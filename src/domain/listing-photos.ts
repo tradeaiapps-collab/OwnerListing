@@ -27,6 +27,9 @@ export const PHOTO_LIMITS = {
   tourUrlMax: 500
 } as const;
 
+/** Investor project galleries (project-photos.ts): photos only, a lower cap. Here so browser code can read it. */
+export const PROJECT_PHOTO_MAX = 30;
+
 export type PhotoSize = "thumb" | "medium" | "full";
 export const VARIANT_WIDTH: Record<Exclude<PhotoSize, "full">, number> = { thumb: 480, medium: 1280 };
 
@@ -216,22 +219,25 @@ export function coverOf(layout: Layout, photos: ReadonlyMap<string, PhotoRecord>
 export interface CardPhoto { photoCount: number; cover?: { id: string; width: number; height: number; srcSet: string; alt: string } }
 
 /** Fields a browse card needs: cover image (with srcset) and the visible photo count. */
-export function cardPhoto(c: { cover: PhotoView | null; photoCount: number } | undefined): CardPhoto {
+export function cardPhoto(c: { cover: PhotoView | null; photoCount: number } | undefined, base = PHOTO_BASE): CardPhoto {
   if (!c?.cover) return { photoCount: c?.photoCount ?? 0 };
   const v = c.cover;
-  return { photoCount: c.photoCount, cover: { id: v.id, width: v.width, height: v.height, srcSet: srcSetFor(v), alt: v.alt || v.caption } };
+  return { photoCount: c.photoCount, cover: { id: v.id, width: v.width, height: v.height, srcSet: srcSetFor(v, base), alt: v.alt || v.caption } };
 }
 
-/** Public, unguessable URL of one size of a photo. */
-export const photoUrl = (id: string, size: PhotoSize = "full") => (size === "full" ? `/api/photos/${id}` : `/api/photos/${id}?size=${size}`);
+/** Where listing photos are served. Investor project photos use their own routes (see project-photos.ts). */
+export const PHOTO_BASE = "/api/photos";
+
+/** Unguessable URL of one size of a photo. */
+export const photoUrl = (id: string, size: PhotoSize = "full", base = PHOTO_BASE) => (size === "full" ? `${base}/${id}` : `${base}/${id}?size=${size}`);
 
 /** srcset with the real width of each stored size (a resized copy is never wider than the original). */
-export function srcSetFor(v: Pick<PhotoView, "id" | "width" | "sizes">): string {
+export function srcSetFor(v: Pick<PhotoView, "id" | "width" | "sizes">, base = PHOTO_BASE): string {
   const parts: string[] = [];
   for (const s of v.sizes) {
     const w = s === "full" ? v.width : Math.min(VARIANT_WIDTH[s], v.width);
     if (s !== "full" && w >= v.width) continue;
-    parts.push(`${photoUrl(v.id, s)} ${w}w`);
+    parts.push(`${photoUrl(v.id, s, base)} ${w}w`);
   }
   return parts.join(", ");
 }

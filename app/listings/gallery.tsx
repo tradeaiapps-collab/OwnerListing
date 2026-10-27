@@ -1,6 +1,6 @@
 "use client";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { altFor, photoUrl, srcSetFor, type PhotoView } from "../../src/domain/listing-photos";
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
+import { altFor, PHOTO_BASE, photoUrl, srcSetFor, type PhotoView } from "../../src/domain/listing-photos";
 import "../styles/gallery.css";
 
 type Tab = "photo" | "floorplan";
@@ -19,25 +19,34 @@ function useNarrow(): boolean {
   return narrow;
 }
 
+/** Route the images come from: listing photos by default, investor project photos set their own. */
+const PhotoBase = createContext(PHOTO_BASE);
+
 function Img({ v, sizes, alt, eager, className }: { v: PhotoView; sizes: string; alt: string; eager?: boolean; className?: string | undefined }) {
+  const base = useContext(PhotoBase);
   return (
-    <img className={className} src={photoUrl(v.id)} srcSet={srcSetFor(v) || undefined} sizes={sizes} width={v.width} height={v.height}
+    <img className={className} src={photoUrl(v.id, "full", base)} srcSet={srcSetFor(v, base) || undefined} sizes={sizes} width={v.width} height={v.height}
       alt={alt} loading={eager ? "eager" : "lazy"} decoding="async" draggable={false} />
   );
 }
 
 /**
  * Full-screen viewer: arrow keys, Esc, swipe, thumbnail strip, counter, focus kept inside, focus returned on close.
+ * Photos slide in from the side they come from. With `info`, a details panel slides in beside the photo (wide screens).
  * Uses the native modal dialog, so the page behind is inert for keyboard and screen readers.
  */
-function Lightbox({ items, index, title, onIndex, onClose }: {
-  items: PhotoView[]; index: number; title: string; onIndex: (i: number) => void; onClose: () => void;
+function Lightbox({ items, index, title, onIndex, onClose, info }: {
+  items: PhotoView[]; index: number; title: string; onIndex: (i: number) => void; onClose: () => void; info?: string | undefined;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const strip = useRef<HTMLDivElement>(null);
   const start = useRef<{ x: number; y: number } | null>(null);
+  const dir = useRef<"next" | "prev" | "">("");
+  const [panel, setPanel] = useState(true);
+  const base = useContext(PhotoBase);
   const total = items.length;
-  const go = useCallback((d: number) => onIndex((index + d + total) % total), [index, total, onIndex]);
+  const show = useCallback((i: number) => { dir.current = i === index ? "" : i > index ? "next" : "prev"; onIndex(i); }, [index, onIndex]);
+  const go = useCallback((d: number) => { dir.current = d > 0 ? "next" : "prev"; onIndex((index + d + total) % total); }, [index, total, onIndex]);
 
   useEffect(() => {
     const dlg = ref.current;
@@ -59,8 +68,8 @@ function Lightbox({ items, index, title, onIndex, onClose }: {
   function onKey(e: React.KeyboardEvent) {
     if (e.key === "ArrowRight") { e.preventDefault(); go(1); }
     else if (e.key === "ArrowLeft") { e.preventDefault(); go(-1); }
-    else if (e.key === "Home") { e.preventDefault(); onIndex(0); }
-    else if (e.key === "End") { e.preventDefault(); onIndex(total - 1); }
+    else if (e.key === "Home") { e.preventDefault(); show(0); }
+    else if (e.key === "End") { e.preventDefault(); show(total - 1); }
     else if (e.key === "Tab") {
       // Keep Tab inside the viewer (the dialog is modal, this also stops focus reaching the browser bar between items).
       const f = Array.from(ref.current?.querySelectorAll<HTMLElement>("button:not([disabled]), a[href]") ?? []);
@@ -74,11 +83,14 @@ function Lightbox({ items, index, title, onIndex, onClose }: {
   const v = items[index]!;
   const alt = altFor(v, index, total, title);
   return (
-    <dialog ref={ref} className="gl-box" aria-label={`Photo viewer: ${title}`} onKeyDown={onKey}
+    <dialog ref={ref} className={info && panel ? "gl-box has-panel" : "gl-box"} aria-label={`Photo viewer: ${title}`} onKeyDown={onKey}
       onCancel={e => { e.preventDefault(); onClose(); }}>
       <div className="gl-top">
         <p className="gl-counter" aria-live="polite">{index + 1} of {total}</p>
-        <button type="button" className="gl-close" onClick={onClose} aria-label="Close photo viewer">Close</button>
+        <div className="gl-top-tools">
+          {info && <button type="button" className="gl-close gl-info-btn" aria-expanded={panel} onClick={() => setPanel(!panel)}>{panel ? "Hide details" : "Details"}</button>}
+          <button type="button" className="gl-close" onClick={onClose} aria-label="Close photo viewer">Close</button>
+        </div>
       </div>
       <div className="gl-stage"
         onPointerDown={e => { if (e.pointerType !== "mouse") start.current = { x: e.clientX, y: e.clientY }; }}
@@ -90,21 +102,29 @@ function Lightbox({ items, index, title, onIndex, onClose }: {
           if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy)) go(dx < 0 ? 1 : -1);
         }}>
         {total > 1 && <button type="button" className="gl-nav gl-prev" onClick={() => go(-1)} aria-label="Previous photo">‹</button>}
-        <figure className="gl-figure">
+        <figure key={v.id} className={dir.current ? `gl-figure gl-from-${dir.current}` : "gl-figure"}>
           <Img key={v.id} v={v} sizes="100vw" alt={alt} eager className={v.kind === "floorplan" ? "gl-img gl-plan" : "gl-img"} />
           {v.caption && <figcaption>{v.caption}</figcaption>}
         </figure>
         {total > 1 && <button type="button" className="gl-nav gl-next" onClick={() => go(1)} aria-label="Next photo">›</button>}
         {/* Preload the neighbours so arrows feel instant. */}
         {total > 1 && [items[(index + 1) % total]!, items[(index - 1 + total) % total]!].map(n => (
-          <link key={n.id} rel="preload" as="image" href={photoUrl(n.id)} imageSrcSet={srcSetFor(n) || undefined} imageSizes="100vw" />
+          <link key={n.id} rel="preload" as="image" href={photoUrl(n.id, "full", base)} imageSrcSet={srcSetFor(n, base) || undefined} imageSizes="100vw" />
         ))}
       </div>
+      {info && (
+        <aside className="gl-panel" aria-label="Photo details" hidden={!panel}>
+          <h2>{title}</h2>
+          <p className="gl-panel-sub">{info}</p>
+          <p className="gl-panel-n">Photo {index + 1} of {total}</p>
+          {v.caption ? <p>{v.caption}</p> : <p className="gl-panel-sub">No caption.</p>}
+        </aside>
+      )}
       {total > 1 && (
         <div className="gl-strip" ref={strip} role="group" aria-label="All photos">
           {items.map((p, i) => (
             <button key={p.id} type="button" data-i={i} className="gl-thumb" aria-current={i === index ? "true" : undefined}
-              aria-label={`Show ${p.kind === "floorplan" ? "floor plan" : "photo"} ${i + 1} of ${total}`} onClick={() => onIndex(i)}>
+              aria-label={`Show ${p.kind === "floorplan" ? "floor plan" : "photo"} ${i + 1} of ${total}`} onClick={() => show(i)}>
               <Img v={p} sizes="96px" alt="" />
             </button>
           ))}
@@ -222,5 +242,37 @@ export function ListingGallery({ listingId, title }: { listingId: string; title:
       )}
       {open !== null && items[open] && <Lightbox items={items} index={open} title={title} onIndex={setOpen} onClose={() => setOpen(null)} />}
     </section>
+  );
+}
+
+/**
+ * Gallery for photos the caller already has (investor projects): hero grid on wide screens, swipe carousel on phones,
+ * and the sliding full-screen viewer with a details panel. `base` is the route the images are served from.
+ */
+export function PhotoGallery({ photos, title, base, info, compact }: { photos: PhotoView[]; title: string; base: string; info?: string; compact?: boolean }) {
+  const [open, setOpen] = useState<number | null>(null);
+  const narrow = useNarrow();
+  if (photos.length === 0) return null;
+  return (
+    <PhotoBase.Provider value={base}>
+      <section className={compact ? "gl gl-compact" : "gl"} aria-label="Photos">
+        {compact ? (
+          <ul className="gl-mini">
+            {photos.map((v, i) => (
+              <li key={v.id}>
+                <button type="button" className="gl-mini-btn" onClick={() => setOpen(i)} aria-label={`Open ${altFor(v, i, photos.length, title)} full screen`}>
+                  <Img v={v} sizes="160px" alt="" />
+                  {v.hidden && <span className="gl-badge">Hidden</span>}
+                  {i === photos.findIndex(x => !x.hidden) && <span className="gl-badge is-cover">Cover</span>}
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : narrow
+          ? <Carousel items={photos} title={title} onOpen={setOpen} />
+          : <HeroGrid items={photos} title={title} onOpen={setOpen} label={photos.length === 1 ? "photo" : "photos"} />}
+        {open !== null && photos[open] && <Lightbox items={photos} index={open} title={title} onIndex={setOpen} onClose={() => setOpen(null)} info={info} />}
+      </section>
+    </PhotoBase.Provider>
   );
 }

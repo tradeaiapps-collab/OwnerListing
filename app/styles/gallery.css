@@ -67,6 +67,29 @@ html.gl-lock { overflow: hidden; }
 .gl-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .gl-thumb[aria-current="true"] { opacity: 1; border-color: var(--gl-on-backdrop, #fff); }
 .gl-thumb:hover:not(:disabled) { opacity: 1; background: transparent; }
+.gl-top-tools { display: flex; gap: var(--space-2); }
+/* Photos slide in from the side they come from. */
+@media (prefers-reduced-motion: no-preference) {
+  .gl-from-next { animation: gl-in-next 0.28s ease-out; }
+  .gl-from-prev { animation: gl-in-prev 0.28s ease-out; }
+  .gl-panel { animation: gl-panel-in 0.24s ease-out; }
+}
+@keyframes gl-in-next { from { opacity: 0; transform: translateX(48px); } to { opacity: 1; transform: none; } }
+@keyframes gl-in-prev { from { opacity: 0; transform: translateX(-48px); } to { opacity: 1; transform: none; } }
+@keyframes gl-panel-in { from { opacity: 0; transform: translateX(32px); } to { opacity: 1; transform: none; } }
+/* Details panel beside the photo (wide screens only; phones keep the full width for the photo). */
+.gl-panel { display: none; }
+@media (min-width: 960px) {
+  .gl-box.has-panel { grid-template-columns: minmax(0, 1fr) 20rem; }
+  .gl-box.has-panel .gl-top { grid-column: 1 / -1; }
+  .gl-box.has-panel .gl-stage, .gl-box.has-panel .gl-strip { grid-column: 1; }
+  .gl-box.has-panel .gl-panel:not([hidden]) { display: block; grid-column: 2; grid-row: 2 / span 2; overflow-y: auto; padding: var(--space-4) var(--space-6); border-left: 1px solid color-mix(in srgb, currentColor 18%, transparent); }
+  .gl-panel h2 { margin: 0 0 var(--space-2); font-size: 1.125rem; color: inherit; overflow-wrap: anywhere; }
+  .gl-panel p { margin: 0 0 var(--space-3); overflow-wrap: anywhere; }
+  .gl-panel-sub { opacity: 0.75; }
+  .gl-panel-n { font-weight: 600; }
+}
+@media (max-width: 959px) { .gl-info-btn { display: none; } }
 @media (max-width: 719px) {
   .gl-stage { grid-template-columns: 1fr; padding: 0; }
   .gl-nav { display: none; }
@@ -102,3 +125,11 @@ html.gl-lock { overflow: hidden; }
 .gl-savebar { position: sticky; bottom: 0; z-index: 5; display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); margin-top: var(--space-4); padding: var(--space-3) var(--space-4); background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow-2); }
 .gl-savebar p { margin: 0; }
 @media (prefers-reduced-motion: reduce) { .gl-cell img, .gl-cell:hover img { transition: none; transform: none; } }
+
+/* Compact strip (staff review): small thumbnails that open the same viewer. */
+.gl-compact { margin: var(--space-2) 0; }
+.gl-mini { list-style: none; margin: 0; padding: 0 0 var(--space-1); display: flex; gap: var(--space-2); overflow-x: auto; scrollbar-width: thin; }
+.gl-mini > li { flex: 0 0 auto; }
+.gl-mini-btn { position: relative; display: block; width: 128px; height: 88px; min-height: 0; padding: 0; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; background: var(--surface); box-shadow: none; cursor: zoom-in; }
+.gl-mini-btn:hover:not(:disabled) { background: var(--surface); border-color: var(--brand); }
+.gl-mini-btn .gl-badge { position: absolute; left: 4px; top: 4px; }
