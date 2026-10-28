@@ -96,7 +96,7 @@ describe("safe return path", () => {
 
   const callback = async (nextValue: string | undefined) => {
     env();
-    state.db = { async query() { return { rows: [{ id: "u9", user_type: "buyer", status: "active" }] }; } };
+    state.db = { async query(t) { return { rows: /FROM mfa_factor/.test(t) ? [] : [{ id: "u9", user_type: "buyer", status: "active" }] }; } };
     const cookies = ["ol_state=s1", "ol_nonce=n1", "ol_verifier=v1", "ol_role=buyer", ...(nextValue === undefined ? [] : [`ol_next=${nextValue}`])].join("; ");
     return callbackGet(new Request("http://x/api/auth/google/callback?code=c&state=s1", { headers: { cookie: cookies } }));
   };

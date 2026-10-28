@@ -60,6 +60,8 @@ export default function Offers() {
     }).catch(() => null);
     const d = r ? await r.json().catch(() => ({})) : {};
     setDeciding(false);
+    // Accepting needs a recent second-step check: confirm it, then come back here and accept again.
+    if (r?.status === 403 && d.code === "mfa_required") return window.location.assign(`/mfa?next=${encodeURIComponent(`/listings/${id}/offers`)}`);
     setPending(null);
     setNotice(r?.ok ? "Decision recorded." : d.error ?? "Could not record that decision.");
     load();

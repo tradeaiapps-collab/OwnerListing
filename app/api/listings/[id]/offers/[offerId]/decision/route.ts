@@ -8,6 +8,7 @@ import { csrfGuard } from "../../../../../../../src/server/csrf";
 import { CAN_EXPIRE } from "../../../../../../../src/domain/offer-counter";
 import { expireCountersPg } from "../../../../../../../src/server/offer-counter-db";
 import { withApi } from "../../../../../../../src/server/api/with-api";
+import { requireRecentMfa } from "../../../../../../../src/server/mfa-context";
 
 type Ctx = { params: Promise<{ id: string; offerId: string }> };
 
@@ -17,6 +18,7 @@ const conflict = { ok: false, code: "conflict", message: "This offer can no long
 /**
  * The owner accepts, rejects or asks for a counter on an offer. Owner only; the AI has no route here and never accepts.
  * This only records the decision: no money moves and no funds are held (deposits go to the solicitor's trust account).
+ * Accepting needs a second-factor check in the last 15 minutes (403 mfa_required otherwise).
  */
 async function handlePost(req: Request, { params }: Ctx) {
   const blocked = csrfGuard(req);
@@ -28,6 +30,10 @@ async function handlePost(req: Request, { params }: Ctx) {
   const { id, offerId } = await params;
   const decision = parseDecision(await req.json().catch(() => null));
   if (!decision) return failure({ ok: false, code: "invalid", message: "Decision must be accept, reject or counter_request." });
+  if (decision === "accept") {
+    const stale = await requireRecentMfa(req);
+    if (stale) return stale;
+  }
   if (!isUuid(offerId)) return failure(notFound);
   const deps = getDeps();
   const rec = await deps.repo.get(id);

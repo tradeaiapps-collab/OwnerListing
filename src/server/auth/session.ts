@@ -6,6 +6,8 @@ export interface SessionPayload {
   ut: "owner" | "agent" | "buyer" | "vendor";
   /** Expiry, seconds since epoch. */
   exp: number;
+  /** When this session last passed a second-factor check (seconds since epoch). Absent until it has. */
+  mfa?: number;
 }
 
 const b64 = (buf: Buffer) => buf.toString("base64url");
@@ -32,7 +34,8 @@ export function verifySession(token: string | undefined, secret: string, nowSeco
     const p = JSON.parse(Buffer.from(body, "base64url").toString("utf8")) as Partial<SessionPayload>;
     if (typeof p.uid !== "string" || (p.ut !== "owner" && p.ut !== "agent" && p.ut !== "buyer" && p.ut !== "vendor") || typeof p.exp !== "number") return null;
     if (p.exp <= nowSeconds) return null;
-    return { uid: p.uid, ut: p.ut, exp: p.exp };
+    if (p.mfa !== undefined && typeof p.mfa !== "number") return null;
+    return { uid: p.uid, ut: p.ut, exp: p.exp, ...(p.mfa !== undefined ? { mfa: p.mfa } : {}) };
   } catch {
     return null;
   }

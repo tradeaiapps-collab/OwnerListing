@@ -45,7 +45,8 @@ async function handlePost(req: Request) {
     return NextResponse.json({ error: "User accounts sign in on the public site." }, { status: 400 });
   }
   const res = NextResponse.json({ ok: true, redirect: ut === "buyer" ? "/buyer/saved-searches" : "/dashboard" });
-  res.cookies.set(SESSION_COOKIE, signSession({ uid: userId, ut, exp: now + SESSION_TTL_SECONDS }, secret), { ...opts, maxAge: SESSION_TTL_SECONDS });
+  // Seeded demo accounts have no second factor; this local-only sign-in stands in for it (never reachable off localhost, see devLoginAllowed).
+  res.cookies.set(SESSION_COOKIE, signSession({ uid: userId, ut, exp: now + SESSION_TTL_SECONDS, mfa: now }, secret), { ...opts, maxAge: SESSION_TTL_SECONDS });
   res.cookies.set(STAFF_COOKIE, "", { ...opts, maxAge: 0 });
   return res;
 }

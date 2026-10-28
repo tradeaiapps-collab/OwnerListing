@@ -27,7 +27,8 @@ const secret = "s".repeat(40);
 const now = 1_800_000_000;
 const uid = "11111111-1111-4111-8111-111111111111";
 const req = (token: string) => new Request("http://x", { headers: { cookie: `${SESSION_COOKIE}=${token}` } });
-const cookieFor = (ut: "owner" | "agent" | "buyer") => signSession({ uid, ut, exp: now + 100 }, secret);
+const cookieFor = (ut: "owner" | "agent" | "buyer", mfa: number | undefined = now - 10) =>
+  signSession({ uid, ut, exp: now + 100, ...(mfa !== undefined ? { mfa } : {}) }, secret);
 
 /** Fake app_user table: answers the per-request lookup the way Postgres would for the given row (or none). */
 function usersDb(row: { id: string; user_type: string; status: string } | null): Queryable {
@@ -35,7 +36,7 @@ function usersDb(row: { id: string; user_type: string; status: string } | null):
     async query(text, params = []) {
       expect(text).toMatch(/FROM app_user/);
       const [id, type] = params as [string, string];
-      return { rows: row && row.id === id && row.user_type === type && row.status === "active" ? [{ id: row.id, user_type: row.user_type }] : [] };
+      return { rows: row && row.id === id && row.user_type === type && row.status === "active" ? [{ id: row.id, user_type: row.user_type, mfa_enrolled: true, mfa_revoked_at: null }] : [] };
     }
   };
 }

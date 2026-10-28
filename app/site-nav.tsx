@@ -41,7 +41,10 @@ export default function SiteNav({ items, iconStyle, signInHref }: { items?: NavI
     void get("/api/investments/status").then(s => setInvest(s?.live === true));
     Promise.all([get("/api/auth/me"), get("/api/staff/me")]).then(([me, staff]) => {
       if (staff?.staff) setWho("staff");
-      else if (me?.user) setWho(me.user.userType === "buyer" ? "buyer" : "owner");
+      else if (me?.mfaPending && window.location.pathname !== "/mfa") {
+        // Signed in with Google but the second step is still to do: every API treats the session as signed out until then.
+        window.location.assign(`/mfa?next=${encodeURIComponent(window.location.pathname + window.location.search)}`);
+      } else if (me?.user) setWho(me.user.userType === "buyer" ? "buyer" : "owner");
       else setWho("out");
     });
   }, []);

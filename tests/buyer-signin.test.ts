@@ -124,7 +124,14 @@ describe("sign-in routes", () => {
 
   const callback = async (roleValue: string | undefined, dbRowType: string) => {
     const seen: unknown[][] = [];
-    state.db = { async query(_t, params) { seen.push(params ?? []); return { rows: [{ id: "u9", user_type: dbRowType, status: "active" }] }; } };
+    state.db = {
+      async query(t, params) {
+        // No second factor enrolled: the MFA lookup finds nothing.
+        if (/FROM mfa_factor/.test(t)) return { rows: [] };
+        seen.push(params ?? []);
+        return { rows: [{ id: "u9", user_type: dbRowType, status: "active" }] };
+      }
+    };
     const cookies = ["ol_state=s1", "ol_nonce=n1", "ol_verifier=v1", ...(roleValue === undefined ? [] : [`ol_role=${roleValue}`])].join("; ");
     const res = await callbackGet(new Request("http://x/api/auth/google/callback?code=c&state=s1", { headers: { cookie: cookies } }));
     return { res, requested: seen[0]?.[3] };
@@ -142,14 +149,15 @@ describe("sign-in routes", () => {
     for (const v of [undefined, "owner", "agent", "admin", "junk"]) {
       const { res, requested } = await callback(v, "owner");
       expect(requested).toBe("owner");
-      expect(res.headers.get("location")).toBe("https://app.example.com/listings/new");
+      // Owners always take the second sign-in step first, then go on to the same place.
+      expect(res.headers.get("location")).toBe("https://app.example.com/mfa?next=%2Flistings%2Fnew");
     }
   });
   it("lets an existing owner who picks buyer stay an owner", async () => {
     const { res } = await callback("buyer", "owner");
     const token = /ol_session=([^;]*)/.exec(res.headers.get("set-cookie") ?? "")?.[1];
     expect(verifySession(token, secret, Math.floor(Date.now() / 1000))?.ut).toBe("owner");
-    expect(res.headers.get("location")).toBe("https://app.example.com/listings/new");
+    expect(res.headers.get("location")).toBe("https://app.example.com/mfa?next=%2Flistings%2Fnew");
   });
   it("fails the login for a staff account", async () => {
     const { res } = await callback("buyer", "admin");
