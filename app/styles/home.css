@@ -182,6 +182,15 @@ a.home-link:hover::after { transform: translateX(4px); }
 .home .home-cta a.button.secondary:hover { background: color-mix(in srgb, var(--hero-ink) 12%, transparent); color: var(--hero-ink); border-color: var(--hero-ink); }
 .home .home-cta a:focus-visible { outline-color: var(--hero-ink); }
 
+/* AI assistant greeter: the persona chosen at /staff/assistant. */
+.home-greeter-in { display: grid; gap: var(--space-6); align-items: center; }
+.home-greeter-photo { margin: 0; width: min(100%, 360px); justify-self: center; aspect-ratio: 1; border-radius: calc(var(--radius) + 6px); overflow: hidden; background: var(--surface); box-shadow: var(--shadow-2); border: 1px solid var(--line); }
+.home-greeter-photo.is-full { aspect-ratio: 4 / 5; }
+.home-greeter-photo img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: 50% 12%; }
+.home .home-greeter h2 { margin-bottom: var(--space-2); }
+.home-greeter-label { display: inline-flex; margin: 0 0 var(--space-4); padding: var(--space-1) var(--space-3); border-radius: 999px; background: var(--gold-tint); color: var(--link, var(--gold)); font-size: 0.8125rem; font-weight: 600; }
+.home-greeter-copy > p:not(.eyebrow):not(.home-greeter-label) { margin: 0 0 var(--space-6); max-width: 52ch; color: var(--muted); font-size: 1.0625rem; }
+
 @media (min-width: 600px) {
   .hc-track { grid-auto-columns: calc((100% - var(--space-4)) / 2); margin: 0; padding-inline: 0; }
   .home-tiles { grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr)); }
@@ -208,6 +217,8 @@ a.home-link:hover::after { transform: translateX(4px); }
   .home-calc { grid-template-columns: 0.8fr 1.2fr; gap: var(--space-12); }
   .sc { padding: var(--space-8); }
   .sc-fields { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .home-greeter-in { grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr); gap: var(--space-12); }
+  .home-greeter-photo { justify-self: stretch; width: 100%; max-width: 420px; }
   .home-faq { display: grid; grid-template-columns: 0.6fr 1.4fr; gap: var(--space-12); align-items: start; }
   .home-cta { padding: 120px 0; }
   .home-cta-in { grid-template-columns: 1fr auto; }

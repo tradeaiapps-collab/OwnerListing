@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { GUIDE_INTENTS, type GuideContent, type GuideIntent } from "../../../src/domain/guide-assistant";
 import Breadcrumbs from "../../breadcrumbs";
 import { loadError } from "../staff-api";
+import PersonaPicker from "./persona-picker";
 import "../../styles/staff.css";
 import "../../styles/site-editor.css";
 import "../../styles/assistant.css";
@@ -43,7 +44,7 @@ export default function StaffAssistant() {
     setView(d as View); setC(structuredClone((d as View).draft)); setNote(ok);
   };
 
-  if (!view || !c) return <main><h1>Guide assistant</h1>{error ? <p role="alert">{error}</p> : <p className="muted" role="status">Loading…</p>}</main>;
+  if (!view || !c) return <main className="ga-staff"><h1>Guide assistant</h1>{error ? <p role="alert">{error}</p> : <p className="muted" role="status">Loading…</p>}<PersonaPicker /></main>;
   const L = view.limits;
   const up = (f: (x: GuideContent) => void) => setC(cur => { const n = structuredClone(cur!); f(n); return n; });
   const fe = (p: string) => (fields[p] ? <small className="se-err" role="alert">{fields[p]}</small> : null);
@@ -58,6 +59,8 @@ export default function StaffAssistant() {
       <p className="staff-notice">Live version: <strong>{view.liveVersion ?? "built-in defaults"}</strong>. Draft version: <strong>{view.draftVersion ?? "none"}</strong>.{unsaved && " You have unsaved changes."}</p>
       {error && <p role="alert" className="ga-error">{error}</p>}
       {note && <p role="status">{note}</p>}
+
+      <PersonaPicker />
 
       <section className="panel" aria-labelledby="ga-h-main">
         <h2 id="ga-h-main">Switch and greeting</h2>

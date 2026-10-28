@@ -1,5 +1,4 @@
 "use client";
-import { useEffect, useState } from "react";
 
 export type Who = { state: "loading" } | { state: "out" } | { state: "in"; role: string };
 
@@ -11,31 +10,27 @@ export function whoFromStaffMe(body: unknown): Who {
   return { state: "in", role: label };
 }
 
-/** Admin site header links. Shows the signed-in staff member's role label with a Sign out button, or "Sign in" when signed out. Read only: routes still enforce access. */
-export default function AdminNav() {
-  const [who, setWho] = useState<Who>({ state: "loading" });
+const initials = (role: string) => role.split(/[\s_]+/).filter(Boolean).slice(0, 2).map(w => w[0]?.toUpperCase()).join("") || "S";
 
-  useEffect(() => {
-    fetch("/api/staff/me").then(r => (r.ok ? r.json() : null)).catch(() => null).then(b => {
-      setWho(whoFromStaffMe(b));
-    });
-  }, []);
-
-  const signOut = async () => {
-    await fetch("/api/auth/logout", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" }).catch(() => null);
-    window.location.assign("/staff");
-  };
-
-  return <AdminNavView who={who} onSignOut={signOut} />;
-}
-
+/** The signed-in staff member's card at the foot of the admin sidebar: role label and Sign out, or Sign in when signed out. Read only: routes still enforce access. */
 export function AdminNavView({ who, onSignOut }: { who: Who; onSignOut?: () => void }) {
   return (
-    <nav className="site-nav" aria-label="Admin">
-      <a href="/staff">Staff home</a>
-      {who.state === "in" && <span className="nav-role" aria-label={`Signed in as ${who.role}`}>{who.role}</span>}
-      {who.state === "in" && <button type="button" className="nav-signout" onClick={onSignOut}>Sign out</button>}
-      {who.state === "out" && <a href="/api/auth/google/start?as=staff">Sign in</a>}
-    </nav>
+    <div className="admin-user" aria-label="Your staff account" role="group">
+      {who.state === "loading" && <span className="admin-user-skeleton" aria-hidden="true" />}
+      {who.state === "in" && (
+        <>
+          <span className="admin-avatar" aria-hidden="true">{initials(who.role)}</span>
+          <span className="admin-user-text">
+            <span className="admin-user-label">Signed in as</span>
+            <span className="nav-role" aria-label={`Signed in as ${who.role}`}>{who.role}</span>
+          </span>
+          <button type="button" className="nav-signout" onClick={onSignOut} aria-label="Sign out" title="Sign out">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M14 4h5v16h-5M10 8l-4 4 4 4M6 12h10" /></svg>
+            <span className="admin-signout-text">Sign out</span>
+          </button>
+        </>
+      )}
+      {who.state === "out" && <a className="button admin-signin" href="/api/auth/google/start?as=staff">Sign in</a>}
+    </div>
   );
 }

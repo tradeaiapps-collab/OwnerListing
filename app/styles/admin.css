@@ -1,8 +1,8 @@
-/* Admin dashboard: KPI tiles, charts (inline SVG), filters and moderation tables. Series colours are validated for colour-blind
-   separation in each mode; aqua sits under 3:1 on white, so every chart also has labels or a table view. */
-.admin-page { max-width: var(--container); --series-1: #2a78d6; --series-2: #eb6834; --series-3: #1baf7a; }
+/* Admin dashboard: KPI tiles, charts (inline SVG), filters and moderation tables. Series colours follow the brand (navy, gold, teal),
+   differ in lightness as well as hue for colour-blind separation, and every chart also has labels or a table view. */
+.admin-page { max-width: var(--container); --series-1: #1f3a6b; --series-2: #b8862f; --series-3: #2c8a78; }
 @media (prefers-color-scheme: dark) {
-  .admin-page { --series-1: #3987e5; --series-2: #d95926; --series-3: #199e70; }
+  .admin-page { --series-1: #8fb0e8; --series-2: #d4b37a; --series-3: #4fbfa4; }
 }
 
 .kpis { display: grid; gap: var(--space-3); grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr)); margin: var(--space-4) 0 var(--space-6); }
@@ -21,8 +21,8 @@
 .bars { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-2); }
 .bars li { display: grid; grid-template-columns: minmax(6rem, 9rem) 1fr auto; align-items: center; gap: var(--space-2); max-width: none; }
 .bar-label { color: var(--muted); font-size: 0.875rem; }
-.bar-track { height: 12px; }
-.bar-fill { display: block; height: 100%; min-width: 2px; background: var(--series-1); border-radius: 0 6px 6px 0; transform-origin: left; }
+.bar-track { height: 10px; border-radius: 999px; background: color-mix(in srgb, var(--surface) 80%, var(--bg)); overflow: hidden; }
+.bar-fill { display: block; height: 100%; min-width: 2px; background: linear-gradient(90deg, var(--series-1), color-mix(in srgb, var(--series-1) 70%, var(--series-2))); border-radius: 999px; transform-origin: left; }
 @media (prefers-reduced-motion: no-preference) { .bar-fill { animation: bar-grow 0.9s var(--ease) both; } }
 @keyframes bar-grow { from { transform: scaleX(0); } }
 .bar-value { font-variant-numeric: tabular-nums; font-size: 0.875rem; color: var(--text); }

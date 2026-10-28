@@ -105,7 +105,7 @@ export function LineChart({ title, labels, series, format = String }: {
                 <text className="axis" x={PAD.l - 6} y={y(t) + 4} textAnchor="end">{format(t)}</text>
               </g>
             ))}
-            {labels.map((l, i) => (i % every === 0 || i === n - 1) && (
+            {labels.map((l, i) => ((i % every === 0 && n - 1 - i >= Math.ceil(every / 2)) || i === n - 1) && (
               <text key={l + i} className="axis" x={x(i)} y={H - 8} textAnchor={n > 1 && i === n - 1 ? "end" : i === 0 && n > 1 ? "start" : "middle"}>{l}</text>
             ))}
             {shown.map((s, si) => (
