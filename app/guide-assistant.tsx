@@ -1,5 +1,6 @@
 "use client";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { personaLabel, type Persona } from "../src/domain/assistant-persona";
 import { GUIDE_LIMITS, suggestedChips, type GuideChip, type GuideIntent, type GuideLink } from "../src/domain/guide-assistant";
 import "./styles/assistant.css";
 
@@ -8,8 +9,14 @@ interface Msg { id: number; from: "guide" | "you"; text: string; links?: GuideLi
 /**
  * Floating guide assistant on every public page. Rule based; answers come from POST /api/assistant.
  * PRIVACY: the conversation lives only in this component's memory. It is not saved in the browser or on the server and is gone on reload.
+ * It shows the persona staff chose at /staff/assistant (Elena by default), always labelled as an AI assistant. Any element can open it
+ * by dispatching OPEN_GUIDE_EVENT on window (the home page greeter does).
  */
-export default function GuideAssistant({ greeting, chips, disclaimer }: { greeting: string; chips: GuideChip[]; disclaimer: string }) {
+export const OPEN_GUIDE_EVENT = "ol:open-guide";
+
+export default function GuideAssistant({ greeting, chips, disclaimer, persona }: {
+  greeting: string; chips: GuideChip[]; disclaimer: string; persona: Pick<Persona, "name" | "icon">;
+}) {
   const [open, setOpen] = useState(false);
   const [msgs, setMsgs] = useState<Msg[]>([{ id: 0, from: "guide", text: greeting }]);
   const [quick, setQuick] = useState<GuideChip[]>(chips);
@@ -25,6 +32,12 @@ export default function GuideAssistant({ greeting, chips, disclaimer }: { greeti
   useEffect(() => { setQuick(suggestedChips({ chips }, window.location.pathname)); }, [chips]);
 
   const close = useCallback(() => { setOpen(false); launcher.current?.focus(); }, []);
+
+  useEffect(() => {
+    const onOpen = () => setOpen(true);
+    window.addEventListener(OPEN_GUIDE_EVENT, onOpen);
+    return () => window.removeEventListener(OPEN_GUIDE_EVENT, onOpen);
+  }, []);
 
   useEffect(() => {
     if (!open) return;
@@ -66,33 +79,34 @@ export default function GuideAssistant({ greeting, chips, disclaimer }: { greeti
   return (
     <>
       <button ref={launcher} type="button" className="ga-launcher" aria-haspopup="dialog" aria-expanded={open} onClick={() => (open ? close() : setOpen(true))}>
-        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-          <path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12Z" /><path d="M9 10h.01M12 10h.01M15 10h.01" />
-        </svg>
-        <span>{open ? "Close help" : "Need help?"}</span>
+        <img className="ga-avatar" src={persona.icon} alt="" width={40} height={40} />
+        <span>{open ? "Close help" : `Ask ${persona.name}`}</span>
       </button>
       {open && (
         <div ref={panel} className="ga-panel" role="dialog" aria-modal="true" aria-labelledby={titleId} aria-describedby={descId}>
           <div className="ga-head">
-            <div>
-              <h2 id={titleId}>Site guide</h2>
-              <p id={descId}>Automatic answers, not a person. Nothing you type is saved.</p>
+            <div className="ga-head-who">
+              <img className="ga-avatar" src={persona.icon} alt="" width={44} height={44} />
+              <div>
+                <h2 id={titleId}>{personaLabel(persona)}</h2>
+                <p id={descId}>Automatic answers, not a person or a licensed agent. Nothing you type is saved.</p>
+              </div>
             </div>
-            <button type="button" className="ga-x" onClick={close} aria-label="Close the guide">
+            <button type="button" className="ga-x" onClick={close} aria-label={`Close the chat with ${persona.name}`}>
               <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>
             </button>
           </div>
           <ol ref={log} className="ga-log" aria-live="polite" aria-relevant="additions">
             {msgs.map(m => (
               <li key={m.id} className={`ga-msg ga-${m.from}`}>
-                <span className="ga-who">{m.from === "guide" ? "Guide" : "You"}</span>
+                <span className="ga-who">{m.from === "guide" ? persona.name : "You"}</span>
                 <p>{m.text}</p>
                 {m.links && m.links.length > 0 && (
                   <ul className="ga-links">{m.links.map(l => <li key={l.href + l.label}><a href={l.href}>{l.label} <span aria-hidden="true">→</span></a></li>)}</ul>
                 )}
               </li>
             ))}
-            {busy && <li className="ga-msg ga-guide ga-typing" aria-label="The guide is answering">…</li>}
+            {busy && <li className="ga-msg ga-guide ga-typing" aria-label={`${persona.name} is answering`}>…</li>}
           </ol>
           <div className="ga-chips" role="group" aria-label="Suggested questions">
             {quick.map(c => <button key={c.intent} type="button" onClick={() => void ask({ intent: c.intent, label: c.label })} disabled={busy}>{c.label}</button>)}

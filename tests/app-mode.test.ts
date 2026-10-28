@@ -177,6 +177,15 @@ describe("path tricks cannot bypass the split (review of #78)", () => {
     expect(isAllowed("public", "/_next/static/..%2f..%2fstaff", null, undefined)).toBe(false);
     for (const p of ["/_next/static/chunks/a.js", "/_next/image", "/api/health", "/favicon.ico"]) expect(hit(p).status, p).not.toBe(404);
   });
+  it("admin serves only the five assistant photos from /assistant, nothing else under it or beside it", () => {
+    for (const p of ["/assistant/elena-portrait.jpg", "/assistant/maya-icon.png", "/assistant/elena-greeter.jpg", "/assistant/NOOR-icon.png"]) {
+      expect(isAllowed("admin", p, null, undefined), p).toBe(true);
+    }
+    for (const p of ["/assistant", "/assistant/", "/assistant/lucy-icon.png", "/assistant/elena-icon.png/x", "/assistant/elena-icon.svg",
+      "/assistant/../listings", "/assistant/elena-icon.png%2f..%2f..%2flistings", "/hero-default.jpg"]) {
+      expect(isAllowed("admin", p, null, undefined), p).toBe(false);
+    }
+  });
   it("other methods are covered too", () => {
     setMode("public");
     for (const method of ["HEAD", "OPTIONS", "POST", "PUT", "DELETE"]) expect(hit("/api/staff/pricing", { method }).status, method).toBe(404);

@@ -7,6 +7,10 @@
   font-weight: 700; font-size: 0.9375rem; cursor: pointer;
 }
 .ga-launcher:hover { background: var(--brand-strong); }
+.ga-launcher { padding-left: var(--space-1); }
+.ga-avatar { flex: none; display: block; width: 40px; height: 40px; border-radius: 50%; object-fit: cover; background: var(--surface); box-shadow: 0 0 0 2px var(--gold, var(--accent)); }
+.ga-head-who { display: flex; align-items: center; gap: var(--space-3); min-width: 0; }
+.ga-head-who .ga-avatar { width: 44px; height: 44px; }
 .ga-launcher:focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }
 
 .ga-panel {
@@ -42,6 +46,7 @@
 @media (max-width: 599px) {
   .ga-launcher span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
   .ga-launcher { width: 56px; height: 56px; padding: 0; justify-content: center; }
+  .ga-launcher .ga-avatar { width: 48px; height: 48px; }
   .ga-panel { inset: 0; width: 100%; max-height: none; height: 100dvh; border-radius: 0; border: 0; }
   body.ga-open { overflow: hidden; }
 }
@@ -60,3 +65,26 @@
 .ga-faq textarea, .ga-staff textarea { width: 100%; }
 .ga-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); margin: var(--space-4) 0 var(--space-6); position: sticky; bottom: 0; padding: var(--space-2) 0; background: var(--bg); }
 .ga-error { color: var(--danger); font-weight: 600; }
+
+/* Staff: assistant character picker */
+.ga-persona-grid { border: 0; margin: 0 0 var(--space-4); padding: 0; min-width: 0; display: grid; gap: var(--space-3); grid-template-columns: repeat(auto-fill, minmax(min(100%, 128px), 1fr)); }
+.ga-persona-tile { position: relative; display: grid; gap: var(--space-1); align-content: start; padding: var(--space-2) var(--space-2) var(--space-3); border: 1px solid var(--line); border-radius: var(--radius); background: var(--bg); cursor: pointer; transition: border-color var(--dur-1) var(--ease), box-shadow var(--dur-1) var(--ease); }
+.ga-persona-tile:hover { border-color: color-mix(in srgb, var(--brand) 40%, var(--border)); }
+.ga-persona-tile.is-picked { border-color: var(--gold, var(--accent)); box-shadow: 0 0 0 2px var(--gold, var(--accent)); }
+.ga-persona-tile:has(input:focus-visible) { outline: 3px solid var(--focus); outline-offset: 2px; }
+.ga-persona-tile input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.ga-persona-tile img { display: block; width: 100%; height: auto; aspect-ratio: 1; object-fit: cover; border-radius: calc(var(--radius) - 4px); margin-bottom: var(--space-1); }
+.ga-persona-name { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); font-weight: 700; color: var(--heading, var(--text)); }
+.ga-persona-live { padding: 0 var(--space-2); border-radius: 999px; background: var(--ok-tint); color: var(--ok); font-size: 0.75rem; font-weight: 700; line-height: 1.6; }
+.ga-persona-kind { font-size: 0.8125rem; font-weight: 600; color: var(--link, var(--gold)); }
+.ga-persona-blurb { font-size: 0.8125rem; color: var(--muted); overflow-wrap: anywhere; }
+.ga-persona-grid:disabled .ga-persona-tile { cursor: default; }
+.ga-persona-grid:disabled .ga-persona-tile:not(.is-picked) { opacity: 0.7; }
+.ga-persona-preview { margin: 0 0 var(--space-4); }
+.ga-persona-chat { max-width: 380px; border: 1px solid var(--border); border-radius: calc(var(--radius) + 4px); overflow: hidden; background: var(--bg); }
+.ga-persona-chat-head { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3) var(--space-4); background: var(--tint); border-bottom: 1px solid var(--border); }
+.ga-persona-chat-head img { width: 40px; height: 40px; border-radius: 50%; box-shadow: 0 0 0 2px var(--gold, var(--accent)); }
+.ga-persona-chat-head div { display: grid; min-width: 0; }
+.ga-persona-chat-head span { font-size: 0.8125rem; color: var(--muted); }
+.ga-persona-bubble { margin: var(--space-3) var(--space-4); padding: var(--space-2) var(--space-3); max-width: 92%; background: var(--surface); border-radius: var(--radius); border-bottom-left-radius: 4px; font-size: 0.9375rem; }
+.ga-persona-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }

@@ -7,9 +7,11 @@ import SiteNav from "./site-nav";
 import ThemePreviewBridge from "./theme-preview-bridge";
 import "./styles/a11y.css";
 import { appOriginFor, readAppMode } from "../src/config/app-mode";
+import { personaById } from "../src/domain/assistant-persona";
 import { GUIDE_DISCLAIMER } from "../src/domain/guide-assistant";
 import { assetUrl, buildThemeCss, fontStylesheetUrl } from "../src/domain/site-theme";
 import { devLoginAllowed } from "../src/server/dev-login";
+import { getLivePersona } from "../src/server/assistant-persona-db";
 import { getLiveGuide } from "../src/server/guide-assistant-db";
 import { getRequestTheme } from "../src/server/request-theme";
 import { brandFor } from "../src/server/site-theme";
@@ -52,7 +54,8 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   ) : null;
   const footer = settings.footer;
   const bridgeOrigin = t.source === "draft" ? appOriginFor(admin ? "admin" : "all") : null;
-  const guide = admin ? null : await getLiveGuide();
+  const [guide, personaId] = admin ? [null, null] : await Promise.all([getLiveGuide(), getLivePersona()]);
+  const persona = personaById(personaId);
   // "Sign in" goes to the local test kit's dev sign-in only where devLoginAllowed() holds (never in production); otherwise unchanged.
   const h = await headers();
   const devSignIn = !admin && devLoginAllowed({ url: `http://${h.get("host") ?? ""}/`, headers: { get: n => h.get(n) } });
@@ -102,7 +105,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
             </footer>
           </>
         )}
-        {guide?.enabled && <GuideAssistant greeting={guide.greeting} chips={guide.chips} disclaimer={GUIDE_DISCLAIMER} />}
+        {guide?.enabled && <GuideAssistant greeting={guide.greeting} chips={guide.chips} disclaimer={GUIDE_DISCLAIMER} persona={{ name: persona.name, icon: persona.icon }} />}
         {bridgeOrigin && <ThemePreviewBridge allowedOrigin={bridgeOrigin} />}
       </body>
     </html>

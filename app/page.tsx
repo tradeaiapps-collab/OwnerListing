@@ -1,11 +1,14 @@
 import { getRequestTheme } from "../src/server/request-theme";
 import { brandFor } from "../src/server/site-theme";
 import { formatPrice } from "../src/domain/listing-details";
+import { personaById, personaIntro, personaLabel } from "../src/domain/assistant-persona";
 import { HOME_FAQ_INTENTS } from "../src/domain/guide-assistant";
 import { assetUrl } from "../src/domain/site-theme";
+import { getLivePersona } from "../src/server/assistant-persona-db";
 import { getLiveGuide } from "../src/server/guide-assistant-db";
 import { loadLatest, loadSuburbs, type HomeCard } from "../src/server/home-data";
 import HomeCarousel from "./home-carousel";
+import AskAssistant from "./ask-assistant";
 import { CardMedia } from "./listings/card-media";
 import HomeSearch from "./home-search";
 import SavingsCalc from "./savings-calc";
@@ -62,7 +65,8 @@ function Card({ l }: { l: HomeCard }) {
 export default async function Home() {
   const theme = await getRequestTheme();
   const brand = brandFor(theme.settings);
-  const [latest, suburbs, guide] = await Promise.all([loadLatest(), loadSuburbs(), getLiveGuide()]);
+  const [latest, suburbs, guide, personaId] = await Promise.all([loadLatest(), loadSuburbs(), getLiveGuide(), getLivePersona()]);
+  const persona = personaById(personaId);
   const preview = process.env["NODE_ENV"] !== "production";
   const heroId = theme.settings.brand.hero;
   const heroSrc = heroId ? assetUrl("hero", heroId, theme.previewToken ?? undefined) : DEFAULT_HERO;
@@ -197,6 +201,23 @@ export default async function Home() {
           </ul>
         </div>
       </section>
+
+      {guide.enabled && (
+        <section className="home-sec home-greeter" aria-labelledby="home-greeter-t">
+          <div className="home-wrap home-greeter-in">
+            <figure className={`home-greeter-photo${persona.greeter ? " is-full" : ""}`}>
+              <img src={persona.greeter ?? persona.portrait} alt={`${persona.name}, the website's AI assistant`} loading="lazy" decoding="async" />
+            </figure>
+            <div className="home-greeter-copy">
+              <p className="eyebrow">Your guide</p>
+              <h2 id="home-greeter-t">Meet {persona.name}</h2>
+              <p className="home-greeter-label">{personaLabel(persona)}</p>
+              <p>{personaIntro(persona, brand.name)}</p>
+              <AskAssistant name={persona.name} />
+            </div>
+          </div>
+        </section>
+      )}
 
       <section className="home-sec home-alt" id="home-faq" aria-labelledby="home-faq-t">
         <div className="home-wrap home-faq">
