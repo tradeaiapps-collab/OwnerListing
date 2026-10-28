@@ -39,7 +39,7 @@ const UNKNOWN_ANSWER = "Sorry, I didn't catch that. Choose one of the topics bel
 
 export const DEFAULT_GUIDE: GuideContent = {
   enabled: true,
-  greeting: "Hi, I'm the site guide. I can show you how to list your home, how offers work, or what to do next. I'm a set of fixed answers, not a person.",
+  greeting: "Hi! I can show you how to list your home, how offers work, or what to do next. I give set answers and I'm not a person.",
   chips: [
     { intent: "next_step", label: "What should I do next?" },
     { intent: "how_to_list", label: "How do I list my home?" },
