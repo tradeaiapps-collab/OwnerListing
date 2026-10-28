@@ -64,6 +64,27 @@ describe("home page", () => {
     vi.doUnmock("../src/server/request-theme");
   });
 
+  it("renders the Hairline hero: Buy, Sell and Rent bar, four default photo crops and the tagline as the heading", async () => {
+    vi.stubEnv("DATABASE_URL", "");
+    const html = renderToStaticMarkup(await Home());
+    expect(html).toContain('<nav class="hl-modes" aria-label="Buy, sell or rent"><a href="/listings?type=sale">Buy</a><a href="/listings/new">Sell</a><a href="/listings?type=rent">Rent</a></nav>');
+    expect(html.match(/class="hx-img" src="\/hero-default.jpg"/g)).toHaveLength(4);
+    expect(html.match(/data-on=""/g)).toHaveLength(1);
+    expect(html).toMatch(/<h1 id="home-title" class="hl-title"><span class="sr-only">[^<]+<\/span>/);
+    expect(html).toContain('aria-label="Pause slideshow"');
+    // the search card now sits in its own section below the photo
+    expect(html.indexOf('id="home-find"')).toBeGreaterThan(html.indexOf("hx-hairline"));
+    expect(html.indexOf('action="/listings"')).toBeGreaterThan(html.indexOf('id="home-find"'));
+  });
+
+  it("builds hero slides and lines from an uploaded photo and the tagline", async () => {
+    const { heroSlides, heroLines, DEFAULT_HERO_SLIDES, HERO_LINES } = await import("../src/domain/home-hero");
+    expect(heroSlides(null)).toEqual(DEFAULT_HERO_SLIDES);
+    expect(heroSlides("/api/site/asset/hero?v=7")).toEqual([{ src: "/api/site/asset/hero?v=7", focus: "var(--hero-focus, 50%) 50%", zoom: 1 }]);
+    expect(heroLines("Own your sale")).toEqual(["Own your sale", ...HERO_LINES]);
+    expect(heroLines(HERO_LINES[0]!)).toHaveLength(HERO_LINES.length);
+  });
+
   it("keeps its styles in home.css and the old hero rules are gone", () => {
     expect(readFileSync(path.join(root, "app/globals.css"), "utf8")).not.toMatch(/\.hero\b/);
     expect(readFileSync(path.join(root, "app/page.tsx"), "utf8")).toContain('./styles/home.css');

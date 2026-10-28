@@ -226,3 +226,82 @@ a.home-link:hover::after { transform: translateX(4px); }
 @media (min-width: 960px) {
   .hc-track { grid-auto-columns: calc((100% - 3 * var(--space-4)) / 4); }
 }
+
+/* ---- Hairline hero: a full-screen photo slideshow under a see-through header and a thin Buy · Sell · Rent bar.
+   Both bars turn solid once the photo scrolls away (home-hero.tsx sets data-solid on the header); the phone menu opens solid. ---- */
+.site-header:has(~ .page .hx-hairline) {
+  position: fixed; inset: 0 0 auto; animation: none; box-shadow: none; border-bottom-color: transparent;
+  background: transparent; -webkit-backdrop-filter: none; backdrop-filter: none;
+  transition: background var(--dur-2) var(--ease), color var(--dur-2) var(--ease);
+}
+.site-header:has(~ .page .hx-hairline):not([data-solid]):not(:has([data-open])) { --header-text: #fff; --border: rgb(255 255 255 / 0.45); }
+.site-header:has(~ .page .hx-hairline):is([data-solid], :has([data-open])) {
+  background: color-mix(in srgb, var(--header-bg, var(--bg)) 97%, transparent); -webkit-backdrop-filter: saturate(1.4) blur(14px); backdrop-filter: saturate(1.4) blur(14px);
+}
+.hl-modes {
+  position: fixed; z-index: 19; top: var(--hl-top, var(--header-h, 72px)); left: 0; right: 0;
+  display: flex; justify-content: center; gap: var(--space-8); min-height: 44px; padding: 0 var(--space-4);
+  color: #fff; border-bottom: 1px solid rgb(255 255 255 / 0.3);
+  transition: background var(--dur-2) var(--ease), color var(--dur-2) var(--ease), border-color var(--dur-2) var(--ease), box-shadow var(--dur-2) var(--ease);
+}
+.hl-modes a { position: relative; display: inline-flex; align-items: center; min-height: 44px; padding: 0 var(--space-1); color: inherit; text-decoration: none; font-size: 0.8125rem; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; }
+.hl-modes a::after { content: ""; position: absolute; left: 0; right: 0; bottom: 10px; height: 1px; background: var(--gold); transform: scaleX(0); transition: transform var(--dur-2) var(--ease); }
+.hl-modes a:hover { color: inherit; }
+.hl-modes a:hover::after, .hl-modes a:focus-visible::after { transform: scaleX(1); }
+.site-header:is([data-solid], :has([data-open])) ~ .page .hl-modes {
+  color: var(--header-text, var(--text)); border-bottom-color: var(--line); box-shadow: 0 10px 30px -18px rgb(10 18 34 / 0.35);
+  background: color-mix(in srgb, var(--header-bg, var(--bg)) 97%, transparent); -webkit-backdrop-filter: saturate(1.4) blur(14px); backdrop-filter: saturate(1.4) blur(14px);
+}
+
+.hx.hx-hairline {
+  min-height: 100vh; min-height: 100svh; flex-direction: column; justify-content: center; text-align: center;
+  padding: calc(var(--hl-top, 72px) + 44px + var(--space-12)) 0 calc(var(--space-16) + var(--space-6));
+}
+.hl-slides { position: absolute; inset: 0; z-index: -2; overflow: hidden; }
+.hx-hairline .hx-img {
+  z-index: auto; opacity: 0; filter: blur(12px); transform: scale(calc(var(--z, 1) * 1.04)); animation: none;
+  transition: opacity 1.4s var(--ease), filter 1.4s var(--ease), transform 1.6s var(--ease);
+}
+.hx-hairline .hx-img[data-on] { opacity: 1; filter: none; transform: scale(var(--z, 1)); }
+.hx-hairline .hx-shade {
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--hero-shade) 55%, transparent) 0%, transparent 30%, transparent 62%, color-mix(in srgb, var(--hero-shade) 65%, transparent) 100%),
+    color-mix(in srgb, var(--hero-shade) calc(var(--hero-overlay, 0.55) * 80%), transparent);
+}
+.home .hx-hairline h1 {
+  font-size: calc(clamp(2.375rem, 1.4rem + 4.6vw, 5.25rem) * var(--hs, 1)); font-weight: 400; line-height: 1.06;
+  max-width: 15ch; min-height: 2.12em; margin: 0 auto var(--space-6); padding: 0 var(--space-4); text-wrap: balance;
+  display: flex; align-items: center; justify-content: center;
+}
+.hl-line > span { display: inline-block; animation: hl-up 0.9s var(--ease) both; }
+@keyframes hl-up { from { opacity: 0; transform: translateY(0.4em); } to { opacity: 1; transform: none; } }
+.hx-hairline .home-badge { margin-inline: auto; }
+.hx-hairline .hx-lead { margin: 0 auto; }
+.hx-hairline .hx-points { justify-content: center; }
+
+.hl-prog { position: absolute; left: 0; right: 0; top: calc(var(--hl-top, 72px) + 44px + var(--space-4)); max-width: var(--container); margin: 0 auto; padding: 0 var(--space-4); display: flex; align-items: center; gap: var(--space-3); }
+.hl-bars { flex: 1; display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: var(--space-2); }
+.hl-bars i { position: relative; height: 2px; overflow: hidden; background: rgb(255 255 255 / 0.3); }
+.hl-bars i::after { content: ""; position: absolute; inset: 0; background: #fff; transform: scaleX(0); transform-origin: left; }
+.hl-bars i.done::after { transform: scaleX(1); }
+.hl-bars i.on::after { animation: hl-fill 7s linear forwards; }
+.hl-prog.is-paused i.on::after { animation-play-state: paused; }
+@keyframes hl-fill { to { transform: scaleX(1); } }
+.hl-pause { display: inline-grid; place-items: center; flex: none; width: 44px; height: 44px; min-height: 44px; padding: 0; border: 1px solid rgb(255 255 255 / 0.4); border-radius: 999px; background: transparent; color: #fff; box-shadow: none; cursor: pointer; }
+.hl-pause:hover:not(:disabled) { background: rgb(255 255 255 / 0.12); color: #fff; box-shadow: none; transform: none; }
+.hl-pause .is-pause { width: 10px; height: 12px; border-inline: 3px solid currentColor; }
+.hl-pause .is-play { width: 11px; height: 12px; margin-left: 2px; background: currentColor; clip-path: polygon(0 0, 100% 50%, 0 100%); }
+@media (prefers-reduced-motion: reduce) { .hl-prog { display: none; } }
+
+.hl-cue { position: absolute; left: 50%; bottom: var(--space-6); transform: translateX(-50%); display: inline-flex; flex-direction: column; align-items: center; gap: var(--space-1); min-height: 44px; color: #fff; text-decoration: none; font-size: 0.75rem; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; white-space: nowrap; }
+.hl-cue::after { content: ""; width: 1px; height: 28px; background: linear-gradient(#fff, transparent); }
+.hl-cue:hover { color: #fff; }
+
+.home-find { padding: var(--space-12) 0; scroll-margin-top: calc(var(--hl-top, 72px) + 44px); }
+.home-find-in { text-align: center; }
+.home .home-find h2 { margin: 0 auto; max-width: 20ch; }
+.home-find .hs { margin: var(--space-6) auto 0; text-align: left; background: var(--elevated, var(--surface)); border-color: var(--line); -webkit-backdrop-filter: none; backdrop-filter: none; }
+@media (min-width: 768px) {
+  .home-find { padding: var(--space-16) 0 var(--space-12); }
+  .hl-modes { gap: var(--space-12); }
+}

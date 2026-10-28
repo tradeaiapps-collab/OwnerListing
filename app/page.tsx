@@ -7,7 +7,9 @@ import { assetUrl } from "../src/domain/site-theme";
 import { getLivePersona } from "../src/server/assistant-persona-db";
 import { getLiveGuide } from "../src/server/guide-assistant-db";
 import { loadLatest, loadSuburbs, type HomeCard } from "../src/server/home-data";
+import { heroLines, heroSlides } from "../src/domain/home-hero";
 import HomeCarousel from "./home-carousel";
+import { HairlineBar, HeroSlides } from "./home-hero";
 import AskAssistant from "./ask-assistant";
 import { CardMedia } from "./listings/card-media";
 import HomeSearch from "./home-search";
@@ -70,24 +72,32 @@ export default async function Home() {
   const preview = process.env["NODE_ENV"] !== "production";
   const heroId = theme.settings.brand.hero;
   const heroSrc = heroId ? assetUrl("hero", heroId, theme.previewToken ?? undefined) : DEFAULT_HERO;
+  const slides = heroSlides(heroId ? heroSrc : null);
   return (
+    <>
+    <HairlineBar />
     <main className="home">
-      {/* React hoists this into <head>: the hero photo is the largest paint, so fetch it first. */}
-      <link rel="preload" as="image" href={heroSrc} fetchPriority="high" />
-      <section className="hx hx-photo" aria-labelledby="home-title">
-        <img className="hx-img" src={heroSrc} alt="" fetchPriority="high" decoding="async" />
-        <div className="hx-shade" aria-hidden="true" />
+      {/* React hoists this into <head>: the first hero photo is the largest paint, so fetch it first. */}
+      <link rel="preload" as="image" href={slides[0]!.src} fetchPriority="high" />
+      <section className="hx hx-photo hx-hairline" aria-labelledby="home-title">
+        <HeroSlides slides={slides} lines={heroLines(brand.tagline)} headingId="home-title" />
         <div className="home-wrap hx-inner">
           {preview && <p className="home-badge">Preview</p>}
-          <p className="eyebrow hx-eyebrow">Owner-direct property, Australia</p>
-          <h1 id="home-title">{brand.tagline}</h1>
           <p className="hx-lead">Owners and buyers in direct contact. List your home yourself and keep the decision on every offer.</p>
-          <HomeSearch suburbs={suburbs} />
           <ul className="hx-points" aria-label="Why owners choose us">
             <li>No sale commission</li>
             <li>Verified buyers</li>
             <li>You decide every offer</li>
           </ul>
+        </div>
+        <a className="hl-cue" href="#home-find">Search homes</a>
+      </section>
+
+      <section className="home-find" id="home-find" aria-labelledby="home-find-t">
+        <div className="home-wrap home-find-in">
+          <p className="eyebrow">Owner-direct property, Australia</p>
+          <h2 id="home-find-t">Find a home from its owner</h2>
+          <HomeSearch suburbs={suburbs} />
         </div>
       </section>
 
@@ -250,5 +260,6 @@ export default async function Home() {
         </div>
       </section>
     </main>
+    </>
   );
 }
