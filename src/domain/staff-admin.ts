@@ -25,6 +25,7 @@ export const STAFF_SECTIONS: readonly StaffSection[] = [
   { href: "/staff/pricing", label: "Pricing and plans", permissions: ["pricing.manage"] },
   { href: "/staff/invites", label: "Staff access", permissions: ["staff.manage"] },
   { href: "/staff/roles", label: "Roles and permissions", permissions: ["staff.manage"] },
+  { href: "/staff/security/mfa-reset", label: "Two-step sign-in reset", permissions: ["user.mfa_reset"] },
   { href: "/staff/messaging", label: "Messaging settings", permissions: ["messaging.settings"] },
   { href: "/staff/site", label: "Site appearance", permissions: ["theme.edit"] },
   { href: "/staff/assistant", label: "Guide assistant", permissions: ["site.content.edit", "site.content.publish"] },

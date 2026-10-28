@@ -12,7 +12,7 @@ import type { SessionState } from "./auth/actor";
 
 export type MfaEvent =
   | "setup_started" | "enrolled" | "verified" | "code_wrong" | "code_expired" | "code_locked"
-  | "code_sent" | "send_failed" | "recovery_used" | "recovery_regenerated" | "factor_removed" | "rate_limited";
+  | "code_sent" | "send_failed" | "recovery_used" | "recovery_regenerated" | "factor_removed" | "rate_limited" | "staff_reset";
 
 export interface MfaFactor {
   id: string;

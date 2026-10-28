@@ -44,7 +44,8 @@ const META: Record<string, { group: string; icon: AdminIcon; blurb: string }> = 
   "/staff/assistant": { group: "settings", icon: "assistant", blurb: "Pick the AI assistant (Elena and others), answers and chips" },
   "/staff/ai": { group: "settings", icon: "ai", blurb: "Self-hosted AI engine and limits" },
   "/staff/invites": { group: "team", icon: "team", blurb: "Invite staff and manage their access" },
-  "/staff/roles": { group: "team", icon: "key", blurb: "What each role can see and do" }
+  "/staff/roles": { group: "team", icon: "key", blurb: "What each role can see and do" },
+  "/staff/security/mfa-reset": { group: "team", icon: "key", blurb: "Reset a user's two-step sign-in after a lost phone" }
 };
 
 export const adminLink = (s: StaffSection): AdminLink => {
