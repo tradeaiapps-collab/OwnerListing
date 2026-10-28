@@ -1,22 +1,33 @@
 "use client";
-import { Fragment, useEffect, useState, type CSSProperties } from "react";
-import type { HeroSlide } from "../src/domain/home-hero";
+import { Fragment, useEffect, useRef, useState, type CSSProperties } from "react";
+import { HERO_SLIDE_SECONDS, type HeroSlide } from "../src/domain/home-hero";
 
 /**
- * Full-screen photo slideshow with soft-focus crossfades. The active progress line's CSS animation drives the timing
- * (its animationend advances the slide), so pausing is just animation-play-state and reduced motion never advances.
- * The tagline is the heading for assistive tech; the rotating lines are visual only.
+ * Full-screen photo slideshow with soft-focus crossfades. A timer advances the slide every HERO_SLIDE_SECONDS, so it
+ * keeps cycling even when the OS turns animations off; the progress lines only show the timing. Under reduced motion
+ * the photos swap with a plain fade (no blur or zoom) and the pause button stays. The tagline is the heading for
+ * assistive tech; the rotating lines are visual only.
  */
 export function HeroSlides({ slides, lines, headingId }: { slides: HeroSlide[]; lines: string[]; headingId: string }) {
   const [i, setI] = useState(0);
   const [paused, setPaused] = useState(false);
-  const n = lines.length;
+  const count = Math.max(lines.length, slides.length);
+  // Time left on the current slide, kept across pause so play resumes where the progress line stopped.
+  const left = useRef(HERO_SLIDE_SECONDS * 1000);
+  useEffect(() => {
+    if (paused || count < 2) return;
+    const started = Date.now();
+    let fired = false;
+    const t = window.setTimeout(() => { fired = true; left.current = HERO_SLIDE_SECONDS * 1000; setI(k => (k + 1) % count); }, left.current);
+    return () => { window.clearTimeout(t); if (!fired) left.current = Math.max(0, left.current - (Date.now() - started)); };
+  }, [i, paused, count]);
   const on = i % slides.length;
+  const line = lines[i % lines.length]!;
   return (
     <>
       <div className="hl-slides" aria-hidden="true">
         {slides.map((s, k) => (
-          <img key={k} className="hx-img" src={s.src} alt="" decoding="async" {...(k === 0 ? { fetchPriority: "high" as const } : {})}
+          <img key={k} className="hx-img" src={s.src} alt="" decoding="async" {...(k === 0 ? { fetchPriority: "high" as const } : { loading: "lazy" as const })}
             {...(k === on ? { "data-on": "" } : {})} style={{ objectPosition: s.focus, transformOrigin: s.focus, "--z": s.zoom } as CSSProperties} />
         ))}
       </div>
@@ -24,15 +35,13 @@ export function HeroSlides({ slides, lines, headingId }: { slides: HeroSlide[]; 
       <h1 id={headingId} className="hl-title">
         <span className="sr-only">{lines[0]}</span>
         <span className="hl-line" key={i} aria-hidden="true">
-          {lines[i]!.split(" ").map((w, k) => <Fragment key={k}>{k > 0 && " "}<span style={{ animationDelay: `${k * 80}ms` }}>{w}</span></Fragment>)}
+          {line.split(" ").map((w, k) => <Fragment key={k}>{k > 0 && " "}<span style={{ animationDelay: `${k * 80}ms` }}>{w}</span></Fragment>)}
         </span>
       </h1>
-      {n > 1 && (
-        <div className={`hl-prog${paused ? " is-paused" : ""}`}>
+      {count > 1 && (
+        <div className={`hl-prog${paused ? " is-paused" : ""}`} style={{ "--hl-dur": `${HERO_SLIDE_SECONDS}s` } as CSSProperties}>
           <div className="hl-bars" aria-hidden="true">
-            {lines.map((_, k) => (
-              <i key={k} className={k < i ? "done" : k === i ? "on" : undefined} onAnimationEnd={k === i ? () => setI((i + 1) % n) : undefined} />
-            ))}
+            {Array.from({ length: count }, (_, k) => <i key={k} className={k < i ? "done" : k === i ? "on" : undefined} />)}
           </div>
           <button type="button" className="hl-pause" aria-label={paused ? "Play slideshow" : "Pause slideshow"} onClick={() => setPaused(p => !p)}>
             <span className={paused ? "is-play" : "is-pause"} aria-hidden="true" />

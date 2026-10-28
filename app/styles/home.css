@@ -284,14 +284,18 @@ a.home-link:hover::after { transform: translateX(4px); }
 .hl-bars i { position: relative; height: 2px; overflow: hidden; background: rgb(255 255 255 / 0.3); }
 .hl-bars i::after { content: ""; position: absolute; inset: 0; background: #fff; transform: scaleX(0); transform-origin: left; }
 .hl-bars i.done::after { transform: scaleX(1); }
-.hl-bars i.on::after { animation: hl-fill 7s linear forwards; }
+.hl-bars i.on::after { animation: hl-fill var(--hl-dur, 7s) linear forwards; }
 .hl-prog.is-paused i.on::after { animation-play-state: paused; }
 @keyframes hl-fill { to { transform: scaleX(1); } }
 .hl-pause { display: inline-grid; place-items: center; flex: none; width: 44px; height: 44px; min-height: 44px; padding: 0; border: 1px solid rgb(255 255 255 / 0.4); border-radius: 999px; background: transparent; color: #fff; box-shadow: none; cursor: pointer; }
 .hl-pause:hover:not(:disabled) { background: rgb(255 255 255 / 0.12); color: #fff; box-shadow: none; transform: none; }
 .hl-pause .is-pause { width: 10px; height: 12px; border-inline: 3px solid currentColor; }
 .hl-pause .is-play { width: 11px; height: 12px; margin-left: 2px; background: currentColor; clip-path: polygon(0 0, 100% 50%, 0 100%); }
-@media (prefers-reduced-motion: reduce) { .hl-prog { display: none; } }
+/* Reduced motion: the slides still change (the timer drives them) with a plain fade; the progress lines hide, pause stays. */
+@media (prefers-reduced-motion: reduce) {
+  .hl-bars { visibility: hidden; }
+  .hx-hairline .hx-img { filter: none !important; transform: scale(var(--z, 1)) !important; transition: opacity 1.2s linear !important; }
+}
 
 .hl-cue { position: absolute; left: 50%; bottom: var(--space-6); transform: translateX(-50%); display: inline-flex; flex-direction: column; align-items: center; gap: var(--space-1); min-height: 44px; color: #fff; text-decoration: none; font-size: 0.75rem; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; white-space: nowrap; }
 .hl-cue::after { content: ""; width: 1px; height: 28px; background: linear-gradient(#fff, transparent); }
