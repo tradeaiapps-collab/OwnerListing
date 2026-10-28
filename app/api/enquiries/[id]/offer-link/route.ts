@@ -6,6 +6,7 @@ import { csrfGuard } from "../../../../../src/server/csrf";
 import { getOfferLinkDeps } from "../../../../../src/server/enquiry-db";
 import { failure, unauthenticated } from "../../../../../src/server/http";
 import { requireCurrentTerms } from "../../../../../src/server/terms-guard";
+import { withApi } from "../../../../../src/server/api/with-api";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -13,7 +14,7 @@ const notFound = { ok: false, code: "not_found", message: "Enquiry not found." }
 const NO_STORE = { "Cache-Control": "no-store" };
 
 /** Request state for either party. The raw link token is included for the buyer only, and only while it is still usable. */
-export async function GET(req: Request, { params }: Ctx) {
+async function handleGet(req: Request, { params }: Ctx) {
   const actor = await getActor(req);
   if (!actor) return unauthenticated();
   const { id } = await params;
@@ -26,7 +27,7 @@ export async function GET(req: Request, { params }: Ctx) {
  * Body: { "action": "request" | "issue" | "decline" }. The buyer requests; only the listing owner issues or declines.
  * Nothing here accepts an offer. The offer itself is still submitted on /offers/new with the single-use link.
  */
-export async function POST(req: Request, { params }: Ctx) {
+async function handlePost(req: Request, { params }: Ctx) {
   const blocked = csrfGuard(req);
   if (blocked) return blocked;
   const actor = await getActor(req);
@@ -55,3 +56,6 @@ export async function POST(req: Request, { params }: Ctx) {
   }
   return failure({ ok: false, code: "invalid", message: "Unknown action." });
 }
+
+export const GET = withApi(handleGet);
+export const POST = withApi(handlePost);

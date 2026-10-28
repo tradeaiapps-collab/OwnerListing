@@ -4,11 +4,12 @@ import { appointmentIds, getAgentAppointmentRepo } from "../../../../src/server/
 import { getActor } from "../../../../src/server/context";
 import { failure, unauthenticated } from "../../../../src/server/http";
 import { csrfGuard } from "../../../../src/server/csrf";
+import { withApi } from "../../../../src/server/api/with-api";
 
 type Ctx = { params: Promise<{ id: string }> };
 
 /** Body: { "action": "revoke" }. Owner only. The agent loses access at once. Appointments are never deleted. */
-export async function POST(req: Request, { params }: Ctx) {
+async function handlePost(req: Request, { params }: Ctx) {
   const blocked = csrfGuard(req);
   if (blocked) return blocked;
   const actor = await getActor(req);
@@ -19,3 +20,5 @@ export async function POST(req: Request, { params }: Ctx) {
   const r = await revokeAppointment(getAgentAppointmentRepo(), actor, id, appointmentIds);
   return r.ok ? NextResponse.json({ appointment: r.value }) : failure(r);
 }
+
+export const POST = withApi(handlePost);

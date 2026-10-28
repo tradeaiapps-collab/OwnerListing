@@ -3,6 +3,7 @@ import { buildChecklist, comboLabel } from "../../../../../src/domain/disclosure
 import { getDb } from "../../../../../src/server/context";
 import { approvedVersionPg, listingDisclosuresPg } from "../../../../../src/server/disclosure-config-db";
 import { requireListingHandler } from "../../../../../src/server/owner-listing";
+import { withApi } from "../../../../../src/server/api/with-api";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -11,7 +12,7 @@ type Ctx = { params: Promise<{ id: string }> };
  * (missing, submitted, verified, rejected). Owner or appointed agent. 423 region_not_enabled when Compliance has not approved
  * requirements for that combination yet (publishing is blocked until then).
  */
-export async function GET(req: Request, { params }: Ctx) {
+async function handleGet(req: Request, { params }: Ctx) {
   const { id } = await params;
   const handler = await requireListingHandler(req, id);
   if (handler instanceof NextResponse) return handler;
@@ -30,3 +31,5 @@ export async function GET(req: Request, { params }: Ctx) {
     { headers: { "cache-control": "no-store" } }
   );
 }
+
+export const GET = withApi(handleGet);

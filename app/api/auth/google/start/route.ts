@@ -3,9 +3,10 @@ import { readAuthEnv } from "../../../../../src/server/auth/config";
 import { buildAuthUrl } from "../../../../../src/server/auth/google";
 import { safeNext } from "../../../../../src/server/auth/safe-next";
 import { randomToken } from "../../../../../src/server/auth/session";
+import { withApi } from "../../../../../src/server/api/with-api";
 
 /** Starts Google sign-in with state, nonce and PKCE. The secrets and the owner-or-buyer choice live in short-lived HttpOnly cookies. */
-export async function GET(req: Request) {
+async function handleGet(req: Request) {
   const auth = readAuthEnv();
   if (!auth) return NextResponse.json({ error: "Sign-in is not configured." }, { status: 503 });
   const s = { state: randomToken(), nonce: randomToken(), verifier: randomToken() };
@@ -23,3 +24,5 @@ export async function GET(req: Request) {
   if (next) res.cookies.set("ol_next", next, opts);
   return res;
 }
+
+export const GET = withApi(handleGet);

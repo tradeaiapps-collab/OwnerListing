@@ -6,6 +6,7 @@ import { csrfGuard } from "../../../../../src/server/csrf";
 import { failure } from "../../../../../src/server/http";
 import { offersForOwnerPg } from "../../../../../src/server/offers-db";
 import { requireListingOwner } from "../../../../../src/server/owner-listing";
+import { withApi } from "../../../../../src/server/api/with-api";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -13,7 +14,7 @@ type Ctx = { params: Promise<{ id: string }> };
  * Owner previews a contract (sale) or lease DRAFT for one offer, built from a fixed template. Nothing is stored, sent or signed,
  * no AI is involved, and it records no decision on the offer. Others get 404.
  */
-export async function POST(req: Request, { params }: Ctx) {
+async function handlePost(req: Request, { params }: Ctx) {
   const blocked = csrfGuard(req);
   if (blocked) return blocked;
   const { id } = await params;
@@ -36,3 +37,5 @@ export async function POST(req: Request, { params }: Ctx) {
   });
   return NextResponse.json({ draft });
 }
+
+export const POST = withApi(handlePost);

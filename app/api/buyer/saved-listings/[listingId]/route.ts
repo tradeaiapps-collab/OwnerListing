@@ -4,11 +4,12 @@ import { getActor } from "../../../../../src/server/context";
 import { failure, unauthenticated } from "../../../../../src/server/http";
 import { getSavedListingRepo } from "../../../../../src/server/saved-listing-context";
 import { csrfGuard } from "../../../../../src/server/csrf";
+import { withApi } from "../../../../../src/server/api/with-api";
 
 type Ctx = { params: Promise<{ listingId: string }> };
 
 /** Removes the signed-in buyer's own bookmark. A bookmark is a list entry, not chat or a published file. */
-export async function DELETE(req: Request, { params }: Ctx) {
+async function handleDelete(req: Request, { params }: Ctx) {
   const blocked = csrfGuard(req, { json: false });
   if (blocked) return blocked;
   const actor = await getActor(req);
@@ -18,3 +19,5 @@ export async function DELETE(req: Request, { params }: Ctx) {
   const r = await unsaveListing(getSavedListingRepo(), actor, id.value);
   return r.ok ? NextResponse.json(r.value) : failure(r);
 }
+
+export const DELETE = withApi(handleDelete);

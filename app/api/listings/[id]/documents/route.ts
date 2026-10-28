@@ -9,6 +9,7 @@ import { failure, unauthenticated } from "../../../../../src/server/http";
 import { hashToken } from "../../../../../src/domain/offer-intake";
 import { UPLOAD_QUOTA_WINDOW_MS, UPLOAD_RATE, windowStart, withinByteQuota, withinLimit } from "../../../../../src/domain/rate-limit";
 import { countHitPg } from "../../../../../src/server/offer-flow-db";
+import { withApi } from "../../../../../src/server/api/with-api";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -18,7 +19,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
  * Lists a listing's documents the caller may see (metadata only), and which kinds the caller may add.
  * Signed-out visitors see public files of published listings.
  */
-export async function GET(req: Request, { params }: Ctx) {
+async function handleGet(req: Request, { params }: Ctx) {
   const { id } = await params;
   if (!UUID.test(id)) return failure({ ok: false, code: "not_found", message: "Listing not found." });
   const store = createPgDocumentStore(getDb()), actor = await getActor(req);
@@ -35,7 +36,7 @@ const MAX_REQUEST_BYTES = 100_000_000;
  * and only a random storage key and the SHA-256 are kept. Refused while storage or the malware scanner is not configured.
  * There is no delete here: replacing a file creates a new version and keeps the old one.
  */
-export async function POST(req: Request, { params }: Ctx) {
+async function handlePost(req: Request, { params }: Ctx) {
   const blocked = csrfGuard(req, { json: false });
   if (blocked) return blocked;
   const actor = await getActor(req);
@@ -80,3 +81,6 @@ export async function POST(req: Request, { params }: Ctx) {
   if (r.ok) return NextResponse.json({ id: r.value.id }, { status: 201 });
   return r.code === "unavailable" ? NextResponse.json({ error: r.message }, { status: 503 }) : failure(r);
 }
+
+export const GET = withApi(handleGet);
+export const POST = withApi(handlePost);

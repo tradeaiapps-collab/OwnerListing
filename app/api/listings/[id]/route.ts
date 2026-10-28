@@ -3,10 +3,11 @@ import { getListing, listingWordingFlags, parseDraftPatch, toPublicListing, upda
 import { getActor, getDeps } from "../../../../src/server/context";
 import { failure, unauthenticated } from "../../../../src/server/http";
 import { csrfGuard } from "../../../../src/server/csrf";
+import { withApi } from "../../../../src/server/api/with-api";
 
 type Ctx = { params: Promise<{ id: string }> };
 
-export async function GET(req: Request, { params }: Ctx) {
+async function handleGet(req: Request, { params }: Ctx) {
   const { id } = await params;
   const actor = await getActor(req);
   const deps = getDeps();
@@ -24,7 +25,7 @@ export async function GET(req: Request, { params }: Ctx) {
 }
 
 /** Edits a draft. Published listings cannot be edited here. The reply carries the wording flags so the owner can fix them before publishing. */
-export async function PATCH(req: Request, { params }: Ctx) {
+async function handlePatch(req: Request, { params }: Ctx) {
   const blocked = csrfGuard(req);
   if (blocked) return blocked;
   const actor = await getActor(req);
@@ -35,3 +36,6 @@ export async function PATCH(req: Request, { params }: Ctx) {
   const r = await updateDraft(getDeps(), actor, id, parsed.value);
   return r.ok ? NextResponse.json({ listing: r.value, wordingFlags: listingWordingFlags(r.value) }) : failure(r);
 }
+
+export const GET = withApi(handleGet);
+export const PATCH = withApi(handlePatch);

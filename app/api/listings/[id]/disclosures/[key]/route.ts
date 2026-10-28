@@ -5,6 +5,7 @@ import { getDb, getDeps } from "../../../../../../src/server/context";
 import { csrfGuard } from "../../../../../../src/server/csrf";
 import { activeListingDocumentPg, approvedVersionPg, submitDisclosurePg } from "../../../../../../src/server/disclosure-config-db";
 import { requireListingHandler } from "../../../../../../src/server/owner-listing";
+import { withApi } from "../../../../../../src/server/api/with-api";
 
 type Ctx = { params: Promise<{ id: string; key: string }> };
 const fail = (status: number, error: string, code?: string) => NextResponse.json({ error, ...(code ? { code } : {}) }, { status });
@@ -14,7 +15,7 @@ const fail = (status: number, error: string, code?: string) => NextResponse.json
  * { notApplicable: true, note } where the item allows it. The answer waits for Compliance; it never satisfies the item by itself.
  * Only while the listing is a draft or pending review.
  */
-export async function PUT(req: Request, { params }: Ctx) {
+async function handlePut(req: Request, { params }: Ctx) {
   const blocked = csrfGuard(req);
   if (blocked) return blocked;
   const { id, key } = await params;
@@ -41,3 +42,5 @@ export async function PUT(req: Request, { params }: Ctx) {
   });
   return NextResponse.json({ ok: true, state: "submitted" });
 }
+
+export const PUT = withApi(handlePut);

@@ -10,11 +10,12 @@ import { countHitPg } from "../../../../../src/server/offer-flow-db";
 import { staffPhotoAccess, UUID } from "../../../../../src/server/photo-route";
 import { createPgPhotoStore } from "../../../../../src/server/photos-db";
 import { requireCurrentTerms } from "../../../../../src/server/terms-guard";
+import { withApi } from "../../../../../src/server/api/with-api";
 
 type Ctx = { params: Promise<{ id: string }> };
 
 /** The gallery the caller may see: visible photos of a published listing, or a draft's photos for its owner, photographer/agent or staff. */
-export async function GET(req: Request, { params }: Ctx) {
+async function handleGet(req: Request, { params }: Ctx) {
   const { id } = await params;
   if (!UUID.test(id)) return failure({ ok: false, code: "not_found", message: "Listing not found." });
   const r = await listPhotos(getDeps(), createPgPhotoStore(getDb()), await getActor(req), id, await staffPhotoAccess(req));
@@ -30,7 +31,7 @@ const MAX_REQUEST_BYTES = PHOTO_LIMITS.maxBytes + 64 * 1024;
  * The type comes from the bytes (JPEG, PNG, WebP), metadata (EXIF/GPS/XMP) is stripped before storing, the filename is
  * discarded and the file is malware scanned. Refused (503) while storage or the scanner is not configured. No delete here.
  */
-export async function POST(req: Request, { params }: Ctx) {
+async function handlePost(req: Request, { params }: Ctx) {
   const blocked = csrfGuard(req, { json: false });
   if (blocked) return blocked;
   const actor = await getActor(req);
@@ -71,3 +72,6 @@ export async function POST(req: Request, { params }: Ctx) {
   });
   return r.ok ? NextResponse.json({ id: r.value.id }, { status: 201 }) : failure(r);
 }
+
+export const GET = withApi(handleGet);
+export const POST = withApi(handlePost);

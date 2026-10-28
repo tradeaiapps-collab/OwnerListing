@@ -4,6 +4,7 @@ import { assignmentIds, getAssignmentRepo } from "../../../../src/server/assignm
 import { getActor } from "../../../../src/server/context";
 import { failure, unauthenticated } from "../../../../src/server/http";
 import { csrfGuard } from "../../../../src/server/csrf";
+import { withApi } from "../../../../src/server/api/with-api";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -11,7 +12,7 @@ type Ctx = { params: Promise<{ id: string }> };
  * Body: { "action": "accept" | "decline" | "cancel" | "complete" }.
  * Contractor: accept, decline. Owner: cancel, complete. Only POST exists: assignments are never deleted.
  */
-export async function POST(req: Request, { params }: Ctx) {
+async function handlePost(req: Request, { params }: Ctx) {
   const blocked = csrfGuard(req);
   if (blocked) return blocked;
   const actor = await getActor(req);
@@ -20,3 +21,5 @@ export async function POST(req: Request, { params }: Ctx) {
   const r = await respondToAssignment(getAssignmentRepo(), actor, id, await req.json().catch(() => null), assignmentIds);
   return r.ok ? NextResponse.json({ assignment: r.value }) : failure(r);
 }
+
+export const POST = withApi(handlePost);

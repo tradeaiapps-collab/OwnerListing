@@ -7,6 +7,7 @@ import { decideOfferPg, ownerOfferStatusPg } from "../../../../../../../src/serv
 import { csrfGuard } from "../../../../../../../src/server/csrf";
 import { CAN_EXPIRE } from "../../../../../../../src/domain/offer-counter";
 import { expireCountersPg } from "../../../../../../../src/server/offer-counter-db";
+import { withApi } from "../../../../../../../src/server/api/with-api";
 
 type Ctx = { params: Promise<{ id: string; offerId: string }> };
 
@@ -17,7 +18,7 @@ const conflict = { ok: false, code: "conflict", message: "This offer can no long
  * The owner accepts, rejects or asks for a counter on an offer. Owner only; the AI has no route here and never accepts.
  * This only records the decision: no money moves and no funds are held (deposits go to the solicitor's trust account).
  */
-export async function POST(req: Request, { params }: Ctx) {
+async function handlePost(req: Request, { params }: Ctx) {
   const blocked = csrfGuard(req);
   if (blocked) return blocked;
   const actor = await getActor(req);
@@ -49,3 +50,5 @@ export async function POST(req: Request, { params }: Ctx) {
   });
   return NextResponse.json({ offer: { id: offerId, status: to } });
 }
+
+export const POST = withApi(handlePost);

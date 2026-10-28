@@ -5,12 +5,13 @@ import { getDb } from "../../../../../src/server/context";
 import { sendTestMessage } from "../../../../../src/server/messaging";
 import { countHitPg } from "../../../../../src/server/offer-flow-db";
 import { fail, readJsonObject, staffAudit, staffGate } from "../../../../../src/server/staff-route";
+import { withApi } from "../../../../../src/server/api/with-api";
 
 /**
  * Sends one test message. Body: { channel: "email" } (goes to the signed-in admin's own address) or { channel: "sms", phone: "+61..." }.
  * Limited to a few per hour per admin and overall (both counters fail closed); SMS only to Australian mobiles; a refused attempt still counts. Not configured = nothing sent (409).
  */
-export async function POST(req: Request) {
+async function handlePost(req: Request) {
   const staff = await staffGate(req, "messaging.settings");
   if (staff instanceof NextResponse) return staff;
   const body = await readJsonObject(req);
@@ -27,3 +28,5 @@ export async function POST(req: Request) {
   if (r.status === "failed") return NextResponse.json({ outcome: "failed", errorCode: r.errorCode, error: "The test message could not be sent." }, { status: 502 });
   return NextResponse.json({ outcome: "sent" });
 }
+
+export const POST = withApi(handlePost);

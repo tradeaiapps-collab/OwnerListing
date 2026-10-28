@@ -6,11 +6,12 @@ import { getDb } from "../../../../src/server/context";
 import { SESSION_COOKIE, SESSION_TTL_SECONDS, signSession } from "../../../../src/server/auth/session";
 import { STAFF_COOKIE, STAFF_TTL_SECONDS, signStaffSession } from "../../../../src/server/auth/staff-session";
 import { isRoleKey } from "../../../../src/domain/staff-roles";
+import { withApi } from "../../../../src/server/api/with-api";
 
 const notFound = () => new NextResponse("Not found", { status: 404 });
 
 /** DEV-ONLY. Mints the normal session cookie for a seeded demo account. 404 unless devLoginAllowed(); see src/server/dev-login.ts. */
-export async function POST(req: Request) {
+async function handlePost(req: Request) {
   if (!devLoginAllowed(req)) return notFound();
   const blocked = csrfGuard(req);
   if (blocked) return blocked;
@@ -48,3 +49,5 @@ export async function POST(req: Request) {
   res.cookies.set(STAFF_COOKIE, "", { ...opts, maxAge: 0 });
   return res;
 }
+
+export const POST = withApi(handlePost);

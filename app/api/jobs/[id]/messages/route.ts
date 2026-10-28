@@ -4,13 +4,14 @@ import { getActor } from "../../../../../src/server/context";
 import { chatIds, getChatRepo } from "../../../../../src/server/job-chat-db";
 import { failure, unauthenticated } from "../../../../../src/server/http";
 import { csrfGuard } from "../../../../../src/server/csrf";
+import { withApi } from "../../../../../src/server/api/with-api";
 
 type Ctx = { params: Promise<{ id: string }> };
 
 // Only GET and POST exist on purpose. Chat messages are never edited or deleted (CLAUDE.md).
 
 /** Reads the chat for a job assignment. Only the owner and the assigned contractor can read it. */
-export async function GET(req: Request, { params }: Ctx) {
+async function handleGet(req: Request, { params }: Ctx) {
   const actor = await getActor(req);
   if (!actor) return unauthenticated();
   const { id } = await params;
@@ -19,7 +20,7 @@ export async function GET(req: Request, { params }: Ctx) {
 }
 
 /** Posts a message while the assignment is approved. Body: { "body": "text" }. */
-export async function POST(req: Request, { params }: Ctx) {
+async function handlePost(req: Request, { params }: Ctx) {
   const blocked = csrfGuard(req);
   if (blocked) return blocked;
   const actor = await getActor(req);
@@ -28,3 +29,6 @@ export async function POST(req: Request, { params }: Ctx) {
   const r = await postChatMessage(getChatRepo(), actor, id, await req.json().catch(() => null), chatIds);
   return r.ok ? NextResponse.json({ message: r.value }, { status: 201 }) : failure(r);
 }
+
+export const GET = withApi(handleGet);
+export const POST = withApi(handlePost);

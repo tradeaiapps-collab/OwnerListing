@@ -5,6 +5,7 @@ import { getAiReplyDeps, requestReplyDraft } from "../../../../../../src/server/
 import { getActor } from "../../../../../../src/server/context";
 import { csrfGuard } from "../../../../../../src/server/csrf";
 import { failure, unauthenticated } from "../../../../../../src/server/http";
+import { withApi } from "../../../../../../src/server/api/with-api";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -13,7 +14,7 @@ type Ctx = { params: Promise<{ id: string }> };
  * 200 always carries a state: drafted (with the guard result; a failed guard means status "held"), unavailable (AI off),
  * paused, or owner_only (offers, complaints and safety handoffs are never drafted). Buyers and strangers get 404.
  */
-export async function POST(req: Request, { params }: Ctx) {
+async function handlePost(req: Request, { params }: Ctx) {
   const blocked = csrfGuard(req);
   if (blocked) return blocked;
   const actor = await getActor(req);
@@ -31,3 +32,5 @@ export async function POST(req: Request, { params }: Ctx) {
     : o.state === "owner_only" ? { state: o.state, intent: o.intent, message: o.message, reasons: o.flags.map(f => f.explanation) } : o;
   return NextResponse.json(body, { headers: { "cache-control": "no-store" } });
 }
+
+export const POST = withApi(handlePost);

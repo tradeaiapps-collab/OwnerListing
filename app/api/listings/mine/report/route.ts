@@ -4,9 +4,10 @@ import { buildOwnerReport, ownerReportCsv } from "../../../../../src/domain/repo
 import { getActor, getDb } from "../../../../../src/server/context";
 import { failure, unauthenticated } from "../../../../../src/server/http";
 import { loadOwnerReport } from "../../../../../src/server/reports-db";
+import { withApi } from "../../../../../src/server/api/with-api";
 
 /** The signed-in owner's own listings: enquiry and offer counts (page views are not tracked). CSV with ?format=csv. */
-export async function GET(req: Request) {
+async function handleGet(req: Request) {
   const actor = await getActor(req);
   if (!actor) return unauthenticated();
   const denied = forbiddenFor({ id: actor.userId, role: actor.userType }, "listing.create");
@@ -17,3 +18,5 @@ export async function GET(req: Request) {
     headers: { "content-type": "text/csv; charset=utf-8", "content-disposition": 'attachment; filename="my-listings-report.csv"', "cache-control": "no-store" }
   });
 }
+
+export const GET = withApi(handleGet);

@@ -4,12 +4,13 @@ import { MAX_DESCRIPTION_LENGTH } from "../../../../src/domain/listing-service";
 import { getActor } from "../../../../src/server/context";
 import { csrfGuard } from "../../../../src/server/csrf";
 import { unauthenticated } from "../../../../src/server/http";
+import { withApi } from "../../../../src/server/api/with-api";
 
 /**
  * Live anti-discrimination check while an owner types a title, description or message. Body: { text }. Nothing is stored.
  * Signed-in users only, so the phrase list cannot be probed anonymously.
  */
-export async function POST(req: Request) {
+async function handlePost(req: Request) {
   const blocked = csrfGuard(req);
   if (blocked) return blocked;
   const actor = await getActor(req);
@@ -21,3 +22,5 @@ export async function POST(req: Request) {
   }
   return NextResponse.json(scanForDiscrimination(text), { headers: { "cache-control": "no-store" } });
 }
+
+export const POST = withApi(handlePost);

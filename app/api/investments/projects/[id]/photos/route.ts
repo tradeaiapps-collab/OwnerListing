@@ -7,11 +7,12 @@ import { getInvestmentDeps } from "../../../../../../src/server/investments-db";
 import { investGate, invFailure, notFound, ok, UUID, type Ctx } from "../../../../../../src/server/investment-route";
 import { createPgPhotoStore } from "../../../../../../src/server/photos-db";
 import { createPgProjectPhotoStore } from "../../../../../../src/server/project-photos-db";
+import { withApi } from "../../../../../../src/server/api/with-api";
 
 const MAX_REQUEST_BYTES = PHOTO_LIMITS.maxBytes + 64 * 1024;
 
 /** The project's gallery: the owner (hidden photos too) or an investor who may see the project (showing photos). Else 404. */
-export async function GET(req: Request, { params }: Ctx) {
+async function handleGet(req: Request, { params }: Ctx) {
   const deps = getInvestmentDeps();
   const actor = await investGate(req, deps);
   if (actor instanceof NextResponse) return actor;
@@ -25,7 +26,7 @@ export async function GET(req: Request, { params }: Ctx) {
  * Owner adds one photo (multipart: file, optional replacesId). Type from the bytes, metadata stripped, filename discarded,
  * malware scanned; 503 while storage or the scanner is not configured. Shares the listing photo rate and daily byte quota.
  */
-export async function POST(req: Request, { params }: Ctx) {
+async function handlePost(req: Request, { params }: Ctx) {
   const deps = getInvestmentDeps();
   const actor = await investGate(req, deps, { json: false });
   if (actor instanceof NextResponse) return actor;
@@ -63,7 +64,7 @@ export async function POST(req: Request, { params }: Ctx) {
 }
 
 /** Owner saves the whole order, captions, descriptions and hidden flags: { version, entries }. */
-export async function PUT(req: Request, { params }: Ctx) {
+async function handlePut(req: Request, { params }: Ctx) {
   const deps = getInvestmentDeps();
   const actor = await investGate(req, deps);
   if (actor instanceof NextResponse) return actor;
@@ -79,3 +80,7 @@ export async function PUT(req: Request, { params }: Ctx) {
   const r = await updateProjectLayout(deps, createPgProjectPhotoStore(getDb()), actor, id, await req.json().catch(() => null));
   return r.ok ? ok(r.value) : invFailure(r);
 }
+
+export const GET = withApi(handleGet);
+export const POST = withApi(handlePost);
+export const PUT = withApi(handlePut);

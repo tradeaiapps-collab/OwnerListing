@@ -4,18 +4,19 @@ import { aiAdminGate, aiAdminView } from "../../../../src/server/ai-admin";
 import { setAiSwitch } from "../../../../src/server/ai-switch-db";
 import { getDb } from "../../../../src/server/context";
 import { fail, readJsonObject, staffAudit } from "../../../../src/server/staff-route";
+import { withApi } from "../../../../src/server/api/with-api";
 
 const NO_STORE = { "cache-control": "no-store" };
 
 /** AI switch and engine config (super admin only). */
-export async function GET(req: Request) {
+async function handleGet(req: Request) {
   const staff = await aiAdminGate(req);
   if (staff instanceof NextResponse) return staff;
   return NextResponse.json(await aiAdminView(), { headers: NO_STORE });
 }
 
 /** Turns AI on or off. Body: { enabled: boolean, reason: string (10+ characters) }. Adds a history row and an audit event. */
-export async function POST(req: Request) {
+async function handlePost(req: Request) {
   const staff = await aiAdminGate(req);
   if (staff instanceof NextResponse) return staff;
   const body = await readJsonObject(req);
@@ -27,3 +28,6 @@ export async function POST(req: Request) {
   await staffAudit(staff, "ai_switch", "site", enabled ? "ai.switched_on" : "ai.switched_off", { enabled });
   return NextResponse.json(await aiAdminView(), { headers: NO_STORE });
 }
+
+export const GET = withApi(handleGet);
+export const POST = withApi(handlePost);

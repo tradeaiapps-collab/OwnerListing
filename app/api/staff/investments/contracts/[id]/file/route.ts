@@ -2,9 +2,10 @@ import { NextResponse } from "next/server";
 import { getInvestmentDeps } from "../../../../../../../src/server/investments-db";
 import { investStaffGate, notFound, UUID, type Ctx } from "../../../../../../../src/server/investment-route";
 import { staffAudit } from "../../../../../../../src/server/staff-route";
+import { withApi } from "../../../../../../../src/server/api/with-api";
 
 /** Staff download of the latest signed copy. Generic filename, PDF only, audited. Parties never download each other's copies here. */
-export async function GET(req: Request, { params }: Ctx) {
+async function handleGet(req: Request, { params }: Ctx) {
   const deps = getInvestmentDeps();
   const staff = await investStaffGate(req, deps, "investment.review");
   if (staff instanceof NextResponse) return staff;
@@ -19,3 +20,5 @@ export async function GET(req: Request, { params }: Ctx) {
     headers: { "content-type": "application/pdf", "content-disposition": `attachment; filename="signed-contract-${f.id}.pdf"`, "x-content-type-options": "nosniff", "cache-control": "no-store" }
   });
 }
+
+export const GET = withApi(handleGet);

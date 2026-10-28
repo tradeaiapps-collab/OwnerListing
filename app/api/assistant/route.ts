@@ -12,6 +12,7 @@ import { devLoginAllowed } from "../../../src/server/dev-login";
 import { getLiveGuide } from "../../../src/server/guide-assistant-db";
 import { loadJourney } from "../../../src/server/journey";
 import { countHitPg } from "../../../src/server/offer-flow-db";
+import { withApi } from "../../../src/server/api/with-api";
 
 const NO_STORE = { "cache-control": "no-store" } as const;
 const MAX_BODY = 2048;
@@ -23,7 +24,7 @@ const err = (status: number, error: string, extra: Record<string, string> = {}) 
  * Rate limited per client IP hash before anything else; if the counter cannot be read the request is refused (fail closed).
  * The answer can only describe the visitor's own next step (from their own records); it never contains other users' data.
  */
-export async function POST(req: Request) {
+async function handlePost(req: Request) {
   const blocked = csrfGuard(req);
   if (blocked) return blocked;
   const db = getDb();
@@ -74,3 +75,5 @@ export async function POST(req: Request) {
 async function countGuideHit(db: ReturnType<typeof getDb>, req: Request): Promise<number | undefined> {
   return countHitPg(db, await hashToken(`guide:ip:${clientIp(req)}`), windowStart(new Date().toISOString(), GUIDE_RATE.windowMs));
 }
+
+export const POST = withApi(handlePost);

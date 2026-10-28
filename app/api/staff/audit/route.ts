@@ -5,9 +5,10 @@ import { staffCan } from "../../../../src/domain/staff-access";
 import { queryAuditPg } from "../../../../src/server/audit-read-db";
 import { getDb, getStaff } from "../../../../src/server/context";
 import { appendAuditPg } from "../../../../src/server/db";
+import { withApi } from "../../../../src/server/api/with-api";
 
 /** Staff audit log. Read-only (GET only): there is no way to change or delete an audit row through this API. */
-export async function GET(req: Request) {
+async function handleGet(req: Request) {
   const staff = await getStaff(req);
   if (!staff) return NextResponse.json({ error: "Sign in as staff." }, { status: 401 });
   if (!staffCan(staff, "report.audit")) return NextResponse.json({ error: "Not allowed." }, { status: 403 });
@@ -26,3 +27,5 @@ export async function GET(req: Request) {
   });
   return NextResponse.json(result);
 }
+
+export const GET = withApi(handleGet);

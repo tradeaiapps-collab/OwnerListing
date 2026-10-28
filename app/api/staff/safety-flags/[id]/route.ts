@@ -2,11 +2,12 @@ import { NextResponse } from "next/server";
 import { reviewSafetyFlagPg } from "../../../../../src/server/ai-records-db";
 import { getDb } from "../../../../../src/server/context";
 import { fail, readJsonObject, staffAudit, staffGate, UUID_RE } from "../../../../../src/server/staff-route";
+import { withApi } from "../../../../../src/server/api/with-api";
 
 type Ctx = { params: Promise<{ id: string }> };
 
 /** Staff record whether a flagged message was a real problem. Body: { "outcome": "confirmed" | "dismissed", "note"?: text }. Once only. */
-export async function POST(req: Request, { params }: Ctx) {
+async function handlePost(req: Request, { params }: Ctx) {
   const staff = await staffGate(req, "case.manage");
   if (staff instanceof NextResponse) return staff;
   const { id } = await params;
@@ -22,3 +23,5 @@ export async function POST(req: Request, { params }: Ctx) {
   await staffAudit(staff, "message_safety_flag", id, "safety_flag.reviewed", { outcome });
   return NextResponse.json({ ok: true });
 }
+
+export const POST = withApi(handlePost);

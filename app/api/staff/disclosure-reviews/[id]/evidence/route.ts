@@ -3,12 +3,13 @@ import { getDb, getUploadPorts } from "../../../../../../src/server/context";
 import { submissionEvidencePg } from "../../../../../../src/server/disclosure-config-db";
 import { createPgDocumentStore } from "../../../../../../src/server/documents-db";
 import { fail, staffAudit, staffGate } from "../../../../../../src/server/staff-route";
+import { withApi } from "../../../../../../src/server/api/with-api";
 
 /**
  * The evidence file for a disclosure submission, for the Compliance reviewer. Every view is logged. Sent as an attachment with the
  * stored (sniffed) type and nosniff, the same as owner downloads.
  */
-export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }) {
+async function handleGet(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const staff = await staffGate(req, "disclosure.verify");
   if (staff instanceof NextResponse) return staff;
   const { id } = await ctx.params;
@@ -28,3 +29,5 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
     }
   });
 }
+
+export const GET = withApi(handleGet);

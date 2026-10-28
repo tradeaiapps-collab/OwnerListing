@@ -3,9 +3,10 @@ import { listingActionsFor } from "../../../../src/domain/admin-moderation";
 import { getDb } from "../../../../src/server/context";
 import { searchListings } from "../../../../src/server/admin-moderation-db";
 import { staffGate } from "../../../../src/server/staff-route";
+import { withApi } from "../../../../src/server/api/with-api";
 
 /** Every listing for moderation: ?q (title, address, suburb, postcode or id) &status &jurisdiction &transactionType &cursor. */
-export async function GET(req: Request) {
+async function handleGet(req: Request) {
   const staff = await staffGate(req, "listing.moderate");
   if (staff instanceof NextResponse) return staff;
   const p = new URL(req.url).searchParams;
@@ -20,3 +21,5 @@ export async function GET(req: Request) {
     { headers: { "cache-control": "no-store" } }
   );
 }
+
+export const GET = withApi(handleGet);

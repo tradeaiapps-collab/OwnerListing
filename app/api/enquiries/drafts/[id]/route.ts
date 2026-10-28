@@ -5,11 +5,12 @@ import { getActor } from "../../../../../src/server/context";
 import { csrfGuard } from "../../../../../src/server/csrf";
 import { getEnquiryDeps } from "../../../../../src/server/enquiry-db";
 import { failure, unauthenticated } from "../../../../../src/server/http";
+import { withApi } from "../../../../../src/server/api/with-api";
 
 type Ctx = { params: Promise<{ id: string }> };
 
 /** Owner only. Body: { "action": "discard" | "send" }. "send" posts the draft as the owner's own message. */
-export async function POST(req: Request, { params }: Ctx) {
+async function handlePost(req: Request, { params }: Ctx) {
   const blocked = csrfGuard(req);
   if (blocked) return blocked;
   const actor = await getActor(req);
@@ -23,3 +24,5 @@ export async function POST(req: Request, { params }: Ctx) {
   const r = action === "send" ? await sendDraft(deps, actor, id) : await discardDraft(deps, actor, id);
   return r.ok ? NextResponse.json({ ok: true }) : failure(r);
 }
+
+export const POST = withApi(handlePost);

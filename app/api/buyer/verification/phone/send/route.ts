@@ -5,9 +5,10 @@ import { clientIp } from "../../../../../../src/server/client-ip";
 import { failure, unauthenticated } from "../../../../../../src/server/http";
 import { sendPhoneCode } from "../../../../../../src/server/phone-verification";
 import { getPhoneDeps } from "../../../../../../src/server/verification-context";
+import { withApi } from "../../../../../../src/server/api/with-api";
 
 /** Body: { phone, consent: true }. Buyers only. Texts a 6-digit code once the Spam Act consent box is ticked. */
-export async function POST(req: Request) {
+async function handlePost(req: Request) {
   const blocked = csrfGuard(req);
   if (blocked) return blocked;
   const actor = await getActor(req);
@@ -16,3 +17,5 @@ export async function POST(req: Request) {
   const r = await sendPhoneCode(await getPhoneDeps(), actor.userId, clientIp(req), await req.json().catch(() => null));
   return r.ok ? NextResponse.json(r.value) : failure(r);
 }
+
+export const POST = withApi(handlePost);

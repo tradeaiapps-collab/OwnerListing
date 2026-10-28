@@ -6,6 +6,7 @@ import { transitionListing } from "../../../../../../src/domain/listing-transiti
 import { getDb, getDeps } from "../../../../../../src/server/context";
 import { listingsSuspendedWithAccount, moderateListing, setUserStatus, userTarget } from "../../../../../../src/server/admin-moderation-db";
 import { fail, readJsonObject, staffGate, UUID_RE } from "../../../../../../src/server/staff-route";
+import { withApi } from "../../../../../../src/server/api/with-api";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -15,7 +16,7 @@ type Ctx = { params: Promise<{ id: string }> };
  * back the listings suspended with the account unless "keep", each only if it passes the publish checks today. The rest stay suspended
  * and are returned with the reasons.
  */
-export async function POST(req: Request, { params }: Ctx) {
+async function handlePost(req: Request, { params }: Ctx) {
   const staff = await staffGate(req, "user.manage");
   if (staff instanceof NextResponse) return staff;
   const { id } = await params;
@@ -50,3 +51,5 @@ export async function POST(req: Request, { params }: Ctx) {
   }
   return NextResponse.json({ ok: true, status: plan.to, listingsRestored: restored, listingsNotRestored: notRestored });
 }
+
+export const POST = withApi(handlePost);

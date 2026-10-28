@@ -9,9 +9,10 @@ import { createPgPhotoStore } from "../../../src/server/photos-db";
 import { failure, unauthenticated } from "../../../src/server/http";
 import { csrfGuard } from "../../../src/server/csrf";
 import { requireCurrentTerms } from "../../../src/server/terms-guard";
+import { withApi } from "../../../src/server/api/with-api";
 
 /** Public browse over published listings: filters, sort and pages (see parseSearchQuery for the parameters). */
-export async function GET(req: Request) {
+async function handleGet(req: Request) {
   const query = parseSearchQuery(new URL(req.url).searchParams);
   const page = await searchPublished(getDeps(), query);
   // Cover photo and photo count per card. A photo lookup failure only means cards show without photos.
@@ -22,7 +23,7 @@ export async function GET(req: Request) {
 }
 
 /** Creates a draft owned by the signed-in user. */
-export async function POST(req: Request) {
+async function handlePost(req: Request) {
   const blocked = csrfGuard(req);
   if (blocked) return blocked;
   const actor = await getActor(req);
@@ -36,3 +37,6 @@ export async function POST(req: Request) {
   const listing = await createDraft(getDeps(), actor, parsed.value);
   return NextResponse.json({ listing, wordingFlags: listingWordingFlags(listing) }, { status: 201 });
 }
+
+export const GET = withApi(handleGet);
+export const POST = withApi(handlePost);

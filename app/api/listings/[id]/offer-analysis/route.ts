@@ -5,6 +5,7 @@ import { getDb, getDeps } from "../../../../../src/server/context";
 import { csrfGuard } from "../../../../../src/server/csrf";
 import { offersForOwnerPg } from "../../../../../src/server/offers-db";
 import { requireListingHandler } from "../../../../../src/server/owner-listing";
+import { withApi } from "../../../../../src/server/api/with-api";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -26,13 +27,16 @@ async function report(req: Request, id: string, withAi: boolean) {
 }
 
 /** Deterministic comparison of the offers on a listing, for the owner or the appointed agent. No AI is called. Others get 404. */
-export async function GET(req: Request, { params }: Ctx) {
+async function handleGet(req: Request, { params }: Ctx) {
   return report(req, (await params).id, false);
 }
 
 /** Owner asks for the optional AI summary. Same table, plus an AI state ("unavailable" while the engine is off). */
-export async function POST(req: Request, { params }: Ctx) {
+async function handlePost(req: Request, { params }: Ctx) {
   const blocked = csrfGuard(req);
   if (blocked) return blocked;
   return report(req, (await params).id, true);
 }
+
+export const GET = withApi(handleGet);
+export const POST = withApi(handlePost);

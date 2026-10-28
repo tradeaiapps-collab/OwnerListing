@@ -3,16 +3,17 @@ import { parseInviteInput } from "../../../../src/domain/staff-invite";
 import { getDb } from "../../../../src/server/context";
 import { createInvite, listInvites } from "../../../../src/server/staff-invite-db";
 import { fail, readJsonObject, staffGate } from "../../../../src/server/staff-route";
+import { withApi } from "../../../../src/server/api/with-api";
 
 /** Staff allowlist with history. Admin only (staff.manage). */
-export async function GET(req: Request) {
+async function handleGet(req: Request) {
   const staff = await staffGate(req, "staff.manage");
   if (staff instanceof NextResponse) return staff;
   return NextResponse.json({ invites: await listInvites(getDb()) });
 }
 
 /** Invites an email address with a role. Audited. */
-export async function POST(req: Request) {
+async function handlePost(req: Request) {
   const staff = await staffGate(req, "staff.manage");
   if (staff instanceof NextResponse) return staff;
   const input = parseInviteInput(await readJsonObject(req));
@@ -20,3 +21,6 @@ export async function POST(req: Request) {
   const r = await createInvite(getDb(), staff, input.email, input.role);
   return r.ok ? NextResponse.json({ ok: true, id: r.id }, { status: 201 }) : fail(r.status, r.error);
 }
+
+export const GET = withApi(handleGet);
+export const POST = withApi(handlePost);

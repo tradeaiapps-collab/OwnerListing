@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { viewIdImage } from "../../../../../../../src/server/id-image";
 import { fail, staffGate, UUID_RE } from "../../../../../../../src/server/staff-route";
 import { getIdImageDeps } from "../../../../../../../src/server/verification-context";
+import { withApi } from "../../../../../../../src/server/api/with-api";
 
 const HEADERS = {
   "cache-control": "private, no-store, max-age=0",
@@ -19,7 +20,7 @@ const CHUNK = 64 * 1024;
  * id_review_access (reviewer id and part) before any byte is read. Everyone else, including the buyer, gets 404.
  * Never cached (no-store). There is no buyer download route.
  */
-export async function GET(req: Request, ctx: { params: Promise<{ id: string; part: string }> }) {
+async function handleGet(req: Request, ctx: { params: Promise<{ id: string; part: string }> }) {
   const staff = await staffGate(req, "identity.review");
   if (staff instanceof NextResponse) return staff;
   const { id, part } = await ctx.params;
@@ -37,3 +38,5 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string; par
   });
   return new Response(body, { status: 200, headers: { ...HEADERS, "content-type": r.value.mime, "content-length": String(bytes.length) } });
 }
+
+export const GET = withApi(handleGet);

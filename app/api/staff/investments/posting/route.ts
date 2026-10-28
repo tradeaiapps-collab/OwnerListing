@@ -5,6 +5,7 @@ import { getDb } from "../../../../../src/server/context";
 import { loadPosting, loadPostingHistory, savePosting } from "../../../../../src/server/investments-db";
 import { countHitPg } from "../../../../../src/server/offer-flow-db";
 import { fail, readJsonObject, staffGate } from "../../../../../src/server/staff-route";
+import { withApi } from "../../../../../src/server/api/with-api";
 
 /** Posting model settings (investment.manage). Reachable while the module is off. Changes apply to projects posted afterwards only. */
 async function view() {
@@ -12,13 +13,13 @@ async function view() {
   return { settings, posterText: posterText(settings), explainers: MODEL_EXPLAINERS, history: await loadPostingHistory(getDb()) };
 }
 
-export async function GET(req: Request) {
+async function handleGet(req: Request) {
   const staff = await staffGate(req, "investment.manage");
   if (staff instanceof NextResponse) return staff;
   return NextResponse.json(await view(), { headers: { "cache-control": "no-store" } });
 }
 
-export async function POST(req: Request) {
+async function handlePost(req: Request) {
   const staff = await staffGate(req, "investment.manage");
   if (staff instanceof NextResponse) return staff;
   const hits = await countHitPg(getDb(), `inv-posting:${staff.id}`, windowStart(new Date().toISOString(), INVESTMENT_RATE.toggle.windowMs)).catch(() => undefined);
@@ -28,3 +29,6 @@ export async function POST(req: Request) {
   await savePosting(getDb(), staff, v.value);
   return NextResponse.json(await view(), { headers: { "cache-control": "no-store" } });
 }
+
+export const GET = withApi(handleGet);
+export const POST = withApi(handlePost);

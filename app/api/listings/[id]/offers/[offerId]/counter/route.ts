@@ -7,6 +7,7 @@ import { csrfGuard } from "../../../../../../../src/server/csrf";
 import { failure, unauthenticated } from "../../../../../../../src/server/http";
 import { expireCountersPg, ownerCounterPg } from "../../../../../../../src/server/offer-counter-db";
 import { offersForOwnerPg } from "../../../../../../../src/server/offers-db";
+import { withApi } from "../../../../../../../src/server/api/with-api";
 
 type Ctx = { params: Promise<{ id: string; offerId: string }> };
 
@@ -17,7 +18,7 @@ const conflict = { ok: false, code: "conflict", message: "You cannot counter thi
  * The owner counters the buyer's terms. Owner only (an appointed agent cannot counter, and the AI has no route here).
  * Records proposed terms only: nothing is accepted, no money moves.
  */
-export async function POST(req: Request, { params }: Ctx) {
+async function handlePost(req: Request, { params }: Ctx) {
   const blocked = csrfGuard(req);
   if (blocked) return blocked;
   const actor = await getActor(req);
@@ -53,3 +54,5 @@ export async function POST(req: Request, { params }: Ctx) {
   });
   return NextResponse.json({ offer: { id: offerId, status: "countered" }, counter: { id: saved.id, round: saved.round } }, { status: 201 });
 }
+
+export const POST = withApi(handlePost);

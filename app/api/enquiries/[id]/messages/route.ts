@@ -7,6 +7,7 @@ import { getEnquiryDeps } from "../../../../../src/server/enquiry-db";
 import { failure, unauthenticated } from "../../../../../src/server/http";
 import { screenWithDefaults } from "../../../../../src/server/message-safety";
 import { requireCurrentTerms } from "../../../../../src/server/terms-guard";
+import { withApi } from "../../../../../src/server/api/with-api";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -15,7 +16,7 @@ const notFound = { ok: false, code: "not_found", message: "Enquiry not found." }
 // Only GET and POST exist on purpose. Enquiry messages are never edited or deleted (CLAUDE.md).
 
 /** The thread, for its buyer and the listing's owner only. Reading marks it read for the reader. */
-export async function GET(req: Request, { params }: Ctx) {
+async function handleGet(req: Request, { params }: Ctx) {
   const actor = await getActor(req);
   if (!actor) return unauthenticated();
   const { id } = await params;
@@ -25,7 +26,7 @@ export async function GET(req: Request, { params }: Ctx) {
 }
 
 /** Adds a message to the thread. Body: { "body": "text" }. */
-export async function POST(req: Request, { params }: Ctx) {
+async function handlePost(req: Request, { params }: Ctx) {
   const blocked = csrfGuard(req);
   if (blocked) return blocked;
   const actor = await getActor(req);
@@ -44,3 +45,6 @@ export async function POST(req: Request, { params }: Ctx) {
   if (enquiry) await screenWithDefaults(enquiry, r.value);
   return NextResponse.json({ message: r.value }, { status: 201 });
 }
+
+export const GET = withApi(handleGet);
+export const POST = withApi(handlePost);

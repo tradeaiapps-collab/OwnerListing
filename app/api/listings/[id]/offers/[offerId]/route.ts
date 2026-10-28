@@ -9,6 +9,7 @@ import { countersForOfferPg, expireCountersPg } from "../../../../../../src/serv
 import { offerTimelinePg } from "../../../../../../src/server/offer-timeline-db";
 import { offerDetailPg, offersForOwnerPg } from "../../../../../../src/server/offers-db";
 import { requireListingHandler } from "../../../../../../src/server/owner-listing";
+import { withApi } from "../../../../../../src/server/api/with-api";
 
 type Ctx = { params: Promise<{ id: string; offerId: string }> };
 
@@ -20,7 +21,7 @@ const notFound = { ok: false, code: "not_found", message: "Offer not found." } a
  * identity and nothing from the negotiation mandate. Only the owner gets canDecide. Everyone else gets 404, the same as
  * an unknown offer. A counter that ran out of time is settled first, so the page never shows a stale open counter.
  */
-export async function GET(req: Request, { params }: Ctx) {
+async function handleGet(req: Request, { params }: Ctx) {
   const { id, offerId } = await params;
   const handler = await requireListingHandler(req, id);
   if (handler instanceof NextResponse) return handler;
@@ -53,3 +54,5 @@ export async function GET(req: Request, { params }: Ctx) {
     }
   }, { headers: { "cache-control": "private, no-store" } });
 }
+
+export const GET = withApi(handleGet);

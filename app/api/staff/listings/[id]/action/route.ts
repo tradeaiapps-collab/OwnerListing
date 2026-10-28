@@ -6,6 +6,7 @@ import { transitionListing } from "../../../../../../src/domain/listing-transiti
 import { getDb, getDeps } from "../../../../../../src/server/context";
 import { moderateListing } from "../../../../../../src/server/admin-moderation-db";
 import { fail, readJsonObject, staffGate, UUID_RE } from "../../../../../../src/server/staff-route";
+import { withApi } from "../../../../../../src/server/api/with-api";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -13,7 +14,7 @@ type Ctx = { params: Promise<{ id: string }> };
  * Body { action: "suspend" | "reinstate" | "send_back", reason }. Reinstating re-runs the publish gate on the owner's behalf and is
  * refused with its reasons if the listing would not pass today. The status change and the audit event commit together.
  */
-export async function POST(req: Request, { params }: Ctx) {
+async function handlePost(req: Request, { params }: Ctx) {
   const staff = await staffGate(req, "listing.moderate");
   if (staff instanceof NextResponse) return staff;
   const { id } = await params;
@@ -40,3 +41,5 @@ export async function POST(req: Request, { params }: Ctx) {
   if (!ok) return fail(409, "This listing changed in the meantime. Reload and try again.");
   return NextResponse.json({ ok: true, status: plan.to });
 }
+
+export const POST = withApi(handlePost);

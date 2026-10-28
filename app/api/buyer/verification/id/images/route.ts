@@ -7,6 +7,7 @@ import { csrfGuard } from "../../../../../../src/server/csrf";
 import { failure, unauthenticated } from "../../../../../../src/server/http";
 import { submitIdImages, type IdUploadInput } from "../../../../../../src/server/id-image";
 import { getIdImageDeps } from "../../../../../../src/server/verification-context";
+import { withApi } from "../../../../../../src/server/api/with-api";
 
 const FIELDS = ["consent", "consentVersion", "documentKind", "documentCountry", "expiryDate", "selfieSource"] as const;
 const PARTS: readonly IdImagePart[] = ["front", "back", "selfie"];
@@ -25,7 +26,7 @@ async function readUpload(req: Request): Promise<IdUploadInput | Failure> {
 }
 
 /** Status of the buyer's latest ID photo submission (pending, approved, rejected, needs_more or null). Never any image or detail. */
-export async function GET(req: Request) {
+async function handleGet(req: Request) {
   const actor = await getActor(req);
   if (!actor) return unauthenticated();
   if (actor.userType !== "buyer") return NextResponse.json({ error: "Buyers only." }, { status: 403 });
@@ -41,7 +42,7 @@ export async function GET(req: Request) {
  * (multipart). Buyers only. Configuration, rate limits and buyer state are checked before the body is read.
  * Upload only: no route gives the images back to the buyer.
  */
-export async function POST(req: Request) {
+async function handlePost(req: Request) {
   const blocked = csrfGuard(req, { json: false });
   if (blocked) return blocked;
   const actor = await getActor(req);
@@ -56,3 +57,6 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "ID photo upload is unavailable right now. Try again later." }, { status: 503 });
   }
 }
+
+export const GET = withApi(handleGet);
+export const POST = withApi(handlePost);

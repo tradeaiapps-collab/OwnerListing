@@ -4,9 +4,10 @@ import { staffCan } from "../../../../src/domain/staff-access";
 import { getDb } from "../../../../src/server/context";
 import { searchUsers } from "../../../../src/server/admin-moderation-db";
 import { staffGate } from "../../../../src/server/staff-route";
+import { withApi } from "../../../../src/server/api/with-api";
 
 /** User accounts with compliance facts: ?q &userType &status &cursor. Names and emails are masked unless the role has pii.view_full. */
-export async function GET(req: Request) {
+async function handleGet(req: Request) {
   const staff = await staffGate(req, "user.manage");
   if (staff instanceof NextResponse) return staff;
   const p = new URL(req.url).searchParams;
@@ -21,3 +22,5 @@ export async function GET(req: Request) {
   }));
   return NextResponse.json({ users, nextCursor: page.nextCursor, fullDetails: staffCan(staff, "pii.view_full") }, { headers: { "cache-control": "no-store" } });
 }
+
+export const GET = withApi(handleGet);

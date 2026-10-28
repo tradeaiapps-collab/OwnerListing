@@ -2,6 +2,7 @@ import { SITE_ASSET_NAMES, type SiteAssetName } from "../../../../../src/domain/
 import { getDb } from "../../../../../src/server/context";
 import { loadAssetFile } from "../../../../../src/server/site-theme-db";
 import { PREVIEW_PARAM, verifyPreviewToken } from "../../../../../src/server/theme-preview";
+import { withApi } from "../../../../../src/server/api/with-api";
 
 const BASE = {
   "x-content-type-options": "nosniff",
@@ -16,7 +17,7 @@ const notFound = () => new Response("Not found", { status: 404, headers: { "cach
  * A published image is immutable (the id changes when the image changes), so it is cached for a year. An image not yet used by the
  * published version is served only with a valid preview token, and then never cached.
  */
-export async function GET(req: Request, ctx: { params: Promise<{ name: string }> }) {
+async function handleGet(req: Request, ctx: { params: Promise<{ name: string }> }) {
   const { name } = await ctx.params;
   if (!(SITE_ASSET_NAMES as readonly string[]).includes(name)) return notFound();
   const url = new URL(req.url);
@@ -38,3 +39,5 @@ export async function GET(req: Request, ctx: { params: Promise<{ name: string }>
     status: 200, headers: { ...BASE, "content-type": file.contentType, "content-length": String(file.bytes.length), etag, "cache-control": cache }
   });
 }
+
+export const GET = withApi(handleGet);
