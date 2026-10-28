@@ -1,7 +1,7 @@
 import { mfaClaimValid, mfaRequired } from "../../domain/mfa";
 import type { Actor } from "../../domain/listing-service";
 import type { Queryable } from "../db";
-import { SESSION_COOKIE, readCookie, verifySession, type SessionPayload } from "./session";
+import { SESSION_COOKIE, SESSION_TTL_SECONDS, readCookie, verifySession, type SessionPayload } from "./session";
 
 /** A signed-in session and where it stands on the second factor. */
 export interface SessionState {
@@ -24,12 +24,17 @@ export async function sessionFromRequestChecked(db: Queryable, req: Request, sec
     `SELECT u.id, u.user_type,
             EXISTS (SELECT 1 FROM mfa_factor f WHERE f.user_id = u.id AND f.confirmed_at IS NOT NULL AND f.revoked_at IS NULL) AS mfa_enrolled,
             (SELECT floor(extract(epoch FROM max(f.revoked_at)))::bigint FROM mfa_factor f
-              WHERE f.user_id = u.id AND f.confirmed_at IS NOT NULL) AS mfa_revoked_at
+              WHERE f.user_id = u.id AND f.confirmed_at IS NOT NULL) AS mfa_revoked_at,
+            (SELECT floor(extract(epoch FROM max(r.reset_at)))::bigint FROM mfa_reset_log r WHERE r.user_id = u.id) AS mfa_reset_at
        FROM app_user u WHERE u.id = $1 AND u.status = 'active' AND u.user_type = $2`,
     [p.uid, p.ut]
   );
   const row = res.rows[0];
   if (!row || row["id"] !== p.uid || row["user_type"] !== p.ut) return null;
+  // A staff reset of the second factor signs the user out everywhere: any session issued at or before it is refused, so a stolen or
+  // still-signed-in session cannot enrol a new factor in the user's place. Every session is issued with exp = issue time + TTL.
+  const resetAt = epoch(row["mfa_reset_at"]);
+  if (resetAt !== undefined && p.exp - SESSION_TTL_SECONDS <= resetAt) return null;
   const enrolled = row["mfa_enrolled"] === true;
   return {
     actor: { userId: p.uid, userType: p.ut },

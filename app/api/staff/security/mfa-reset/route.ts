@@ -23,7 +23,11 @@ async function handleGet(req: Request) {
   const email = lookupEmail(new URL(req.url).searchParams.get("email"));
   if (!email) return fail(400, "Enter a valid email address.");
   const user = await findMfaResetTarget(getDb(), { email });
-  if (!user) return fail(404, "No account uses that email.");
+  if (!user) {
+    // Misses are audited too (without the address), so probing which emails exist leaves a trace.
+    await staffAudit(staff, "mfa_reset_lookup", "not_found", "mfa.reset_lookup_miss", {});
+    return fail(404, "No account uses that email.");
+  }
   await staffAudit(staff, "app_user", user.id, "mfa.reset_lookup", {});
   return NextResponse.json({ user }, { headers: NO_STORE });
 }

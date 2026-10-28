@@ -110,6 +110,8 @@ describe("/api/staff/security/mfa-reset", () => {
     expect(state.audits.map(a => a.eventType)).toEqual(["mfa.reset_lookup"]);
     expect((await route.GET(get("not-an-email"))).status).toBe(400);
     expect((await route.GET(get("nobody@example.com"))).status).toBe(404);
+    expect(state.audits.map(a => a.eventType)).toEqual(["mfa.reset_lookup", "mfa.reset_lookup_miss"]);
+    expect(JSON.stringify(state.audits)).not.toContain("nobody@example.com");
   });
   it("resets with confirmation, emails the user and audits who, why and whether the email went", async () => {
     state.staff = { id: ADMIN, role: "super_admin" };

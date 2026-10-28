@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { actorFromRequestChecked, sessionFromRequestChecked } from "../src/server/auth/actor";
-import { SESSION_COOKIE, signSession } from "../src/server/auth/session";
+import { SESSION_COOKIE, SESSION_TTL_SECONDS, signSession } from "../src/server/auth/session";
 import { findMfaResetTarget, resetUserMfa } from "../src/server/mfa-reset-db";
 import { addUser, createTestDb, DATABASE_URL, type TestDb } from "./helpers/pg-db";
 
@@ -20,7 +20,7 @@ describe.skipIf(!DATABASE_URL)("staff MFA reset on Postgres", () => {
   };
   const emailOf = async (id: string) => String((await t.db.query("SELECT email::text AS e FROM app_user WHERE id = $1", [id])).rows[0]!["e"]);
   const reqAt = (uid: string, mfa: number) =>
-    new Request("http://x", { headers: { cookie: `${SESSION_COOKIE}=${signSession({ uid, ut: "owner", exp: 4_000_000_000, mfa }, SECRET)}` } });
+    new Request("http://x", { headers: { cookie: `${SESSION_COOKIE}=${signSession({ uid, ut: "owner", exp: mfa - 60 + SESSION_TTL_SECONDS, mfa }, SECRET)}` } });
 
   it("shows methods with a masked phone, then resets everything in one go and signs the user out everywhere", async () => {
     const admin = await addUser(t.db, "admin");
@@ -45,10 +45,14 @@ describe.skipIf(!DATABASE_URL)("staff MFA reset on Postgres", () => {
     const ev = await t.db.query("SELECT event FROM mfa_event_log WHERE user_id = $1", [owner]);
     expect(ev.rows.map(r => r["event"])).toEqual(["staff_reset"]);
 
-    // The old session no longer counts; signing in again lands on set-up (required, not enrolled).
+    // Every session issued before the reset is gone entirely, so it cannot enrol a new factor in the user's place.
     const later = Math.floor(Date.now() / 1000) + 1;
     expect(await actorFromRequestChecked(t.db, before, SECRET, later)).toBeNull();
-    const fresh = await sessionFromRequestChecked(t.db, new Request("http://x", { headers: { cookie: `${SESSION_COOKIE}=${signSession({ uid: owner, ut: "owner", exp: 4_000_000_000 }, SECRET)}` } }), SECRET, later);
+    expect(await sessionFromRequestChecked(t.db, before, SECRET, later)).toBeNull();
+    const issued = (iat: number) => new Request("http://x", { headers: { cookie: `${SESSION_COOKIE}=${signSession({ uid: owner, ut: "owner", exp: iat + SESSION_TTL_SECONDS }, SECRET)}` } });
+    expect(await sessionFromRequestChecked(t.db, issued(now - 5), SECRET, later)).toBeNull();
+    // Signing in again afterwards lands on set-up (required, not enrolled).
+    const fresh = await sessionFromRequestChecked(t.db, issued(later + 1), SECRET, later + 1);
     expect(fresh?.mfa).toEqual({ required: true, enrolled: false, satisfied: false });
 
     const after = await findMfaResetTarget(t.db, { id: owner });
