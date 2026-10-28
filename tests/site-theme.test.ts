@@ -205,9 +205,20 @@ describe("generated CSS", () => {
     const css = buildThemeCss(DEFAULT_THEME);
     expect(css).toContain(":root:root{--space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--space-6:24px;--space-8:32px;--radius:14px;");
     expect(css).toContain("--bg:#fbfaf7;");
-    expect(css).toContain("@media (prefers-color-scheme: dark){:root:root{--bg:#0b1020;");
     expect(css).toContain('[data-theme-mode="dark"]');
     expect(css).not.toMatch(/[<>]/);
+  });
+  it("colour mode: light (the default) emits no device-dark media query; system keeps it; anything else is rejected", () => {
+    expect(DEFAULT_THEME.layout.colourMode).toBe("light");
+    expect(buildThemeCss(DEFAULT_THEME)).not.toContain("prefers-color-scheme");
+    const system = buildThemeCss(mutate(t => { t.layout.colourMode = "system"; }) as ThemeSettings);
+    expect(system).toContain("@media (prefers-color-scheme: dark){:root:root{--bg:#0b1020;");
+    expect(errorsOf(mutate(t => { (t.layout as unknown as Record<string, unknown>)["colourMode"] = "dark"; }))["layout.colourMode"]).toBeTruthy();
+  });
+  it("a stored theme saved before colourMode existed loads as light", () => {
+    const old = clone() as unknown as { layout: Record<string, unknown> };
+    delete old.layout["colourMode"];
+    expect(parseStoredTheme(old).layout.colourMode).toBe("light");
   });
   it("density, radius and button size change the tokens", () => {
     const css = buildThemeCss(mutate(t => { t.layout.density = "spacious"; t.layout.radius = 20; t.layout.buttonSize = "large"; t.typography.bodyFont = "georgia"; }) as ThemeSettings);

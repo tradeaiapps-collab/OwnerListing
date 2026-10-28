@@ -13,10 +13,12 @@ export default function ThemePreviewBridge({ allowedOrigin }: { allowedOrigin: s
       if (e.origin !== allowedOrigin || e.source !== window.parent) return;
       const m = e.data as { type?: unknown; settings?: unknown; mode?: unknown } | null;
       if (!m || m.type !== "ol-theme-draft") return;
-      if (m.mode === "light" || m.mode === "dark") document.documentElement.dataset["themeMode"] = m.mode;
-      else delete document.documentElement.dataset["themeMode"];
       const r = validateTheme(m.settings);
       if (!r.ok) return;
+      // The editor's light/dark preview toggle wins; otherwise show the draft's colour mode (fixed light, or follow the device).
+      const mode = m.mode === "light" || m.mode === "dark" ? m.mode : r.value.layout.colourMode === "light" ? "light" : null;
+      if (mode) document.documentElement.dataset["themeMode"] = mode;
+      else delete document.documentElement.dataset["themeMode"];
       const style = document.getElementById("site-theme");
       if (style) style.textContent = buildThemeCss(r.value);
       const url = fontStylesheetUrl([r.value.typography.bodyFont, r.value.typography.headingFont]);

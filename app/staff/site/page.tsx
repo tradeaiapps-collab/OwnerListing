@@ -4,7 +4,7 @@ import "../../styles/staff.css";
 import "../../styles/site-editor.css";
 import { loadError } from "../staff-api";
 import {
-  BUTTON_SIZES, COLOUR_KEYS, DENSITIES, ICON_STYLES, LIMITS, RANGES, contrastRatio, validateTheme,
+  BUTTON_SIZES, COLOUR_KEYS, COLOUR_MODES, DENSITIES, ICON_STYLES, LIMITS, RANGES, contrastRatio, validateTheme,
   type ColourKey, type NavItem, type ThemeErrors, type ThemeSettings
 } from "../../../src/domain/site-theme";
 
@@ -284,6 +284,7 @@ export default function StaffSite() {
           {section === "layout" && (
             <section className="panel" aria-labelledby="h-lay">
               <div className="se-sec-head"><h2 id="h-lay">Layout</h2><button type="button" className="secondary" onClick={() => resetSection(["layout"])}>Reset section</button></div>
+              {Choice({ label: "Colour mode", path: "layout.colourMode", options: COLOUR_MODES.map(id => ({ id, label: id === "light" ? "Always light" : "Follow the visitor's device (light or dark)" })) })}
               {Choice({ label: "Spacing density", path: "layout.density", options: DENSITIES })}
               {Num({ label: "Corner radius", path: "layout.radius", range: RANGES.radius })}
               {Num({ label: "Header height", path: "layout.headerHeight", range: RANGES.headerHeight })}
