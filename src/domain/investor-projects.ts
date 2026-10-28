@@ -200,6 +200,24 @@ export function categoryMaySee(category: InvestorCategory, visibleTo: ProjectVis
   return visibleTo === "all_verified" || category === "wholesale" || category === "sophisticated";
 }
 
+// ---- Browse filters ----
+
+export interface ProjectFilter { q?: string; jurisdiction?: string; projectType?: string; stage?: string; maxMinimumCents?: number }
+interface Filterable { title: string; location: string; jurisdiction: string; projectType: string; summary: string; stage: string; minimumTicketCents: number; issuerName: string }
+
+/** Narrows the projects an investor may already see. Every word of q must appear in the title, location, summary or issuer. */
+export function filterProjects<T extends Filterable>(items: readonly T[], f: ProjectFilter): T[] {
+  const words = (f.q ?? "").toLowerCase().split(/\s+/).filter(Boolean);
+  return items.filter(p => {
+    if (f.jurisdiction && p.jurisdiction !== f.jurisdiction) return false;
+    if (f.projectType && p.projectType !== f.projectType) return false;
+    if (f.stage && p.stage !== f.stage) return false;
+    if (f.maxMinimumCents !== undefined && p.minimumTicketCents > f.maxMinimumCents) return false;
+    const text = `${p.title} ${p.location} ${p.summary} ${p.issuerName}`.toLowerCase();
+    return words.every(w => text.includes(w));
+  });
+}
+
 // ---- Interest ----
 
 export interface InterestInput { message: string; amountMinCents: number; amountMaxCents: number }

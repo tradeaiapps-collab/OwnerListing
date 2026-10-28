@@ -75,15 +75,22 @@ export default async function Home() {
         <div className="hx-shade" aria-hidden="true" />
         <div className="home-wrap hx-inner">
           {preview && <p className="home-badge">Preview</p>}
+          <p className="eyebrow hx-eyebrow">Owner-direct property, Australia</p>
           <h1 id="home-title">{brand.tagline}</h1>
           <p className="hx-lead">Owners and buyers in direct contact. List your home yourself and keep the decision on every offer.</p>
           <HomeSearch suburbs={suburbs} />
+          <ul className="hx-points" aria-label="Why owners choose us">
+            <li>No sale commission</li>
+            <li>Verified buyers</li>
+            <li>You decide every offer</li>
+          </ul>
         </div>
       </section>
 
       <section className="home-owner" aria-labelledby="home-owner-t">
         <div className="home-wrap home-owner-in">
           <div>
+            <p className="eyebrow">For owners</p>
             <h2 id="home-owner-t">List your home yourself</h2>
             <p>No commission. You set the price, talk to verified buyers and choose the offer.</p>
           </div>
@@ -97,7 +104,10 @@ export default async function Home() {
       <section className="home-sec" aria-labelledby="home-latest">
         <div className="home-wrap">
           <div className="home-head">
-            <h2 id="home-latest">Latest listings</h2>
+            <div>
+              <p className="eyebrow">New to market</p>
+              <h2 id="home-latest">Latest listings</h2>
+            </div>
             <a className="home-link" href="/listings">Browse all listings</a>
           </div>
           {latest.length === 0 ? (
@@ -113,6 +123,7 @@ export default async function Home() {
 
       <section className="home-sec home-alt" id="home-how" aria-labelledby="home-how-t">
         <div className="home-wrap">
+          <p className="eyebrow">The process</p>
           <h2 id="home-how-t">How it works</h2>
           <div className="home-two">
             <div>
@@ -131,6 +142,7 @@ export default async function Home() {
 
       <section className="home-sec" aria-labelledby="home-trust">
         <div className="home-wrap">
+          <p className="eyebrow">Peace of mind</p>
           <h2 id="home-trust">Built so nobody has to trust us with their money</h2>
           <ul className="home-trust">
             <li>
@@ -165,6 +177,7 @@ export default async function Home() {
       <section className="home-sec home-alt" aria-labelledby="home-fees">
         <div className="home-wrap home-calc">
           <div>
+            <p className="eyebrow">Costs</p>
             <h2 id="home-fees">Compare the cost</h2>
             <p>Put in your own numbers to compare an agent&apos;s commission with listing it yourself. Plans and fees are published, with GST shown.</p>
             <a className="button secondary" href="/plans">See plans and fees</a>
@@ -175,6 +188,7 @@ export default async function Home() {
 
       <section className="home-sec" aria-labelledby="home-states">
         <div className="home-wrap">
+          <p className="eyebrow">Explore</p>
           <h2 id="home-states">Browse by state</h2>
           <ul className="home-tiles">
             {STATES.map(([code, name, sub]) => (
@@ -186,7 +200,10 @@ export default async function Home() {
 
       <section className="home-sec home-alt" id="home-faq" aria-labelledby="home-faq-t">
         <div className="home-wrap home-faq">
-          <h2 id="home-faq-t">Questions</h2>
+          <div>
+            <p className="eyebrow">Good to know</p>
+            <h2 id="home-faq-t">Questions</h2>
+          </div>
           <div className="home-faq-list">
             {HOME_FAQ_INTENTS.map(i => (
               <details key={i}>
@@ -199,8 +216,12 @@ export default async function Home() {
       </section>
 
       <section className="home-cta" aria-labelledby="home-cta-t">
+        <img className="home-cta-img" src={heroSrc} alt="" loading="lazy" decoding="async" />
         <div className="home-wrap home-cta-in">
-          <h2 id="home-cta-t">Ready when you are</h2>
+          <div>
+            <p className="eyebrow">Begin</p>
+            <h2 id="home-cta-t">Ready when you are</h2>
+          </div>
           <div className="home-cta-actions">
             <a className="button home-cta-main" href="/listings/new">List your property</a>
             <a className="button secondary" href="/listings">Browse listings</a>

@@ -204,8 +204,8 @@ try {
   // Staff-verified disclosures on two listings, so the property page shows them. The keys are illustrative demo data,
   // not a statement of what a state requires (that comes from compliance configuration).
   for (const [i, key, j] of [[0, "qld_seller_disclosure_statement", "QLD"], [0, "pool_safety_certificate", "QLD"], [4, "vic_section_32", "VIC"]]) {
-    await q(`INSERT INTO listing_disclosure (listing_id, jurisdiction, disclosure_key, satisfied, evidence_reference, verified_by, verified_at)
-             VALUES ($1, $2, $3, true, 'demo-evidence', $4, now())`, [listing[i], j, key, boss]);
+    await q(`INSERT INTO listing_disclosure (listing_id, jurisdiction, disclosure_key, satisfied, evidence_reference, verified_by, verified_at, state)
+             VALUES ($1, $2, $3, true, 'demo-evidence', $4, now(), 'verified')`, [listing[i], j, key, boss]);
   }
 
   // Plan and add-on prices (the plans themselves come from the migrations).

@@ -13,8 +13,9 @@ describe("defaults", () => {
   it("are valid, pass WCAG AA for every checked pair in light and dark, and equal the current built-in look", () => {
     const r = validateTheme(DEFAULT_THEME);
     expect(r.ok).toBe(true);
-    expect(DEFAULT_THEME.colours.light).toMatchObject({ bg: "#ffffff", surface: "#f6f7f9", text: "#14181f", muted: "#5a6472", border: "#d5dae1", buttonBg: "#0b5fd6" });
-    expect(DEFAULT_THEME.colours.dark).toMatchObject({ bg: "#0f1218", surface: "#181d26", text: "#eef1f5", buttonBg: "#6ea8fe", buttonText: "#0b1220" });
+    expect(DEFAULT_THEME.colours.light).toMatchObject({ bg: "#fbfaf7", surface: "#f3efe7", text: "#1c1f26", muted: "#5d6271", border: "#e2dccf", buttonBg: "#14213d", accent: "#9a7536" });
+    expect(DEFAULT_THEME.colours.dark).toMatchObject({ bg: "#0b1020", surface: "#121a2e", text: "#e7e2d8", buttonBg: "#d4b37a", buttonText: "#0b1020" });
+    expect(DEFAULT_THEME.typography).toMatchObject({ bodyFont: "inter", headingFont: "playfair" });
     expect(DEFAULT_THEME.navigation.map(n => n.id)).toEqual(NAV_CATALOG.map(n => n.id));
     expect(DEFAULT_THEME.navigation.slice(0, 3).map(n => n.label)).toEqual(["Browse", "Plans", "List a property"]);
   });
@@ -69,8 +70,8 @@ describe("contrast (WCAG AA)", () => {
   });
   it("allows 4.5:1 exactly and rejects just under", () => {
     // #767676 on white is 4.54:1; #787878 is 4.44:1.
-    expect(errorsOf(mutate(t => { t.colours.light.muted = "#767676"; t.colours.light.surface = "#ffffff"; }))["colours.light.muted"]).toBeUndefined();
-    expect(errorsOf(mutate(t => { t.colours.light.muted = "#787878"; t.colours.light.surface = "#ffffff"; }))["colours.light.muted"]).toBeTruthy();
+    expect(errorsOf(mutate(t => { t.colours.light.muted = "#767676"; t.colours.light.surface = "#ffffff"; t.colours.light.bg = "#ffffff"; }))["colours.light.muted"]).toBeUndefined();
+    expect(errorsOf(mutate(t => { t.colours.light.muted = "#787878"; t.colours.light.surface = "#ffffff"; t.colours.light.bg = "#ffffff"; }))["colours.light.muted"]).toBeTruthy();
   });
   it("a dark theme with a dark page and light text passes; the same colours in the wrong mode slot fail", () => {
     const t = clone(); t.colours.light = structuredClone(DEFAULT_THEME.colours.dark);
@@ -202,9 +203,9 @@ describe("shape", () => {
 describe("generated CSS", () => {
   it("has the light variables, a dark media query and forced-mode rules; the defaults reproduce the built-in values", () => {
     const css = buildThemeCss(DEFAULT_THEME);
-    expect(css).toContain(":root:root{--space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--space-6:24px;--space-8:32px;--radius:10px;");
-    expect(css).toContain("--bg:#ffffff;");
-    expect(css).toContain("@media (prefers-color-scheme: dark){:root:root{--bg:#0f1218;");
+    expect(css).toContain(":root:root{--space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--space-6:24px;--space-8:32px;--radius:14px;");
+    expect(css).toContain("--bg:#fbfaf7;");
+    expect(css).toContain("@media (prefers-color-scheme: dark){:root:root{--bg:#0b1020;");
     expect(css).toContain('[data-theme-mode="dark"]');
     expect(css).not.toMatch(/[<>]/);
   });
