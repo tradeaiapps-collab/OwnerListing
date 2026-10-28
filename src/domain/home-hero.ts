@@ -10,12 +10,12 @@ export type HeroSlide = {
   zoom: number;
 };
 
-/** The site's own skyline photo shown as four crops, until real listing photos are wired in. */
+/** Wide daytime home photos (free-licence stock, credits in public/hero/CREDITS.txt) until real listing photos are wired in. */
 export const DEFAULT_HERO_SLIDES: readonly HeroSlide[] = [
-  { src: "/hero-default.jpg", focus: "50% 55%", zoom: 1 },
-  { src: "/hero-default.jpg", focus: "78% 45%", zoom: 1.35 },
-  { src: "/hero-default.jpg", focus: "22% 50%", zoom: 1.3 },
-  { src: "/hero-default.jpg", focus: "55% 70%", zoom: 1.5 }
+  { src: "/hero/hero-1.jpg", focus: "50% 45%", zoom: 1 },
+  { src: "/hero/hero-2.jpg", focus: "50% 55%", zoom: 1 },
+  { src: "/hero/hero-3.jpg", focus: "35% 55%", zoom: 1 },
+  { src: "/hero/hero-4.jpg", focus: "45% 50%", zoom: 1 }
 ];
 
 /** Lines that follow the brand tagline. Factual claims only: each one matches a product rule. */
@@ -25,10 +25,13 @@ export const HERO_LINES: readonly string[] = [
   "You decide on every offer"
 ];
 
-/** An uploaded hero photo (Site appearance) replaces the default crops; otherwise the default slides. */
+/** An uploaded hero photo (Site appearance) leads and the default photos follow it, so the slideshow always has photos to cycle. */
 export function heroSlides(uploaded: string | null): HeroSlide[] {
-  return uploaded ? [{ src: uploaded, focus: "var(--hero-focus, 50%) 50%", zoom: 1 }] : [...DEFAULT_HERO_SLIDES];
+  return uploaded ? [{ src: uploaded, focus: "var(--hero-focus, 50%) 50%", zoom: 1 }, ...DEFAULT_HERO_SLIDES] : [...DEFAULT_HERO_SLIDES];
 }
+
+/** Seconds each slide shows before the next crossfades in. */
+export const HERO_SLIDE_SECONDS = 7;
 
 /** The tagline leads; the rest rotate after it. */
 export function heroLines(tagline: string): string[] {

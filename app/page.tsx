@@ -7,7 +7,7 @@ import { assetUrl } from "../src/domain/site-theme";
 import { getLivePersona } from "../src/server/assistant-persona-db";
 import { getLiveGuide } from "../src/server/guide-assistant-db";
 import { loadLatest, loadSuburbs, type HomeCard } from "../src/server/home-data";
-import { heroLines, heroSlides } from "../src/domain/home-hero";
+import { DEFAULT_HERO_SLIDES, heroLines, heroSlides } from "../src/domain/home-hero";
 import HomeCarousel from "./home-carousel";
 import { HairlineBar, HeroSlides } from "./home-hero";
 import AskAssistant from "./ask-assistant";
@@ -44,7 +44,7 @@ const STATES: readonly [string, string, string][] = [
 ];
 
 /** Default hero photo until another is uploaded at /staff/site (Hero slot). */
-const DEFAULT_HERO = "/hero-default.jpg";
+const DEFAULT_HERO = DEFAULT_HERO_SLIDES[0]!.src;
 
 function Card({ l }: { l: HomeCard }) {
   return (

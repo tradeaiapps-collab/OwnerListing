@@ -45,7 +45,7 @@ describe("home page", () => {
   it("has the full-length sections, the default hero photo and no invented figures", async () => {
     vi.stubEnv("DATABASE_URL", "");
     const html = renderToStaticMarkup(await Home());
-    for (const t of ["/hero-default.jpg", "Sell your home", "List your home yourself", "Browse by state", "/listings?state=qld", "Questions", "How do offers work?", "Illustrative only", "Secure chat", "Compare the cost"]) expect(html, t).toContain(t);
+    for (const t of ["/hero/hero-1.jpg", "Sell your home", "List your home yourself", "Browse by state", "/listings?state=qld", "Questions", "How do offers work?", "Illustrative only", "Secure chat", "Compare the cost"]) expect(html, t).toContain(t);
     expect(html).not.toMatch(/testimonial|\d+% of (owners|buyers)|rated \d/i);
   });
 
@@ -68,7 +68,7 @@ describe("home page", () => {
     vi.stubEnv("DATABASE_URL", "");
     const html = renderToStaticMarkup(await Home());
     expect(html).toContain('<nav class="hl-modes" aria-label="Buy, sell or rent"><a href="/listings?type=sale">Buy</a><a href="/listings/new">Sell</a><a href="/listings?type=rent">Rent</a></nav>');
-    expect(html.match(/class="hx-img" src="\/hero-default.jpg"/g)).toHaveLength(4);
+    expect(html.match(/class="hx-img" src="\/hero\/hero-[1-4].jpg"/g)).toHaveLength(4);
     expect(html.match(/data-on=""/g)).toHaveLength(1);
     expect(html).toMatch(/<h1 id="home-title" class="hl-title"><span class="sr-only">[^<]+<\/span>/);
     expect(html).toContain('aria-label="Pause slideshow"');
@@ -80,7 +80,8 @@ describe("home page", () => {
   it("builds hero slides and lines from an uploaded photo and the tagline", async () => {
     const { heroSlides, heroLines, DEFAULT_HERO_SLIDES, HERO_LINES } = await import("../src/domain/home-hero");
     expect(heroSlides(null)).toEqual(DEFAULT_HERO_SLIDES);
-    expect(heroSlides("/api/site/asset/hero?v=7")).toEqual([{ src: "/api/site/asset/hero?v=7", focus: "var(--hero-focus, 50%) 50%", zoom: 1 }]);
+    expect(heroSlides("/api/site/asset/hero?v=7")).toEqual([{ src: "/api/site/asset/hero?v=7", focus: "var(--hero-focus, 50%) 50%", zoom: 1 }, ...DEFAULT_HERO_SLIDES]);
+    expect(new Set(DEFAULT_HERO_SLIDES.map(s => s.src)).size).toBe(DEFAULT_HERO_SLIDES.length);
     expect(heroLines("Own your sale")).toEqual(["Own your sale", ...HERO_LINES]);
     expect(heroLines(HERO_LINES[0]!)).toHaveLength(HERO_LINES.length);
   });
