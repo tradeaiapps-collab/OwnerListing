@@ -44,11 +44,13 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   const brand = brandFor(settings);
   const fontUrl = fontStylesheetUrl([settings.typography.bodyFont, settings.typography.headingFont]);
   const tok = t.previewToken ?? undefined;
+  // The public site can be fixed to light in Site appearance; the staff console keeps following the device.
+  const fixedLight = !admin && settings.layout.colourMode === "light";
   const light = settings.brand.logoLight ?? settings.brand.logoDark;
   const dark = settings.brand.logoDark ?? settings.brand.logoLight;
   const logo = light && dark ? (
     <picture>
-      <source media="(prefers-color-scheme: dark)" srcSet={assetUrl("logo-dark", dark, tok)} />
+      {!fixedLight && <source media="(prefers-color-scheme: dark)" srcSet={assetUrl("logo-dark", dark, tok)} />}
       <img className="brand-logo" src={assetUrl("logo-light", light, tok)} alt={admin ? "" : brand.name} />
     </picture>
   ) : null;
@@ -61,7 +63,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   const devSignIn = !admin && devLoginAllowed({ url: `http://${h.get("host") ?? ""}/`, headers: { get: n => h.get(n) } });
 
   return (
-    <html lang="en-AU">
+    <html lang="en-AU" data-theme-mode={fixedLight ? "light" : undefined}>
       <head>
         {fontUrl && <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />}
         {fontUrl && <link id="site-theme-font" rel="stylesheet" href={fontUrl} />}

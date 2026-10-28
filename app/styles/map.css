@@ -25,7 +25,7 @@
 .map-canvas .leaflet-control-attribution a { color: inherit; }
 .map-canvas .leaflet-marker-icon:focus-visible { outline: none; }
 @media (prefers-color-scheme: dark) {
-  :root { --map-tile-filter: invert(1) hue-rotate(180deg) brightness(0.92) contrast(0.88) saturate(0.6); }
+  :root:where(:not([data-theme-mode="light"])) { --map-tile-filter: invert(1) hue-rotate(180deg) brightness(0.92) contrast(0.88) saturate(0.6); }
 }
 .map-canvas .map-tiles { filter: var(--map-tile-filter, none); }
 

@@ -66,9 +66,12 @@ export const COLOUR_KEYS: readonly ColourKey[] = ["primary", "secondary", "accen
 export type Density = "compact" | "comfortable" | "spacious";
 export type ButtonSize = "small" | "medium" | "large";
 export type IconStyle = "outline" | "solid";
+/** light: the public site is always light. system: it follows the visitor's device setting (light or dark). */
+export type ColourMode = "light" | "system";
 export const DENSITIES: readonly Density[] = ["compact", "comfortable", "spacious"];
 export const BUTTON_SIZES: readonly ButtonSize[] = ["small", "medium", "large"];
 export const ICON_STYLES: readonly IconStyle[] = ["outline", "solid"];
+export const COLOUR_MODES: readonly ColourMode[] = ["light", "system"];
 
 export interface NavItem { id: string; label: string; visible: boolean }
 export interface FooterLink { label: string; href: string }
@@ -79,7 +82,7 @@ export interface ThemeSettings {
   colours: { light: ModeColours; dark: ModeColours };
   typography: { bodyFont: string; headingFont: string; baseSize: number; headingScale: number };
   /** heroOverlay: darkness of the overlay on the hero photo in percent (a floor keeps white text readable). heroFocus: horizontal crop point in percent (mobile). */
-  layout: { density: Density; radius: number; headerHeight: number; logoHeight: number; buttonSize: ButtonSize; iconStyle: IconStyle; heroOverlay: number; heroFocus: number };
+  layout: { density: Density; radius: number; headerHeight: number; logoHeight: number; buttonSize: ButtonSize; iconStyle: IconStyle; heroOverlay: number; heroFocus: number; colourMode: ColourMode };
   navigation: NavItem[];
   footer: { text: string; links: FooterLink[] };
 }
@@ -100,7 +103,7 @@ export const DEFAULT_THEME: ThemeSettings = {
     }
   },
   typography: { bodyFont: "inter", headingFont: "playfair", baseSize: 16, headingScale: 1 },
-  layout: { density: "comfortable", radius: 14, headerHeight: 72, logoHeight: 28, buttonSize: "medium", iconStyle: "outline", heroOverlay: 55, heroFocus: 50 },
+  layout: { density: "comfortable", radius: 14, headerHeight: 72, logoHeight: 28, buttonSize: "medium", iconStyle: "outline", heroOverlay: 55, heroFocus: 50, colourMode: "light" },
   navigation: NAV_CATALOG.map(n => ({ id: n.id, label: n.label, visible: true })),
   footer: { text: "", links: [] }
 };
@@ -254,20 +257,20 @@ export function validateTheme(input: unknown): ThemeResult {
   const l = input["layout"];
   let layout: ThemeSettings["layout"] | null = null;
   if (isObj(l)) {
-    checkKeys(l, ["density", "radius", "headerHeight", "logoHeight", "buttonSize", "iconStyle", "heroOverlay", "heroFocus"], "layout", errors);
+    checkKeys(l, ["density", "radius", "headerHeight", "logoHeight", "buttonSize", "iconStyle", "heroOverlay", "heroFocus", "colourMode"], "layout", errors);
     const pick = <T extends string>(k: string, list: readonly T[]): T | null => {
       const v = l[k];
       if (typeof v !== "string" || !(list as readonly string[]).includes(v)) { errors[`layout.${k}`] = `Choose one of: ${list.join(", ")}.`; return null; }
       return v as T;
     };
-    const density = pick("density", DENSITIES), buttonSize = pick("buttonSize", BUTTON_SIZES), iconStyle = pick("iconStyle", ICON_STYLES);
+    const density = pick("density", DENSITIES), buttonSize = pick("buttonSize", BUTTON_SIZES), iconStyle = pick("iconStyle", ICON_STYLES), colourMode = pick("colourMode", COLOUR_MODES);
     const radius = num(l["radius"], RANGES.radius, "layout.radius", errors, true);
     const headerHeight = num(l["headerHeight"], RANGES.headerHeight, "layout.headerHeight", errors, true);
     const logoHeight = num(l["logoHeight"], RANGES.logoHeight, "layout.logoHeight", errors, true);
     const heroOverlay = num(l["heroOverlay"], RANGES.heroOverlay, "layout.heroOverlay", errors, true);
     const heroFocus = num(l["heroFocus"], RANGES.heroFocus, "layout.heroFocus", errors, true);
-    if (density && buttonSize && iconStyle && radius !== null && headerHeight !== null && logoHeight !== null && heroOverlay !== null && heroFocus !== null) {
-      layout = { density, radius, headerHeight, logoHeight, buttonSize, iconStyle, heroOverlay, heroFocus };
+    if (density && buttonSize && iconStyle && colourMode && radius !== null && headerHeight !== null && logoHeight !== null && heroOverlay !== null && heroFocus !== null) {
+      layout = { density, radius, headerHeight, logoHeight, buttonSize, iconStyle, heroOverlay, heroFocus, colourMode };
     }
   } else errors["layout"] = "Missing.";
 
@@ -350,7 +353,7 @@ function withNewKeys(raw: unknown): unknown {
   return {
     ...raw,
     brand: { hero: DEFAULT_THEME.brand.hero, ...raw["brand"] },
-    layout: { heroOverlay: DEFAULT_THEME.layout.heroOverlay, heroFocus: DEFAULT_THEME.layout.heroFocus, ...raw["layout"] }
+    layout: { heroOverlay: DEFAULT_THEME.layout.heroOverlay, heroFocus: DEFAULT_THEME.layout.heroFocus, colourMode: DEFAULT_THEME.layout.colourMode, ...raw["layout"] }
   };
 }
 
@@ -386,7 +389,7 @@ export function buildThemeCss(settings: ThemeSettings): string {
   const light = colourVars(t.colours.light), dark = colourVars(t.colours.dark);
   const css =
     `:root:root{${shared}${light}}` +
-    `@media (prefers-color-scheme: dark){:root:root{${dark}}}` +
+    (t.layout.colourMode === "system" ? `@media (prefers-color-scheme: dark){:root:root{${dark}}}` : "") +
     `:root:root[data-theme-mode="light"]{color-scheme:light;${light}}` +
     `:root:root[data-theme-mode="dark"]{color-scheme:dark;${dark}}`;
   return css.replace(/</g, "");
