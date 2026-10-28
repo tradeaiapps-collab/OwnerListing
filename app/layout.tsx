@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { headers } from "next/headers";
 import "./globals.css";
 import GuideAssistant from "./guide-assistant";
-import AdminNav from "./admin-nav";
+import AdminShell from "./admin-shell";
 import SiteNav from "./site-nav";
 import ThemePreviewBridge from "./theme-preview-bridge";
 import "./styles/a11y.css";
@@ -64,48 +64,44 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
         {fontUrl && <link id="site-theme-font" rel="stylesheet" href={fontUrl} />}
         <style id="site-theme" dangerouslySetInnerHTML={{ __html: buildThemeCss(settings) }} />
       </head>
-      <body>
+      <body className={admin ? "admin-app" : undefined}>
         <a className="skip-link" href="#main-content">Skip to content</a>
-        {admin && <div className="admin-banner" role="note"><strong>Admin</strong>, staff only, {brand.name}</div>}
-        <header className="site-header">
-          <div className="site-header-inner">
-            {admin ? (
-              <>
-                <a className="brand" href="/staff">{logo}{brand.name} Admin</a>
-                <AdminNav />
-              </>
-            ) : (
-              <>
+        {admin ? (
+          <AdminShell brand={brand.name} logo={logo} siteHref={appOriginFor("public")}>{children}</AdminShell>
+        ) : (
+          <>
+            <header className="site-header">
+              <div className="site-header-inner">
                 <a className="brand" href="/">{logo ?? brand.name}</a>
                 <SiteNav items={settings.navigation} iconStyle={settings.layout.iconStyle} {...(devSignIn ? { signInHref: "/dev-login" as const } : {})} />
-              </>
-            )}
-          </div>
-        </header>
-        <div className="page" id="main-content" tabIndex={-1}>{children}</div>
-        <footer className="site-footer">
-          <div className="site-footer-inner">
-            <div className="site-footer-brand">
-              <p className="site-footer-name">{brand.name}</p>
-              {!admin && <p className="site-footer-tag">{brand.tagline}. Deposits go to the solicitor&apos;s trust account; we never hold your money.</p>}
-            </div>
-            {footer.links.length > 0 ? (
-              <nav aria-label="Footer">
-                <ul>{footer.links.map(l => <li key={`${l.label}|${l.href}`}><a href={l.href}>{l.label}</a></li>)}</ul>
-              </nav>
-            ) : !admin && (
-              <nav aria-label="Footer" className="site-footer-cols">
-                {FOOTER_COLUMNS.map(c => (
-                  <div key={c.title}>
-                    <h2>{c.title}</h2>
-                    <ul>{c.links.map(l => <li key={l.href}><a href={l.href}>{l.label}</a></li>)}</ul>
-                  </div>
-                ))}
-              </nav>
-            )}
-          </div>
-          <div className="site-footer-base"><p>{footer.text || `© ${new Date().getFullYear()} ${brand.name}`}</p></div>
-        </footer>
+              </div>
+            </header>
+            <div className="page" id="main-content" tabIndex={-1}>{children}</div>
+            <footer className="site-footer">
+              <div className="site-footer-inner">
+                <div className="site-footer-brand">
+                  <p className="site-footer-name">{brand.name}</p>
+                  <p className="site-footer-tag">{brand.tagline}. Deposits go to the solicitor&apos;s trust account; we never hold your money.</p>
+                </div>
+                {footer.links.length > 0 ? (
+                  <nav aria-label="Footer">
+                    <ul>{footer.links.map(l => <li key={`${l.label}|${l.href}`}><a href={l.href}>{l.label}</a></li>)}</ul>
+                  </nav>
+                ) : (
+                  <nav aria-label="Footer" className="site-footer-cols">
+                    {FOOTER_COLUMNS.map(c => (
+                      <div key={c.title}>
+                        <h2>{c.title}</h2>
+                        <ul>{c.links.map(l => <li key={l.href}><a href={l.href}>{l.label}</a></li>)}</ul>
+                      </div>
+                    ))}
+                  </nav>
+                )}
+              </div>
+              <div className="site-footer-base"><p>{footer.text || `© ${new Date().getFullYear()} ${brand.name}`}</p></div>
+            </footer>
+          </>
+        )}
         {guide?.enabled && <GuideAssistant greeting={guide.greeting} chips={guide.chips} disclaimer={GUIDE_DISCLAIMER} />}
         {bridgeOrigin && <ThemePreviewBridge allowedOrigin={bridgeOrigin} />}
       </body>

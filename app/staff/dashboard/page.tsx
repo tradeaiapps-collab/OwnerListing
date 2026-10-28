@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { labelFor, type Overview } from "../../../src/domain/admin-dashboard";
 import { sectionsFor, type StaffSection } from "../../../src/domain/staff-admin";
 import { BarList, KpiTile } from "../charts";
+import { SectionCards } from "../section-cards";
 import { loadError } from "../staff-api";
 import "../../styles/staff.css";
 
@@ -44,9 +45,7 @@ export default function AdminDashboard() {
       {sections.length > 0 && (
         <>
           <h2>Staff screens</h2>
-          <nav className="staff-links" aria-label="Staff sections">
-            {sections.filter(s => s.href !== "/staff/dashboard").map(s => <a key={s.href} href={s.href}>{s.label}</a>)}
-          </nav>
+          <SectionCards sections={sections.filter(s => s.href !== "/staff/dashboard")} compact headingLevel={3} />
         </>
       )}
     </main>
