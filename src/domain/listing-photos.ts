@@ -75,7 +75,7 @@ export function canViewDraftPhotos(userId: string | undefined, ownerUserId: stri
 }
 
 /** Withdrawn listings may have been live, so they count as published (same rule as documents). */
-export const everPublished = (status: string) => status === "published" || status === "suspended" || status === "withdrawn";
+export const everPublished = (status: string) => status === "published" || status === "suspended" || status === "withdrawn" || status === "archived";
 /** Order, captions and hiding can change while the listing is a draft, in review or live. A withdrawn listing is read-only. */
 export const galleryEditable = (status: string) => status === "draft" || status === "pending_review" || status === "published";
 

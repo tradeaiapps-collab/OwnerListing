@@ -26,7 +26,7 @@ export function describeEvent(e: Pick<TimelineEvent, "type" | "actor" | "round">
     case "buyer_agreed": return `${who(e.actor)} agreed to the owner's counter-offer${round}`;
     case "accepted": return `${who(e.actor)} accepted the offer`;
     case "rejected": return `${who(e.actor)} rejected the offer`;
-    case "withdrawn": return `${who(e.actor)} withdrew the offer`;
+    case "withdrawn": return e.actor === "system" ? "The offer was cancelled because an account on the other side was closed" : `${who(e.actor)} withdrew the offer`;
     case "expired": return `The counter-offer${round} lapsed without a reply, so the offer expired`;
     default: return `Status changed`;
   }

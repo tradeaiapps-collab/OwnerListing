@@ -56,7 +56,7 @@ const raw: RawStaffReport = {
 describe("pure aggregation", () => {
   it("fills every status, adds revenue from paid invoices only and excludes resolved cases", () => {
     const r = buildStaffReport(admin, raw);
-    expect(r.listings).toEqual([{ status: "draft", count: 2 }, { status: "pending_review", count: 0 }, { status: "published", count: 4 }, { status: "suspended", count: 0 }, { status: "withdrawn", count: 0 }]);
+    expect(r.listings).toEqual([{ status: "draft", count: 2 }, { status: "pending_review", count: 0 }, { status: "published", count: 4 }, { status: "suspended", count: 0 }, { status: "withdrawn", count: 0 }, { status: "archived", count: 0 }]);
     expect(r.revenue).toEqual({ paidInvoices: 3, totalCents: 33000, gstCents: 3000, exGstCents: 30000, last30DaysCents: 11000 });
     expect(r.openCases).toEqual({ total: 3, byKind: [{ kind: "trust_account_verification", count: 2 }, { kind: "other", count: 1 }] });
     expect(r.verificationFunnel?.buyers.map(b => b.count)).toEqual([10, 8, 6, 3]);

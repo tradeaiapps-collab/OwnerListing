@@ -65,7 +65,8 @@ export const PERMISSION_CATALOGUE = [
   { key: "disclosure.verify", area: "disclosures", label: "Verify owner disclosures", description: "Check the evidence an owner gave for each required disclosure and verify or reject it, with a reason. Never on your own listing.", sensitive: false },
   { key: "listing.moderate", area: "marketplace", label: "Moderate listings", description: "Search every listing, suspend a published listing, lift a suspension (the owner must publish again) and send a listing under review back to draft. Always with a reason; every action is logged.", sensitive: false },
   { key: "user.manage", area: "marketplace", label: "Manage user accounts", description: "See user accounts with their verification and compliance status, and suspend or reinstate an account with a reason. Staff accounts are managed in Staff access.", sensitive: true },
-  { key: "user.mfa_reset", area: "marketplace", label: "Reset two-step sign-in", description: "Reset an owner's or agent's two-step sign-in when they lose their phone, at /staff/security/mfa-reset (super admin only). Every reset is logged and the user is emailed.", sensitive: true }
+  { key: "user.mfa_reset", area: "marketplace", label: "Reset two-step sign-in", description: "Reset an owner's or agent's two-step sign-in when they lose their phone, at /staff/security/mfa-reset (super admin only). Every reset is logged and the user is emailed.", sensitive: true },
+  { key: "user.delete", area: "marketplace", label: "Delete and restore accounts", description: "Delete an owner's, agent's or buyer's account (listings archived, open offers cancelled, records kept 7 years) and restore it within the recovery window, at /staff/users/deleted-accounts (super admin only). Every step is logged and the people affected are emailed.", sensitive: true }
 ] as const satisfies readonly PermissionInfo[];
 
 export type StaffPermission = (typeof PERMISSION_CATALOGUE)[number]["key"];

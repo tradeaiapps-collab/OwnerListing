@@ -85,7 +85,7 @@ function toUserRow(r: Record<string, unknown>, termsCurrent: boolean): StaffUser
 /**
  * Non-staff accounts, newest first, paged. Free-text search on name and email only when the caller may see full personal details
  * (searchPersonal); otherwise only an exact account id matches, so a masked view cannot be used to test whether an email exists.
- * Terms status is not in the list (it is per user); see loadUser.
+ * Terms status is not in the list (it is per user); see loadUser. Deleted accounts are listed at /staff/users/deleted-accounts instead.
  */
 export async function searchUsers(db: Queryable, f: UserFilters): Promise<{ rows: StaffUserRow[]; nextCursor: string | null }> {
   const cur = f.cursor ? decodeCursor(f.cursor) : null;
@@ -93,7 +93,7 @@ export async function searchUsers(db: Queryable, f: UserFilters): Promise<{ rows
   const res = await db.query(
     `SELECT ${COMPLIANCE_SELECT}
        FROM app_user u LEFT JOIN buyer_verification bv ON bv.user_id = u.id
-      WHERE u.user_type <> 'admin'
+      WHERE u.user_type <> 'admin' AND u.deleted_at IS NULL
         AND ($1::text IS NULL OR u.id::text = $1 OR ($2 AND (u.email::text ILIKE $3 OR u.display_name ILIKE $3)))
         AND ($4::text IS NULL OR u.user_type = $4) AND ($5::text IS NULL OR u.status = $5)
         AND ($6::timestamptz IS NULL OR (u.created_at, u.id) < ($6::timestamptz, $7::uuid))

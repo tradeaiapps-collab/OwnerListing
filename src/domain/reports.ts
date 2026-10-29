@@ -2,7 +2,7 @@ import { staffCan, type StaffActor } from "./staff-access";
 
 /** Reports only count and add up what is already stored. The platform holds no money: revenue is paid platform-fee invoices only. */
 
-export const LISTING_STATUSES = ["draft", "pending_review", "published", "suspended", "withdrawn"] as const;
+export const LISTING_STATUSES = ["draft", "pending_review", "published", "suspended", "withdrawn", "archived"] as const;
 export const TRUST_DECISIONS = ["approved", "awaiting_human_approval", "needs_more_evidence", "flagged_for_admin", "rejected"] as const;
 export const ID_STATUSES = ["pending", "approved", "rejected", "needs_more"] as const;
 

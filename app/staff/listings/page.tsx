@@ -11,7 +11,7 @@ interface Row {
   priceCents: number | null; createdAt: string; ownerType: string; offers: number; lastReason: string | null; actions: { action: ListingAction; label: string }[];
 }
 const STATES = ["NSW", "VIC", "QLD", "WA", "SA", "TAS", "ACT", "NT"];
-const STATUSES = ["published", "suspended", "pending_review", "draft", "withdrawn"];
+const STATUSES = ["published", "suspended", "pending_review", "draft", "withdrawn", "archived"];
 const pill = (s: string) => (s === "published" ? "good" : s === "suspended" ? "bad" : s === "pending_review" ? "warn" : "");
 
 /** Every listing: search, filter, and suspend, reinstate or send back with a reason. */
