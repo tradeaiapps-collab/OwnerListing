@@ -19,6 +19,8 @@ npm run start      # next start -p 3004
 Put a TLS-terminating reverse proxy in front. Set `TRUSTED_PROXY_HOPS` to the real number of proxies (client IP is read from the right of x-forwarded-for). Set `APP_URL` to the exact public https origin, or state-changing routes return 403.
 
 ## 3. Required env
+Which provider keys each feature needs: `docs/PROVIDER_KEYS.md`. Run `npm run check:providers -- --production` with the deployment env before every deploy; exit 1 means stop.
+
 `APP_URL`, `DATABASE_URL`, `TRUSTED_PROXY_HOPS`, `SESSION_SECRET` (32+ chars), `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`. Google OAuth redirect URI: `${APP_URL}/api/auth/google/callback`. Set `STAFF_BOOTSTRAP_ADMIN_EMAILS` (comma list) for the first deploy so the first admin can sign in at `/api/auth/google/start?as=staff`; that admin then invites everyone else at `/staff/invites` (any Google account; the verified email must exactly match an active invite, and the role comes from the invite). The bootstrap emails work only while no active super_admin exists; clear the variable once a second admin exists. `PAYWAY_*` stay unset until the merchant account exists. No live payment keys until pen test and counsel sign-off.
 
 ## 4. Backups
@@ -42,14 +44,11 @@ Home loads; Google sign-in works; `/plans` loads; an upload answers 503 (storage
 ## 6. Blocked on providers (stays off or fails closed)
 | Area | Behaviour now | Needs |
 |---|---|---|
-| Email and SMS (alerts, verification) | Delivery port fails closed, nothing sends | Provider, consent wording |
 | Staff sign-in linking | First-login linking by email match waits | Google Workspace domain (hd claim) |
 | Email and SMS (alerts, verification) | Built (SMTP via nodemailer; Twilio-compatible SMS). Fails closed: nothing sends until an admin enters settings in `/staff/messaging` (section 6a) | SMTP account or email provider, SMS account and sender, Spam Act consent wording (counsel) |
 | Payments | Adapter stub; nothing can be marked paid, so nothing publishes | Westpac PayWay merchant account and docs |
 | File storage and malware scan | Upload and download answer 503 | Storage provider, scanner, encryption at rest |
 | ID verification | In-house photo ID + selfie review is built but off until storage, ClamAV, `ID_IMAGE_KEY` and `ID_RETENTION_CRON_SECRET` are all set (page says "not available yet", approval blocked) | Settings below; counsel sign-off; pen test |
-| ABN check | Adapter built, no env wiring | ABN Lookup GUID |
-| ID verification | Manual reviewer checklist only; image storage missing, approval blocked | DVS provider or image storage |
 | ABN check | Adapter built, reads ABN_LOOKUP_GUID (unset = not confirmed, staff review) | ABN Lookup GUID |
 | AI | Rules-only engine; features report off | Self-hosted model and OCR server |
 | Legal text | Draft terms and contract template | Counsel review |

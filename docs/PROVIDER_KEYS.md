@@ -1,0 +1,31 @@
+# Provider keys
+
+Which outside accounts and keys each feature needs, where to get them, and what happens until they are set.
+Every feature below fails closed: with its key missing or wrong it switches itself off; nothing half-works.
+Full comments for every variable: `.env.example`. Never commit real values; put them in the host's environment (Vercel project settings) or `.env.local` on your PC.
+
+## Check before every deploy
+```
+npm run check:providers -- --production
+```
+Run it with the deployment's environment loaded. It prints each provider as OK, OFF, PART (some keys missing) or BAD (a wrong format or a placeholder such as `changeme`, `your-key`, `<paste here>`), with the key names only, never values. Exit 1 means do not deploy:
+- Google sign-in, the MFA key and map tiles are required.
+- Any provider with a placeholder or wrongly formatted value.
+- PayWay with only some of its keys.
+
+PayWay, SMTP, SMS and ABN Lookup may stay OFF; their features then stay off as described below. The server also logs the same summary (names only) once at start-up.
+
+## The keys
+
+| Provider | Unlocks | Keys | Where to get them | Until set |
+|---|---|---|---|---|
+| Google sign-in (required) | All sign-in | `SESSION_SECRET`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `APP_URL` (`ADMIN_APP_URL` on the admin deployment) | Google Cloud console, APIs & Services, Credentials, OAuth client ID (Web). Authorised redirect URI: `${APP_URL}/api/auth/google/callback` (and the admin host's). `SESSION_SECRET`: `openssl rand -base64 48` | Sign-in off |
+| Two-step sign-in (required) | MFA for owners and agents | `MFA_SECRET_KEY` | Generate: `openssl rand -base64 32`. Never rotate casually: enrolled authenticators become unreadable | Owners and agents cannot finish signing in |
+| Westpac PayWay | Package checkout, payment webhook | `PAYWAY_MERCHANT_ID`, `PAYWAY_API_KEY`, `PAYWAY_WEBHOOK_SECRET` | Westpac merchant account, PayWay settings. No live keys until pen test and counsel sign-off. The adapter (`src/adapters/westpac-payway.ts`) is still a stub until the PayWay docs are in hand | Checkout "not available yet"; nothing publishes |
+| Email (SMTP) | Alerts and account email | `SMTP_HOST`, `SMTP_PORT` (465, 587, 2525 or 25), `SMTP_FROM`, optional `SMTP_USER` + `SMTP_PASSWORD` (both or neither) | Any SMTP provider (e.g. the email host's SMTP relay). Or an admin saves them in `/staff/messaging` (needs `MESSAGING_SETTINGS_KEY`) | No email sent |
+| SMS | Mobile verification, SMS sign-in codes, SMS alerts | `SMS_PROVIDER=twilio`, `SMS_ACCOUNT_SID` (AC...), `SMS_AUTH_TOKEN`, `SMS_SENDER` (+61 number, sender ID or MG...), optional `SMS_API_KEY_SID`; `SMS_CODE_SECRET` (`openssl rand -base64 48`) | Twilio console (or a Twilio-compatible provider). Or `/staff/messaging` for the account fields | No SMS; MFA offers the authenticator app only |
+| ABN Lookup | Confirming ABNs with the ABR | `ABN_LOOKUP_GUID` | Free: register at abr.business.gov.au (ABN Lookup web services); the GUID arrives by email | Checksum only, "not confirmed", staff review |
+| Map tiles (required) | Search map, location picker | `NEXT_PUBLIC_MAP_TILE_URL` (https, with `{z}`, `{x}`, `{y}`), `NEXT_PUBLIC_MAP_ATTRIBUTION` | A paid or self-hosted tile provider (e.g. MapTiler, Stadia, Thunderforest). Baked in at build: redeploy after changing | Falls back to OpenStreetMap's public tiles, which are not allowed for production traffic |
+
+## Adding a provider
+Add its keys to `.env.example` (the test fails otherwise) and an entry in `src/config/provider-check.mjs` that mirrors the real reader; `tests/provider-check.test.ts` checks the two agree.

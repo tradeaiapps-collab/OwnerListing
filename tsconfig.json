@@ -11,7 +11,7 @@
     "types": [
       "vitest/globals"
     ],
-    "jsx": "preserve",
+    "jsx": "react-jsx",
     "lib": [
       "dom",
       "dom.iterable",
@@ -23,14 +23,22 @@
       {
         "name": "next"
       }
-    ]
+    ],
+    "noEmit": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true
   },
   "include": [
     "src/**/*.ts",
     "tests/**/*.ts",
     "app/**/*.ts",
     "app/**/*.tsx",
+    "instrumentation.ts",
     "next-env.d.ts",
-    ".next/types/**/*.ts"
+    ".next/types/**/*.ts",
+    ".next/dev/types/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules"
   ]
 }
