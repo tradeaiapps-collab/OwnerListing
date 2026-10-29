@@ -353,6 +353,17 @@ button.secondary:hover:not(:disabled), .button.secondary:hover { background: var
 .form-grid { display: grid; gap: var(--space-3) var(--space-4); grid-template-columns: 1fr; }
 .field { display: flex; flex-direction: column; gap: 6px; font-size: 0.875rem; font-weight: 600; color: var(--text); letter-spacing: 0.01em; }
 .field > .hint { font-weight: 400; color: var(--muted); font-size: 0.8125rem; }
+/* Street address suggestions (app/listings/address-field.tsx). */
+.addr-combo { position: relative; }
+.addr-pop { position: absolute; z-index: 30; top: calc(100% + var(--space-1)); left: 0; right: 0; background: var(--elevated); border: 1px solid var(--line); border-radius: var(--radius-sm, 10px); box-shadow: var(--shadow-2); overflow: hidden; font-weight: 400; letter-spacing: 0; }
+.addr-list { list-style: none; margin: 0; padding: var(--space-1) 0; max-height: min(320px, 50vh); overflow-y: auto; }
+.addr-list:empty { display: none; }
+.addr-list > li { max-width: none; display: flex; flex-direction: column; gap: 2px; padding: var(--space-2) var(--space-3); cursor: pointer; min-height: 44px; justify-content: center; }
+.addr-list > li.on { background: var(--tint-2); }
+.addr-main { color: var(--text); font-weight: 600; overflow-wrap: anywhere; }
+.addr-sub { color: var(--muted); font-size: 0.8125rem; overflow-wrap: anywhere; }
+.addr-note { margin: 0; padding: var(--space-3); color: var(--muted); font-size: 0.875rem; }
+.addr-attr { margin: 0; padding: var(--space-1) var(--space-3) var(--space-2); color: var(--muted); font-size: 0.75rem; text-align: right; border-top: 1px solid var(--line); }
 @media (min-width: 640px) {
   .form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .form-grid.cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }

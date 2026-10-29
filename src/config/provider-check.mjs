@@ -1,4 +1,4 @@
-// Plain JavaScript readiness check for the outside-provider keys (Google sign-in, MFA key, PayWay, SMTP, SMS, ABN Lookup, map tiles).
+// Plain JavaScript readiness check for the outside-provider keys (Google sign-in, MFA key, PayWay, SMTP, SMS, ABN Lookup, address suggestions, map tiles).
 // Shared by scripts/check-providers.mjs (plain Node, cannot import TypeScript) and instrumentation.ts. Types: provider-check.d.mts.
 // Mirrors the rules the real readers apply (src/server/auth/config.ts, src/domain/mfa.ts, src/domain/messaging-settings.ts,
 // src/adapters/*); tests/provider-check.test.ts keeps the two in step. Reports key NAMES only, never values.
@@ -88,6 +88,18 @@ const PROVIDERS = [
     whenOff: "ABNs are only checksum-checked and recorded as \"not confirmed\"; staff review them.",
     keys: ["ABN_LOOKUP_GUID"],
     check: get => (get("ABN_LOOKUP_GUID") && !ABN_GUID.test(get("ABN_LOOKUP_GUID")) ? ["ABN_LOOKUP_GUID must be the GUID the ABR emailed (8-4-4-4-12 hex)."] : [])
+  },
+  {
+    id: "address", label: "Address suggestions (Google Places)", required: false,
+    unlocks: "Street address suggestions in the listing form, which also fill suburb, state and postcode.",
+    whenOff: "Suggestions come from Photon's public OpenStreetMap service (ADDRESS_PHOTON_URL for a self-hosted one), which is fair-use only and not for launch traffic.",
+    keys: ["GOOGLE_PLACES_API_KEY"], // ADDRESS_PHOTON_URL alone is a complete setup, so it is only format-checked below
+    check(get) {
+      const p = [];
+      if (get("GOOGLE_PLACES_API_KEY") && !/^AIza[0-9A-Za-z_-]{35}$/.test(get("GOOGLE_PLACES_API_KEY"))) p.push("GOOGLE_PLACES_API_KEY should start with AIza and have 39 characters.");
+      if (get("ADDRESS_PHOTON_URL") && !/^https:\/\/[^/\s?#]+\/?$/.test(get("ADDRESS_PHOTON_URL"))) p.push("ADDRESS_PHOTON_URL must be an https origin only, like https://photon.example.com.");
+      return p;
+    }
   },
   {
     id: "maptiles", label: "Map tiles", required: true,
