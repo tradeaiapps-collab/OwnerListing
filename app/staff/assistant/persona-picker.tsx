@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { personaLabel, type Persona, type PersonaId } from "../../../src/domain/assistant-persona";
+import { personaLabel, personaPose, POSE_IDS, POSE_USES, type Persona, type PersonaId } from "../../../src/domain/assistant-persona";
 import { loadError } from "../staff-api";
 
 interface View { current: PersonaId; history: { persona: PersonaId; chosenBy: string; chosenAt: string }[]; personas: Persona[]; canChange: boolean }
@@ -47,6 +47,8 @@ export default function PersonaPicker() {
   const chosen = view.personas.find(p => p.id === pick) ?? view.personas[0]!;
   const live = view.personas.find(p => p.id === view.current);
   const last = view.history[0];
+  const face = personaPose(chosen, "front");
+  const hasPoses = POSE_IDS.some(id => chosen.poses[id]);
 
   return (
     <section className="panel ga-persona" aria-labelledby="ga-h-persona">
@@ -71,11 +73,30 @@ export default function PersonaPicker() {
         <p className="eyebrow">Preview</p>
         <div className="ga-persona-chat">
           <div className="ga-persona-chat-head">
-            <img src={chosen.icon} alt="" width={40} height={40} />
+            <img src={face.src} alt="" width={40} height={40} />
             <div><strong>{chosen.name}</strong><span>AI assistant · automatic answers</span></div>
           </div>
           <p className="ga-persona-bubble">Hi, I&apos;m {chosen.name}. I can show you how to list your home, how offers work, or what to do next.</p>
         </div>
+      </div>
+
+      <div className="ga-persona-poses">
+        <p className="eyebrow">Poses</p>
+        {hasPoses ? (
+          <ul>
+            {POSE_IDS.map(id => {
+              const src = chosen.poses[id];
+              return src ? (
+                <li key={id}>
+                  <img src={src} alt={`${chosen.name}, ${id.replace("-", " ")} pose`} width={408} height={414} loading="lazy" decoding="async" />
+                  <span>{POSE_USES[id]}</span>
+                </li>
+              ) : null;
+            })}
+          </ul>
+        ) : (
+          <p className="muted">{chosen.name} has no extra poses yet. The chat, home page and dashboard show her portrait instead.</p>
+        )}
       </div>
 
       {error && <p role="alert" className="ga-error">{error}</p>}

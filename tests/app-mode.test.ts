@@ -178,11 +178,13 @@ describe("path tricks cannot bypass the split (review of #78)", () => {
     for (const p of ["/_next/static/chunks/a.js", "/_next/image", "/api/health", "/favicon.ico"]) expect(hit(p).status, p).not.toBe(404);
   });
   it("admin serves only the five assistant photos from /assistant, nothing else under it or beside it", () => {
-    for (const p of ["/assistant/elena-portrait.jpg", "/assistant/maya-icon.png", "/assistant/elena-greeter.jpg", "/assistant/NOOR-icon.png"]) {
+    for (const p of ["/assistant/elena-portrait.jpg", "/assistant/maya-icon.png", "/assistant/elena-greeter.jpg", "/assistant/NOOR-icon.png",
+      "/assistant/elena-pose-wave.jpg", "/assistant/elena-pose-three-quarter.jpg"]) {
       expect(isAllowed("admin", p, null, undefined), p).toBe(true);
     }
     for (const p of ["/assistant", "/assistant/", "/assistant/lucy-icon.png", "/assistant/elena-icon.png/x", "/assistant/elena-icon.svg",
-      "/assistant/../listings", "/assistant/elena-icon.png%2f..%2f..%2flistings", "/hero-default.jpg"]) {
+      "/assistant/../listings", "/assistant/elena-icon.png%2f..%2f..%2flistings", "/hero-default.jpg",
+      "/assistant/elena-pose-dance.jpg", "/assistant/elena-pose-wave.png", "/assistant/elena-pose-.jpg"]) {
       expect(isAllowed("admin", p, null, undefined), p).toBe(false);
     }
   });

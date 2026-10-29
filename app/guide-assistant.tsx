@@ -1,6 +1,6 @@
 "use client";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
-import { personaLabel, type Persona } from "../src/domain/assistant-persona";
+import { personaLabel, personaPose, type Persona } from "../src/domain/assistant-persona";
 import { GUIDE_LIMITS, suggestedChips, type GuideChip, type GuideIntent, type GuideLink } from "../src/domain/guide-assistant";
 import "./styles/assistant.css";
 
@@ -15,7 +15,7 @@ interface Msg { id: number; from: "guide" | "you"; text: string; links?: GuideLi
 export const OPEN_GUIDE_EVENT = "ol:open-guide";
 
 export default function GuideAssistant({ greeting, chips, disclaimer, persona }: {
-  greeting: string; chips: GuideChip[]; disclaimer: string; persona: Pick<Persona, "name" | "icon">;
+  greeting: string; chips: GuideChip[]; disclaimer: string; persona: Pick<Persona, "name" | "icon" | "portrait" | "poses">;
 }) {
   const [open, setOpen] = useState(false);
   const [msgs, setMsgs] = useState<Msg[]>([{ id: 0, from: "guide", text: greeting }]);
@@ -28,6 +28,8 @@ export default function GuideAssistant({ greeting, chips, disclaimer, persona }:
   const log = useRef<HTMLOListElement>(null);
   const seq = useRef(1);
   const titleId = useId(), descId = useId();
+  const welcome = personaPose(persona, "wave");
+  const listening = persona.poses.listening ?? persona.icon;
 
   useEffect(() => { setQuick(suggestedChips({ chips }, window.location.pathname)); }, [chips]);
 
@@ -97,8 +99,13 @@ export default function GuideAssistant({ greeting, chips, disclaimer, persona }:
             </button>
           </div>
           <ol ref={log} className="ga-log" aria-live="polite" aria-relevant="additions">
+            <li className="ga-welcome" aria-hidden="true">
+              <span className={`ga-pose${welcome.full ? " is-full" : ""}`}><img src={welcome.src} alt="" width={408} height={414} decoding="async" /></span>
+              <span className="ga-welcome-name">{personaLabel(persona)}</span>
+            </li>
             {msgs.map(m => (
               <li key={m.id} className={`ga-msg ga-${m.from}`}>
+                {m.from === "guide" && <img className="ga-mini" src={persona.icon} alt="" width={28} height={28} />}
                 <span className="ga-who">{m.from === "guide" ? persona.name : "You"}</span>
                 <p>{m.text}</p>
                 {m.links && m.links.length > 0 && (
@@ -106,7 +113,12 @@ export default function GuideAssistant({ greeting, chips, disclaimer, persona }:
                 )}
               </li>
             ))}
-            {busy && <li className="ga-msg ga-guide ga-typing" aria-label={`${persona.name} is answering`}>…</li>}
+            {busy && (
+              <li className="ga-msg ga-guide ga-typing" aria-label={`${persona.name} is answering`}>
+                <img className="ga-mini" src={listening} alt="" width={28} height={28} />
+                <span className="ga-dots" aria-hidden="true"><span /><span /><span /></span>
+              </li>
+            )}
           </ol>
           <div className="ga-chips" role="group" aria-label="Suggested questions">
             {quick.map(c => <button key={c.intent} type="button" onClick={() => void ask({ intent: c.intent, label: c.label })} disabled={busy}>{c.label}</button>)}
