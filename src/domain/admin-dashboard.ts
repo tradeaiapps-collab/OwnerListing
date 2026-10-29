@@ -102,7 +102,7 @@ export function formatKpi(value: number, unit: Kpi["unit"]): string {
 
 /** Display labels for stored keys (listing statuses, user types). Unknown keys are shown as stored, with underscores spaced. */
 const LABELS: Record<string, string> = {
-  draft: "Draft", pending_review: "Under review", published: "Live", withdrawn: "Withdrawn", suspended: "Suspended",
+  draft: "Draft", pending_review: "Under review", published: "Live", withdrawn: "Withdrawn", suspended: "Suspended", archived: "Archived",
   active: "Active", pending: "Pending", closed: "Closed",
   owner: "Owners", agent: "Agents", buyer: "Buyers", vendor: "Service providers", project_owner: "Project owners", investor: "Investors"
 };

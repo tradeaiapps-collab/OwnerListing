@@ -67,6 +67,16 @@ export async function getEmailPort(db: Queryable, env: Env, template: string, de
   };
 }
 
+/** Sends one plain notice email on the settings in force now. True only if it went out; never throws (a notice never blocks the action). */
+export async function sendNotice(db: Queryable, template: string, to: string, msg: { subject: string; text: string }, env: Env = process.env): Promise<boolean> {
+  try {
+    const port = await getEmailPort(db, env, template);
+    return port.configured && (await port.send({ to, ...msg })).status === "sent";
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Alert delivery on the database settings, resolved at send time. Fails closed: with no settings (or no APP_URL for the listing link)
  * nothing is sent and the outbox records "not_configured". The recipient is looked up only after the channel is known to be configured.

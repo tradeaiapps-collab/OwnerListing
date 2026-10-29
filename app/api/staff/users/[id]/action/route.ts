@@ -1,10 +1,8 @@
-import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { planUserAction } from "../../../../../../src/domain/admin-moderation";
-import { evaluateListingPublish } from "../../../../../../src/domain/listing-service";
-import { transitionListing } from "../../../../../../src/domain/listing-transitions";
-import { getDb, getDeps } from "../../../../../../src/server/context";
-import { listingsSuspendedWithAccount, moderateListing, setUserStatus, userTarget } from "../../../../../../src/server/admin-moderation-db";
+import { getDb } from "../../../../../../src/server/context";
+import { listingsSuspendedWithAccount, setUserStatus, userTarget } from "../../../../../../src/server/admin-moderation-db";
+import { republishSuspended } from "../../../../../../src/server/listing-reinstate";
 import { fail, readJsonObject, staffGate, UUID_RE } from "../../../../../../src/server/staff-route";
 import { withApi } from "../../../../../../src/server/api/with-api";
 
@@ -34,21 +32,8 @@ async function handlePost(req: Request, { params }: Ctx) {
   if (!plan.withListings) return NextResponse.json({ ok: true, status: plan.to, listingsRestored: 0, listingsNotRestored: [] });
 
   // Each listing goes live again only through the publish gate, one at a time; a failure leaves that listing suspended.
-  const deps = getDeps();
-  let restored = 0;
-  const notRestored: { id: string; title: string; reasons: string[] }[] = [];
-  for (const listingId of await listingsSuspendedWithAccount(db, id)) {
-    const rec = await deps.repo.get(listingId);
-    if (!rec || rec.listing.status !== "suspended") continue;
-    const now = deps.now();
-    const decision = await evaluateListingPublish(deps, rec, now, rec.listing.ownerUserId);
-    if (!decision.allowed) { notRestored.push({ id: listingId, title: rec.listing.title, reasons: decision.reasons }); continue; }
-    const { event } = transitionListing(rec.listing, "published", { eventId: randomUUID(), correlationId: randomUUID(), actorType: "user", actorId: staff.id, now }, decision);
-    const ok = await moderateListing(db, listingId, "suspended", "published", {
-      ...event, payload: { ...event.payload, role: staff.role, action: "reinstate", reason: plan.reason, moderation: true, withAccount: id }
-    });
-    if (ok) restored++;
-  }
+  const { restored, notRestored } = await republishSuspended(staff, await listingsSuspendedWithAccount(db, id),
+    { action: "reinstate", reason: plan.reason, moderation: true, withAccount: id });
   return NextResponse.json({ ok: true, status: plan.to, listingsRestored: restored, listingsNotRestored: notRestored });
 }
 

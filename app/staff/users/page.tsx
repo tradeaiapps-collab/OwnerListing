@@ -72,7 +72,7 @@ export default function UserAccounts() {
   return (
     <main className="admin-page">
       <h1>User accounts</h1>
-      <p><a href="/staff/dashboard">Back to the admin dashboard</a></p>
+      <p><a href="/staff/dashboard">Back to the admin dashboard</a> · <a href="/staff/users/deleted-accounts">Deleted accounts</a></p>
       <p className="muted">
         A suspended account is signed out on its next request and cannot sign back in until reinstated. You choose each time whether its
         listings are suspended and later reinstated with it. {full ? "You can see full names and emails." : "Names and emails are partly hidden for your role; search by account id."}

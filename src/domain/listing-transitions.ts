@@ -7,7 +7,9 @@ const ALLOWED: Record<ListingStatus, readonly ListingStatus[]> = {
   published: ["withdrawn", "suspended"],
   /** Set by staff (listing moderation). Reinstating goes back through the publish gate; the owner may still withdraw. */
   suspended: ["published", "withdrawn"],
-  withdrawn: []
+  withdrawn: [],
+  /** Set only with the owner's account deletion, and undone only by restoring the account (src/server/account-deletion-db.ts). */
+  archived: []
 };
 
 export interface TransitionContext {

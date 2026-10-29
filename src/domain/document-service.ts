@@ -121,7 +121,7 @@ export async function requestDocumentDeletion(
   const rec = await deps.repo.get(doc.listingId);
   if (!rec) return notFound("Document not found.");
   // Withdrawn and suspended count as published: the listing has been live, so its files stay on record.
-  const everPublished = ["published", "suspended", "withdrawn"].includes(rec.listing.status);
+  const everPublished = ["published", "suspended", "withdrawn", "archived"].includes(rec.listing.status);
   const outcome = evaluateDeletionRequest(actor.userId, doc, { everPublished, saleCompleted: false });
   // Per-user rate and open-request cap. Fails closed: a store error refuses the request and records nothing.
   let recorded: Awaited<ReturnType<DocumentStore["recordDeletionRequest"]>>;
