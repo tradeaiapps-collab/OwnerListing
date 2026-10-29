@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { BOND_PATHWAY_LABELS, centsToInput } from "./ui";
+import { AddressField } from "./address-field";
 import { WordingHint } from "./wording-hint";
 
 export type BondState = "idle" | "saving" | "saved" | "error";
@@ -39,7 +40,7 @@ export function ListingFields({ defaults = {} }: { defaults?: ListingDefaults })
         </label>
         <WordingHint text={title} field="title" />
         <label className="field">Street address
-          <input name="address" placeholder="12 Jacaranda St, Paddington QLD 4064" maxLength={300} required defaultValue={defaults.address ?? ""} autoComplete="street-address" />
+          <AddressField defaultValue={defaults.address ?? ""} />
         </label>
       </fieldset>
       <fieldset className="form-section">

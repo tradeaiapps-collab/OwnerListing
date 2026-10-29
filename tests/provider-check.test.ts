@@ -24,6 +24,7 @@ const FULL: Record<string, string> = {
   SMS_SENDER: "+61400000000",
   SMS_CODE_SECRET: "c".repeat(40),
   ABN_LOOKUP_GUID: "12345678-90ab-cdef-1234-567890abcdef",
+  GOOGLE_PLACES_API_KEY: "AIza" + "b".repeat(35),
   NEXT_PUBLIC_MAP_TILE_URL: "https://tiles.example.com/{z}/{x}/{y}.png",
   NEXT_PUBLIC_MAP_ATTRIBUTION: "© Example Maps"
 };
@@ -33,7 +34,7 @@ const by = (env: Record<string, string | undefined>, production = true) =>
 describe("provider readiness check", () => {
   it("reports every provider ready with a full set of real-looking keys", () => {
     const r = checkProviders(FULL, { production: true });
-    expect(r.map(x => x.id)).toEqual(["google", "mfa", "payway", "smtp", "sms", "abn", "maptiles"]);
+    expect(r.map(x => x.id)).toEqual(["google", "mfa", "payway", "smtp", "sms", "abn", "address", "maptiles"]);
     expect(r.filter(x => x.status !== "ready")).toEqual([]);
     expect(r.some(x => x.blocking)).toBe(false);
   });

@@ -1,4 +1,4 @@
-export type ProviderId = "google" | "mfa" | "payway" | "smtp" | "sms" | "abn" | "maptiles";
+export type ProviderId = "google" | "mfa" | "payway" | "smtp" | "sms" | "abn" | "address" | "maptiles";
 export type ProviderStatus = "ready" | "off" | "incomplete" | "invalid";
 export interface ProviderResult {
   id: ProviderId;
