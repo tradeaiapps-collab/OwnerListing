@@ -10,6 +10,11 @@
 
 .dash-grid { display: grid; gap: var(--space-3); grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr)); list-style: none; padding: 0; margin: 0 0 var(--space-6); }
 .dash-grid li { max-width: none; }
+.dash-ai { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-4); margin: 0 0 var(--space-6); padding: var(--space-4); border: 1px solid var(--line); border-radius: calc(var(--radius) + 4px); background: var(--bg); max-width: 640px; }
+.dash-ai .ga-pose { flex: none; width: 104px; }
+.dash-ai > div { flex: 1 1 220px; min-width: 0; }
+.dash-ai h2 { margin: 0 0 var(--space-1); font-size: 1.125rem; }
+.dash-ai p { margin: 0 0 var(--space-3); }
 .dash-grid a {
   display: grid; align-content: start; gap: var(--space-1); min-height: 88px; padding: var(--space-4);
   border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); box-shadow: var(--shadow-1);

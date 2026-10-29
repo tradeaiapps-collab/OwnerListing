@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { DEFAULT_PERSONA_ID, isPersonaId, PERSONA_IDS, PERSONAS, personaById, personaIntro, personaLabel } from "../src/domain/assistant-persona";
+import { DEFAULT_PERSONA_ID, isPersonaId, PERSONA_IDS, PERSONAS, personaById, personaIntro, personaLabel, personaPose, POSE_IDS } from "../src/domain/assistant-persona";
 import type { StaffRole } from "../src/domain/staff-access";
 
 const state = vi.hoisted(() => ({
@@ -36,9 +36,18 @@ describe("assistant personas", () => {
     expect(isPersonaId("NOOR")).toBe(false);
   });
   it("every image the site points at ships in public/", () => {
-    for (const p of PERSONAS) for (const src of [p.portrait, p.icon, p.greeter].filter((s): s is string => s !== null)) {
+    for (const p of PERSONAS) for (const src of [p.portrait, p.icon, p.greeter, ...Object.values(p.poses)].filter((s): s is string => typeof s === "string")) {
       expect(existsSync(join(process.cwd(), "public", src))).toBe(true);
     }
+  });
+  it("Elena has all six poses; a persona without one falls back to her portrait", () => {
+    const elena = personaById("elena");
+    expect(Object.keys(elena.poses).sort()).toEqual([...POSE_IDS].sort());
+    for (const id of POSE_IDS) expect(elena.poses[id]).toBe(`/assistant/elena-pose-${id}.jpg`);
+    expect(personaPose(elena, "wave")).toEqual({ src: "/assistant/elena-pose-wave.jpg", full: true });
+    expect(personaPose(elena, "listening")).toEqual({ src: "/assistant/elena-pose-listening.jpg", full: false });
+    const maya = personaById("maya");
+    for (const id of POSE_IDS) expect(personaPose(maya, id)).toEqual({ src: maya.portrait, full: false });
   });
   it("always labels her as an AI assistant, never as an agent", () => {
     for (const p of PERSONAS) {

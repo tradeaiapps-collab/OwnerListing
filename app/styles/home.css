@@ -154,6 +154,10 @@ a.home-link:hover::after { transform: translateX(4px); }
 .home-tiles span { color: var(--muted); font-size: 0.8125rem; }
 
 /* FAQ */
+.home-faq-ask { display: flex; align-items: center; gap: var(--space-4); margin: var(--space-6) 0 0; padding: var(--space-3); max-width: 560px; border: 1px solid var(--line); border-radius: calc(var(--radius) + 4px); background: var(--bg); }
+.home-faq-ask .ga-pose { flex: none; width: 88px; }
+.home-faq-ask p { margin: 0 0 var(--space-3); font-size: 0.9375rem; color: var(--muted); }
+.home-faq-ask strong { color: var(--heading, var(--text)); }
 .home-faq-list { display: grid; gap: 0; border-top: 1px solid var(--border); }
 .home-faq details { border-bottom: 1px solid var(--border); }
 .home-faq summary { cursor: pointer; min-height: 64px; display: flex; align-items: center; padding: var(--space-3) 0; font-weight: 600; font-size: 1.0625rem; color: var(--heading, var(--text)); list-style: none; transition: color var(--dur-1) var(--ease); }

@@ -1,7 +1,7 @@
 import { getRequestTheme } from "../src/server/request-theme";
 import { brandFor } from "../src/server/site-theme";
 import { formatPrice } from "../src/domain/listing-details";
-import { personaById, personaIntro, personaLabel } from "../src/domain/assistant-persona";
+import { personaById, personaIntro, personaLabel, personaPose } from "../src/domain/assistant-persona";
 import { HOME_FAQ_INTENTS } from "../src/domain/guide-assistant";
 import { assetUrl } from "../src/domain/site-theme";
 import { getLivePersona } from "../src/server/assistant-persona-db";
@@ -16,6 +16,7 @@ import HomeSearch from "./home-search";
 import SavingsCalc from "./savings-calc";
 import "./styles/cards.css";
 import "./styles/home.css";
+import "./styles/assistant.css";
 
 export const dynamic = "force-dynamic";
 export async function generateMetadata() {
@@ -69,6 +70,7 @@ export default async function Home() {
   const brand = brandFor(theme.settings);
   const [latest, suburbs, guide, personaId] = await Promise.all([loadLatest(), loadSuburbs(), getLiveGuide(), getLivePersona()]);
   const persona = personaById(personaId);
+  const explainer = personaPose(persona, "tablet");
   const preview = process.env["NODE_ENV"] !== "production";
   const heroId = theme.settings.brand.hero;
   const heroSrc = heroId ? assetUrl("hero", heroId, theme.previewToken ?? undefined) : DEFAULT_HERO;
@@ -235,13 +237,24 @@ export default async function Home() {
             <p className="eyebrow">Good to know</p>
             <h2 id="home-faq-t">Questions</h2>
           </div>
-          <div className="home-faq-list">
-            {HOME_FAQ_INTENTS.map(i => (
-              <details key={i}>
-                <summary>{guide.faq[i].question}</summary>
-                <p>{guide.faq[i].answer}</p>
-              </details>
-            ))}
+          <div>
+            <div className="home-faq-list">
+              {HOME_FAQ_INTENTS.map(i => (
+                <details key={i}>
+                  <summary>{guide.faq[i].question}</summary>
+                  <p>{guide.faq[i].answer}</p>
+                </details>
+              ))}
+            </div>
+            {guide.enabled && (
+              <div className="home-faq-ask">
+                <span className={`ga-pose${explainer.full ? " is-full" : ""}`}><img src={explainer.src} alt="" width={408} height={414} loading="lazy" decoding="async" /></span>
+                <div>
+                  <p><strong>Not covered here?</strong> {persona.name} can walk you through it.</p>
+                  <AskAssistant name={persona.name} />
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </section>
