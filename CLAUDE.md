@@ -4,6 +4,7 @@ Australian property marketplace. Owners list their own homes; AI assists but nev
 
 ## Commands
 - `npm test` and `npm run typecheck` are the gate (CI runs both). `npm run dev` serves on port 3004.
+- `npm run check:providers -- --production` before a deploy (provider keys: docs/PROVIDER_KEYS.md).
 
 ## Rules
 - Working rules: see claude/working-rules.md in the Claude Project. One feature per PR; minimal patches; name files before editing.
