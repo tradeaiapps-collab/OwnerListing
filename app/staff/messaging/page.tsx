@@ -5,7 +5,13 @@ import { loadError, postStaff } from "../staff-api";
 
 type Field = "sms.provider" | "sms.accountSid" | "sms.authToken" | "sms.apiKeySid" | "sms.sender" | "email.host" | "email.port" | "email.user" | "email.password" | "email.from";
 interface FieldView { set: boolean; source: "env" | "database" | "none"; display?: string }
-interface View { keyConfigured: boolean; fields: Record<Field, FieldView>; smsConfigured: boolean; emailConfigured: boolean }
+interface LogEntry { channel: "email" | "sms"; template: string; status: "sent" | "failed" | "not_configured"; errorCode: string | null; at: string }
+interface View { keyConfigured: boolean; fields: Record<Field, FieldView>; smsConfigured: boolean; emailConfigured: boolean; log?: LogEntry[] }
+
+const STATUS_BADGE: Record<LogEntry["status"], [string, string]> = {
+  sent: ["badge-accepted", "Sent"], failed: ["badge-rejected", "Failed"], not_configured: ["badge-under_review", "Not configured"]
+};
+const words = (v: string) => v.replace(/_/g, " ");
 
 const SMS_FIELDS: [Field, string, boolean][] = [
   ["sms.provider", "Provider (twilio)", false], ["sms.accountSid", "Account SID", false], ["sms.authToken", "Auth token (or API key secret)", true],
@@ -96,6 +102,23 @@ export default function StaffMessaging() {
           <button type="button" onClick={() => void test("sms")} disabled={busy || !view.smsConfigured}>Send test SMS to me</button>
           <button type="button" onClick={() => void test("email")} disabled={busy || !view.emailConfigured}>Send test email to me</button>
           <p className="muted">A few tests per hour are allowed. Spam Act consent wording for alerts still needs counsel.</p>
+        </section>
+      )}
+      {view?.log && (
+        <section>
+          <h2>Delivery log</h2>
+          <p className="muted">The newest 50 emails and texts. Only the template, result and time are kept: never the address, number or message.</p>
+          {view.log.length === 0 ? <p className="empty">Nothing has been sent yet.</p> : (
+            <div className="table-wrap"><table>
+              <thead><tr><th>Time</th><th>Message</th><th>Result</th><th>Reason</th></tr></thead>
+              <tbody>{view.log.map((l, i) => (
+                <tr key={`${l.at}-${i}`}>
+                  <td>{new Date(l.at).toLocaleString()}</td><td>{words(l.template)} <span className="muted">({l.channel === "sms" ? "SMS" : "email"})</span></td>
+                  <td><span className={`badge ${STATUS_BADGE[l.status][0]}`}>{STATUS_BADGE[l.status][1]}</span></td><td>{l.errorCode ? words(l.errorCode) : ""}</td>
+                </tr>
+              ))}</tbody>
+            </table></div>
+          )}
         </section>
       )}
       {note && <p role="status">{note}</p>}

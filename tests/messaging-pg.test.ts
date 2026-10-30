@@ -238,4 +238,13 @@ describe.skipIf(!DATABASE_URL)("messaging settings and outbox on Postgres", () =
     expect(audit.length).toBe(5);
     expect(JSON.stringify(audit)).not.toContain("61400000003");
   });
+
+  // Last: the outbox is insert-only, so this row would show up in the tests above.
+  it("shows the newest delivery log rows on the settings page, without addresses", async () => {
+    await db.query("INSERT INTO messaging_outbox (channel, template, recipient_hash, status, error_code, created_at) VALUES ('email', 'offer_accepted', 'h', 'failed', 'auth_failed', now() + interval '1 day')");
+    state.staff = admin;
+    const body = await (await settingsRoute.GET(new Request("http://test/api/staff/messaging"))).json() as { log: { template: string; status: string; errorCode: string | null }[] };
+    expect(body.log[0]).toMatchObject({ channel: "email", template: "offer_accepted", status: "failed", errorCode: "auth_failed" });
+    expect(Object.keys(body.log[0]!).sort()).toEqual(["at", "channel", "errorCode", "status", "template"]);
+  });
 });

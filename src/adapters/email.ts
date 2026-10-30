@@ -4,9 +4,10 @@ import { isPublicAddress } from "../domain/net-guard";
 import { isEmailAddress, resolveMessaging, type SmtpConfig } from "../domain/messaging-settings";
 import { failed, type SendErrorCode, type SendResult } from "./messaging";
 
-export interface EmailMessage { to: string; subject: string; text: string }
+/** `text` is always sent; `html` (optional) is sent alongside it as the rich alternative. */
+export interface EmailMessage { to: string; subject: string; text: string; html?: string }
 
-/** Sends one plain-text email. Provider-agnostic: a transactional HTTP API adapter can implement the same port. */
+/** Sends one email (plain text, plus HTML when given). Provider-agnostic: a transactional HTTP API adapter can implement the same port. */
 export interface EmailPort {
   readonly configured: boolean;
   /** Never throws for delivery problems: reports them as a result with a fixed error code. */
@@ -18,7 +19,7 @@ export function createUnconfiguredEmail(): EmailPort {
 }
 
 export interface MailTransport {
-  sendMail(m: { from: string; to: string; subject: string; text: string }): Promise<{ messageId?: string }>;
+  sendMail(m: { from: string; to: string; subject: string; text: string; html?: string }): Promise<{ messageId?: string }>;
   close(): void;
 }
 export type TransportFactory = (options: Record<string, unknown>) => MailTransport;
@@ -75,7 +76,7 @@ export function createSmtpEmail(cfg: SmtpConfig, deps: { createTransport?: Trans
     configured: true,
     async send(msg) {
       if (!isEmailAddress(msg.to)) return failed("invalid_recipient", false);
-      if (/[\r\n]/.test(msg.subject) || msg.subject.length === 0 || msg.subject.length > 200 || msg.text.length === 0 || msg.text.length > 20_000) return failed("invalid_message", false);
+      if (/[\r\n]/.test(msg.subject) || msg.subject.length === 0 || msg.subject.length > 200 || msg.text.length === 0 || msg.text.length > 20_000 || (msg.html !== undefined && msg.html.length > 100_000)) return failed("invalid_message", false);
       const pinned = await pinPublicAddress(cfg.host, deps.resolve ?? defaultResolver, timeout);
       if (pinned === "blocked") return failed("blocked_host", false);
       if (pinned === "unresolved") return failed("network", true);
@@ -87,7 +88,7 @@ export function createSmtpEmail(cfg: SmtpConfig, deps: { createTransport?: Trans
         disableFileAccess: true, disableUrlAccess: true, logger: false, debug: false
       });
       try {
-        const info = await transport.sendMail({ from: cfg.from, to: msg.to, subject: msg.subject, text: msg.text });
+        const info = await transport.sendMail({ from: cfg.from, to: msg.to, subject: msg.subject, text: msg.text, ...(msg.html !== undefined ? { html: msg.html } : {}) });
         const ref = typeof info.messageId === "string" && info.messageId.length <= 200 ? info.messageId : undefined;
         return ref ? { status: "sent", providerRef: ref } : { status: "sent" };
       } catch (e) {

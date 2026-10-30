@@ -9,6 +9,7 @@ import { OFFER_RATE, windowStart, withinLimit } from "../../../../../src/domain/
 import { countHitPg, eligibleBuyerPg } from "../../../../../src/server/offer-flow-db";
 import { expireCountersPg } from "../../../../../src/server/offer-counter-db";
 import { offerLinkPg, offersForOwnerPg, submitOfferPg } from "../../../../../src/server/offers-db";
+import { notifyOfferReceived } from "../../../../../src/server/notify";
 import { csrfGuard } from "../../../../../src/server/csrf";
 import { requireListingHandler } from "../../../../../src/server/owner-listing";
 import { requireCurrentTerms } from "../../../../../src/server/terms-guard";
@@ -98,6 +99,7 @@ async function handlePost(req: Request, { params }: Ctx) {
     correlationId: deps.newId(),
     payload: { listingId: id }
   });
+  void notifyOfferReceived(db, rec.listing.ownerUserId, id, rec.listing.title, offer.priceCents);
   return NextResponse.json({ offer: saved }, { status: 201 });
 }
 
