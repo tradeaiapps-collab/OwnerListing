@@ -110,7 +110,7 @@ export default function NewOffer() {
       <main>
         <h1>Sign in to make an offer</h1>
         <p>Sign in as the buyer this link was sent to. Then open the link again if this page does not come back.</p>
-        <p><a className="button" href="/api/auth/google/start?as=buyer">Sign in as buyer</a></p>
+        <p><a className="button" href="/login?as=buyer">Sign in as buyer</a></p>
       </main>
     );
   }

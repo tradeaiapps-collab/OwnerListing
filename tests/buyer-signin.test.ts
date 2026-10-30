@@ -114,9 +114,10 @@ describe("sign-in routes", () => {
   });
   const roleCookie = (res: Response) => /ol_role=([^;]*)/.exec(res.headers.get("set-cookie") ?? "")?.[1];
 
-  it("remembers buyer only for ?as=buyer; anything else means owner", async () => {
+  it("remembers buyer or agent only for ?as=buyer or ?as=agent; anything else means owner", async () => {
     expect(roleCookie(await startGet(new Request("http://x/api/auth/google/start?as=buyer")))).toBe("buyer");
-    for (const as of ["owner", "agent", "admin", "BUYER", ""]) {
+    expect(roleCookie(await startGet(new Request("http://x/api/auth/google/start?as=agent")))).toBe("agent");
+    for (const as of ["owner", "admin", "AGENT", "BUYER", ""]) {
       expect(roleCookie(await startGet(new Request(`http://x/api/auth/google/start?as=${as}`)))).toBe("owner");
     }
     expect(roleCookie(await startGet(new Request("http://x/api/auth/google/start")))).toBe("owner");
@@ -145,8 +146,15 @@ describe("sign-in routes", () => {
     expect(SESSION_COOKIE).toBe("ol_session");
     expect(verifySession(token, secret, Math.floor(Date.now() / 1000))?.ut).toBe("buyer");
   });
-  it("treats a missing or unexpected role cookie as owner, never agent or admin", async () => {
-    for (const v of [undefined, "owner", "agent", "admin", "junk"]) {
+  it("creates an agent from the agent cookie and sends them through the second step to the dashboard", async () => {
+    const { res, requested } = await callback("agent", "agent");
+    expect(requested).toBe("agent");
+    expect(res.headers.get("location")).toBe("https://app.example.com/mfa?next=%2Fdashboard");
+    const token = /ol_session=([^;]*)/.exec(res.headers.get("set-cookie") ?? "")?.[1];
+    expect(verifySession(token, secret, Math.floor(Date.now() / 1000))?.ut).toBe("agent");
+  });
+  it("treats a missing or unexpected role cookie as owner, never admin", async () => {
+    for (const v of [undefined, "owner", "admin", "AGENT", "junk"]) {
       const { res, requested } = await callback(v, "owner");
       expect(requested).toBe("owner");
       // Owners always take the second sign-in step first, then go on to the same place.

@@ -50,7 +50,7 @@ export default function Terms() {
         <p className="muted">{ENGLISH_PREVAILS_NOTICE}</p>
       </section>
       {state === "loading" && <p className="muted" role="status">Loading…</p>}
-      {state === "signedOut" && <p role="alert"><a href="/api/auth/google/start?next=/terms">Sign in</a> to accept the terms.</p>}
+      {state === "signedOut" && <p role="alert"><a href="/login?next=/terms">Sign in</a> to accept the terms.</p>}
       {state === "error" && <p role="alert">Could not load the terms.</p>}
       {state === "ok" && !current && <p role="alert">No terms are in force yet.</p>}
       {state === "ok" && current && (accepted

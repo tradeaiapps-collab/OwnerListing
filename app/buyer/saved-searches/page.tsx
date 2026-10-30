@@ -77,7 +77,7 @@ export default function SavedSearches() {
   return (
     <main className="narrow">
       <h1>Saved searches</h1>
-      {signedOut && <p role="alert"><a href="/api/auth/google/start?as=buyer">Sign in with Google</a> to save a search.</p>}
+      {signedOut && <p role="alert"><a href="/login?as=buyer&next=/buyer/saved-searches">Sign in</a> to save a search.</p>}
       <p className="muted">Save what you are looking for and we can tell you when a matching property is listed.</p>
       <form className="stack" onSubmit={onSubmit} noValidate>
         <fieldset className="form-section">

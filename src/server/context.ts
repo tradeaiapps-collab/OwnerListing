@@ -5,7 +5,7 @@ import { randomUUID } from "node:crypto";
 import pg from "pg";
 import type { Actor, ListingServiceDeps } from "../domain/listing-service";
 import { actorFromRequestChecked } from "./auth/actor";
-import { readAuthEnv } from "./auth/config";
+import { readSessionEnv } from "./auth/config";
 import type { StaffActor } from "../domain/staff-access";
 import { createPgBillingStore } from "./billing-db";
 import { staffFromRequest } from "./staff-auth";
@@ -81,13 +81,13 @@ export const getBilling = () => createPgBillingStore(getDb());
 
 /** Signed-in staff member (role read from the database now), or null. */
 export async function getStaff(req: Request): Promise<StaffActor | null> {
-  const auth = readAuthEnv();
+  const auth = readSessionEnv();
   return auth ? staffFromRequest(getDb(), req, auth.secret, Math.floor(Date.now() / 1000)) : null;
 }
 
 /** Signed-in owner/agent/buyer, confirmed against the database now (exists, active, same type as the cookie), or null. */
 export async function getActor(req: Request): Promise<Actor | null> {
-  const auth = readAuthEnv();
+  const auth = readSessionEnv();
   return auth ? actorFromRequestChecked(getDb(), req, auth.secret, Math.floor(Date.now() / 1000)) : null;
 }
 

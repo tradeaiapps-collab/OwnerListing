@@ -78,7 +78,7 @@ export default function NewListing() {
         <ListingFields />
         <div className="form-bar"><button type="submit" disabled={busy}>Save draft</button></div>
       </form>
-      {signedOut && <p role="alert"><a href="/api/auth/google/start">Sign in with Google</a> to save a listing.</p>}
+      {signedOut && <p role="alert"><a href="/login?as=owner&next=/listings/new">Sign in</a> to save a listing.</p>}
       {error && <p role="alert">{error}</p>}
       {draftId && (
         <section role="status" className="panel">

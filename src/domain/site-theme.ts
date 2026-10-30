@@ -50,7 +50,7 @@ export const NAV_CATALOG: readonly NavDef[] = [
   { id: "verification", label: "Verification", href: "/buyer/verification", icon: "shield" },
   { id: "dashboard", label: "Dashboard", href: "/dashboard", icon: "gauge" },
   { id: "staff", label: "Staff", href: "/staff", icon: "briefcase" },
-  { id: "signin", label: "Sign in", href: "/api/auth/google/start", icon: "login" }
+  { id: "signin", label: "Sign in", href: "/login", icon: "login" }
 ];
 const NAV_IDS = NAV_CATALOG.map(n => n.id);
 

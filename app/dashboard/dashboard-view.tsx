@@ -37,7 +37,7 @@ export default function Dashboard({ assistant }: { assistant: DashboardAssistant
         <h1>Dashboard</h1>
         <div className="empty-state">
           <p>Sign in to see your progress and your tasks.</p>
-          <a className="button" href="/api/auth/google/start?next=/dashboard">Sign in</a>
+          <a className="button" href="/login?next=/dashboard">Sign in</a>
         </div>
       </main>
     );
