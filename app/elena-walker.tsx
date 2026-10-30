@@ -99,7 +99,7 @@ export default function ElenaWalker({ name, still, video }: { name: string; stil
       >
         <span className="ew-body">
           {clip ? (
-            <video key={clip} className="ew-media" autoPlay loop muted playsInline preload="auto" poster={`/assistant/elena-video-${clip}.jpg`} aria-hidden="true">
+            <video key={clip} className="ew-media" autoPlay loop muted playsInline disablePictureInPicture disableRemotePlayback controls={false} controlsList="nodownload nofullscreen noremoteplayback" tabIndex={-1} preload="auto" poster={`/assistant/elena-video-${clip}.jpg`} aria-hidden="true">
               <source src={`/assistant/elena-video-${clip}.webm`} type="video/webm" />
               <source src={`/assistant/elena-video-${clip}.mp4`} type="video/mp4" />
             </video>
