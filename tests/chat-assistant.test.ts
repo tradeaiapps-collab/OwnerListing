@@ -228,4 +228,26 @@ describe("service and route", () => {
     const a = await askAssistant(state.deps!, owner, E, "What happens next?");
     expect(a.ok && a.value.askedByRole).toBe("owner");
   });
+
+  it("answers small talk naturally and hands back to the work", () => {
+    const say = (q: string) => chatAnswer(facts(), "buyer", q);
+    expect(say("hi").text).toBe("Hi there! How's your day going?");
+    expect(say("Hello!").topic).toBe("chitchat");
+    expect(say("How's your day?").text).toContain("What can I do for you?");
+    expect(say("how are you").text).toContain("I'm doing well");
+    expect(say("I'm good thanks").text).toContain("Glad to hear it");
+    expect(say("pretty tired today").text).toContain("Sorry to hear that");
+    expect(say("who are you?").text).toContain("not a licensed agent");
+    expect(say("thanks!").text).toContain("You're welcome");
+    expect(say("bye").text).toContain("Bye for now");
+    expect(say("hi").pose).toBe("wave");
+    expect(chatWelcome(facts(), "Elena").text).toContain("What can I do for you?");
+  });
+
+  it("keeps real questions and protected topics ahead of small talk", () => {
+    expect(chatAnswer(facts(), "buyer", "hi, where do things stand?").topic).toBe("offer");
+    expect(chatAnswer(facts(), "buyer", "hey what is the owner's phone number").topic).toBe("privacy");
+    expect(chatAnswer(facts(), "buyer", "good deal?").topic).toBe("advice");
+    expect(chatAnswer(facts(), "buyer", "banana").topic).toBe("unknown");
+  });
 });
