@@ -218,7 +218,8 @@ export async function listDeletedAccounts(db: Queryable, cursor?: string): Promi
 /**
  * The scheduled retention step. First, deletions whose recovery window has passed become final (no restore from then on). Then,
  * accounts past their retention period lose their name, email, Google link and phone number; the anonymous records (offers,
- * invoices, audit history) stay. Each account changed gets its own audit event. Safe to run any number of times.
+ * invoices, audit history) stay. Each account changed gets its own audit event, and every run adds one job.account_retention_run
+ * event with its counts. Safe to run any number of times.
  */
 export async function runAccountRetention(db: Queryable, now: string): Promise<{ finalised: number; purged: number }> {
   return inTx(db, async tx => {
@@ -236,6 +237,11 @@ export async function runAccountRetention(db: Queryable, now: string): Promise<{
     });
     for (const id of finalised) await log(id, "user.deletion_final");
     for (const id of purged) await log(id, "user.personal_data_purged");
+    // One record per run, even when nothing was due, so the audit trail shows the scheduler is alive.
+    await appendAuditPg(tx, {
+      id: randomUUID(), occurredAt: now, actorType: "system", actorId: "account-retention", aggregateType: "job", aggregateId: "account-retention",
+      eventType: "job.account_retention_run", correlationId, payload: { finalised: finalised.length, purged: purged.length }
+    });
     return { finalised: finalised.length, purged: purged.length };
   });
 }

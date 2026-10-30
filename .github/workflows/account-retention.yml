@@ -1,0 +1,40 @@
+name: Account retention (daily)
+
+# Calls the account retention job on the public site once a day at 02:00 UTC (12:00 noon in Queensland): deletions past their
+# 30-day recovery window become final, and accounts past the 7-year retention period lose their personal data. The route itself
+# writes the audit trail (one job.account_retention_run event per run, plus one event per account changed).
+# Repository secrets: APP_URL (public https origin, no trailing slash) and ACCOUNT_RETENTION_CRON_SECRET (same value as the app).
+# While both are unset the run is skipped with a warning; one without the other, or any non-2xx answer, fails the run.
+on:
+  schedule:
+    - cron: "0 2 * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: account-retention
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Call the retention job
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          CRON_SECRET: ${{ secrets.ACCOUNT_RETENTION_CRON_SECRET }}
+        run: |
+          if [ -z "$APP_URL" ] && [ -z "$CRON_SECRET" ]; then
+            echo "::warning::APP_URL and ACCOUNT_RETENTION_CRON_SECRET are not set; skipping (no deployment to call yet)."
+            exit 0
+          fi
+          if [ -z "$APP_URL" ] || [ -z "$CRON_SECRET" ]; then
+            echo "::error::Set both APP_URL and ACCOUNT_RETENTION_CRON_SECRET."
+            exit 1
+          fi
+          body=$(curl -sS --fail-with-body --retry 3 --retry-all-errors --max-time 60 -X POST \
+            -H "x-cron-secret: $CRON_SECRET" "$APP_URL/api/internal/accounts/retention")
+          echo "$body"
+          echo "Account retention $(date -u +%FT%TZ): $body" >> "$GITHUB_STEP_SUMMARY"

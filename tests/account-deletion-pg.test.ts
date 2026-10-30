@@ -197,4 +197,28 @@ describe.skipIf(!DATABASE_URL)("account deletion (Postgres)", () => {
     expect([a, b].filter(x => x !== null)).toHaveLength(1);
     expect(await deleteAccountPg(db, STAFF(admin), admin, REASON, T0, deletionWindows(T0))).toBeNull();
   });
+
+  it("retention edge cases: a restore before expiry is never finalised, a new deletion gets a fresh window, every run is logged", async () => {
+    const w = await world();
+    const runs = async () => (await one("SELECT count(*)::int AS n FROM audit_event WHERE aggregate_type = 'job' AND event_type = 'job.account_retention_run'", []))["n"] as number;
+    const before = await runs();
+    await deleteAccountPg(db, STAFF(w.admin), w.owner, REASON, T0, deletionWindows(T0));
+    expect(await restoreAccountPg(db, STAFF(w.admin), w.owner, "Owner called back within the window", at(10))).not.toBeNull();
+    // Past the old window: the restored account is left alone.
+    await runAccountRetention(db, at(31));
+    expect(await one("SELECT status, deactivated_at FROM app_user WHERE id = $1", [w.owner])).toMatchObject({ status: "active", deactivated_at: null });
+    // Deleted again later: the window runs from the new deletion, not the first one.
+    await deleteAccountPg(db, STAFF(w.admin), w.owner, REASON, at(40), deletionWindows(at(40)));
+    await runAccountRetention(db, at(69));
+    expect((await one("SELECT deactivated_at FROM app_user WHERE id = $1", [w.owner]))["deactivated_at"]).toBeNull();
+    // Exactly at the end of the window it becomes final.
+    await runAccountRetention(db, at(70));
+    expect(((await one("SELECT deactivated_at FROM app_user WHERE id = $1", [w.owner]))["deactivated_at"] as Date).toISOString()).toBe(at(70));
+    // A run with nothing due still leaves a record with its counts.
+    const idle = await runAccountRetention(db, at(70));
+    expect(idle).toEqual({ finalised: 0, purged: 0 });
+    expect(await runs()).toBe(before + 4);
+    const logged = await db.query("SELECT payload FROM audit_event WHERE aggregate_type = 'job' AND occurred_at = $1", [at(70)]);
+    expect(logged.rows.map(r => r["payload"])).toContainEqual({ finalised: 0, purged: 0 });
+  });
 });

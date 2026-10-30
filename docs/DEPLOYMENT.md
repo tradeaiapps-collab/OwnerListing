@@ -38,6 +38,11 @@ Do not turn this on for real users until counsel has approved the retention peri
 - Never rotate `ID_IMAGE_KEY` while images are stored (they become unreadable); wait until the queue is empty and 30 days have passed.
 - Images are viewable only by the reviewer holding the 30-minute claim, through `/api/staff/id-review/[id]/image/[part]` (no-store, every view in `id_review_access`).
 
+## 4b. Account deletion retention (daily)
+- `.github/workflows/account-retention.yml` calls `POST $APP_URL/api/internal/accounts/retention` with header `x-cron-secret` every day at 02:00 UTC. Set repository secrets `APP_URL` (public address) and `ACCOUNT_RETENTION_CRON_SECRET` (same value as the app, 32+ chars). Until both are set the run is skipped with a warning.
+- Manual run: Actions > Account retention (daily) > Run workflow, or the same curl by hand. Safe to repeat; answers `{counts:{finalised,purged}}`.
+- Every run writes one `job.account_retention_run` audit event (aggregate `job` / `account-retention`, payload = counts), plus one event per account changed. A missing day in the audit trail means the scheduler stopped.
+
 ## 5. Smoke test after deploy
 Home loads; Google sign-in works; `/plans` loads; an upload answers 503 (storage off, expected); checkout answers "not available yet" (expected); `/api/webhooks/payway` rejects unsigned posts.
 
