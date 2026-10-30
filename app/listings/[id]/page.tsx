@@ -4,6 +4,7 @@ import { useParams } from "next/navigation";
 import { formatPrice } from "../../../src/domain/listing-details";
 import { actionHref } from "../../../src/domain/listing-actions";
 import { ListingGallery } from "../gallery";
+import { LocationMap } from "../location-map";
 import { JSON_HEADERS } from "../ui";
 import "../../styles/cards.css";
 import "../../styles/detail.css";
@@ -22,6 +23,8 @@ interface Listing {
   bedrooms?: number;
   bathrooms?: number;
   parking?: number;
+  latitude?: number;
+  longitude?: number;
   description?: string;
   status: string;
   disclosures: { key: string; satisfied: boolean }[];
@@ -309,6 +312,10 @@ export default function ListingDetail() {
             <dt>Updated</dt><dd>{day(listing.updatedAt)}</dd>
             {compliance && <><dt>Reference</dt><dd className="pd-ref">{compliance.reference}</dd></>}
           </dl>
+
+          {listing.latitude !== undefined && listing.longitude !== undefined && (
+            <LocationMap latitude={listing.latitude} longitude={listing.longitude} title={listing.title} address={listing.address} transactionType={tx} />
+          )}
 
           {compliance
             ? <><Disclosures c={compliance} state={listing.jurisdiction} tx={tx} /><Documents docs={docs} /><Safety c={compliance} tx={tx} /></>

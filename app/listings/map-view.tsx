@@ -6,7 +6,7 @@ import { formatPrice } from "../../src/domain/listing-details";
 import { clusterPoints, shortPrice } from "../../src/domain/map-cluster";
 import type { CardPhoto } from "../../src/domain/listing-photos";
 import { CardMedia } from "./card-media";
-import { AUSTRALIA, createMap, loadLeaflet } from "./leaflet";
+import { AUSTRALIA, createMap, loadLeaflet, whenVisible } from "./leaflet";
 import { filterParams, type FilterForm } from "./url-params";
 import "../styles/map.css";
 
@@ -56,10 +56,10 @@ export function MapView({ filters }: { filters: FilterForm }) {
 
   const base = useMemo(() => filterParams(filters).toString(), [filters]);
 
-  // Create the map once.
+  // Create the map once, when it scrolls into view.
   useEffect(() => {
     let cancelled = false;
-    loadLeaflet().then(lib => {
+    const stop = el.current ? whenVisible(el.current, () => void loadLeaflet().then(lib => {
       if (cancelled || !el.current || map.current) return;
       L.current = lib;
       const m = createMap(lib, el.current);
@@ -69,8 +69,8 @@ export function MapView({ filters }: { filters: FilterForm }) {
       map.current = m;
       setZoom(m.getZoom());
       setMapReady(true);
-    }).catch(() => setError("The map could not be loaded. Use the list view instead."));
-    return () => { cancelled = true; map.current?.remove(); map.current = null; };
+    }).catch(() => setError("The map could not be loaded. Use the list view instead."))) : () => undefined;
+    return () => { cancelled = true; stop(); map.current?.remove(); map.current = null; };
   }, []);
 
   // New filters: load every matching pin and fit the map to them.

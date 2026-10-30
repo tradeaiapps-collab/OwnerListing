@@ -4,11 +4,12 @@ import { formatKpi, labelFor } from "../../../src/domain/admin-dashboard";
 import type { ListingAction } from "../../../src/domain/admin-moderation";
 import { ReasonAction } from "../reason-action";
 import { loadError } from "../staff-api";
+import { StaffListingsMap } from "./listings-map";
 import "../../styles/admin.css";
 
 interface Row {
   id: string; title: string; suburb: string | null; jurisdiction: string; transactionType: string; propertyType: string; status: string;
-  priceCents: number | null; createdAt: string; ownerType: string; offers: number; lastReason: string | null; actions: { action: ListingAction; label: string }[];
+  priceCents: number | null; createdAt: string; ownerType: string; offers: number; lastReason: string | null; latitude: number | null; longitude: number | null; actions: { action: ListingAction; label: string }[];
 }
 const STATES = ["NSW", "VIC", "QLD", "WA", "SA", "TAS", "ACT", "NT"];
 const STATUSES = ["published", "suspended", "pending_review", "draft", "withdrawn", "archived"];
@@ -21,6 +22,7 @@ export default function ListingModeration() {
   const [next, setNext] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [loaded, setLoaded] = useState(false);
+  const [view, setView] = useState<"table" | "map">("table");
 
   async function load(cursor?: string) {
     setError("");
@@ -62,6 +64,13 @@ export default function ListingModeration() {
       {error && <p role="alert">{error}</p>}
       {loaded && rows.length === 0 && <p className="empty">No listings match.</p>}
       {rows.length > 0 && (
+        <div className="view-toggle" role="group" aria-label="Show as">
+          <button type="button" className="secondary" aria-pressed={view === "table"} onClick={() => setView("table")}><span className="vt-icon vt-list" aria-hidden="true" />Table</button>
+          <button type="button" className="secondary" aria-pressed={view === "map"} onClick={() => setView("map")}><span className="vt-icon vt-map" aria-hidden="true" />Map</button>
+        </div>
+      )}
+      {rows.length > 0 && view === "map" && <StaffListingsMap rows={rows} />}
+      {rows.length > 0 && view === "table" && (
         <div className="table-wrap"><table>
           <thead><tr><th scope="col">Listing</th><th scope="col">Where</th><th scope="col">Price</th><th scope="col">Offers</th><th scope="col">Status</th><th scope="col">Actions</th></tr></thead>
           <tbody>
