@@ -32,6 +32,11 @@ export default function ElenaWalker({ name, still, video }: { name: string; stil
   const [phase, setPhase] = useState<Phase>("perched");
   const [pos, setPos] = useState<Pt>({ x: 0, y: 0, animate: false });
   const [busy, setBusy] = useState(false);
+  const [typing, setTyping] = useState(false);
+  const [reply, setReply] = useState<"" | "agree" | "talking">("");
+  const wasBusy = useRef(false);
+  const replyTimer = useRef<number | undefined>(undefined);
+  const [calm, setCalm] = useState(true);
   const phaseRef = useRef<Phase>("perched");
   const timer = useRef<number | undefined>(undefined);
   const guard = useRef<number | undefined>(undefined);
@@ -54,8 +59,17 @@ export default function ElenaWalker({ name, still, video }: { name: string; stil
 
   useEffect(() => {
     const onState = (e: Event) => {
-      const d = (e as CustomEvent<{ open: boolean; busy: boolean }>).detail;
+      const d = (e as CustomEvent<{ open: boolean; busy: boolean; typing?: boolean }>).detail;
       setBusy(d.busy);
+      setTyping(!!d.typing);
+      // When an answer lands she nods first, then talks for a few seconds.
+      if (wasBusy.current && !d.busy) {
+        window.clearTimeout(replyTimer.current);
+        setReply("agree");
+        replyTimer.current = window.setTimeout(() => { setReply("talking"); replyTimer.current = window.setTimeout(() => setReply(""), 6000); }, 1800);
+      }
+      if (d.busy) { window.clearTimeout(replyTimer.current); setReply(""); }
+      wasBusy.current = d.busy;
       window.clearTimeout(timer.current);
       const p = phaseRef.current;
       if (d.open) {
@@ -72,7 +86,7 @@ export default function ElenaWalker({ name, still, video }: { name: string; stil
       }
     };
     window.addEventListener(GUIDE_STATE_EVENT, onState);
-    return () => { window.removeEventListener(GUIDE_STATE_EVENT, onState); window.clearTimeout(timer.current); window.clearTimeout(guard.current); document.body.classList.remove("ew-active"); };
+    return () => { window.removeEventListener(GUIDE_STATE_EVENT, onState); window.clearTimeout(timer.current); window.clearTimeout(guard.current); window.clearTimeout(replyTimer.current); document.body.classList.remove("ew-active"); };
   }, [walk, slotPt]);
 
   const posRef = useRef(pos);
@@ -85,8 +99,17 @@ export default function ElenaWalker({ name, still, video }: { name: string; stil
     return () => window.removeEventListener("resize", onResize);
   }, []);
 
+  useEffect(() => {
+    const q = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const sync = () => setCalm(q.matches);
+    sync();
+    q.addEventListener("change", sync);
+    return () => q.removeEventListener("change", sync);
+  }, []);
+
   const out = phase !== "perched";
-  const clip = !video || reduced() || !out ? null : busy ? "talking" : "presenting";
+  // Always an animated clip for Elena: idle on the heading, listening while someone types or she thinks, nodding then talking on an answer.
+  const clip = !video || calm ? null : !out || phase !== "stopped" ? "idle" : busy || typing ? "listen" : reply === "agree" ? "agree" : reply === "talking" ? "talking" : "idle";
   const style = out ? { transform: `translate(${pos.x}px, ${pos.y}px)`, transition: pos.animate ? `transform ${WALK_MS}ms cubic-bezier(0.45, 0, 0.25, 1)` : "none" } : undefined;
 
   return (
