@@ -18,7 +18,8 @@ const STATUS_TEXT: Record<StageState["status"], (name: string) => string> = {
 };
 
 const VOICE_KEY = "ol:assistant-voice";
-const readVoice = () => { try { return window.localStorage.getItem(VOICE_KEY) === "on"; } catch { return false; } };
+// Voice is on unless the person turned it off; browsers only let her talk after a click, which asking a question is.
+const readVoice = () => { try { return window.localStorage.getItem(VOICE_KEY) !== "off"; } catch { return true; } };
 const saveVoice = (on: boolean) => { try { window.localStorage.setItem(VOICE_KEY, on ? "on" : "off"); } catch { /* the toggle still works for this visit */ } };
 
 /** Reads text aloud with the device's own voice (no outside service). Returns false when the browser has no speech. */
@@ -28,8 +29,10 @@ export function speak(text: string, onEnd: () => void): boolean {
   s.cancel();
   const u = new SpeechSynthesisUtterance(text);
   u.lang = "en-AU";
-  const v = s.getVoices().find(x => /en-AU/i.test(x.lang) && /female|karen|catherine|natasha/i.test(x.name)) ?? s.getVoices().find(x => /en-AU/i.test(x.lang));
-  if (v) u.voice = v;
+  const all = s.getVoices();
+  const v = all.find(x => /en-AU/i.test(x.lang) && /female|karen|catherine|natasha/i.test(x.name)) ?? all.find(x => /en-AU/i.test(x.lang))
+    ?? all.find(x => /^en-(GB|US)/i.test(x.lang) && /female|samantha|serena|google uk english female/i.test(x.name)) ?? all.find(x => /^en/i.test(x.lang));
+  if (v) { u.voice = v; u.lang = v.lang; }
   u.rate = 1;
   u.onend = onEnd;
   u.onerror = onEnd;
@@ -53,6 +56,15 @@ export function ElenaStage({ persona, state, speaking, voice, onVoice }: {
   const [still, setStill] = useState(true);
 
   useEffect(() => { onVoice(readVoice()); }, [onVoice]);
+  // Chrome lists its voices a moment after load; ask early so the first answer already uses the chosen one.
+  useEffect(() => {
+    const s = typeof window !== "undefined" ? window.speechSynthesis : undefined;
+    if (!s) return;
+    s.getVoices();
+    const noop = () => { s.getVoices(); };
+    s.addEventListener?.("voiceschanged", noop);
+    return () => s.removeEventListener?.("voiceschanged", noop);
+  }, []);
   // Short looping clips exist for Elena only. They stay still for people who ask for reduced motion.
   useEffect(() => {
     const q = window.matchMedia("(prefers-reduced-motion: reduce)");

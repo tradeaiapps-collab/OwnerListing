@@ -281,6 +281,9 @@ export default function Thread() {
                     <div className="el-answer">
                       <span className="el-answer-who">{ai?.persona.name} · AI assistant</span>
                       <p>{t.answer}</p>
+                      <button type="button" className="el-listen" onClick={() => { if (speak(t.answer, () => setSpeaking(false))) setSpeaking(true); }}>
+                        <span aria-hidden="true">🔊</span> Listen<span className="sr-only"> to {ai?.persona.name}&apos;s answer</span>
+                      </button>
                       {pills.length > 0 && (
                         <ul className="el-pills" aria-label="What this refers to">
                           {pills.map((p, i) => <li key={i} className={`el-pill${pc(p.target)}`}>{p.text}</li>)}
