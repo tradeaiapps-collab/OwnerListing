@@ -21,3 +21,7 @@ video.ew-media { pointer-events: none; }
 video.ew-media::-webkit-media-controls, video.ew-media::-webkit-media-controls-enclosure, video.ew-media::-webkit-media-controls-overlay-play-button, video.ew-media::-webkit-media-controls-panel { display: none !important; -webkit-appearance: none; }
 /* Perched: she sits on the heading (idle clip, or the seated still under reduced motion). */
 .ew-perched img.ew-media { object-position: 50% 100%; }
+/* Profile walking clip is a tall portrait with a white backdrop: a narrower, taller frame that overhangs the square slot upward. */
+.ew.is-walk-clip { width: 63px; height: 112px; background: #fff; }
+.ew.is-walk-clip .ew-media { object-fit: cover; object-position: 50% 50%; background: #fff; }
+@media (max-width: 599px) { .ew.is-walk-clip { width: 49px; height: 88px; } }

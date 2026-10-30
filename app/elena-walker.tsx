@@ -110,13 +110,14 @@ export default function ElenaWalker({ name, still, video }: { name: string; stil
 
   const out = phase !== "perched";
   // Always an animated clip for Elena: idle on the heading, listening while someone types or she thinks, nodding then talking on an answer.
-  const clip = !video || calm ? null : !out || phase !== "stopped" ? "idle" : busy || typing ? "listen" : reply === "agree" ? "agree" : reply === "talking" ? "talking" : "idle";
+  const walking = phase === "down" || phase === "up";
+  const clip = !video || calm ? null : walking ? "walk-right" : !out || phase !== "stopped" ? "idle" : busy || typing ? "listen" : reply === "agree" ? "agree" : reply === "talking" ? "talking" : "idle";
   const style = out ? { transform: `translate(${pos.x}px, ${pos.y}px)`, transition: pos.animate ? `transform ${WALK_MS}ms cubic-bezier(0.45, 0, 0.25, 1)` : "none" } : undefined;
 
   return (
     <span ref={slot} className="ew-slot">
       <button
-        type="button" className={`ew ew-${phase}${busy ? " is-talking" : ""}`} style={style} data-ew-phase={phase}
+        type="button" className={`ew ew-${phase}${busy ? " is-talking" : ""}${clip === "walk-right" ? " is-walk-clip" : ""}`} style={style} data-ew-phase={phase}
         onClick={() => window.dispatchEvent(new Event(OPEN_GUIDE_EVENT))}
         onTransitionEnd={e => { if (e.target === e.currentTarget && e.propertyName === "transform") arrive(phaseRef.current === "down" ? "stopped" : phaseRef.current === "up" ? "perched" : phaseRef.current); }}
         aria-label={`Ask ${name} a question`}
