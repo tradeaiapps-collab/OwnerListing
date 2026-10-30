@@ -10,6 +10,9 @@ describe("Elena body language", () => {
     expect(clipFor({ pose: "listening", status: "listening" }, false)).toBe("listen");
     expect(clipFor({ pose: "listening", status: "thinking" }, false)).toBe("listen");
   });
+  it("leaning is chosen by mood only while at rest", () => {
+    expect(clipFor({ pose: "wave", status: "welcome", mood: "silly" }, false)).toBe("idle");
+  });
   it("matches speech to the moment", () => {
     expect(clipFor({ pose: "tablet", status: "presenting" }, true)).toBe("presenting");
     expect(clipFor({ pose: "three-quarter", status: "careful" }, true)).toBe("talking");

@@ -214,7 +214,7 @@ export default function Thread() {
     ? { pose: "listening", status: "thinking", pointing: false }
     : typing && draft.trim()
       ? { pose: "listening", status: "listening", pointing: false }
-      : { pose: latest?.pose ?? "wave", status: STATUS_FOR[latest?.pose ?? "wave"], pointing: pointed.length > 0, mood: latest && AGREE_TOPICS.includes(latest.topic) ? "agree" : "explain" };
+      : { pose: latest?.pose ?? "wave", status: STATUS_FOR[latest?.pose ?? "wave"], pointing: pointed.length > 0, mood: latest?.topic === "unknown" ? "silly" : latest && AGREE_TOPICS.includes(latest.topic) ? "agree" : "explain" };
 
   const timeline = useMemo(() => {
     const items: ({ kind: "msg"; at: string; m: Message } | { kind: "turn"; at: string; t: AssistantTurn })[] = [
