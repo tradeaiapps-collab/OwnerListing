@@ -28,6 +28,8 @@ const TARGETS: Record<ChatTopic, (turnId: string) => Target[]> = {
 };
 const STATUS_FOR: Record<ChatPose, StageState["status"]> = { wave: "welcome", tablet: "presenting", front: "explaining", "three-quarter": "careful" };
 const POINT_MS = 4500;
+/** Topics where she is warm and agreeing, so she nods and smiles while answering. */
+const AGREE_TOPICS: ChatTopic[] = ["chitchat", "welcome", "compromise", "next_steps"];
 
 const OFFER_STATUS: Record<string, string> = {
   submitted: "With the owner", under_review: "With the owner", countered: "Owner countered", buyer_countered: "Buyer countered",
@@ -212,7 +214,7 @@ export default function Thread() {
     ? { pose: "listening", status: "thinking", pointing: false }
     : typing && draft.trim()
       ? { pose: "listening", status: "listening", pointing: false }
-      : { pose: latest?.pose ?? "wave", status: STATUS_FOR[latest?.pose ?? "wave"], pointing: pointed.length > 0 };
+      : { pose: latest?.pose ?? "wave", status: STATUS_FOR[latest?.pose ?? "wave"], pointing: pointed.length > 0, mood: latest && AGREE_TOPICS.includes(latest.topic) ? "agree" : "explain" };
 
   const timeline = useMemo(() => {
     const items: ({ kind: "msg"; at: string; m: Message } | { kind: "turn"; at: string; t: AssistantTurn })[] = [
