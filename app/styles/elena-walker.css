@@ -25,7 +25,4 @@ video.ew-media::-webkit-media-controls, video.ew-media::-webkit-media-controls-e
 .ew.is-walk-clip { width: 63px; height: 112px; background: #fff; }
 .ew.is-walk-clip .ew-media { object-fit: cover; object-position: 50% 50%; background: #fff; }
 @media (max-width: 599px) { .ew.is-walk-clip { width: 49px; height: 88px; } }
-/* The tall clips have a white backdrop; in dark themes multiply lets the page colour show through it. */
-:root[data-theme="dark"] .ew.is-walk-clip, :root[data-theme-mode="dark"] .ew.is-walk-clip { background: transparent; }
-:root[data-theme="dark"] .ew.is-walk-clip .ew-media, :root[data-theme-mode="dark"] .ew.is-walk-clip .ew-media { mix-blend-mode: multiply; background: transparent; }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]):not([data-theme-mode="light"]) .ew.is-walk-clip { background: transparent; } :root:not([data-theme="light"]):not([data-theme-mode="light"]) .ew.is-walk-clip .ew-media { mix-blend-mode: multiply; background: transparent; } }
+/* The tall clips have a white backdrop; in dark themes she stays a clean white photo card (multiply blending does not reach the page behind it, because the page's fade-in isolates this subtree). */
