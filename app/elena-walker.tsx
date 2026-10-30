@@ -4,10 +4,10 @@ import { OPEN_GUIDE_EVENT, GUIDE_STATE_EVENT } from "./guide-assistant";
 import "./styles/elena-walker.css";
 
 type Phase = "perched" | "down" | "stopped" | "up";
-type Pt = { x: number; y: number; animate: boolean };
+type Pt = { x: number; y: number; animate: boolean; dur?: number; delay?: number };
 
 const SIZE_WIDE = 112, SIZE_NARROW = 88;
-const PANEL_W = 380, GUTTER = 16, WALK_MS = 1800, RETURN_DELAY_MS = 5000;
+const PANEL_W = 380, GUTTER = 16, CLIP_MS = 6000, RETURN_DELAY_MS = 5000;
 
 const size = () => (window.innerWidth < 600 ? SIZE_NARROW : SIZE_WIDE);
 const reduced = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -52,10 +52,12 @@ export default function ElenaWalker({ name, still, video }: { name: string; stil
   const walk = useCallback((from: { x: number; y: number }, to: { x: number; y: number }, via: Phase, end: Phase) => {
     window.clearTimeout(guard.current);
     if (reduced()) { setPos({ ...to, animate: false }); arrive(end); return; }
+    // The walk is one continuous clip (6s): walking out she walks for the first half then turns to face the user; walking back she turns first, then walks off.
+    const out = via === "down";
     setPos({ ...from, animate: false });
     go(via);
-    requestAnimationFrame(() => requestAnimationFrame(() => setPos({ ...to, animate: true })));
-    guard.current = window.setTimeout(() => arrive(end), WALK_MS + 400);
+    requestAnimationFrame(() => requestAnimationFrame(() => setPos({ ...to, animate: true, dur: out ? 3000 : 3300, delay: out ? 0 : 2500 })));
+    guard.current = window.setTimeout(() => arrive(end), CLIP_MS + 100);
   }, [arrive]);
 
   useEffect(() => {
@@ -110,21 +112,19 @@ export default function ElenaWalker({ name, still, video }: { name: string; stil
 
   const out = phase !== "perched";
   // Always an animated clip for Elena: idle on the heading, listening while someone types or she thinks, nodding then talking on an answer.
-  const walking = phase === "down" || phase === "up";
-  const clip = !video || calm ? null : walking ? "walk-right" : !out || phase !== "stopped" ? "idle" : busy || typing ? "listen" : "front-talk";
-  const style = out ? { transform: `translate(${pos.x}px, ${pos.y}px)`, transition: pos.animate ? `transform ${WALK_MS}ms cubic-bezier(0.45, 0, 0.25, 1)` : "none" } : undefined;
+  const clip = !video || calm ? null : phase === "down" ? "walk-to-camera" : phase === "up" ? "turn-away-left" : !out || phase !== "stopped" ? "idle" : busy || typing ? "listen" : "front-talk";
+  const style = out ? { transform: `translate(${pos.x}px, ${pos.y}px)`, transition: pos.animate ? `transform ${pos.dur ?? 3000}ms cubic-bezier(0.3, 0, 0.7, 1) ${pos.delay ?? 0}ms` : "none" } : undefined;
 
   return (
     <span ref={slot} className="ew-slot">
       <button
-        type="button" className={`ew ew-${phase}${busy ? " is-talking" : ""}${clip === "walk-right" || clip === "front-talk" ? " is-walk-clip" : ""}`} style={style} data-ew-phase={phase}
+        type="button" className={`ew ew-${phase}${busy ? " is-talking" : ""}${clip === "walk-to-camera" || clip === "turn-away-left" || clip === "front-talk" ? " is-walk-clip" : ""}`} style={style} data-ew-phase={phase}
         onClick={() => window.dispatchEvent(new Event(OPEN_GUIDE_EVENT))}
-        onTransitionEnd={e => { if (e.target === e.currentTarget && e.propertyName === "transform") arrive(phaseRef.current === "down" ? "stopped" : phaseRef.current === "up" ? "perched" : phaseRef.current); }}
         aria-label={`Ask ${name} a question`}
       >
         <span className="ew-body">
           {clip ? (
-            <video key={clip} className="ew-media" autoPlay loop muted playsInline disablePictureInPicture disableRemotePlayback controls={false} controlsList="nodownload nofullscreen noremoteplayback" tabIndex={-1} preload="auto" poster={`/assistant/elena-video-${clip}.jpg`} aria-hidden="true">
+            <video key={clip} className="ew-media" autoPlay loop={phase !== "down" && phase !== "up"} muted playsInline disablePictureInPicture disableRemotePlayback controls={false} controlsList="nodownload nofullscreen noremoteplayback" tabIndex={-1} preload="auto" poster={`/assistant/elena-video-${clip}.jpg`} aria-hidden="true">
               <source src={`/assistant/elena-video-${clip}.webm`} type="video/webm" />
               <source src={`/assistant/elena-video-${clip}.mp4`} type="video/mp4" />
             </video>
