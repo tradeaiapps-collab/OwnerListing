@@ -7,8 +7,8 @@ type ClipId = "idle" | "listen" | "talking" | "explain" | "agree" | "presenting"
 
 /** What the stage shows: a pose from an answer, "listening" while someone types or waits, "thinking" while she answers. */
 export type StageState = { pose: PoseId; status: "welcome" | "listening" | "thinking" | "presenting" | "explaining" | "careful"; pointing: boolean;
-  /** How she moves while answering aloud: "agree" nods and smiles, otherwise she explains. Unset = explain. */
-  mood?: "agree" | "explain" };
+  /** How she moves while answering aloud: "agree" nods and smiles; "silly" (an unmatched question) makes her lean on one leg while at rest; otherwise she explains. */
+  mood?: "agree" | "explain" | "silly" };
 
 const STATUS_TEXT: Record<StageState["status"], (name: string) => string> = {
   welcome: n => `${n} is here to help`,
@@ -99,7 +99,7 @@ export function ElenaStage({ persona, state, speaking, voice, onVoice }: {
       <div className="el-stage-figure">
         {clip ? (
           <video
-            key={clip} className={`el-stage-img is-video${clip === "presenting" ? " is-flip" : ""}`} autoPlay loop muted playsInline preload="auto"
+            key={clip} className={`el-stage-img is-video${clip === "presenting" ? " is-flip" : ""}${clip === "idle" ? (state.mood === "silly" ? " is-lean" : " is-step") : ""}`} autoPlay loop muted playsInline preload="auto"
             poster={`/assistant/elena-video-${clip}.jpg`} aria-hidden="true"
           >
             <source src={`/assistant/elena-video-${clip}.webm`} type="video/webm" />
