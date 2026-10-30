@@ -21,17 +21,17 @@
 .el-layout.has-stage { grid-template-columns: minmax(0, 1fr); }
 @media (min-width: 880px) {
   .el-layout.has-stage { grid-template-columns: 300px minmax(0, 1fr); gap: var(--space-8); align-items: start; }
-  .el-layout.has-stage > .el-stage { position: sticky; top: var(--space-4); }
+  .el-layout.has-stage > .el-stage { position: sticky; top: calc(var(--el-top, 72px) + var(--space-4)); }
 }
 .el-chat { min-width: 0; }
 body.el-chat-page .ga-launcher { display: none; }
 
 .el-stage { position: relative; display: grid; gap: var(--space-3); }
 .el-stage-figure { position: relative; height: 220px; border-radius: calc(var(--radius) + 4px); background: var(--gold-tint); border: 1px solid var(--border); overflow: hidden; }
-@media (min-width: 880px) { .el-stage-figure { height: 380px; } }
+@media (min-width: 880px) { .el-stage-figure { height: clamp(220px, calc(100vh - var(--el-top, 72px) - 260px), 380px); } }
 .el-stage.is-collapsed .el-stage-figure { height: 72px; }
-.el-stage-img { position: absolute; inset: 0; width: 100%; height: 100%; display: block; object-fit: cover; object-position: 50% 12%; transform-origin: 50% 100%; }
-.el-stage-img.is-portrait { object-position: 50% 20%; }
+.el-stage-img { position: absolute; inset: 0; width: 100%; height: 100%; display: block; object-fit: cover; object-position: 50% 6%; }
+.el-stage-img.is-portrait { object-position: 50% 12%; }
 .el-stage-img.is-flip { scale: -1 1; } /* separate from transform so the breathing animation keeps the flip */
 .el-stage.is-collapsed .el-stage-img { object-position: 50% 8%; }
 .el-pointer { position: absolute; top: 40%; right: var(--space-2); width: 36px; height: 36px; display: grid; place-items: center; border-radius: 50%; background: var(--gold); color: #fff; box-shadow: var(--shadow-1); opacity: 0; transform: translateX(-8px); transition: opacity var(--dur-2, 200ms) var(--ease), transform var(--dur-2, 200ms) var(--ease); }
@@ -83,24 +83,21 @@ body.el-chat-page .ga-launcher { display: none; }
 .el-composer-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); justify-content: flex-end; }
 .el-note { margin: 0; font-size: 0.8125rem; color: var(--muted); }
 
-/* Motion: she breathes gently, fades between poses and sways while speaking. None of it runs when the device asks for reduced motion. */
+/* Motion: clips move her, stills fade between poses. None of it runs when the device asks for reduced motion. */
 @media (prefers-reduced-motion: no-preference) {
-  .el-stage-img { animation: el-fade var(--dur-3, 320ms) var(--ease) both, el-breathe 5.5s ease-in-out 0.4s infinite; }
-  .el-stage.is-speaking .el-stage-img { animation: el-fade var(--dur-3, 320ms) var(--ease) both, el-sway 1.6s ease-in-out infinite; }
+  .el-stage-img { animation: el-fade var(--dur-3, 320ms) var(--ease) both; }
   .el-stage.is-pointing .el-pointer { animation: el-nudge 0.9s ease-in-out infinite; }
   .is-pointed { animation: el-glow 1.2s ease-in-out 3; }
   .el-dot-thinking, .el-dot-listening, .el-dot-speaking { animation: el-pulse 1.2s ease-in-out infinite; }
 }
 @keyframes el-fade { from { opacity: 0; } to { opacity: 1; } }
-@keyframes el-breathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.012) translateY(-2px); } }
-@keyframes el-sway { 0%, 100% { transform: rotate(-0.6deg); } 50% { transform: rotate(0.6deg) translateY(-2px); } }
 @keyframes el-nudge { 0%, 100% { transform: translateX(0); } 50% { transform: translateX(-6px); } }
 @keyframes el-glow { 0%, 100% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--gold) 35%, transparent); } 50% { box-shadow: 0 0 0 7px color-mix(in srgb, var(--gold) 20%, transparent); } }
 @keyframes el-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
 
 /* Phones and small tablets: she stays pinned under the site header as a compact strip while the thread scrolls, so she is still there when her answer arrives. */
 @media (max-width: 879px) {
-  .el-layout.has-stage > .el-stage { position: sticky; top: 72px; z-index: 5; grid-template-columns: 96px minmax(0, 1fr); align-items: center; gap: var(--space-3); padding: var(--space-2); margin: 0 calc(var(--space-2) * -1); border-radius: var(--radius); background: var(--bg); border: 1px solid var(--border); box-shadow: var(--shadow-1); }
+  .el-layout.has-stage > .el-stage { position: sticky; top: calc(var(--el-top, 72px) + var(--space-2)); z-index: 5; grid-template-columns: 96px minmax(0, 1fr); align-items: center; gap: var(--space-3); padding: var(--space-2); margin: 0 calc(var(--space-2) * -1); border-radius: var(--radius); background: var(--bg); border: 1px solid var(--border); box-shadow: var(--shadow-1); }
   .el-stage-figure, .el-stage.is-collapsed .el-stage-figure { height: 96px; }
   .el-stage-card { padding: var(--space-2) var(--space-3); gap: var(--space-1); }
   .el-stage-name { font-size: 1.0625rem; }

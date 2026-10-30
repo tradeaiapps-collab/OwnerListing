@@ -18,7 +18,8 @@ const STATUS_TEXT: Record<StageState["status"], (name: string) => string> = {
 };
 
 const VOICE_KEY = "ol:assistant-voice";
-const readVoice = () => { try { return window.localStorage.getItem(VOICE_KEY) === "on"; } catch { return false; } };
+// Voice is on unless the person has switched it off, so she answers aloud without anyone hunting for a toggle.
+const readVoice = () => { try { return window.localStorage.getItem(VOICE_KEY) !== "off"; } catch { return true; } };
 const saveVoice = (on: boolean) => { try { window.localStorage.setItem(VOICE_KEY, on ? "on" : "off"); } catch { /* the toggle still works for this visit */ } };
 
 /** Reads text aloud with the device's own voice (no outside service). Returns false when the browser has no speech. */
@@ -31,8 +32,12 @@ export function speak(text: string, onEnd: () => void): boolean {
   const v = s.getVoices().find(x => /en-AU/i.test(x.lang) && /female|karen|catherine|natasha/i.test(x.name)) ?? s.getVoices().find(x => /en-AU/i.test(x.lang));
   if (v) u.voice = v;
   u.rate = 1;
-  u.onend = onEnd;
-  u.onerror = onEnd;
+  // Some browsers never fire onend for long text, which would leave her "speaking" forever; stop her after a generous cap.
+  const cap = setTimeout(onEnd, Math.min(60000, 4000 + text.length * 90));
+  const done = () => { clearTimeout(cap); onEnd(); };
+  u.onend = done;
+  u.onerror = done;
+  s.resume();
   s.speak(u);
   return true;
 }
@@ -53,7 +58,17 @@ export function ElenaStage({ persona, state, speaking, voice, onVoice }: {
   const [still, setStill] = useState(true);
 
   useEffect(() => { onVoice(readVoice()); }, [onVoice]);
-  // Short looping clips exist for Elena only. They stay still for people who ask for reduced motion.
+  // Keep the pinned stage below the site header, whatever height it wraps to at this width.
+  useEffect(() => {
+    const header = document.querySelector<HTMLElement>(".site-header");
+    if (!header) return;
+    const sync = () => document.documentElement.style.setProperty("--el-top", `${Math.round(header.getBoundingClientRect().height)}px`);
+    sync();
+    const ro = new ResizeObserver(sync);
+    ro.observe(header);
+    return () => { ro.disconnect(); document.documentElement.style.removeProperty("--el-top"); };
+  }, []);
+  // Short looping clips exist for Elena only; she is always moving (idle by default). They stay still for people who ask for reduced motion.
   useEffect(() => {
     const q = window.matchMedia("(prefers-reduced-motion: reduce)");
     const sync = () => setStill(q.matches);
@@ -61,7 +76,7 @@ export function ElenaStage({ persona, state, speaking, voice, onVoice }: {
     q.addEventListener("change", sync);
     return () => q.removeEventListener("change", sync);
   }, []);
-  const clip: ClipId | undefined = persona.id !== "elena" || still ? undefined : speaking ? "talking" : state.pose === "tablet" ? "presenting" : state.pose === "listening" ? "idle" : undefined;
+  const clip: ClipId | undefined = persona.id !== "elena" || still ? undefined : speaking ? "talking" : state.pose === "tablet" ? "presenting" : "idle";
 
   return (
     <aside className={`el-stage${collapsed ? " is-collapsed" : ""}${speaking ? " is-speaking" : ""}${state.pointing ? " is-pointing" : ""}`} aria-label={personaLabel(persona)}>
