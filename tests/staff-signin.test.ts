@@ -213,7 +213,7 @@ describe("sign-in routes for staff", () => {
 
   it("remembers staff only for ?as=staff", async () => {
     expect(roleCookie(await startGet(new Request("http://x/api/auth/google/start?as=staff")))).toBe("staff");
-    for (const as of ["STAFF", "admin", "super_admin", "agent", ""]) {
+    for (const as of ["STAFF", "admin", "super_admin", ""]) {
       expect(roleCookie(await startGet(new Request(`http://x/api/auth/google/start?as=${as}`)))).toBe("owner");
     }
   });

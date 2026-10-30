@@ -33,7 +33,7 @@ export default function Settings() {
   };
 
   if (state === "loading") return <main><p className="muted" role="status">Loading…</p></main>;
-  if (state === "signedOut") return <main><h1>Settings</h1><p role="alert"><a href="/api/auth/google/start?next=/settings">Sign in</a> to change your settings.</p></main>;
+  if (state === "signedOut") return <main><h1>Settings</h1><p role="alert"><a href="/login?next=/settings">Sign in</a> to change your settings.</p></main>;
   if (state === "error") return <main><h1>Settings</h1><p role="alert">Could not load your settings.</p></main>;
 
   const zones = TIME_ZONE_CHOICES.includes(s.timeZone) ? TIME_ZONE_CHOICES : [s.timeZone, ...TIME_ZONE_CHOICES];

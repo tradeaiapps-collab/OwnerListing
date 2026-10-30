@@ -110,7 +110,7 @@ describe("sign-in routes", () => {
 
   it("remembers vendor only for ?as=vendor", async () => {
     expect(roleCookie(await startGet(new Request("http://x/api/auth/google/start?as=vendor")))).toBe("vendor");
-    for (const as of ["VENDOR", "contractor", "admin", "agent"]) {
+    for (const as of ["VENDOR", "contractor", "admin"]) {
       expect(roleCookie(await startGet(new Request(`http://x/api/auth/google/start?as=${as}`)))).toBe("owner");
     }
   });

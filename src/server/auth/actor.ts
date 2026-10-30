@@ -26,7 +26,8 @@ export async function sessionFromRequestChecked(db: Queryable, req: Request, sec
             (SELECT floor(extract(epoch FROM max(f.revoked_at)))::bigint FROM mfa_factor f
               WHERE f.user_id = u.id AND f.confirmed_at IS NOT NULL) AS mfa_revoked_at,
             (SELECT floor(extract(epoch FROM max(r.reset_at)))::bigint FROM mfa_reset_log r WHERE r.user_id = u.id) AS mfa_reset_at,
-            floor(extract(epoch FROM u.restored_at))::bigint AS restored_at
+            floor(extract(epoch FROM u.restored_at))::bigint AS restored_at,
+            floor(extract(epoch FROM u.password_changed_at))::bigint AS password_changed_at
        FROM app_user u WHERE u.id = $1 AND u.status = 'active' AND u.deleted_at IS NULL AND u.user_type = $2`,
     [p.uid, p.ut]
   );
@@ -39,6 +40,9 @@ export async function sessionFromRequestChecked(db: Queryable, req: Request, sec
   // A session from before the account was deleted never comes back with a restore: the user signs in again.
   const restoredAt = epoch(row["restored_at"]);
   if (restoredAt !== undefined && p.exp - SESSION_TTL_SECONDS <= restoredAt) return null;
+  // A password reset signs the account out everywhere, the same way.
+  const passwordAt = epoch(row["password_changed_at"]);
+  if (passwordAt !== undefined && p.exp - SESSION_TTL_SECONDS <= passwordAt) return null;
   const enrolled = row["mfa_enrolled"] === true;
   return {
     actor: { userId: p.uid, userType: p.ut },

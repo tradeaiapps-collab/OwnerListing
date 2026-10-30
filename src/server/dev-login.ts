@@ -42,3 +42,11 @@ export function devLoginAllowed(req: { url: string; headers: { get(name: string)
 export function devLoginSurface(mode: AppMode): { users: boolean; staff: boolean } {
   return { users: mode !== "admin", staff: mode !== "public" };
 }
+
+/**
+ * DEV-ONLY. True when this server is plainly a developer's own machine: not production, not Vercel, and APP_URL is a localhost origin.
+ * Used to print email sign-up and reset links to the server console while no email provider is set up.
+ */
+export function localDevServer(env: Record<string, string | undefined> = process.env): boolean {
+  return env["NODE_ENV"] !== "production" && !env["VERCEL"] && isLocalOrigin(env["APP_URL"]);
+}

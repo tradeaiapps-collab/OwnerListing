@@ -167,7 +167,7 @@ export default function Verification() {
       <h1>Verification</h1>
       <p>You verify once. We reuse the result every time you contact a seller, make an offer or apply for a rental.</p>
       {state === "loading" && <p>Loading…</p>}
-      {state === "signedOut" && <p role="alert"><a href="/api/auth/google/start?as=buyer&next=/buyer/verification">Sign in with Google</a> to see your verification.</p>}
+      {state === "signedOut" && <p role="alert"><a href="/login?as=buyer&next=/buyer/verification">Sign in</a> to see your verification.</p>}
       {state === "notBuyer" && <p role="alert">Verification is for buyer accounts.</p>}
       {state === "error" && <p role="alert">Could not load your verification.</p>}
       {state === "ok" && (

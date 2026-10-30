@@ -6,6 +6,7 @@ Last updated: 2026-10-24, after PR #61 was merged (open: #59). Deploy and handov
 
 ## Architecture (decided)
 - Login provider: Google (OIDC with MFA). MFA built 25 Oct 2026 (feature/mfa): authenticator app (TOTP) or SMS code after Google sign-in, 10 single-use recovery codes. Required for owners and agents, optional for buyers and vendors. A 15-minute fresh check (step-up) guards publish and offer accept. Needs MFA_SECRET_KEY before deploying (fails closed). Staff sign-in does not use MFA yet.
+- Email and password sign-in (30 Oct 2026): open sign-up at /signup for buyers, owners and agents, with Google or email and password; /login, /forgot-password, /reset-password. The account is created only when the emailed link is used (db/20261030100000_password_login.sql). Passwords are scrypt hashes. A Google sign-in with the same address links to the email account. A password reset signs the account out everywhere. Owners and agents go to /mfa after either sign-in method. Needs SMTP for the links (Google-only until then).
 - Local dev port: 3004 (others are taken).
 - TypeScript domain layer (pure functions, no framework), tested with Vitest.
 - PostgreSQL: migrations db/001 to db/016 plus a timestamped Google login and listing flags migration, run by scripts/migrate.mjs (PR #4).

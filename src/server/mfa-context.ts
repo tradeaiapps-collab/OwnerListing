@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { readBrand } from "../config/brand";
 import { stepUpSatisfied } from "../domain/mfa";
 import { sessionFromRequestChecked, type SessionState } from "./auth/actor";
-import { readAuthEnv } from "./auth/config";
+import { readSessionEnv } from "./auth/config";
 import { SESSION_COOKIE, signSession } from "./auth/session";
 import { getDb } from "./context";
 import type { MfaDeps } from "./mfa";
@@ -16,13 +16,13 @@ export async function getMfaDeps(): Promise<MfaDeps> {
 
 /** The signed-in session whether or not it has passed MFA yet (only the MFA routes and /api/auth/me use this). */
 export async function getSessionState(req: Request): Promise<SessionState | null> {
-  const auth = readAuthEnv();
+  const auth = readSessionEnv();
   return auth ? sessionFromRequestChecked(getDb(), req, auth.secret, Math.floor(Date.now() / 1000)) : null;
 }
 
 /** Re-issues the session cookie marked as having passed MFA now. Same expiry as before: passing MFA never lengthens a session. */
 export function markMfaPassed(res: NextResponse, s: SessionState, nowSeconds = Math.ceil(Date.now() / 1000)): NextResponse {
-  const auth = readAuthEnv();
+  const auth = readSessionEnv();
   if (!auth) return res;
   const maxAge = Math.max(0, s.payload.exp - Math.floor(Date.now() / 1000));
   res.cookies.set(SESSION_COOKIE, signSession({ uid: s.payload.uid, ut: s.payload.ut, exp: s.payload.exp, mfa: nowSeconds }, auth.secret), {

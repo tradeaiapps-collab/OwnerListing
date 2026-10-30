@@ -33,7 +33,7 @@ export default function SavedListings() {
   return (
     <main>
       <h1>Saved homes</h1>
-      {signedOut && <p role="alert"><a href="/api/auth/google/start?as=buyer&next=/buyer/saved-listings">Sign in with Google</a> to see your saved homes.</p>}
+      {signedOut && <p role="alert"><a href="/login?as=buyer&next=/buyer/saved-listings">Sign in</a> to see your saved homes.</p>}
       {error && <p role="alert">{error}</p>}
       {!signedOut && (items.length === 0 ? <p className="empty">No saved homes yet.</p> : (
         <ul className="card-list">

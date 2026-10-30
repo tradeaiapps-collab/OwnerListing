@@ -7,18 +7,32 @@ export interface SignedInUser { id: string; userType: "owner" | "agent" | "buyer
 /**
  * Finds or creates the user for a verified Google identity, keyed on the Google subject id (not email).
  * `requestedType` only applies when the account is created: an existing account keeps the type it already has, so signing in
- * with a different choice can never switch a user's role. Only "owner" and "buyer" can be self-selected; agents are never created here.
+ * with a different choice can never switch a user's role. Owner, agent and buyer can be self-selected (an agent account can do
+ * nothing agent-only until staff verify a licence). An email-and-password account with the same address and no Google link yet is
+ * linked to this Google identity: such accounts exist only after their address was confirmed, and Google has verified it too.
  * Returns null for suspended, closed or deleted accounts (a deleted account's row is left untouched) and for staff or other user types, which cannot use this login yet.
  * A different account already holding the same email makes the insert fail; the caller treats that as a failed login.
  */
-export async function upsertGoogleUser(db: Queryable, who: GoogleIdentity, requestedType: "owner" | "buyer" = "owner"): Promise<SignedInUser | null> {
-  const res = await db.query(
-    `INSERT INTO app_user (email, display_name, user_type, status, google_sub)
-     VALUES ($1, $2, $4, 'active', $3)
-     ON CONFLICT (google_sub) DO UPDATE SET email = EXCLUDED.email WHERE app_user.user_type IN ('owner', 'agent', 'buyer') AND app_user.deleted_at IS NULL
-     RETURNING id, user_type, status`,
-    [who.email, who.name, who.sub, requestedType]
-  );
+export async function upsertGoogleUser(db: Queryable, who: GoogleIdentity, requestedType: "owner" | "agent" | "buyer" = "owner"): Promise<SignedInUser | null> {
+  let res: { rows: Record<string, unknown>[] };
+  try {
+    res = await db.query(
+      `INSERT INTO app_user (email, display_name, user_type, status, google_sub)
+       VALUES ($1, $2, $4, 'active', $3)
+       ON CONFLICT (google_sub) DO UPDATE SET email = EXCLUDED.email WHERE app_user.user_type IN ('owner', 'agent', 'buyer') AND app_user.deleted_at IS NULL
+       RETURNING id, user_type, status`,
+      [who.email, who.name, who.sub, requestedType]
+    );
+  } catch (e) {
+    // 23505: the email belongs to another account. Link it only when it is an email-and-password account not yet linked to Google.
+    if ((e as { code?: unknown }).code !== "23505") throw e;
+    res = await db.query(
+      `UPDATE app_user SET google_sub = $2
+        WHERE email = $1 AND google_sub IS NULL AND password_hash IS NOT NULL AND user_type IN ('owner', 'agent', 'buyer') AND deleted_at IS NULL
+        RETURNING id, user_type, status`,
+      [who.email, who.sub]
+    );
+  }
   const row = res.rows[0];
   if (!row || row["status"] !== "active") return null;
   const type = row["user_type"];

@@ -100,7 +100,7 @@ export default function Mfa() {
   });
 
   if (status === null) return <main><p className="muted" role="status">Loading…</p></main>;
-  if (status === "signedOut") return <main><h1>Two-step sign-in</h1><p role="alert"><a href="/api/auth/google/start?next=/mfa">Sign in</a> first.</p></main>;
+  if (status === "signedOut") return <main><h1>Two-step sign-in</h1><p role="alert"><a href="/login?next=/mfa">Sign in</a> first.</p></main>;
   if (status === "error") return <main><h1>Two-step sign-in</h1><p role="alert">Could not load your sign-in settings. Try again shortly.</p></main>;
 
   const note = msg ? <p role="status">{msg}</p> : null;
@@ -152,10 +152,10 @@ export default function Mfa() {
     <main>
       <h1>Two-step sign-in</h1>
       {!status.enrolled ? (
-        <p>{status.required ? "Owner and agent accounts need a second step after Google sign-in. Set one up to continue." : "Add a second step after Google sign-in to protect your account."}</p>
+        <p>{status.required ? "Owner and agent accounts need a second step after you sign in. Set one up to continue." : "Add a second step after you sign in to protect your account."}</p>
       ) : (
         <>
-          <p>After Google sign-in you also confirm it&apos;s you with:</p>
+          <p>After you sign in you also confirm it&apos;s you with:</p>
           <ul>
             {status.methods.map(m => (
               <li key={m.id}>{m.label} <button type="button" className="secondary" onClick={() => void remove(m.id)} disabled={busy}>Remove</button></li>
