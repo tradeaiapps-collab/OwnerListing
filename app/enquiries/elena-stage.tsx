@@ -3,10 +3,12 @@ import { useEffect, useRef, useState } from "react";
 import { personaLabel, personaPose, type PoseId } from "../../src/domain/assistant-persona";
 import type { ChatPersona } from "../../src/domain/chat-assistant";
 
-type ClipId = "idle" | "talking" | "presenting";
+type ClipId = "idle" | "listen" | "talking" | "explain" | "agree" | "presenting";
 
 /** What the stage shows: a pose from an answer, "listening" while someone types or waits, "thinking" while she answers. */
-export type StageState = { pose: PoseId; status: "welcome" | "listening" | "thinking" | "presenting" | "explaining" | "careful"; pointing: boolean };
+export type StageState = { pose: PoseId; status: "welcome" | "listening" | "thinking" | "presenting" | "explaining" | "careful"; pointing: boolean;
+  /** How she moves while answering aloud: "agree" nods and smiles, otherwise she explains. Unset = explain. */
+  mood?: "agree" | "explain" };
 
 const STATUS_TEXT: Record<StageState["status"], (name: string) => string> = {
   welcome: n => `${n} is here to help`,
@@ -43,6 +45,20 @@ export function speak(text: string, onEnd: () => void): boolean {
 }
 
 /**
+ * Body language by moment. Speaking: presenting while she shows something, a careful still-faced talk for privacy, nodding and smiling
+ * for agreement, otherwise expressive explaining. Silent: leaning in to listen while someone types or she thinks, else standing at
+ * ease with her hands down (never frozen mid-gesture).
+ */
+export function clipFor(state: Pick<StageState, "pose" | "status" | "mood">, speaking: boolean): ClipId {
+  if (speaking) {
+    if (state.pose === "tablet") return "presenting";
+    if (state.status === "careful") return "talking";
+    return state.mood === "agree" ? "agree" : "explain";
+  }
+  return state.status === "listening" || state.status === "thinking" ? "listen" : "idle";
+}
+
+/**
  * The assistant "on stage" beside the chat (above it on phones). Her pose follows the conversation; she breathes gently between
  * poses, sways while speaking, and when she refers to something in the chat a pointer on her side lights up with it.
  * Motion is off under prefers-reduced-motion (CSS). Always labelled as an AI assistant.
@@ -76,14 +92,14 @@ export function ElenaStage({ persona, state, speaking, voice, onVoice }: {
     q.addEventListener("change", sync);
     return () => q.removeEventListener("change", sync);
   }, []);
-  const clip: ClipId | undefined = persona.id !== "elena" || still ? undefined : speaking ? "talking" : state.pose === "tablet" ? "presenting" : "idle";
+  const clip = persona.id !== "elena" || still ? undefined : clipFor(state, speaking);
 
   return (
     <aside className={`el-stage${collapsed ? " is-collapsed" : ""}${speaking ? " is-speaking" : ""}${state.pointing ? " is-pointing" : ""}`} aria-label={personaLabel(persona)}>
       <div className="el-stage-figure">
         {clip ? (
           <video
-            key={clip} className={`el-stage-img is-video${flip || clip === "presenting" ? " is-flip" : ""}`} autoPlay loop muted playsInline preload="auto"
+            key={clip} className={`el-stage-img is-video${clip === "presenting" ? " is-flip" : ""}`} autoPlay loop muted playsInline preload="auto"
             poster={`/assistant/elena-video-${clip}.jpg`} aria-hidden="true"
           >
             <source src={`/assistant/elena-video-${clip}.webm`} type="video/webm" />
