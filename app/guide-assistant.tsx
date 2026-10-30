@@ -13,6 +13,8 @@ interface Msg { id: number; from: "guide" | "you"; text: string; links?: GuideLi
  * by dispatching OPEN_GUIDE_EVENT on window (the home page greeter does).
  */
 export const OPEN_GUIDE_EVENT = "ol:open-guide";
+/** Fired on window whenever the chat opens/closes or starts/stops answering; detail is { open, busy }. The walking Elena listens to it. */
+export const GUIDE_STATE_EVENT = "ol:guide-state";
 
 export default function GuideAssistant({ greeting, chips, disclaimer, persona }: {
   greeting: string; chips: GuideChip[]; disclaimer: string; persona: Pick<Persona, "name" | "icon" | "portrait" | "poses">;
@@ -57,6 +59,8 @@ export default function GuideAssistant({ greeting, chips, disclaimer, persona }:
     document.body.classList.add("ga-open");
     return () => { document.removeEventListener("keydown", onKey); document.body.classList.remove("ga-open"); };
   }, [open, close]);
+
+  useEffect(() => { window.dispatchEvent(new CustomEvent(GUIDE_STATE_EVENT, { detail: { open, busy } })); }, [open, busy]);
 
   useEffect(() => { log.current?.lastElementChild?.scrollIntoView({ block: "nearest" }); }, [msgs]);
 

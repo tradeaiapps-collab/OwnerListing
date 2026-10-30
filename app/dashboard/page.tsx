@@ -10,7 +10,7 @@ export default async function Page() {
   if (readAppMode() !== "admin") {
     const [guide, personaId] = await Promise.all([getLiveGuide(), getLivePersona()]);
     const persona = personaById(personaId);
-    if (guide.enabled) assistant = { name: persona.name, pose: personaPose(persona, "seated") };
+    if (guide.enabled) assistant = { name: persona.name, pose: personaPose(persona, "seated"), video: persona.id === "elena" };
   }
   return <Dashboard assistant={assistant} />;
 }
