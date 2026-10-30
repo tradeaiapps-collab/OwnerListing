@@ -1,6 +1,9 @@
-// Demo data for the LOCAL TEST KIT (docs/LOCAL_TEST.md). Idempotent: does nothing if the demo accounts already exist.
+// Demo data for the LOCAL TEST KIT (docs/LOCAL_TEST.md). Idempotent: does nothing if the demo accounts already exist, except
+// filling in later additions (real photos, descriptions, the demo investor project) on a database seeded by an older version.
 // Refuses to run unless NODE_ENV is not "production" AND DATABASE_URL points at localhost / 127.0.0.1. Usage: npm run seed:demo
 import { createHash, randomBytes, randomUUID } from "node:crypto";
+import { readFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
 import { deflateSync } from "node:zlib";
 import pg from "pg";
 import { localDevStorageDir, putLocalObject } from "../src/adapters/local-disk-core.mjs";
@@ -71,31 +74,159 @@ function floorplan() {
 
 const CAPTIONS = ["Street view", "Living room", "Kitchen and dining", "Main bedroom", "Backyard"];
 
+// Real photos (scripts/demo-photos, Unsplash License, fetched by scripts/fetch-demo-photos.mjs). Used when the files are there;
+// otherwise the generated pictures above. Camera metadata is stripped here, as the upload pipeline would.
+const PHOTO_DIR = fileURLToPath(new URL("./demo-photos/", import.meta.url));
+const manifest = await readFile(PHOTO_DIR + "manifest.json", "utf8").then(JSON.parse, () => ({ listings: [], project: { photos: [] } }));
+
+/** Removes APP1-APP15 and comment segments; returns the stripped bytes and the frame size, or null if this is not a baseline/progressive JPEG. */
+function stripJpeg(buf) {
+  if (buf[0] !== 0xff || buf[1] !== 0xd8) return null;
+  const keep = [buf.subarray(0, 2)];
+  let i = 2, width = 0, height = 0;
+  while (i + 4 <= buf.length) {
+    if (buf[i] !== 0xff) return null;
+    const marker = buf[i + 1];
+    if (marker === 0xda) { keep.push(buf.subarray(i)); break; } // start of scan: the rest is image data
+    const len = buf.readUInt16BE(i + 2);
+    if ((marker >= 0xc0 && marker <= 0xcf) && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc) { height = buf.readUInt16BE(i + 5); width = buf.readUInt16BE(i + 7); }
+    if (!((marker >= 0xe1 && marker <= 0xef) || marker === 0xfe)) keep.push(buf.subarray(i, i + 2 + len));
+    i += 2 + len;
+  }
+  return width && height ? { bytes: Buffer.concat(keep), width, height } : null;
+}
+/** The real photos available for a manifest entry list, in order; files that are missing or unreadable are skipped. */
+async function realPhotos(entries) {
+  const out = [];
+  for (const e of entries ?? []) {
+    const j = stripJpeg(await readFile(PHOTO_DIR + e.file).catch(() => Buffer.alloc(0)));
+    if (j) out.push({ ...j, contentType: "image/jpeg", kind: "photo", caption: e.caption, alt: e.alt ?? "" });
+  }
+  return out;
+}
+const pngPic = (bytes, kind, caption) => ({ bytes, width: W, height: H, contentType: "image/png", kind, caption, alt: "" });
+
+async function storePhotos(client, dir, table, parentCol, parentId, uploader, pictures) {
+  const entries = [];
+  for (const pic of pictures) {
+    const id = randomUUID(), key = `${table === "listing_photo" ? "listings" : "investments"}/${parentId}/${randomUUID()}`;
+    await putLocalObject(dir, key, pic.bytes);
+    const kindCol = table === "listing_photo" ? ", kind" : "", kindVal = table === "listing_photo" ? ", $10" : "";
+    await client.query(
+      `INSERT INTO ${table} (id, ${parentCol}, uploaded_by, content_type, width, height, size_bytes, sha256, storage_key${kindCol})
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9${kindVal})`,
+      [id, parentId, uploader, pic.contentType, pic.width, pic.height, pic.bytes.length, createHash("sha256").update(pic.bytes).digest("hex"), key, ...(kindCol ? [pic.kind] : [])]);
+    entries.push({ photoId: id, caption: pic.caption, alt: pic.alt, hidden: false });
+  }
+  return entries;
+}
+
 async function seedPhotos(client) {
   const dir = localDevStorageDir(process.env);
   if (!dir) { console.log("Demo photos skipped: LOCAL_STORAGE_DIR is not set (run local-setup again to add it)."); return; }
+  // Demo listings with no gallery, or with only generated pictures (an older seed): those get the real photos when present.
   const rows = (await client.query(
-    `SELECT l.id, l.owner_user_id FROM property_listing l JOIN app_user u ON u.id = l.owner_user_id
-     WHERE u.email LIKE '%@demo.invalid' AND NOT EXISTS (SELECT 1 FROM listing_photo_layout p WHERE p.listing_id = l.id)
-     ORDER BY l.created_at, l.id`)).rows;
-  let made = 0;
+    `SELECT l.id, l.owner_user_id, l.address_text, cur.version, cur.entries,
+            EXISTS (SELECT 1 FROM listing_photo p WHERE p.listing_id = l.id AND p.content_type <> 'image/png') AS has_real
+       FROM property_listing l JOIN app_user u ON u.id = l.owner_user_id
+       LEFT JOIN LATERAL (SELECT version, entries FROM listing_photo_layout p WHERE p.listing_id = l.id ORDER BY version DESC LIMIT 1) cur ON true
+      WHERE u.email LIKE '%@demo.invalid' ORDER BY l.created_at, l.id`)).rows;
+  let made = 0, listings = 0;
   for (const [i, l] of rows.entries()) {
-    const entries = [];
-    const pictures = [exterior(i), interior(i, 0), interior(i, 1), interior(i, 2), exterior(i + 1)].map((bytes, k) => ({ bytes, kind: "photo", caption: CAPTIONS[k] }));
-    pictures.push({ bytes: floorplan(), kind: "floorplan", caption: "Floor plan" });
-    for (const pic of pictures) {
-      const id = randomUUID(), key = `listings/${l.id}/${randomUUID()}`;
-      await putLocalObject(dir, key, pic.bytes);
-      await client.query(
-        `INSERT INTO listing_photo (id, listing_id, kind, uploaded_by, content_type, width, height, size_bytes, sha256, storage_key)
-         VALUES ($1, $2, $3, $4, 'image/png', $5, $6, $7, $8, $9)`,
-        [id, l.id, pic.kind, l.owner_user_id, W, H, pic.bytes.length, createHash("sha256").update(pic.bytes).digest("hex"), key]);
-      entries.push({ photoId: id, caption: pic.caption, alt: "", hidden: false });
-      made++;
+    if (l.has_real) continue;
+    const real = await realPhotos(manifest.listings.find(m => m.address === l.address_text)?.photos);
+    if (l.version && !real.length) continue;
+    let entries;
+    if (l.version) {
+      // Keep the current floor plan entries; the generated photos stay stored (files are never deleted) but leave the gallery.
+      const plans = (await client.query(`SELECT id FROM listing_photo WHERE listing_id = $1 AND kind = 'floorplan'`, [l.id])).rows.map(r => r.id);
+      entries = [...await storePhotos(client, dir, "listing_photo", "listing_id", l.id, l.owner_user_id, real), ...l.entries.filter(e => plans.includes(e.photoId))];
+    } else {
+      const pictures = real.length ? real : [exterior(i), interior(i, 0), interior(i, 1), interior(i, 2), exterior(i + 1)].map((bytes, k) => pngPic(bytes, "photo", CAPTIONS[k]));
+      entries = await storePhotos(client, dir, "listing_photo", "listing_id", l.id, l.owner_user_id, [...pictures, pngPic(floorplan(), "floorplan", "Floor plan")]);
     }
-    await client.query(`INSERT INTO listing_photo_layout (listing_id, version, entries, changed_by) VALUES ($1, 1, $2::jsonb, $3)`, [l.id, JSON.stringify(entries), l.owner_user_id]);
+    await client.query(`INSERT INTO listing_photo_layout (listing_id, version, entries, changed_by) VALUES ($1, $2, $3::jsonb, $4)`, [l.id, (l.version ?? 0) + 1, JSON.stringify(entries), l.owner_user_id]);
+    made += entries.length; listings++;
   }
-  console.log(rows.length ? `Demo photos added: ${made} images on ${rows.length} listings.` : "Demo photos already present.");
+  console.log(listings ? `Demo photos added: ${made} gallery images on ${listings} listings.` : "Demo photos already present.");
+  if (!(await realPhotos(manifest.listings[0]?.photos)).length) console.log("  (Generated pictures only: run node scripts/fetch-demo-photos.mjs for real photos, then seed again.)");
+}
+
+// ---- Demo listing descriptions ------------------------------------------------------------------------------------
+// Property facts only (the wording filter's rule: describe the property, never the people). Fills empty descriptions only.
+const DESCRIPTIONS = {
+  "12 Jacaranda St, Paddington QLD 4064": "Renovated timber home on a 607 m2 elevated block with district views. Four bedrooms upstairs, two bathrooms, an open-plan kitchen with stone island and butler's pantry, and a deep veranda that opens to a north-facing backyard with an in-ground saltwater pool. Ducted air conditioning, 6.6 kW solar, double lock-up garage. Short drive to Given Terrace cafes and the city.",
+  "8/21 Moray St, New Farm QLD 4005": "Light-filled two-bedroom apartment on the third floor of a boutique block. Open living and dining flows to a covered balcony with river glimpses. Stone kitchen with gas cooking, built-in wardrobes in both bedrooms, internal laundry, one secure car space. Close to New Farm Park, the CityCat and James Street. Available now on a 12-month lease.",
+  "45 Beach Rd, Bondi NSW 2026": "Restored Federation weatherboard cottage on a 380 m2 block, 600 m from Bondi Beach. High ceilings, timber floors and original fireplaces throughout. Three bedrooms, two bathrooms, a light kitchen opening to a private rear garden with a timber deck, and off-street parking for one car. Easy access to buses and Bondi Junction.",
+  "3/17 Darley Rd, Randwick NSW 2031": "Modern three-bedroom townhouse in a group of five. Open-plan living with timber floors opens to a private paved courtyard. Gas kitchen with dishwasher, main bedroom with ensuite and balcony, second bathroom, internal laundry and a double garage. Close to Randwick Junction, the light rail and Centennial Park.",
+  "28 Station St, Fitzroy North VIC 3068": "Victorian-era brick home on a tree-lined street. Three bedrooms with high ceilings and ornate cornices, an original fireplace in the front living room, and a rear kitchen with skylight and stone benches opening to a north-facing courtyard garden. Renovated bathroom with freestanding bath. Walk to Edinburgh Gardens, trams and Rushall station.",
+  "6/102 Chapel St, Windsor VIC 3181": "Sunny two-bedroom unit on the first floor of a solid brick block. Galley kitchen with gas cooktop, renovated bathroom with walk-in shower, built-in wardrobes and split-system heating and cooling. One car space and shared laundry. Trams at the door, Windsor station and Prahran Market close by.",
+  "9/4 Park Ave, Chermside QLD 4032": "Low-maintenance three-bedroom townhouse in a well-kept complex of twelve. Open living and dining opens to a fenced courtyard, white kitchen with breakfast bar, main bedroom with ensuite and walk-in robe, ceiling fans and air conditioning throughout, double garage. Across the road from parkland; Westfield Chermside and the busway are minutes away.",
+  "14/50 Kent St, Sydney NSW 2000": "Compact studio on level 9 with city views. Living and sleeping area with built-in desk and storage, kitchenette with stainless appliances, modern bathroom, building pool and gym. Walk to Wynyard, Barangaroo and the CBD. Furnished option available."
+};
+async function seedDescriptions(client) {
+  let n = 0;
+  for (const [address, text] of Object.entries(DESCRIPTIONS)) {
+    n += (await client.query(`UPDATE property_listing SET description = $2 WHERE address_text = $1 AND description IS NULL`, [address, text])).rowCount ?? 0;
+  }
+  if (n) console.log(`Demo descriptions added: ${n} listings.`);
+}
+
+// ---- Demo investor project ----------------------------------------------------------------------------------------
+// One approved project by a project owner (an owner account), with photos, and the fully verified buyer as a wholesale
+// investor who registered non-binding interest and messaged the owner. Added once; skipped if the project owner exists.
+const DISCLOSURE_VERSION = "2026-10-25-draft-1"; // src/config/investment-disclosure.ts (a newer version just asks James to re-acknowledge)
+async function seedProject(client) {
+  const q = async (text, params) => (await client.query(text, params)).rows;
+  if ((await q(`SELECT 1 FROM app_user WHERE email = $1`, [`olivia.projects${D}`])).length) return;
+  const [{ id: boss } = {}] = await q(`SELECT u.id FROM app_user u JOIN staff_invite i ON i.email = lower(u.email::text) WHERE i.role = 'super_admin' AND u.email LIKE '%@demo.invalid' LIMIT 1`);
+  const [{ id: james } = {}] = await q(`SELECT id FROM app_user WHERE email = $1`, [`james.buyer${D}`]);
+  if (!boss || !james) { console.log("Demo project skipped: the demo staff or buyer accounts are missing."); return; }
+  await client.query("BEGIN");
+  try {
+    const [{ id: owner }] = await q(`INSERT INTO app_user (email, display_name, user_type, status) VALUES ($1, 'Olivia Hart (project owner)', 'owner', 'active') RETURNING id`, [`olivia.projects${D}`]);
+    await q(`INSERT INTO terms_acceptance (user_id, version) VALUES ($1, '2026-10-24')`, [owner]);
+    const [{ id: project }] = await q(
+      `INSERT INTO investment_project (owner_user_id, title, location, jurisdiction, project_type, summary, stage, funding_target_cents, minimum_ticket_cents,
+         timeline, risks, structure_description, visible_to, issuer_name, issuer_licence_basis, issuer_statement, issuer_authorised_confirmed, status,
+         posting_model, commission_type, commission_bps, commission_fixed_cents, upfront_fee_cents, upfront_fee_status, model2_disclosure)
+       VALUES ($1, $2, 'Bulimba QLD 4171', 'QLD', 'residential_development', $3, 'approved', 240000000, 5000000, $4, $5, $6, 'wholesale_only',
+         'Riverside Terraces Pty Ltd (demo)', $7, $8, true, 'approved', 'commission_on_contract', 'percent', 400, 0, 0, 'not_required', 'off') RETURNING id`,
+      [owner, manifest.project.title,
+       "Twelve three-bedroom townhouses on a 2,150 m2 riverside site, 400 m from Oxford Street. Development approval granted by Brisbane City Council (demo). The raise funds the equity portion of construction alongside a senior bank loan. DEMO DATA for local testing: not a real offer.",
+       "DA approved Sep 2026. Construction start Feb 2027 (14 months). Practical completion and sales settlement mid 2028. Distributions after settlement.",
+       "Construction cost overruns and builder insolvency; delays to approvals or weather; sale prices below forecast; interest rate rises on the senior loan; investors rank behind the bank and can lose all of their capital. Units are illiquid until the project completes.",
+       "Units in the Riverside Terraces Unit Trust (demo). The trustee holds the land and contracts the builder. Investors sign the subscription deed off-platform with the issuer.",
+       "Wholesale investors only (s708 Corporations Act). Issuer relies on its own AFS licence (demo number 000000).",
+       "Riverside Terraces Pty Ltd is the issuer. OwnerListing does not hold money, give advice or recommend this project."]);
+    await q(`INSERT INTO investment_project_status_history (project_id, from_status, to_status, actor_type, actor_id, reason, project_version, at)
+             VALUES ($1, NULL, 'pending_review', 'owner', $2, NULL, 1, now() - interval '3 days'), ($1, 'pending_review', 'approved', 'staff', $3, 'Demo data: approved for local testing.', 1, now() - interval '2 days')`,
+      [project, owner, boss]);
+    await q(`INSERT INTO investor_declaration (user_id, category, ack_not_advice, ack_not_offer, ack_no_funds_held, ack_off_platform, disclosure_version)
+             SELECT $1, 'wholesale', true, true, true, true, $2 WHERE NOT EXISTS (SELECT 1 FROM investor_declaration WHERE user_id = $1)`, [james, DISCLOSURE_VERSION]);
+    const [{ id: interest }] = await q(`INSERT INTO investment_interest (project_id, investor_user_id, amount_min_cents, amount_max_cents, created_at)
+             VALUES ($1, $2, 5000000, 10000000, now() - interval '1 day') RETURNING id`, [project, james]);
+    for (const [sender, body, min] of [
+      [james, "Hi Olivia, I've registered interest in Riverside Terraces. Could you send the information memorandum and the builder's fixed-price contract summary?", 600],
+      [owner, "Hi James, thanks for your interest. I'll send the IM by email today. The builder contract is fixed price with a 5% contingency.", 420],
+      [james, "Thanks. What pre-sales do you need before construction starts?", 60]]) {
+      await q(`INSERT INTO investment_message (interest_id, sender_user_id, body, sent_at) VALUES ($1, $2, $3, now() - ($4 || ' minutes')::interval)`, [interest, sender, body, String(min)]);
+    }
+    const dir = localDevStorageDir(process.env);
+    let photos = 0;
+    if (dir) {
+      const real = await realPhotos(manifest.project.photos);
+      const pictures = real.length ? real : [exterior(5), exterior(6), floorplan(), interior(7, 0)].map((b, k) => pngPic(b, "photo", ["Architect's impression", "Site", "Plans", "Display home interior"][k]));
+      const entries = await storePhotos(client, dir, "investment_project_photo", "project_id", project, owner, pictures);
+      await q(`INSERT INTO investment_project_photo_layout (project_id, version, entries, changed_by) VALUES ($1, 1, $2::jsonb, $3)`, [project, JSON.stringify(entries), owner]);
+      photos = entries.length;
+    }
+    await client.query("COMMIT");
+    console.log(`Demo investor project added: "${manifest.project.title}" by Olivia Hart, ${photos} photos, James registered interest with 3 messages.`);
+  } catch (e) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    throw e;
+  }
 }
 
 // ---- Demo map locations (search map) ------------------------------------------------------------------------------
@@ -114,6 +245,7 @@ async function seedLocations(client) {
   if (n) console.log(`Demo map locations added: ${n} listings.`);
 }
 
+const D = "@demo.invalid";
 const url = process.env.DATABASE_URL;
 if (process.env.NODE_ENV === "production") { console.error("Refusing to seed: NODE_ENV is production."); process.exit(2); }
 if (!url) { console.error("DATABASE_URL is required."); process.exit(2); }
@@ -122,15 +254,16 @@ let host = "";
 try { host = String(new pg.Client({ connectionString: url }).connectionParameters.host ?? "").toLowerCase(); } catch { /* handled below */ }
 if (host !== "localhost" && host !== "127.0.0.1") { console.error(`Refusing to seed: database host "${host}" is not localhost or 127.0.0.1.`); process.exit(2); }
 
-const D = "@demo.invalid";
 const db = new pg.Client({ connectionString: url });
 await db.connect();
 try {
   const exists = await db.query(`SELECT 1 FROM app_user WHERE email = $1`, [`sarah.owner${D}`]);
   if (exists.rows.length) {
     console.log("Demo data already present. (Use local-reset to start again.)");
+    await seedDescriptions(db);
     await seedPhotos(db);
     await seedLocations(db);
+    await seedProject(db);
     await db.end();
     process.exit(0);
   }
@@ -252,8 +385,10 @@ try {
   }
   await db.query("COMMIT");
   console.log(`Demo data created: 6 staff, 2 owners, 1 agent, 3 buyers, ${listing.length} listings, 3 enquiries, 3 offers, 2 invoices, 2 ID reviews. (run ${randomUUID().slice(0, 8)})`);
+  await seedDescriptions(db);
   await seedPhotos(db);
   await seedLocations(db);
+  await seedProject(db);
 } catch (e) {
   await db.query("ROLLBACK").catch(() => undefined);
   console.error(`Seed failed: ${e.message}`);

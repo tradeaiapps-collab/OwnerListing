@@ -1,0 +1,362 @@
+{
+  "_note": "Demo photos for the LOCAL TEST KIT (scripts/seed-demo.mjs). Unsplash License. Missing files are fetched by scripts/fetch-demo-photos.mjs, which also fills unsplashId and photographer. Replace a bad pick by clearing its unsplashId, deleting the file and running the fetch again.",
+  "listings": [
+    {
+      "address": "12 Jacaranda St, Paddington QLD 4064",
+      "photos": [
+        {
+          "file": "paddington-1.jpg",
+          "query": "queenslander house exterior",
+          "caption": "Street view",
+          "alt": "Front of a renovated two-storey timber home with a deep veranda",
+          "unsplashId": null,
+          "photographer": null
+        },
+        {
+          "file": "paddington-2.jpg",
+          "query": "bright open plan living room timber floor",
+          "caption": "Living room",
+          "alt": "Open-plan living room with timber floors and large windows",
+          "unsplashId": null,
+          "photographer": null
+        },
+        {
+          "file": "paddington-3.jpg",
+          "query": "white modern kitchen island",
+          "caption": "Kitchen and dining",
+          "alt": "White kitchen with a stone island bench and pendant lights",
+          "unsplashId": null,
+          "photographer": null
+        },
+        {
+          "file": "paddington-4.jpg",
+          "query": "bright bedroom white linen",
+          "caption": "Main bedroom",
+          "alt": "Main bedroom with white linen and garden outlook",
+          "unsplashId": null,
+          "photographer": null
+        },
+        {
+          "file": "paddington-5.jpg",
+          "query": "backyard swimming pool house",
+          "caption": "Pool and backyard",
+          "alt": "In-ground pool with a paved terrace and lawn",
+          "unsplashId": null,
+          "photographer": null
+        }
+      ]
+    },
+    {
+      "address": "8/21 Moray St, New Farm QLD 4005",
+      "photos": [
+        {
+          "file": "newfarm-1.jpg",
+          "query": "modern apartment living room balcony",
+          "caption": "Living room",
+          "alt": "Apartment living room opening to a balcony",
+          "unsplashId": null,
+          "photographer": null
+        },
+        {
+          "file": "newfarm-2.jpg",
+          "query": "apartment kitchen modern",
+          "caption": "Kitchen",
+          "alt": "Compact modern kitchen with stone benchtops",
+          "unsplashId": null,
+          "photographer": null
+        },
+        {
+          "file": "newfarm-3.jpg",
+          "query": "apartment bedroom minimal",
+          "caption": "Bedroom",
+          "alt": "Bedroom with built-in wardrobe and natural light",
+          "unsplashId": null,
+          "photographer": null
+        },
+        {
+          "file": "newfarm-4.jpg",
+          "query": "brisbane river view",
+          "caption": "River view",
+          "alt": "View over the river from the balcony",
+          "unsplashId": null,
+          "photographer": null
+        }
+      ]
+    },
+    {
+      "address": "45 Beach Rd, Bondi NSW 2026",
+      "photos": [
+        {
+          "file": "bondi-1.jpg",
+          "query": "white weatherboard cottage",
+          "caption": "Street view",
+          "alt": "Restored weatherboard cottage with a front garden",
+          "unsplashId": null,
+          "photographer": null
+        },
+        {
+          "file": "bondi-2.jpg",
+          "query": "coastal living room interior",
+          "caption": "Living room",
+          "alt": "Coastal-style living room with high ceilings",
+          "unsplashId": null,
+          "photographer": null
+        },
+        {
+          "file": "bondi-3.jpg",
+          "query": "country kitchen white cabinets",
+          "caption": "Kitchen",
+          "alt": "Kitchen with white cabinetry and timber benchtop",
+          "unsplashId": null,
+          "photographer": null
+        },
+        {
+          "file": "bondi-4.jpg",
+          "query": "cosy bedroom interior",
+          "caption": "Main bedroom",
+          "alt": "Main bedroom with soft light",
+          "unsplashId": null,
+          "photographer": null
+        },
+        {
+          "file": "bondi-5.jpg",
+          "query": "modern bathroom white tiles",
+          "caption": "Bathroom",
+          "alt": "Renovated bathroom with white tiles",
+          "unsplashId": null,
+          "photographer": null
+        }
+      ]
+    },
+    {
+      "address": "3/17 Darley Rd, Randwick NSW 2031",
+      "photos": [
+        {
+          "file": "randwick-1.jpg",
+          "query": "modern townhouse exterior",
+          "caption": "Street view",
+          "alt": "Modern brick and render townhouse",
+          "unsplashId": null,
+          "photographer": null
+        },
+        {
+          "file": "randwick-2.jpg",
+          "query": "modern living room grey sofa",
+          "caption": "Living room",
+          "alt": "Living room with a grey sofa and timber floor",
+          "unsplashId": null,
+          "photographer": null
+        },
+        {
+          "file": "randwick-3.jpg",
+          "query": "modern kitchen dark cabinets",
+          "caption": "Kitchen",
+          "alt": "Modern kitchen with dark cabinetry",
+          "unsplashId": null,
+          "photographer": null
+        },
+        {
+          "file": "randwick-4.jpg",
+          "query": "small courtyard garden patio",
+          "caption": "Courtyard",
+          "alt": "Private paved courtyard with plants",
+          "unsplashId": null,
+          "photographer": null
+        }
+      ]
+    },
+    {
+      "address": "28 Station St, Fitzroy North VIC 3068",
+      "photos": [
+        {
+          "file": "fitzroy-1.jpg",
+          "query": "victorian terrace house facade",
+          "caption": "Street view",
+          "alt": "Victorian-era brick home with iron lace veranda",
+          "unsplashId": null,
+          "photographer": null
+        },
+        {
+          "file": "fitzroy-2.jpg",
+          "query": "period home living room fireplace",
+          "caption": "Living room",
+          "alt": "Living room with an original fireplace",
+          "unsplashId": null,
+          "photographer": null
+        },
+        {
+          "file": "fitzroy-3.jpg",
+          "query": "kitchen with skylight",
+          "caption": "Kitchen",
+          "alt": "Kitchen with a skylight and stone benches",
+          "unsplashId": null,
+          "photographer": null
+        },
+        {
+          "file": "fitzroy-4.jpg",
+          "query": "bedroom high ceiling",
+          "caption": "Bedroom",
+          "alt": "Bedroom with high ceilings and ornate cornices",
+          "unsplashId": null,
+          "photographer": null
+        },
+        {
+          "file": "fitzroy-5.jpg",
+          "query": "bathroom freestanding bath",
+          "caption": "Bathroom",
+          "alt": "Bathroom with a freestanding bath",
+          "unsplashId": null,
+          "photographer": null
+        }
+      ]
+    },
+    {
+      "address": "6/102 Chapel St, Windsor VIC 3181",
+      "photos": [
+        {
+          "file": "windsor-1.jpg",
+          "query": "small apartment living room",
+          "caption": "Living room",
+          "alt": "Sunny apartment living area",
+          "unsplashId": null,
+          "photographer": null
+        },
+        {
+          "file": "windsor-2.jpg",
+          "query": "galley kitchen apartment",
+          "caption": "Kitchen",
+          "alt": "Galley kitchen with gas cooktop",
+          "unsplashId": null,
+          "photographer": null
+        },
+        {
+          "file": "windsor-3.jpg",
+          "query": "bedroom with window plants",
+          "caption": "Bedroom",
+          "alt": "Bedroom with a large window",
+          "unsplashId": null,
+          "photographer": null
+        },
+        {
+          "file": "windsor-4.jpg",
+          "query": "apartment bathroom shower",
+          "caption": "Bathroom",
+          "alt": "Bathroom with walk-in shower",
+          "unsplashId": null,
+          "photographer": null
+        }
+      ]
+    },
+    {
+      "address": "9/4 Park Ave, Chermside QLD 4032",
+      "photos": [
+        {
+          "file": "chermside-1.jpg",
+          "query": "townhouse complex exterior",
+          "caption": "Street view",
+          "alt": "Townhouse with garage and small front garden",
+          "unsplashId": null,
+          "photographer": null
+        },
+        {
+          "file": "chermside-2.jpg",
+          "query": "living room dining area",
+          "caption": "Living and dining",
+          "alt": "Living and dining area with sliding doors",
+          "unsplashId": null,
+          "photographer": null
+        },
+        {
+          "file": "chermside-3.jpg",
+          "query": "white kitchen breakfast bar",
+          "caption": "Kitchen",
+          "alt": "White kitchen with breakfast bar",
+          "unsplashId": null,
+          "photographer": null
+        },
+        {
+          "file": "chermside-4.jpg",
+          "query": "bedroom ceiling fan",
+          "caption": "Bedroom",
+          "alt": "Bedroom with ceiling fan and built-in robe",
+          "unsplashId": null,
+          "photographer": null
+        }
+      ]
+    },
+    {
+      "address": "14/50 Kent St, Sydney NSW 2000",
+      "photos": [
+        {
+          "file": "sydney-1.jpg",
+          "query": "studio apartment interior",
+          "caption": "Studio",
+          "alt": "Studio apartment with a sofa bed and desk",
+          "unsplashId": null,
+          "photographer": null
+        },
+        {
+          "file": "sydney-2.jpg",
+          "query": "small kitchenette apartment",
+          "caption": "Kitchenette",
+          "alt": "Kitchenette with stainless appliances",
+          "unsplashId": null,
+          "photographer": null
+        },
+        {
+          "file": "sydney-3.jpg",
+          "query": "small modern bathroom",
+          "caption": "Bathroom",
+          "alt": "Small modern bathroom",
+          "unsplashId": null,
+          "photographer": null
+        },
+        {
+          "file": "sydney-4.jpg",
+          "query": "sydney city skyline view window",
+          "caption": "City view",
+          "alt": "City view from the window",
+          "unsplashId": null,
+          "photographer": null
+        }
+      ]
+    }
+  ],
+  "project": {
+    "title": "Riverside Terraces, 12 townhouses in Bulimba",
+    "photos": [
+      {
+        "file": "project-1.jpg",
+        "query": "modern townhouses architecture",
+        "caption": "Architect's impression",
+        "alt": "Row of modern three-storey townhouses",
+        "unsplashId": null,
+        "photographer": null
+      },
+      {
+        "file": "project-2.jpg",
+        "query": "residential construction site crane",
+        "caption": "Site works",
+        "alt": "Residential building site with a crane",
+        "unsplashId": null,
+        "photographer": null
+      },
+      {
+        "file": "project-3.jpg",
+        "query": "architectural plans blueprint",
+        "caption": "Plans",
+        "alt": "Architectural plans on a desk",
+        "unsplashId": null,
+        "photographer": null
+      },
+      {
+        "file": "project-4.jpg",
+        "query": "modern townhouse interior living",
+        "caption": "Display home interior",
+        "alt": "Finished living room in a display townhouse",
+        "unsplashId": null,
+        "photographer": null
+      }
+    ]
+  }
+}
