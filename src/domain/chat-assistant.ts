@@ -241,15 +241,15 @@ const SUGGEST: Record<ChatTopic, string[]> = {
 const CAN_I_HELP = "What can I do for you?";
 const HELP_LINE = "I can explain the offer and its conditions, settlement and the deposit, suggest ways to close a gap on price, and tell you about the home.";
 const SMALL_TALK: readonly [RegExp, string][] = [
-  [/\b(how\s+(are|r)\s+(you|u|ya)|how'?s\s+it\s+going|how\s+is\s+it\s+going|how\s+do\s+you\s+do|what'?s\s+up|you\s+(ok|okay|well|good)\b)/, `I'm doing well, thank you for asking! ${CAN_I_HELP}`],
+  [/\b(how\s*(are|r)\s*(you|u|ya|yu)|hru|how'?s\s+it\s+going|how\s+is\s+it\s+going|how\s+do\s+you\s+do|how\s+(you|u|ya)\s+(doing|been)|how\s+have\s+(you|u)\s+been|how'?s\s+(everything|life)|(what|wat|wut)\s*(about|bout)\s+(you|u|ya)|wbu|hbu|and\s+(you|u)|you\s+(ok|okay|well|good)\b)/, `I'm doing well, thank you for asking! ${CAN_I_HELP}`],
   [/\bhow('?s|\s+is|\s+was)\s+(your|ur)\s+(day|morning|afternoon|evening|week|weekend)/, `It's going nicely, thank you for asking. How is yours? ${CAN_I_HELP}`],
   [/\b(who|what)\s+(are|r)\s+(you|u)\b|\b(your|ur)\s+name\b|\bare\s+you\s+(a\s+)?(real|human|robot|bot|ai|person)/, `I'm the AI assistant for this conversation, not a person and not a licensed agent. ${HELP_LINE} ${CAN_I_HELP}`],
-  [/\bwhat\s+(can|do)\s+(you|u)\s+(do|help)|\bhow\s+can\s+(you|u)\s+help|^help\b|\bwhat\s+can\s+i\s+ask/, `${HELP_LINE} ${CAN_I_HELP}`],
-  [/\b(thanks|thank\s+you|thank\s+u|thx|cheers|ta|much\s+appreciated)\b/, "You're welcome! Is there anything else I can help with?"],
-  [/\b(bye|goodbye|see\s+you|see\s+ya|talk\s+later|have\s+a\s+(good|great|nice)\s+(day|one|night|weekend)|good\s*night)\b/, "Bye for now! I'm right here whenever you need me."],
-  [/^(yes|yeah|yep|yup|sure|ok|okay|please|go\s+ahead)\b/, `Great. ${CAN_I_HELP} You can ask about the offer, settlement, the deposit or the home.`],
-  [/^(no|nope|nah|nothing|no\s+thanks)\b/, "No problem. I'll be here if anything comes up."],
-  [/^(hi|hello|hey|hiya|howdy|yo|g'?day|good\s+(morning|afternoon|evening))\b/, "Hi there! How's your day going?"]
+  [/\bwhat\s+(can|do)\s+(you|u)\s+(do|help)|\bhow\s+can\s+(you|u)\s+help|^(help|halp|pls\s+help|plz\s+help)\b|\bwhat\s+can\s+i\s+ask/, `${HELP_LINE} ${CAN_I_HELP}`],
+  [/\b(thanks|thank\s+you|thank\s+u|thx|thnx|thanx|tnx|tysm|ty|cheers|ta|much\s+appreciated)\b/, "You're welcome! Is there anything else I can help with?"],
+  [/\b(bye|goodbye|see\s+you|see\s+ya|cya|gtg|g2g|ttyl|bb|bbl|talk\s+later|gn|have\s+a\s+(good|great|nice)\s+(day|one|night|weekend)|good\s*night)\b/, "Bye for now! I'm right here whenever you need me."],
+  [/^(yes|yeah|yea|yep|yup|ya|ye|sure|ok|okay|okie|k|kk|please|pls|plz|go\s+ahead)\b/, `Great. ${CAN_I_HELP} You can ask about the offer, settlement, the deposit or the home.`],
+  [/^(no|nope|nah|naw|nothing|no\s+thanks|no\s+thx)\b/, "No problem. I'll be here if anything comes up."],
+  [/^(u\s+there|hi+|hel+o+|hell?o|hey+|heya|hiya|howdy|yo+|sup+|wa+s+up+|wa+zz*up+|(what|wat|wut)\s*'?s?\s*up|ayo|hola|g'?day|gm|(good\s+)?(morning|afternoon|evening)|(hey|hi|hello)\s+(there|elena))\b|^u$/, "Hi there! How's your day going?"]
 ];
 const FEEL_GOOD = /^(i'?m|im|i\s+am|it'?s|its|all|pretty|really|very|so|feeling|doing)?\s*(good|great|fine|well|awesome|fantastic|wonderful|excellent|amazing|happy|not\s+bad|pretty\s+good|ok|okay|alright)\b(?!\s+(night|morning|afternoon|evening|deal|price|offer))/;
 const FEEL_LOW = /^(i'?m|im|i\s+am|it'?s|its|a\s+bit|pretty|really|very|so|feeling|doing)?\s*(bad|terrible|awful|rough|tired|exhausted|stressed|busy|not\s+great|not\s+good|so\s+so|meh)\b/;

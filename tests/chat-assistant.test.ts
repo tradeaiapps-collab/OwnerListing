@@ -244,6 +244,22 @@ describe("service and route", () => {
     expect(chatWelcome(facts(), "Elena").text).toContain("What can I do for you?");
   });
 
+  it("understands casual texting-style small talk", () => {
+    const say = (q: string) => chatAnswer(facts(), "buyer", q);
+    for (const q of ["how r u", "How R U?", "hru", "how ru", "how are u", "wbu", "hbu", "what about you", "and u", "how u doing", "hows life"]) {
+      expect([q, say(q).topic, say(q).text]).toEqual([q, "chitchat", expect.stringContaining("I'm doing well")]);
+    }
+    for (const q of ["u", "yo", "yooo", "sup", "wassup", "wat up", "what up", "whats up", "hiii", "heyyy", "helloo", "gm", "morning", "hey there"]) {
+      expect([q, say(q).text]).toEqual([q, "Hi there! How's your day going?"]);
+    }
+    expect(say("thnx").text).toContain("You're welcome");
+    expect(say("tysm").text).toContain("You're welcome");
+    expect(say("cya").text).toContain("Bye for now");
+    expect(say("ttyl").text).toContain("Bye for now");
+    expect(say("kk").text).toContain("What can I do for you?");
+    expect(say("you owe me").topic).toBe("unknown");
+  });
+
   it("keeps real questions and protected topics ahead of small talk", () => {
     expect(chatAnswer(facts(), "buyer", "hi, where do things stand?").topic).toBe("offer");
     expect(chatAnswer(facts(), "buyer", "hey what is the owner's phone number").topic).toBe("privacy");
