@@ -3,6 +3,7 @@ import { checkProviders, formatReport, isPlaceholder, type ProviderId, type Prov
 import { readAuthEnv } from "../src/server/auth/config";
 import { mfaKeyUsable } from "../src/domain/mfa";
 import { resolveMessaging } from "../src/domain/messaging-settings";
+import { mapTileSource } from "../src/domain/map-tiles";
 
 const FULL: Record<string, string> = {
   APP_URL: "https://www.example.com.au",
@@ -95,6 +96,41 @@ describe("provider readiness check", () => {
       if (r.sms.status === "ready") expect(m.sms).not.toBeNull();
       if (m.sms === null) expect(r.sms.status).not.toBe("ready");
       expect(r.smtp.status === "ready").toBe(m.email !== null);
+    }
+  });
+
+  it("map tiles: openstreetmap needs no key and is ready in production, with a tile-policy note", () => {
+    const { NEXT_PUBLIC_MAP_TILE_URL: _u, NEXT_PUBLIC_MAP_ATTRIBUTION: _a, ...rest } = FULL;
+    const r = by({ ...rest, NEXT_PUBLIC_MAP_PROVIDER: "openstreetmap" });
+    expect(r.maptiles.status).toBe("ready");
+    expect(r.maptiles.blocking).toBe(false);
+    expect(r.maptiles.note).toContain("OpenStreetMap");
+    expect(formatReport(Object.values(r))).toContain("note: Using OpenStreetMap");
+    expect(by(rest).maptiles.blocking).toBe(true);
+    expect(by(FULL).maptiles.note).toBeNull();
+  });
+
+  it("map tiles: custom needs URL and attribution; bad provider or a stray URL is refused", () => {
+    const { NEXT_PUBLIC_MAP_TILE_URL: _u, NEXT_PUBLIC_MAP_ATTRIBUTION: _a, ...rest } = FULL;
+    const custom = by({ ...rest, NEXT_PUBLIC_MAP_PROVIDER: "custom" }).maptiles;
+    expect(custom.status).toBe("incomplete");
+    expect(custom.missing).toEqual(["NEXT_PUBLIC_MAP_TILE_URL", "NEXT_PUBLIC_MAP_ATTRIBUTION"]);
+    expect(by({ ...FULL, NEXT_PUBLIC_MAP_PROVIDER: "custom" }).maptiles.status).toBe("ready");
+    expect(by({ ...rest, NEXT_PUBLIC_MAP_PROVIDER: "mapbox" }).maptiles.status).toBe("invalid");
+    expect(by({ ...FULL, NEXT_PUBLIC_MAP_PROVIDER: "openstreetmap" }).maptiles.problems.join()).toContain("ignored");
+  });
+
+  it("map tiles: the check agrees with the tiles the browser draws", () => {
+    const envs: Record<string, string | undefined>[] = [
+      {}, { NEXT_PUBLIC_MAP_PROVIDER: "openstreetmap" },
+      { NEXT_PUBLIC_MAP_TILE_URL: FULL.NEXT_PUBLIC_MAP_TILE_URL, NEXT_PUBLIC_MAP_ATTRIBUTION: "© Example" },
+      { NEXT_PUBLIC_MAP_PROVIDER: "custom", NEXT_PUBLIC_MAP_TILE_URL: FULL.NEXT_PUBLIC_MAP_TILE_URL, NEXT_PUBLIC_MAP_ATTRIBUTION: "© Example" }
+    ];
+    for (const env of envs) {
+      const ready = by(env, false).maptiles.status === "ready";
+      const src = mapTileSource(env.NEXT_PUBLIC_MAP_PROVIDER, env.NEXT_PUBLIC_MAP_TILE_URL, env.NEXT_PUBLIC_MAP_ATTRIBUTION);
+      if (ready && env.NEXT_PUBLIC_MAP_PROVIDER !== "openstreetmap") expect(src.provider).toBe("custom");
+      if (env.NEXT_PUBLIC_MAP_PROVIDER === "openstreetmap" || !env.NEXT_PUBLIC_MAP_TILE_URL) expect(src.provider).toBe("openstreetmap");
     }
   });
 });

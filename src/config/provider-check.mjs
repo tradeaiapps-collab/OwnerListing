@@ -102,14 +102,28 @@ const PROVIDERS = [
     }
   },
   {
+    // Mirrors src/domain/map-tiles.ts: openstreetmap needs no key; custom needs a tile URL and attribution; a URL without a provider is custom.
     id: "maptiles", label: "Map tiles", required: true,
-    unlocks: "The search map and the listing location picker.",
-    whenOff: "The map falls back to OpenStreetMap's public tiles, which their usage policy forbids for production traffic.",
-    keys: ["NEXT_PUBLIC_MAP_TILE_URL", "NEXT_PUBLIC_MAP_ATTRIBUTION"],
+    unlocks: "The listing page map, the search map, the staff listings map and the location picker.",
+    whenOff: "The maps fall back to OpenStreetMap's public tiles. Set NEXT_PUBLIC_MAP_PROVIDER=openstreetmap to choose them on purpose.",
+    keys: ["NEXT_PUBLIC_MAP_PROVIDER"], optionalKeys: ["NEXT_PUBLIC_MAP_TILE_URL", "NEXT_PUBLIC_MAP_ATTRIBUTION"],
+    keysFor(get) {
+      const provider = get("NEXT_PUBLIC_MAP_PROVIDER")?.toLowerCase() ?? (get("NEXT_PUBLIC_MAP_TILE_URL") ? "custom" : undefined);
+      return provider === "custom" ? ["NEXT_PUBLIC_MAP_TILE_URL", "NEXT_PUBLIC_MAP_ATTRIBUTION"] : ["NEXT_PUBLIC_MAP_PROVIDER"];
+    },
+    note(get) {
+      const provider = get("NEXT_PUBLIC_MAP_PROVIDER")?.toLowerCase();
+      return provider === "openstreetmap"
+        ? "Using OpenStreetMap's public tiles (free, no key). Their tile policy allows light use with attribution only; switch to NEXT_PUBLIC_MAP_PROVIDER=custom (paid or self-hosted tiles) if traffic grows."
+        : null;
+    },
     check(get) {
-      const url = get("NEXT_PUBLIC_MAP_TILE_URL");
-      if (!url) return [];
       const p = [];
+      const provider = get("NEXT_PUBLIC_MAP_PROVIDER")?.toLowerCase();
+      if (provider && provider !== "openstreetmap" && provider !== "custom") p.push("NEXT_PUBLIC_MAP_PROVIDER must be openstreetmap or custom.");
+      if (provider === "openstreetmap" && get("NEXT_PUBLIC_MAP_TILE_URL")) p.push("NEXT_PUBLIC_MAP_TILE_URL is ignored with NEXT_PUBLIC_MAP_PROVIDER=openstreetmap: remove it, or set the provider to custom.");
+      const url = get("NEXT_PUBLIC_MAP_TILE_URL");
+      if (!url || provider === "openstreetmap") return p;
       if (!url.startsWith("https://")) p.push("NEXT_PUBLIC_MAP_TILE_URL must start with https://.");
       if (!["{z}", "{x}", "{y}"].every(t => url.includes(t))) p.push("NEXT_PUBLIC_MAP_TILE_URL must contain {z}, {x} and {y}.");
       return p;
@@ -125,8 +139,9 @@ export function checkProviders(env, opts = {}) {
   const prod = opts.production ?? env.NODE_ENV === "production";
   const get = k => { const v = env[k]; return typeof v === "string" && v.trim() !== "" ? v.trim() : undefined; };
   return PROVIDERS.map(p => {
-    const keys = p.urlKey ? [...p.keys, get("APP_MODE") === "admin" ? "ADMIN_APP_URL" : "APP_URL"] : p.keys;
-    const all = [...keys, ...(p.optionalKeys ?? [])];
+    const base = p.keysFor ? p.keysFor(get) : p.keys;
+    const keys = p.urlKey ? [...base, get("APP_MODE") === "admin" ? "ADMIN_APP_URL" : "APP_URL"] : base;
+    const all = [...new Set([...p.keys, ...keys, ...(p.optionalKeys ?? [])])];
     const missing = keys.filter(k => !get(k));
     const placeholders = all.filter(k => get(k) && isPlaceholder(get(k)));
     const problems = [...placeholders.map(k => `${k} looks like a placeholder, not a real value.`), ...p.check(get, prod)];
@@ -135,7 +150,8 @@ export function checkProviders(env, opts = {}) {
     // Blocks a production deploy: wrong values always; a half-set provider (unless the rest can come from the admin screen);
     // a required provider that is not ready.
     const blocking = prod && (status === "invalid" || (status === "incomplete" && !p.alsoIn) || (p.required && status !== "ready"));
-    return { id: p.id, label: p.label, required: p.required, unlocks: p.unlocks, whenOff: p.whenOff, alsoIn: p.alsoIn ?? null, keys: all, status, missing, problems, blocking };
+    return { id: p.id, label: p.label, required: p.required, unlocks: p.unlocks, whenOff: p.whenOff, alsoIn: p.alsoIn ?? null, keys: all, status, missing, problems, blocking,
+      note: status === "ready" && p.note ? p.note(get) : null };
   });
 }
 
@@ -145,6 +161,7 @@ export function formatReport(results) {
   const lines = [];
   for (const r of results) {
     lines.push(`[${mark[r.status]}] ${r.label}${r.required ? " (required)" : ""}${r.blocking ? "  <- blocks deploy" : ""}`);
+    if (r.note) lines.push(`       note: ${r.note}`);
     if (r.status !== "ready") {
       if (r.missing.length) lines.push(`       missing: ${r.missing.join(", ")}`);
       for (const p of r.problems) lines.push(`       ${p}`);

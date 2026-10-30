@@ -16,13 +16,15 @@ export interface ListingFilters { q?: string; status?: string; jurisdiction?: st
 export interface StaffListingRow {
   id: string; title: string; suburb: string | null; jurisdiction: string; transactionType: string; propertyType: string;
   status: string; priceCents: number | null; createdAt: string; ownerType: string; offers: number; lastReason: string | null;
+  /** Map pin for the staff map view; null when the owner has not placed one. */
+  latitude: number | null; longitude: number | null;
 }
 
 /** Every listing, newest first, filtered and paged (keyset). Owner identity is not selected; staff open the listing by id. */
 export async function searchListings(db: Queryable, f: ListingFilters): Promise<{ rows: StaffListingRow[]; nextCursor: string | null }> {
   const cur = f.cursor ? decodeCursor(f.cursor) : null;
   const res = await db.query(
-    `SELECT l.id, l.title, l.suburb, l.jurisdiction, l.transaction_type, l.property_type, l.status, l.price_cents, l.created_at, o.user_type AS owner_type,
+    `SELECT l.id, l.title, l.suburb, l.jurisdiction, l.transaction_type, l.property_type, l.status, l.price_cents, l.created_at, l.latitude, l.longitude, o.user_type AS owner_type,
             (SELECT count(*)::int FROM formal_offer f WHERE f.listing_id = l.id) AS offers,
             (SELECT e.payload->>'reason' FROM audit_event e WHERE e.aggregate_type = 'listing' AND e.aggregate_id = l.id::text
                 AND e.payload ? 'moderation' ORDER BY e.occurred_at DESC LIMIT 1) AS last_reason
@@ -38,7 +40,8 @@ export async function searchListings(db: Queryable, f: ListingFilters): Promise<
     id: String(r["id"]), title: String(r["title"]), suburb: r["suburb"] === null ? null : String(r["suburb"]), jurisdiction: String(r["jurisdiction"]).trim(),
     transactionType: String(r["transaction_type"]), propertyType: String(r["property_type"]), status: String(r["status"]),
     priceCents: r["price_cents"] === null ? null : n(r["price_cents"]), createdAt: iso(r["created_at"]), ownerType: String(r["owner_type"]),
-    offers: n(r["offers"]), lastReason: typeof r["last_reason"] === "string" ? r["last_reason"] : null
+    offers: n(r["offers"]), lastReason: typeof r["last_reason"] === "string" ? r["last_reason"] : null,
+    latitude: r["latitude"] === null ? null : n(r["latitude"]), longitude: r["longitude"] === null ? null : n(r["longitude"])
   }));
   const last = rows[rows.length - 1];
   return { rows, nextCursor: res.rows.length > PAGE && last ? encodeCursor({ sortValue: last.createdAt, id: last.id }) : null };

@@ -12,6 +12,8 @@ export interface ProviderResult {
   missing: string[];
   problems: string[];
   blocking: boolean;
+  /** A caveat for a ready provider (e.g. OpenStreetMap's public tile policy), or null. */
+  note: string | null;
 }
 export function isPlaceholder(value: string): boolean;
 export function checkProviders(env: Readonly<Record<string, string | undefined>>, opts?: { production?: boolean }): ProviderResult[];
