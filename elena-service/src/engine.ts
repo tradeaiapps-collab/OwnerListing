@@ -19,7 +19,7 @@ export type ChatRole = "buyer" | "owner" | "agent";
 /** Pose shown with an answer. "listening" is the client's state while someone types or waits; answers never carry it. */
 export type ChatPose = "wave" | "tablet" | "front" | "three-quarter";
 export const CHAT_TOPICS = [
-  "welcome", "offer", "compromise", "settlement", "deposit", "conditions", "listing", "next_steps", "privacy", "advice", "unknown"
+  "welcome", "offer", "compromise", "settlement", "deposit", "conditions", "listing", "next_steps", "privacy", "advice", "chitchat", "unknown"
 ] as const;
 export type ChatTopic = (typeof CHAT_TOPICS)[number];
 
@@ -52,7 +52,7 @@ export const ASSISTANT_RATE = { windowMs: 60 * 60 * 1000, perUser: 30 } as const
 const POSE: Record<ChatTopic, ChatPose> = {
   welcome: "wave", offer: "tablet", compromise: "tablet", listing: "tablet",
   settlement: "front", deposit: "front", conditions: "front", next_steps: "front", unknown: "front",
-  privacy: "three-quarter", advice: "three-quarter"
+  privacy: "three-quarter", advice: "three-quarter", chitchat: "wave"
 };
 
 const NOT_BINDING = "Only the two of you can agree terms. I can't accept, reject or sign anything.";
@@ -230,8 +230,39 @@ const SUGGEST: Record<ChatTopic, string[]> = {
   next_steps: ["Where do things stand?", "What does the deposit cover?"],
   privacy: ["Where do things stand?", "How could we close the gap?"],
   advice: ["Where do things stand?", "How could we close the gap?"],
+  chitchat: ["Where do things stand?", "What can you help with?", "Tell me about the home"],
   unknown: ["Where do things stand?", "How could we close the gap?", "Tell me about the home"]
 };
+
+// ---- Small talk ----
+// Greetings and pleasantries, answered in kind and always handing the conversation back with "What can I do for you?".
+// Deterministic and self-hosted like the rest: no outside AI service sees what people type. Only reached when no topic matched.
+const CAN_I_HELP = "What can I do for you?";
+const HELP_LINE = "I can explain the offer and its conditions, settlement and the deposit, suggest ways to close a gap on price, and tell you about the home.";
+const SMALL_TALK: readonly [RegExp, string][] = [
+  [/\b(how\s+(are|r)\s+(you|u|ya)|how'?s\s+it\s+going|how\s+is\s+it\s+going|how\s+do\s+you\s+do|what'?s\s+up|you\s+(ok|okay|well|good)\b)/, `I'm doing well, thank you for asking! ${CAN_I_HELP}`],
+  [/\bhow('?s|\s+is|\s+was)\s+(your|ur)\s+(day|morning|afternoon|evening|week|weekend)/, `It's going nicely, thank you for asking. How is yours? ${CAN_I_HELP}`],
+  [/\b(who|what)\s+(are|r)\s+(you|u)\b|\b(your|ur)\s+name\b|\bare\s+you\s+(a\s+)?(real|human|robot|bot|ai|person)/, `I'm the AI assistant for this conversation, not a person and not a licensed agent. ${HELP_LINE} ${CAN_I_HELP}`],
+  [/\bwhat\s+(can|do)\s+(you|u)\s+(do|help)|\bhow\s+can\s+(you|u)\s+help|^help\b|\bwhat\s+can\s+i\s+ask/, `${HELP_LINE} ${CAN_I_HELP}`],
+  [/\b(thanks|thank\s+you|thank\s+u|thx|cheers|ta|much\s+appreciated)\b/, "You're welcome! Is there anything else I can help with?"],
+  [/\b(bye|goodbye|see\s+you|see\s+ya|talk\s+later|have\s+a\s+(good|great|nice)\s+(day|one|night|weekend)|good\s*night)\b/, "Bye for now! I'm right here whenever you need me."],
+  [/^(yes|yeah|yep|yup|sure|ok|okay|please|go\s+ahead)\b/, `Great. ${CAN_I_HELP} You can ask about the offer, settlement, the deposit or the home.`],
+  [/^(no|nope|nah|nothing|no\s+thanks)\b/, "No problem. I'll be here if anything comes up."],
+  [/^(hi|hello|hey|hiya|howdy|yo|g'?day|good\s+(morning|afternoon|evening))\b/, "Hi there! How's your day going?"]
+];
+const FEEL_GOOD = /^(i'?m|im|i\s+am|it'?s|its|all|pretty|really|very|so|feeling|doing)?\s*(good|great|fine|well|awesome|fantastic|wonderful|excellent|amazing|happy|not\s+bad|pretty\s+good|ok|okay|alright)\b(?!\s+(night|morning|afternoon|evening|deal|price|offer))/;
+const FEEL_LOW = /^(i'?m|im|i\s+am|it'?s|its|a\s+bit|pretty|really|very|so|feeling|doing)?\s*(bad|terrible|awful|rough|tired|exhausted|stressed|busy|not\s+great|not\s+good|so\s+so|meh)\b/;
+
+/** A friendly reply when the message is chit-chat, otherwise undefined. Short feelings ("good, thanks") only count as replies to her question. */
+export function smallTalk(text: string): string | undefined {
+  const t = norm(text).replace(/[!?.,]+/g, " ").replace(/\s+/g, " ").trim();
+  if (!t) return undefined;
+  const short = t.split(" ").length <= 6;
+  if (short && FEEL_LOW.test(t)) return `Sorry to hear that. I hope it gets easier from here. ${CAN_I_HELP}`;
+  if (short && FEEL_GOOD.test(t)) return `Glad to hear it! ${CAN_I_HELP}`;
+  for (const [re, reply] of SMALL_TALK) if (re.test(t)) return reply;
+  return undefined;
+}
 
 /** Her answer to one question. Uses only `facts`; never the asker's identity beyond their role in the thread. */
 export function chatAnswer(f: ChatFacts, role: ChatRole, question: string): ChatAnswer {
@@ -253,8 +284,11 @@ export function chatAnswer(f: ChatFacts, role: ChatRole, question: string): Chat
     case "conditions": return done(conditionsLine(f));
     case "listing": return done(listingLine(f));
     case "next_steps": return done(nextLine(f, role));
-    default:
-      return done("I'm not sure I can help with that one. I can explain the offer and its conditions, settlement, the deposit and the next steps, or suggest ways to close a gap on price.");
+    default: {
+      const talk = smallTalk(question);
+      if (talk) return { topic: "chitchat", pose: POSE.chitchat, text: talk, suggestions: SUGGEST.chitchat };
+      return done("I'm not sure I can help with that one. I can explain the offer and its conditions, settlement, the deposit and the next steps, or suggest ways to close a gap on price. What would you like to know?");
+    }
   }
 }
 
@@ -263,7 +297,6 @@ export function chatWelcome(f: ChatFacts, personaName: string): ChatAnswer {
   const where = f.offer ? ` I can see the offer on ${f.listing.title} and can explain it, or suggest ways to close a gap.` : ` I can answer questions about ${f.listing.title} and how offers work here.`;
   return {
     topic: "welcome", pose: "wave", suggestions: SUGGEST.welcome,
-    text: `Hi, I'm ${personaName}, the AI assistant for this conversation.${where} Anything you ask me is seen by both of you. I'm not a licensed agent, and I never accept or sign anything.`
+    text: `Hi, I'm ${personaName}, the AI assistant for this conversation.${where} Anything you ask me is seen by both of you. I'm not a licensed agent, and I never accept or sign anything. ${CAN_I_HELP}`
   };
 }
-

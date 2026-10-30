@@ -24,7 +24,7 @@ type Target = "price" | "settlement" | "deposit" | "conditions" | "listing" | "s
 const TARGETS: Record<ChatTopic, (turnId: string) => Target[]> = {
   welcome: () => ["chips"], offer: () => ["price", "status"], compromise: () => ["price", "chips"], settlement: () => ["settlement"],
   deposit: () => ["deposit"], conditions: () => ["conditions"], listing: () => ["listing"], next_steps: () => ["status"],
-  privacy: id => [`q-${id}`], advice: id => [`q-${id}`], unknown: id => [`q-${id}`]
+  privacy: id => [`q-${id}`], advice: id => [`q-${id}`], chitchat: id => [`q-${id}`], unknown: id => [`q-${id}`]
 };
 const STATUS_FOR: Record<ChatPose, StageState["status"]> = { wave: "welcome", tablet: "presenting", front: "explaining", "three-quarter": "careful" };
 const POINT_MS = 4500;
@@ -70,6 +70,7 @@ export default function Thread() {
   const [pointed, setPointed] = useState<Target[]>([]);
   const [voice, setVoice] = useState(false);
   const [speaking, setSpeaking] = useState(false);
+  const [listening, setListening] = useState(false);
   const { safety, reload: reloadSafety } = useSafety(id);
   const pointTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const endRef = useRef<HTMLDivElement>(null);
@@ -158,6 +159,25 @@ export default function Thread() {
     } finally {
       if (alive.current) setWalking(false);
     }
+  }
+
+  /** Speak a question instead of typing it, using the browser's own speech recognition (no outside service). Her answer is then read aloud. */
+  function listen() {
+    type Rec = { lang: string; onresult: ((e: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void) | null; onend: (() => void) | null; onerror: (() => void) | null; start: () => void };
+    const w = window as unknown as { SpeechRecognition?: new () => Rec; webkitSpeechRecognition?: new () => Rec };
+    const Ctor = w.SpeechRecognition ?? w.webkitSpeechRecognition;
+    if (!Ctor) { setError("Speaking to her isn't supported in this browser. You can type instead."); return; }
+    const rec = new Ctor();
+    rec.lang = "en-AU";
+    setError("");
+    setListening(true);
+    rec.onresult = e => {
+      const said = e.results[0]?.[0]?.transcript?.trim();
+      if (said) { setVoice(true); void ask(said.slice(0, 500), false); }
+    };
+    rec.onend = () => setListening(false);
+    rec.onerror = () => { setListening(false); setError("I couldn't hear that. Check the microphone is allowed, or type instead."); };
+    rec.start();
   }
 
   async function ask(question: string, fromComposer: boolean) {
@@ -308,6 +328,11 @@ export default function Thread() {
                 onChange={e => setDraft(e.target.value)} onFocus={() => setTyping(true)} onBlur={() => setTyping(false)}
               />
               <div className="el-composer-actions">
+                {ai && (
+                  <button type="button" className="el-ask" aria-pressed={listening} disabled={asking || listening} onClick={listen}>
+                    {listening ? "Listening…" : `Speak to ${ai.persona.name}`}
+                  </button>
+                )}
                 {ai && (
                   <button type="button" className="el-ask" disabled={asking || !draft.trim() || draft.trim().length > 500} onClick={() => void ask(draft, true)}>
                     {asking ? "Asking…" : `Ask ${ai.persona.name}`}
