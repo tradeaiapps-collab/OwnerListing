@@ -63,8 +63,10 @@ export function clipFor(state: Pick<StageState, "pose" | "status" | "mood">, spe
  * poses, sways while speaking, and when she refers to something in the chat a pointer on her side lights up with it.
  * Motion is off under prefers-reduced-motion (CSS). Always labelled as an AI assistant.
  */
-export function ElenaStage({ persona, state, speaking, voice, onVoice }: {
+export function ElenaStage({ persona, state, speaking, voice, onVoice, turnKey, turnWords = 0 }: {
   persona: ChatPersona; state: StageState; speaking: boolean; voice: boolean; onVoice: (on: boolean) => void;
+  /** Id of her newest answer and its word count: each new answer gets a visible reaction even when the voice is off. */
+  turnKey?: string; turnWords?: number;
 }) {
   const [collapsed, setCollapsed] = useState(false);
   const pose = personaPose(persona, state.pose);
@@ -72,6 +74,8 @@ export function ElenaStage({ persona, state, speaking, voice, onVoice }: {
   const status = speaking ? `${persona.name} is speaking` : STATUS_TEXT[state.status](persona.name);
   const live = useRef<HTMLParagraphElement>(null);
   const [still, setStill] = useState(true);
+  const [reacting, setReacting] = useState(false);
+  const seenTurn = useRef(turnKey);
 
   useEffect(() => { onVoice(readVoice()); }, [onVoice]);
   // Keep the pinned stage below the site header, whatever height it wraps to at this width.
@@ -84,6 +88,14 @@ export function ElenaStage({ persona, state, speaking, voice, onVoice }: {
     ro.observe(header);
     return () => { ro.disconnect(); document.documentElement.style.removeProperty("--el-top"); };
   }, []);
+  // A new answer plays her speaking reaction for as long as it takes to read (voice or not), so the body language is always seen.
+  useEffect(() => {
+    if (!turnKey || turnKey === seenTurn.current) return;
+    seenTurn.current = turnKey;
+    setReacting(true);
+    const t = setTimeout(() => setReacting(false), Math.min(12000, Math.max(4500, 2000 + turnWords * 330)));
+    return () => clearTimeout(t);
+  }, [turnKey, turnWords]);
   // Short looping clips exist for Elena only; she is always moving (idle by default). They stay still for people who ask for reduced motion.
   useEffect(() => {
     const q = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -92,14 +104,14 @@ export function ElenaStage({ persona, state, speaking, voice, onVoice }: {
     q.addEventListener("change", sync);
     return () => q.removeEventListener("change", sync);
   }, []);
-  const clip = persona.id !== "elena" || still ? undefined : clipFor(state, speaking);
+  const clip = persona.id !== "elena" || still ? undefined : clipFor(state, speaking || reacting);
 
   return (
     <aside className={`el-stage${collapsed ? " is-collapsed" : ""}${speaking ? " is-speaking" : ""}${state.pointing ? " is-pointing" : ""}`} aria-label={personaLabel(persona)}>
       <div className="el-stage-figure">
         {clip ? (
           <video
-            key={clip} className={`el-stage-img is-video${clip === "presenting" ? " is-flip" : ""}${clip === "idle" ? (state.mood === "silly" ? " is-lean" : " is-step") : ""}`} autoPlay loop muted playsInline preload="auto"
+            key={clip} className={`el-stage-img is-video${clip === "presenting" ? " is-flip" : ""}${clip === "idle" ? (state.mood === "silly" ? " is-lean" : " is-step") : ` is-${clip}`}`} autoPlay loop muted playsInline preload="auto"
             poster={`/assistant/elena-video-${clip}.jpg`} aria-hidden="true"
           >
             <source src={`/assistant/elena-video-${clip}.webm`} type="video/webm" />

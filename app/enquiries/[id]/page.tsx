@@ -187,11 +187,14 @@ export default function Thread() {
     if (!q) return;
     setAsking(true);
     setError("");
+    const started = Date.now();
     try {
       const r = await fetch(`/api/enquiries/${id}/assistant`, { method: "POST", headers: JSON_HEADERS, body: JSON.stringify({ question: q }) });
       const d = await r.json().catch(() => ({}));
       if (!r.ok) { setError((d as { error?: string }).error ?? "The assistant could not answer just now."); return; }
       const turn = (d as { turn: AssistantTurn }).turn;
+      // A short thinking beat so her listening posture is seen before she answers.
+      await new Promise(res => setTimeout(res, Math.max(0, 1400 - (Date.now() - started))));
       if (fromComposer) setDraft("");
       setAi(a => (a ? { ...a, turns: [...a.turns, turn] } : a));
       point(TARGETS[turn.topic](turn.id));
@@ -248,7 +251,7 @@ export default function Thread() {
       {!loadError && !data && <p className="muted" role="status">Loading…</p>}
       {data && (
         <div className={`el-layout${ai ? " has-stage" : ""}`}>
-          {ai && <ElenaStage persona={ai.persona} state={stage} speaking={speaking} voice={voice} onVoice={setVoice} />}
+          {ai && <ElenaStage persona={ai.persona} state={stage} speaking={speaking} voice={voice} onVoice={setVoice} turnKey={ai.turns[ai.turns.length - 1]?.id ?? "welcome"} turnWords={(ai.turns[ai.turns.length - 1]?.answer ?? "").split(/\s+/).length} />}
           <div className="el-chat">
             {safety && olr?.role === "owner" && <SafetySummary enquiryId={id} safety={safety} onChange={reloadSafety} />}
             {facts && (
