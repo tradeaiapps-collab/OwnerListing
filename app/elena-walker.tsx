@@ -12,13 +12,14 @@ const PANEL_W = 380, GUTTER = 16, WALK_MS = 1800, RETURN_DELAY_MS = 5000;
 const size = () => (window.innerWidth < 600 ? SIZE_NARROW : SIZE_WIDE);
 const reduced = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-/** Where she stops: the middle of the page, or the middle of the free space beside the chat panel. On phones the panel becomes a bottom sheet, so she stops in the middle of the area above it. */
-function target(): { x: number; y: number } {
+/** Where she stops. On wide screens she walks sideways along the heading row to just right of the heading (kept clear of the chat panel). On phones the panel becomes a bottom sheet, so she stops in the middle of the area above it. */
+function target(home: { x: number; y: number }): { x: number; y: number } {
   const s = size(), vw = window.innerWidth, vh = window.innerHeight;
   if (vw < 600) return { x: (vw - s) / 2, y: Math.max(8, (vh * 0.42 - s) / 2) };
-  const panelLeft = vw - PANEL_W - GUTTER;
-  const cx = vw / 2 + s / 2 + GUTTER < panelLeft ? vw / 2 : panelLeft / 2;
-  return { x: cx - s / 2, y: vh * 0.45 - s / 2 };
+  const h1 = document.querySelector<HTMLElement>(".ew-anchor h1");
+  const headEnd = h1 ? (() => { const r = document.createRange(); r.selectNodeContents(h1); return r.getBoundingClientRect().right; })() : home.x + s;
+  const maxX = vw - PANEL_W - GUTTER * 2 - s;
+  return { x: Math.max(home.x, Math.min(headEnd + GUTTER * 2, maxX)), y: home.y };
 }
 
 /**
@@ -74,13 +75,13 @@ export default function ElenaWalker({ name, still, video }: { name: string; stil
       const p = phaseRef.current;
       if (d.open) {
         document.body.classList.add("ew-active");
-        if (p === "perched") walk(slotPt(), target(), "down", "stopped");
-        else if (p === "up") walk(posRef.current, target(), "down", "stopped");
+        if (p === "perched") walk(slotPt(), target(slotPt()), "down", "stopped");
+        else if (p === "up") walk(posRef.current, target(slotPt()), "down", "stopped");
       } else {
         timer.current = window.setTimeout(() => {
           const q = phaseRef.current;
           if (q === "perched") return;
-          walk(q === "stopped" ? target() : posRef.current, slotPt(), "up", "perched");
+          walk(q === "stopped" ? target(slotPt()) : posRef.current, slotPt(), "up", "perched");
           document.body.classList.remove("ew-active");
         }, RETURN_DELAY_MS);
       }
@@ -94,7 +95,7 @@ export default function ElenaWalker({ name, still, video }: { name: string; stil
 
   // Keep her in the middle if the window is resized while she is out.
   useEffect(() => {
-    const onResize = () => { if (phaseRef.current === "stopped") setPos({ ...target(), animate: false }); };
+    const onResize = () => { if (phaseRef.current === "stopped") setPos({ ...target(slotPt()), animate: false }); };
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, []);
