@@ -1,0 +1,8 @@
+{
+  "name": "elena-service",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Elena, the AI assistant, as a standalone HTTP API (v1) for OwnerListing and Archova",
+  "type": "module",
+  "scripts": { "start": "node src/main.ts" }
+}
