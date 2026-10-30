@@ -19,3 +19,6 @@
 /* No browser video overlays (expand, play, picture-in-picture) over her face; clicks go to the button. */
 video.ew-media { pointer-events: none; }
 video.ew-media::-webkit-media-controls, video.ew-media::-webkit-media-controls-enclosure, video.ew-media::-webkit-media-controls-overlay-play-button, video.ew-media::-webkit-media-controls-panel { display: none !important; -webkit-appearance: none; }
+/* Perched: the seated pose, so she looks like she is sitting on the heading. */
+.ew-perched, .ew-perched .ew-media { border-radius: 22%; }
+.ew-perched .ew-media { object-position: 50% 100%; }

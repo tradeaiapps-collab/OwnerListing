@@ -86,7 +86,7 @@ export default function ElenaWalker({ name, still, video }: { name: string; stil
   }, []);
 
   const out = phase !== "perched";
-  const clip = !video || reduced() ? null : busy ? "talking" : out ? "presenting" : "idle";
+  const clip = !video || reduced() || !out ? null : busy ? "talking" : "presenting";
   const style = out ? { transform: `translate(${pos.x}px, ${pos.y}px)`, transition: pos.animate ? `transform ${WALK_MS}ms cubic-bezier(0.45, 0, 0.25, 1)` : "none" } : undefined;
 
   return (
