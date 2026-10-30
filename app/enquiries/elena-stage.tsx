@@ -3,10 +3,12 @@ import { useEffect, useRef, useState } from "react";
 import { personaLabel, personaPose, type PoseId } from "../../src/domain/assistant-persona";
 import type { ChatPersona } from "../../src/domain/chat-assistant";
 
-type ClipId = "idle" | "talking" | "presenting";
+type ClipId = "idle" | "listen" | "talking" | "explain" | "agree" | "presenting";
 
 /** What the stage shows: a pose from an answer, "listening" while someone types or waits, "thinking" while she answers. */
-export type StageState = { pose: PoseId; status: "welcome" | "listening" | "thinking" | "presenting" | "explaining" | "careful"; pointing: boolean };
+export type StageState = { pose: PoseId; status: "welcome" | "listening" | "thinking" | "presenting" | "explaining" | "careful"; pointing: boolean;
+  /** How she moves while answering aloud: "agree" nods and smiles; "silly" (an unmatched question) makes her lean on one leg while at rest; otherwise she explains. */
+  mood?: "agree" | "explain" | "silly" };
 
 const STATUS_TEXT: Record<StageState["status"], (name: string) => string> = {
   welcome: n => `${n} is here to help`,
@@ -18,7 +20,8 @@ const STATUS_TEXT: Record<StageState["status"], (name: string) => string> = {
 };
 
 const VOICE_KEY = "ol:assistant-voice";
-const readVoice = () => { try { return window.localStorage.getItem(VOICE_KEY) === "on"; } catch { return false; } };
+// Voice is on unless the person has switched it off, so she answers aloud without anyone hunting for a toggle.
+const readVoice = () => { try { return window.localStorage.getItem(VOICE_KEY) !== "off"; } catch { return true; } };
 const saveVoice = (on: boolean) => { try { window.localStorage.setItem(VOICE_KEY, on ? "on" : "off"); } catch { /* the toggle still works for this visit */ } };
 
 /** Reads text aloud with the device's own voice (no outside service). Returns false when the browser has no speech. */
@@ -31,10 +34,28 @@ export function speak(text: string, onEnd: () => void): boolean {
   const v = s.getVoices().find(x => /en-AU/i.test(x.lang) && /female|karen|catherine|natasha/i.test(x.name)) ?? s.getVoices().find(x => /en-AU/i.test(x.lang));
   if (v) u.voice = v;
   u.rate = 1;
-  u.onend = onEnd;
-  u.onerror = onEnd;
+  // Some browsers never fire onend for long text, which would leave her "speaking" forever; stop her after a generous cap.
+  const cap = setTimeout(onEnd, Math.min(60000, 4000 + text.length * 90));
+  const done = () => { clearTimeout(cap); onEnd(); };
+  u.onend = done;
+  u.onerror = done;
+  s.resume();
   s.speak(u);
   return true;
+}
+
+/**
+ * Body language by moment. Speaking: presenting while she shows something, a careful still-faced talk for privacy, nodding and smiling
+ * for agreement, otherwise expressive explaining. Silent: leaning in to listen while someone types or she thinks, else standing at
+ * ease with her hands down (never frozen mid-gesture).
+ */
+export function clipFor(state: Pick<StageState, "pose" | "status" | "mood">, speaking: boolean): ClipId {
+  if (speaking) {
+    if (state.pose === "tablet") return "presenting";
+    if (state.status === "careful") return "talking";
+    return state.mood === "agree" ? "agree" : "explain";
+  }
+  return state.status === "listening" || state.status === "thinking" ? "listen" : "idle";
 }
 
 /**
@@ -53,7 +74,17 @@ export function ElenaStage({ persona, state, speaking, voice, onVoice }: {
   const [still, setStill] = useState(true);
 
   useEffect(() => { onVoice(readVoice()); }, [onVoice]);
-  // Short looping clips exist for Elena only. They stay still for people who ask for reduced motion.
+  // Keep the pinned stage below the site header, whatever height it wraps to at this width.
+  useEffect(() => {
+    const header = document.querySelector<HTMLElement>(".site-header");
+    if (!header) return;
+    const sync = () => document.documentElement.style.setProperty("--el-top", `${Math.round(header.getBoundingClientRect().height)}px`);
+    sync();
+    const ro = new ResizeObserver(sync);
+    ro.observe(header);
+    return () => { ro.disconnect(); document.documentElement.style.removeProperty("--el-top"); };
+  }, []);
+  // Short looping clips exist for Elena only; she is always moving (idle by default). They stay still for people who ask for reduced motion.
   useEffect(() => {
     const q = window.matchMedia("(prefers-reduced-motion: reduce)");
     const sync = () => setStill(q.matches);
@@ -61,14 +92,14 @@ export function ElenaStage({ persona, state, speaking, voice, onVoice }: {
     q.addEventListener("change", sync);
     return () => q.removeEventListener("change", sync);
   }, []);
-  const clip: ClipId | undefined = persona.id !== "elena" || still ? undefined : speaking ? "talking" : state.pose === "tablet" ? "presenting" : state.pose === "listening" ? "idle" : undefined;
+  const clip = persona.id !== "elena" || still ? undefined : clipFor(state, speaking);
 
   return (
     <aside className={`el-stage${collapsed ? " is-collapsed" : ""}${speaking ? " is-speaking" : ""}${state.pointing ? " is-pointing" : ""}`} aria-label={personaLabel(persona)}>
       <div className="el-stage-figure">
         {clip ? (
           <video
-            key={clip} className={`el-stage-img is-video${flip || clip === "presenting" ? " is-flip" : ""}`} autoPlay loop muted playsInline preload="auto"
+            key={clip} className={`el-stage-img is-video${clip === "presenting" ? " is-flip" : ""}${clip === "idle" ? (state.mood === "silly" ? " is-lean" : " is-step") : ""}`} autoPlay loop muted playsInline preload="auto"
             poster={`/assistant/elena-video-${clip}.jpg`} aria-hidden="true"
           >
             <source src={`/assistant/elena-video-${clip}.webm`} type="video/webm" />
