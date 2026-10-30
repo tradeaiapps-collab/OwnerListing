@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  askAssistant, chatAnswer, chatWelcome, createInMemoryTurnRepository, getAssistantThread, matchChatTopic, middleCents, parseQuestion, positions,
+  askAssistant, chatAnswer, showMeFor, chatWelcome, createInMemoryTurnRepository, getAssistantThread, matchChatTopic, middleCents, parseQuestion, positions,
   type ChatAssistantDeps, type ChatFacts, type ChatOffer
 } from "../src/domain/chat-assistant";
 import { createInMemoryEnquiryRepository } from "../src/domain/enquiry-service";
@@ -110,6 +110,21 @@ describe("answers use only shared facts", () => {
     expect(w.pose).toBe("wave");
     expect(w.text).toContain("seen by both of you");
     expect(w.text).toContain("not a licensed agent");
+  });
+});
+
+describe("show me", () => {
+  it("sends a buyer to My offers and an owner to their listings, with the offer link as the fallback", () => {
+    expect(showMeFor("compromise", "buyer", facts())).toEqual({ label: "Show me where to reply to the offer", places: ["my_offers", "offer_link"] });
+    expect(showMeFor("offer", "owner", facts())?.places).toEqual(["my_listings", "offer_link"]);
+    expect(showMeFor("next_steps", "agent", facts())?.places[0]).toBe("my_listings");
+  });
+  it("without an offer only the buyer is pointed at the offer-link request", () => {
+    expect(showMeFor("next_steps", "buyer", facts(null))?.places).toEqual(["offer_link"]);
+    expect(showMeFor("next_steps", "owner", facts(null))).toBeUndefined();
+  });
+  it("answers about settlement, deposit, privacy and advice never walk anywhere", () => {
+    for (const t of ["settlement", "deposit", "conditions", "listing", "privacy", "advice", "unknown", "welcome"] as const) expect(showMeFor(t, "buyer", facts())).toBeUndefined();
   });
 });
 

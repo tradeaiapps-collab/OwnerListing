@@ -73,6 +73,22 @@ const KEYWORDS: readonly [Exclude<ChatTopic, "welcome" | "privacy" | "advice" | 
   ["next_steps", /\b(next|what\s+now|what\s+happens|process|how\s+does\s+(this|it)\s+work|steps?|contract|solicitor|conveyancer|exchange)\b/g]
 ];
 
+/**
+ * Places outside the chat she can walk the reader to ("Show me"). Ordered by preference; the page falls back to the next one when a
+ * place is not on screen (the phone menu is closed, a link only some roles have).
+ */
+export type ShowMePlace = "my_offers" | "my_listings" | "offer_link";
+export interface ShowMe { label: string; places: ShowMePlace[] }
+
+/** Where the reader acts on what she just described. Only offer, gap and next-step answers send people elsewhere. */
+export function showMeFor(topic: ChatTopic, role: ChatRole, f: Pick<ChatFacts, "offer">): ShowMe | undefined {
+  if (topic !== "offer" && topic !== "compromise" && topic !== "next_steps") return undefined;
+  const open = f.offer ? OPEN.has(f.offer.status) : false;
+  if (!f.offer) return role === "buyer" ? { label: "Show me where to ask for an offer link", places: ["offer_link"] } : undefined;
+  if (role === "buyer") return { label: open ? "Show me where to reply to the offer" : "Show me my offers", places: ["my_offers", "offer_link"] };
+  return { label: open ? "Show me where to review offers" : "Show me my listings", places: ["my_listings", "offer_link"] };
+}
+
 const norm = (s: string) => s.normalize("NFKC").toLowerCase().replace(/\s+/g, " ").trim();
 
 /** Deterministic: privacy, the owner's floor and advice are caught first, then the topic with the most keyword hits (ties: list order). */
