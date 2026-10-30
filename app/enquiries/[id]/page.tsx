@@ -1,11 +1,13 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
-import type { AssistantThread, AssistantTurn, ChatAnswer, ChatFacts, ChatPose, ChatTopic } from "../../../src/domain/chat-assistant";
+import { showMeFor, type AssistantThread, type AssistantTurn, type ChatAnswer, type ChatFacts, type ChatPose, type ChatTopic } from "../../../src/domain/chat-assistant";
+import { personaPose } from "../../../src/domain/assistant-persona";
 import { formatAud } from "../../../src/domain/listing-details";
 import { JSON_HEADERS } from "../../listings/ui";
 import { AiReplyPanel } from "../ai-reply-panel";
 import { ElenaStage, speak, type StageState } from "../elena-stage";
+import { showMe } from "../show-me";
 import { MessageWarning, SafetySummary, useSafety } from "../safety-panel";
 import "../../styles/enquiries.css";
 
@@ -71,6 +73,8 @@ export default function Thread() {
   const { safety, reload: reloadSafety } = useSafety(id);
   const pointTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const endRef = useRef<HTMLDivElement>(null);
+  const alive = useRef(true);
+  const [walking, setWalking] = useState(false);
 
   const load = useCallback(async () => {
     setLoadError("");
@@ -102,6 +106,7 @@ export default function Thread() {
   useEffect(() => { void load(); void loadOlr(); void loadAi(); }, [load, loadOlr, loadAi]);
   // The floating guide is the same character; on this page she is already on stage, so the launcher steps aside.
   useEffect(() => { document.body.classList.add("el-chat-page"); return () => document.body.classList.remove("el-chat-page"); }, []);
+  useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
   useEffect(() => () => { clearTimeout(pointTimer.current); if (typeof window !== "undefined") window.speechSynthesis?.cancel(); }, []);
 
   const point = useCallback((targets: Target[]) => {
@@ -139,6 +144,19 @@ export default function Thread() {
       setError("Could not send the message.");
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function walkTo(places: Parameters<typeof showMe>[0]["places"]) {
+    const figure = document.querySelector<HTMLElement>(".el-stage-figure");
+    if (!figure || !ai) return;
+    const pose = personaPose(ai.persona, "tablet");
+    setWalking(true);
+    try {
+      const found = await showMe({ from: figure, places, src: pose.src, flip: true, cancelled: () => !alive.current });
+      if (!found) setError("I can't see that on this screen. Open the menu and try again.");
+    } finally {
+      if (alive.current) setWalking(false);
     }
   }
 
@@ -189,7 +207,9 @@ export default function Thread() {
   const facts = ai?.facts;
   const offer = facts?.offer;
   const mine = (sender: string | null) => sender !== null && sender === ai?.viewerId;
-  const latestTurnId = ai?.turns[ai.turns.length - 1]?.id;
+  const latestTurn = ai?.turns[ai.turns.length - 1];
+  const latestTurnId = latestTurn?.id;
+  const showMeNow = ai && latestTurn ? showMeFor(latestTurn.topic, ai.role, ai.facts) : undefined;
 
   const suggestions = (sug: string[]) => (
     <div className={`el-chips${pc("chips")}`} role="group" aria-label={`Ask ${ai?.persona.name ?? "the assistant"}`}>
@@ -267,6 +287,11 @@ export default function Thread() {
                         </ul>
                       )}
                     </div>
+                    {isLatest && showMeNow && (
+                      <button type="button" className="el-showme" disabled={walking} onClick={() => void walkTo(showMeNow.places)}>
+                        {walking ? `${ai?.persona.name} is showing you…` : showMeNow.label}
+                      </button>
+                    )}
                     {isLatest && suggestions(ai?.welcome.suggestions ?? [])}
                   </li>
                 );
@@ -294,7 +319,7 @@ export default function Thread() {
               {error && <p role="alert">{error}</p>}
             </form>
             {olr && (
-              <section aria-label="Formal offer link">
+              <section id="el-offer-link" aria-label="Formal offer link" className="el-offer-link">
                 <h2>Formal offer link</h2>
                 {olr.role === "buyer" && olr.link && (
                   <p><a href={`/offers/new?listing=${encodeURIComponent(olr.link.listingId)}#token=${encodeURIComponent(olr.link.token)}`}>Make a formal offer</a> (single use, expires {new Date(olr.link.expiresAt).toLocaleString("en-AU")}).</p>
