@@ -103,7 +103,6 @@ export default function ElenaWalker({ name, still, video, brand }: { name: strin
     setIdleAction("settle");
     if (phaseRef.current === "perched" || phaseRef.current === "up") return;
     const to = homePoint();
-    setHome(to);
     walk(posRef.current, to, "up", "perched");
   }, [walk]);
 
@@ -171,7 +170,6 @@ export default function ElenaWalker({ name, still, video, brand }: { name: strin
     const onResize = () => {
       const h = homePoint();
       const c = centrePoint();
-      setHome(h);
       if (phaseRef.current === "perched") { posRef.current = h; setPos({ ...h, animate: false }); }
       else if (phaseRef.current === "stopped") { posRef.current = c; setPos({ ...c, animate: false }); }
     };
