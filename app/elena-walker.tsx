@@ -41,6 +41,8 @@ export default function ElenaWalker({ name, still, video }: { name: string; stil
   const wasBusy = useRef(false);
   const replyTimer = useRef<number | undefined>(undefined);
   const [calm, setCalm] = useState(true);
+  // Some browsers (low-power mode, strict autoplay settings) refuse to autoplay and draw their own play button over the video; then she shows her still photo instead.
+  const [blocked, setBlocked] = useState(false);
   const [dark, setDark] = useState(false);
   const phaseRef = useRef<Phase>("perched");
   const spot = useRef(0);
@@ -145,8 +147,15 @@ export default function ElenaWalker({ name, still, video }: { name: string; stil
         aria-label={`Ask ${name} a question`}
       >
         <span className="ew-body">
-          {clip ? (
-            <video key={clip} className="ew-media" autoPlay loop={phase !== "down" && phase !== "up"} muted playsInline disablePictureInPicture disableRemotePlayback controls={false} controlsList="nodownload nofullscreen noremoteplayback" tabIndex={-1} preload="auto" ref={(v) => { if (v) v.playbackRate = phase === "down" || phase === "up" ? rate.current : 1; }} aria-hidden="true">
+          {clip && !blocked ? (
+            <video key={clip} className="ew-media" autoPlay loop={phase !== "down" && phase !== "up"} muted playsInline disablePictureInPicture disableRemotePlayback controls={false} controlsList="nodownload nofullscreen noremoteplayback" tabIndex={-1} preload="auto" ref={(v) => {
+              if (!v) return;
+              v.playbackRate = phase === "down" || phase === "up" ? rate.current : 1;
+              if (v.dataset.tried) return;
+              v.dataset.tried = "1";
+              v.muted = true;
+              v.play()?.catch(() => setBlocked(true));
+            }} aria-hidden="true">
               <source src={`/assistant/elena-video-${clip}-alpha.webm`} type="video/webm; codecs=vp9" />
               <source src={dark ? `/assistant/elena-video-${clip}-dark.mp4` : `/assistant/elena-video-${clip}.mp4`} type="video/mp4" />
             </video>
