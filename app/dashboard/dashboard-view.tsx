@@ -2,20 +2,14 @@
 import { useEffect, useState } from "react";
 import { dashboardLinks, dashboardRole, type DashboardRole } from "../../src/domain/dashboard";
 import type { JourneyStep } from "../../src/domain/journey";
-import type { PoseImage } from "../../src/domain/assistant-persona";
-import ElenaWalker from "../elena-walker";
 import Breadcrumbs from "../breadcrumbs";
 import "../styles/settings.css";
 import "../styles/journey.css";
-import "../styles/assistant.css";
 
 interface Journey { steps: JourneyStep[]; next: JourneyStep | null; progress: { done: number; total: number } }
 
-/** The live assistant, when the public guide is on (null on the admin site and when staff turned the guide off). */
-export interface DashboardAssistant { name: string; pose: PoseImage; video: boolean; brand: string }
-
 /** Next-step checklist plus task links for the signed-in type. Links only guide; every page and API still enforces access on the server. */
-export default function Dashboard({ assistant }: { assistant: DashboardAssistant | null }) {
+export default function Dashboard() {
   const [role, setRole] = useState<DashboardRole | null | "loading">("loading");
   const [journey, setJourney] = useState<Journey | null>(null);
 
@@ -46,10 +40,7 @@ export default function Dashboard({ assistant }: { assistant: DashboardAssistant
   return (
     <main>
       {crumbs}
-      <div className="ew-anchor">
-        {assistant && role !== "staff" && <ElenaWalker name={assistant.name} still={assistant.pose.src} video={assistant.video} brand={assistant.brand} />}
-        <h1>Dashboard</h1>
-      </div>
+      <div className="ew-anchor"><h1>Dashboard</h1></div>
       <p className="muted">Your tasks as {{ owner: "an owner", agent: "an agent", buyer: "a buyer", staff: "staff" }[role]}.</p>
       {journey && (
         <section className="jr" aria-labelledby="jr-title">
