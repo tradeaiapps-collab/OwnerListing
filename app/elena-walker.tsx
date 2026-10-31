@@ -50,6 +50,7 @@ export default function ElenaWalker({ name, still, video, brand }: { name: strin
   const [phase, setPhase] = useState<Phase>("perched");
   const [pos, setPos] = useState<MotionPoint>({ x: 18, y: 120, animate: false });
   const [busy, setBusy] = useState(false);
+  const [speaking, setSpeaking] = useState(false);
   const [idleAction, setIdleAction] = useState<IdleAction>("settle");
   const [dark, setDark] = useState(false);
   const phaseRef = useRef<Phase>("perched");
@@ -148,10 +149,12 @@ export default function ElenaWalker({ name, still, video, brand }: { name: strin
     const onSpeak = () => {
       goCentre();
       window.clearTimeout(replyTimer.current);
+      setSpeaking(true);
       setIdleAction("gesture");
       replyTimer.current = window.setTimeout(() => {
+        setSpeaking(false);
         if (phaseRef.current === "stopped") randomIdle();
-      }, 7000);
+      }, 9000);
     };
     window.addEventListener(GUIDE_STATE_EVENT, onGuideState);
     window.addEventListener(PRESENTER_SPEAK_EVENT, onSpeak);
@@ -191,7 +194,7 @@ export default function ElenaWalker({ name, still, video, brand }: { name: strin
   }, []);
 
   const isMoving = phase === "down" || phase === "up";
-  const showPresenter = phase === "stopped" && busy;
+  const showPresenter = phase === "stopped" && (busy || speaking);
   const style = {
     transform: `translate(${pos.x}px, ${pos.y}px)`,
     transition: pos.animate ? `transform ${pos.dur ?? WALK_MS}ms cubic-bezier(.25,.72,.32,1)` : "none",
