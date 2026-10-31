@@ -23,7 +23,7 @@ function target(home: { x: number; y: number }, spot = 0): { x: number; y: numbe
   const maxX = vw - PANEL_W - GUTTER * 2 - s;
   const near = Math.max(home.x, Math.min(headEnd + GUTTER * 2, maxX));
   // `spot` (0 to 1) picks a place between just beside the heading and as far along the row as the chat panel allows.
-  return { x: near + (Math.max(near, maxX) - near) * spot, y: home.y };
+  return { x: near + (Math.max(near, maxX) - near) * spot, y: Math.max(12, (vh - s) / 2) };
 }
 
 /**
