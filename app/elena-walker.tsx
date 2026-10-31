@@ -35,9 +35,8 @@ function homePoint(): Point {
 
 function centrePoint(): Point {
   const { w, h } = dimensions();
-  const panelClearance = window.innerWidth >= 900 ? 0 : 0;
   return {
-    x: Math.max(8, Math.min(window.innerWidth - w - 8, (window.innerWidth - w) * 0.48 - panelClearance)),
+    x: Math.max(8, Math.min(window.innerWidth - w - 8, (window.innerWidth - w) * 0.48)),
     y: Math.max(90, Math.min(window.innerHeight - h - 12, (window.innerHeight - h) * 0.48)),
   };
 }
@@ -49,7 +48,6 @@ function centrePoint(): Point {
  */
 export default function ElenaWalker({ name, still, video, brand }: { name: string; still: string; video: boolean; brand: string }) {
   const [phase, setPhase] = useState<Phase>("perched");
-  const [home, setHome] = useState<Point>({ x: 18, y: 120 });
   const [pos, setPos] = useState<MotionPoint>({ x: 18, y: 120, animate: false });
   const [busy, setBusy] = useState(false);
   const [idleAction, setIdleAction] = useState<IdleAction>("settle");
@@ -121,7 +119,6 @@ export default function ElenaWalker({ name, still, video, brand }: { name: strin
     const start = () => {
       const h = homePoint();
       const c = centrePoint();
-      setHome(h);
       setPos({ ...h, animate: false });
       posRef.current = h;
       changePhase("perched");
@@ -135,10 +132,11 @@ export default function ElenaWalker({ name, still, video, brand }: { name: strin
     const onGuideState = (e: Event) => {
       const d = (e as CustomEvent<{ open: boolean; busy: boolean; typing?: boolean }>).detail;
       setBusy(d.busy);
-      if (d.open || d.busy || d.typing) {
+      if (d.busy || d.typing) {
         goCentre();
         window.clearTimeout(idleTimer.current);
       } else {
+        if (d.open) goCentre();
         idleTimer.current = window.setTimeout(goHome, RETURN_DELAY);
       }
     };
