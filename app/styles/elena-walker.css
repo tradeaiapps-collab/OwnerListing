@@ -26,3 +26,4 @@ video.ew-media::-webkit-media-controls, video.ew-media::-webkit-media-controls-e
 .ew.is-walk-clip .ew-media { object-fit: cover; object-position: 50% 50%; background: #fff; }
 @media (max-width: 599px) { .ew.is-walk-clip { width: 49px; height: 88px; } }
 /* The tall clips have a white backdrop; in dark themes she stays a clean white photo card (multiply blending does not reach the page behind it, because the page's fade-in isolates this subtree). */
+.ew.is-walk-clip.is-dark, .ew.is-walk-clip.is-dark .ew-media { background: transparent; }

@@ -40,6 +40,7 @@ export default function ElenaWalker({ name, still, video }: { name: string; stil
   const wasBusy = useRef(false);
   const replyTimer = useRef<number | undefined>(undefined);
   const [calm, setCalm] = useState(true);
+  const [dark, setDark] = useState(false);
   const phaseRef = useRef<Phase>("perched");
   const spot = useRef(0);
   const timer = useRef<number | undefined>(undefined);
@@ -114,23 +115,43 @@ export default function ElenaWalker({ name, still, video }: { name: string; stil
     return () => q.removeEventListener("change", sync);
   }, []);
 
+  // Dark pages get the clips with a dark or transparent backdrop instead of the white one.
+  useEffect(() => {
+    const q = window.matchMedia("(prefers-color-scheme: dark)");
+    const sync = () => { const m = document.documentElement.getAttribute("data-theme-mode"); setDark(m === "dark" || (m !== "light" && q.matches)); };
+    sync();
+    q.addEventListener("change", sync);
+    const mo = new MutationObserver(sync);
+    mo.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme-mode"] });
+    return () => { q.removeEventListener("change", sync); mo.disconnect(); };
+  }, []);
+
   const out = phase !== "perched";
   // Always an animated clip for Elena: idle on the heading, listening while someone types or she thinks, nodding then talking on an answer.
-  const clip = !video || calm ? null : phase === "down" ? "walk-to-camera" : phase === "up" ? "turn-away-left" : !out || phase !== "stopped" ? "idle" : busy || typing ? "listen" : "front-talk";
+  const clip = !video || calm ? null : phase === "down" ? "walk-to-camera" : phase === "up" ? "turn-away-left" : phase === "stopped" && reply ? "front-talk" : "idle-tall";
   const style = out ? { transform: `translate(${pos.x}px, ${pos.y}px)`, transition: pos.animate ? `transform ${pos.dur ?? 3000}ms cubic-bezier(0.3, 0, 0.7, 1) ${pos.delay ?? 0}ms` : "none" } : undefined;
 
   return (
     <span ref={slot} className="ew-slot">
       <button
-        type="button" className={`ew ew-${phase}${busy ? " is-talking" : ""}${clip === "walk-to-camera" || clip === "turn-away-left" || clip === "front-talk" ? " is-walk-clip" : ""}`} style={style} data-ew-phase={phase}
+        type="button" className={`ew ew-${phase}${busy ? " is-talking" : ""}${clip ? " is-walk-clip" : ""}${clip && dark ? " is-dark" : ""}`} style={style} data-ew-phase={phase}
         onClick={() => window.dispatchEvent(new Event(OPEN_GUIDE_EVENT))}
         aria-label={`Ask ${name} a question`}
       >
         <span className="ew-body">
           {clip ? (
-            <video key={clip} className="ew-media" autoPlay loop={phase !== "down" && phase !== "up"} muted playsInline disablePictureInPicture disableRemotePlayback controls={false} controlsList="nodownload nofullscreen noremoteplayback" tabIndex={-1} preload="auto" poster={`/assistant/elena-video-${clip}.jpg`} aria-hidden="true">
-              <source src={`/assistant/elena-video-${clip}.webm`} type="video/webm" />
-              <source src={`/assistant/elena-video-${clip}.mp4`} type="video/mp4" />
+            <video key={clip} className="ew-media" autoPlay loop={phase !== "down" && phase !== "up"} muted playsInline disablePictureInPicture disableRemotePlayback controls={false} controlsList="nodownload nofullscreen noremoteplayback" tabIndex={-1} preload="auto" poster={dark ? undefined : `/assistant/elena-video-${clip}.jpg`} aria-hidden="true">
+              {dark ? (
+                <>
+                  <source src={`/assistant/elena-video-${clip}-alpha.webm`} type="video/webm; codecs=vp9" />
+                  <source src={`/assistant/elena-video-${clip}-dark.mp4`} type="video/mp4" />
+                </>
+              ) : (
+                <>
+                  <source src={`/assistant/elena-video-${clip}.webm`} type="video/webm" />
+                  <source src={`/assistant/elena-video-${clip}.mp4`} type="video/mp4" />
+                </>
+              )}
             </video>
           ) : (
             <img className="ew-media" src={still} alt="" width={408} height={414} decoding="async" />
