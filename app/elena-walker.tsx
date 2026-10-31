@@ -6,7 +6,8 @@ import "./styles/elena-walker.css";
 type Phase = "perched" | "down" | "stopped" | "up";
 type Pt = { x: number; y: number; animate: boolean; dur?: number; delay?: number };
 
-const SIZE_WIDE = 112, SIZE_NARROW = 88;
+const SIZE_WIDE = 180, SIZE_NARROW = 132;
+const WALK_PX_PER_S = 115; // her pace in the clip at the wide size (about 1.3 m/s for a figure 150 px tall); scaled by frame size
 const PANEL_W = 380, GUTTER = 16, CLIP_MS = 6000, RETURN_DELAY_MS = 5000;
 
 const size = () => (window.innerWidth < 600 ? SIZE_NARROW : SIZE_WIDE);
@@ -43,6 +44,7 @@ export default function ElenaWalker({ name, still, video }: { name: string; stil
   const [dark, setDark] = useState(false);
   const phaseRef = useRef<Phase>("perched");
   const spot = useRef(0);
+  const rate = useRef(1);
   const timer = useRef<number | undefined>(undefined);
   const guard = useRef<number | undefined>(undefined);
   const go = (p: Phase) => { phaseRef.current = p; setPhase(p); };
@@ -58,10 +60,14 @@ export default function ElenaWalker({ name, still, video }: { name: string; stil
     if (reduced()) { setPos({ ...to, animate: false }); arrive(end); return; }
     // The walk is one continuous clip (6s): walking out she walks for the first half then turns to face the user; walking back she turns first, then walks off.
     const out = via === "down";
+    // Her feet only look planted when the ground speed matches the stride in the clip, so play the clip faster or slower to suit the distance and move her linearly over exactly the walking part of the clip.
+    const dist = Math.hypot(to.x - from.x, to.y - from.y);
+    const speed = WALK_PX_PER_S * (size() / SIZE_WIDE);
+    rate.current = dist < 1 ? 1 : Math.min(1.6, Math.max(0.6, (3 * speed) / dist));
     setPos({ ...from, animate: false });
     go(via);
-    requestAnimationFrame(() => requestAnimationFrame(() => setPos({ ...to, animate: true, dur: out ? 3000 : 3300, delay: out ? 0 : 2500 })));
-    guard.current = window.setTimeout(() => arrive(end), CLIP_MS + 100);
+    requestAnimationFrame(() => requestAnimationFrame(() => setPos({ ...to, animate: true, dur: (out ? 3000 : 3300) / rate.current, delay: out ? 0 : 2500 / rate.current })));
+    guard.current = window.setTimeout(() => arrive(end), CLIP_MS / rate.current + 100);
   }, [arrive]);
 
   useEffect(() => {
@@ -129,7 +135,7 @@ export default function ElenaWalker({ name, still, video }: { name: string; stil
   const out = phase !== "perched";
   // Always an animated clip for Elena: idle on the heading, listening while someone types or she thinks, nodding then talking on an answer.
   const clip = !video || calm ? null : phase === "down" ? "walk-to-camera" : phase === "up" ? "turn-away-left" : phase === "stopped" && reply ? "front-talk" : "idle-tall";
-  const style = out ? { transform: `translate(${pos.x}px, ${pos.y}px)`, transition: pos.animate ? `transform ${pos.dur ?? 3000}ms cubic-bezier(0.3, 0, 0.7, 1) ${pos.delay ?? 0}ms` : "none" } : undefined;
+  const style = out ? { transform: `translate(${pos.x}px, ${pos.y}px)`, transition: pos.animate ? `transform ${pos.dur ?? 3000}ms linear ${pos.delay ?? 0}ms` : "none" } : undefined;
 
   return (
     <span ref={slot} className="ew-slot">
@@ -140,18 +146,9 @@ export default function ElenaWalker({ name, still, video }: { name: string; stil
       >
         <span className="ew-body">
           {clip ? (
-            <video key={clip} className="ew-media" autoPlay loop={phase !== "down" && phase !== "up"} muted playsInline disablePictureInPicture disableRemotePlayback controls={false} controlsList="nodownload nofullscreen noremoteplayback" tabIndex={-1} preload="auto" poster={dark ? undefined : `/assistant/elena-video-${clip}.jpg`} aria-hidden="true">
-              {dark ? (
-                <>
-                  <source src={`/assistant/elena-video-${clip}-alpha.webm`} type="video/webm; codecs=vp9" />
-                  <source src={`/assistant/elena-video-${clip}-dark.mp4`} type="video/mp4" />
-                </>
-              ) : (
-                <>
-                  <source src={`/assistant/elena-video-${clip}.webm`} type="video/webm" />
-                  <source src={`/assistant/elena-video-${clip}.mp4`} type="video/mp4" />
-                </>
-              )}
+            <video key={clip} className="ew-media" autoPlay loop={phase !== "down" && phase !== "up"} muted playsInline disablePictureInPicture disableRemotePlayback controls={false} controlsList="nodownload nofullscreen noremoteplayback" tabIndex={-1} preload="auto" ref={(v) => { if (v) v.playbackRate = phase === "down" || phase === "up" ? rate.current : 1; }} aria-hidden="true">
+              <source src={`/assistant/elena-video-${clip}-alpha.webm`} type="video/webm; codecs=vp9" />
+              <source src={dark ? `/assistant/elena-video-${clip}-dark.mp4` : `/assistant/elena-video-${clip}.mp4`} type="video/mp4" />
             </video>
           ) : (
             <img className="ew-media" src={still} alt="" width={408} height={414} decoding="async" />
