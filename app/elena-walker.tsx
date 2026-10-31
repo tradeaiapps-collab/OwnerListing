@@ -1,6 +1,9 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { OPEN_GUIDE_EVENT, GUIDE_STATE_EVENT } from "./guide-assistant";
+import PresenterStage from "./presenter/presenter-stage";
+import { PRESENTER_SPEAK_EVENT } from "./presenter/presenter-core";
+import PresenterControls from "./presenter/presenter-controls";
 import "./styles/elena-walker.css";
 
 type Phase = "perched" | "down" | "stopped" | "up";
@@ -31,7 +34,7 @@ function target(home: { x: number; y: number }, spot = 0): { x: number; y: numbe
  * left free for stepping and weight-shifting animations; the walk itself only moves the outer element.
  * Elena has short clips; other personas get their still pose. Motion is skipped under prefers-reduced-motion.
  */
-export default function ElenaWalker({ name, still, video }: { name: string; still: string; video: boolean }) {
+export default function ElenaWalker({ name, still, video, brand }: { name: string; still: string; video: boolean; brand: string }) {
   const slot = useRef<HTMLSpanElement>(null);
   const [phase, setPhase] = useState<Phase>("perched");
   const [pos, setPos] = useState<Pt>({ x: 0, y: 0, animate: false });
@@ -54,7 +57,13 @@ export default function ElenaWalker({ name, still, video }: { name: string; stil
     return r ? { x: r.left, y: r.top } : { x: 0, y: 0 };
   }, []);
 
-  const arrive = useCallback((p: Phase) => { window.clearTimeout(guard.current); go(p); }, []);
+  const arrive = useCallback((p: Phase) => {
+    window.clearTimeout(guard.current); go(p);
+    // The first time she reaches the middle in a session she introduces herself (a scripted, lip-synced clip).
+    if (p === "stopped") {
+      try { if (window.sessionStorage.getItem("ol:presenter-intro") !== "1") { window.sessionStorage.setItem("ol:presenter-intro", "1"); window.setTimeout(() => window.dispatchEvent(new CustomEvent(PRESENTER_SPEAK_EVENT, { detail: { script: "intro" } })), 400); } } catch { /* storage unavailable: no intro */ }
+    }
+  }, []);
   const walk = useCallback((from: { x: number; y: number }, to: { x: number; y: number }, via: Phase, end: Phase) => {
     window.clearTimeout(guard.current);
     if (reduced()) { setPos({ ...to, animate: false }); arrive(end); return; }
@@ -134,7 +143,7 @@ export default function ElenaWalker({ name, still, video }: { name: string; stil
 
   const out = phase !== "perched";
   // Always an animated clip for Elena: idle on the heading, listening while someone types or she thinks, nodding then talking on an answer.
-  const clip = !video || calm ? null : phase === "down" ? "walk-to-camera" : phase === "up" ? "turn-away-left" : phase === "stopped" && reply ? "front-talk" : "idle-tall";
+  const clip = !video || calm ? null : phase === "down" ? "walk-to-camera" : phase === "up" ? "turn-away-left" : "presenter";
   const style = out ? { transform: `translate(${pos.x}px, ${pos.y}px)`, transition: pos.animate ? `transform ${pos.dur ?? 3000}ms linear ${pos.delay ?? 0}ms` : "none" } : undefined;
 
   return (
@@ -145,7 +154,9 @@ export default function ElenaWalker({ name, still, video }: { name: string; stil
         aria-label={`Ask ${name} a question`}
       >
         <span className="ew-body">
-          {clip ? (
+          {clip === "presenter" ? (
+            <PresenterStage dark={dark} brand={brand} />
+          ) : clip ? (
             <video key={clip} className="ew-media" autoPlay loop={phase !== "down" && phase !== "up"} muted playsInline disablePictureInPicture disableRemotePlayback controls={false} controlsList="nodownload nofullscreen noremoteplayback" tabIndex={-1} preload="auto" ref={(v) => { if (v) v.playbackRate = phase === "down" || phase === "up" ? rate.current : 1; }} aria-hidden="true">
               <source src={`/assistant/elena-video-${clip}-alpha.webm`} type="video/webm; codecs=vp9" />
               <source src={dark ? `/assistant/elena-video-${clip}-dark.mp4` : `/assistant/elena-video-${clip}.mp4`} type="video/mp4" />
@@ -155,6 +166,7 @@ export default function ElenaWalker({ name, still, video }: { name: string; stil
           )}
         </span>
       </button>
+      {video && <PresenterControls />}
     </span>
   );
 }

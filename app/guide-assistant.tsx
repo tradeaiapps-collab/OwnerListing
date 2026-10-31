@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { personaLabel, personaPose, type Persona } from "../src/domain/assistant-persona";
 import { GUIDE_LIMITS, type GuideChip, type GuideIntent, type GuideLink } from "../src/domain/guide-assistant";
+import { PRESENTER_SPEAK_EVENT } from "./presenter/presenter-core";
 import "./styles/assistant.css";
 
 interface Msg { id: number; from: "guide" | "you"; text: string; links?: GuideLink[] }
@@ -71,6 +72,7 @@ export default function GuideAssistant({ greeting, disclaimer, persona }: {
     const r = await fetch("/api/assistant", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }).catch(() => null);
     const d = r ? await r.json().catch(() => null) : null;
     if (r?.ok && d && typeof d.text === "string") {
+      window.dispatchEvent(new CustomEvent(PRESENTER_SPEAK_EVENT, { detail: { text: d.text } }));
       setMsgs(m => [...m, { id: seq.current++, from: "guide", text: d.text, links: Array.isArray(d.links) ? d.links : [] }]);
     } else {
       setMsgs(m => [...m, { id: seq.current++, from: "guide", text: d?.error ?? "Sorry, the guide is unavailable right now. Try again shortly." }]);
