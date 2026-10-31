@@ -5,7 +5,8 @@
 .ew-anchor .ew-slot { order: 1; margin: 0 0 0 calc(var(--space-2) * -1); }
 .ew-perched .ew-body { transform: rotate(-6deg); }
 .ew-slot { display: block; position: relative; width: 180px; height: 180px; margin: 0; }
-.ew { position: absolute; left: 0; bottom: 0; width: 180px; height: 180px; padding: 0; background: none; border: 0; cursor: pointer; z-index: 39; }
+.ew { box-shadow: none; border-radius: 0; min-height: 0; position: absolute; left: 0; bottom: 0; width: 180px; height: 180px; padding: 0; background: none; border: 0; cursor: pointer; z-index: 39; }
+.ew:hover:not(:disabled), .ew:active:not(:disabled) { background: none; box-shadow: none; } /* the global button hover (brand fill, lifted shadow) must not draw a frame around her */
 .ew-down, .ew-stopped, .ew-up { position: fixed; left: 0; top: 0; bottom: auto; }
 .ew-body { display: block; width: 100%; height: 100%; transform-origin: 50% 100%; } /* free for stepping and leaning animations */
 .ew-media { width: 100%; height: 100%; display: block; object-fit: cover; object-position: 50% 50%; background: none; }

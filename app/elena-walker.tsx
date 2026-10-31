@@ -13,10 +13,10 @@ const PANEL_W = 380, GUTTER = 16, CLIP_MS = 6000, RETURN_DELAY_MS = 5000;
 const size = () => (window.innerWidth < 600 ? SIZE_NARROW : SIZE_WIDE);
 const reduced = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-/** Where she stops. On wide screens she walks sideways along the heading row to just right of the heading (kept clear of the chat panel). On phones the panel becomes a bottom sheet, so she stops in the middle of the area above it. */
+/** Where she stops. On wide screens she walks sideways along the heading row to just right of the heading (kept clear of the chat panel). On phones the panel becomes a bottom sheet, so she stands with her feet on the sheet's top edge. */
 function target(home: { x: number; y: number }, spot = 0): { x: number; y: number } {
   const s = size(), vw = window.innerWidth, vh = window.innerHeight;
-  if (vw < 600) return { x: (vw - s) / 2, y: Math.max(8, (vh * 0.42 - s) / 2) };
+  if (vw < 600) return { x: (vw - s) / 2, y: Math.max(8, vh * 0.42 - s + 4) };
   const h1 = document.querySelector<HTMLElement>(".ew-anchor h1");
   const headEnd = h1 ? (() => { const r = document.createRange(); r.selectNodeContents(h1); return r.getBoundingClientRect().right; })() : home.x + s;
   const maxX = vw - PANEL_W - GUTTER * 2 - s;
