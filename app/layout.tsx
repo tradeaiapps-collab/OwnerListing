@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { headers } from "next/headers";
 import "./globals.css";
 import GuideAssistant from "./guide-assistant";
+import ElenaWalker from "./elena-walker";
 import AdminShell from "./admin-shell";
 import SiteNav from "./site-nav";
 import ThemePreviewBridge from "./theme-preview-bridge";
@@ -108,6 +109,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
           </>
         )}
         {guide?.enabled && <GuideAssistant greeting={guide.greeting} chips={guide.chips} disclaimer={GUIDE_DISCLAIMER} persona={{ name: persona.name, icon: persona.icon, portrait: persona.portrait, poses: persona.poses }} />}
+        {guide?.enabled && persona.id === "elena" && <ElenaWalker name={persona.name} still={persona.portrait} video brand={brand.name} />}
         {bridgeOrigin && <ThemePreviewBridge allowedOrigin={bridgeOrigin} />}
       </body>
     </html>
