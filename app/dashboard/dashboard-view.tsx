@@ -12,7 +12,7 @@ import "../styles/assistant.css";
 interface Journey { steps: JourneyStep[]; next: JourneyStep | null; progress: { done: number; total: number } }
 
 /** The live assistant, when the public guide is on (null on the admin site and when staff turned the guide off). */
-export interface DashboardAssistant { name: string; pose: PoseImage; video: boolean }
+export interface DashboardAssistant { name: string; pose: PoseImage; video: boolean; brand: string }
 
 /** Next-step checklist plus task links for the signed-in type. Links only guide; every page and API still enforces access on the server. */
 export default function Dashboard({ assistant }: { assistant: DashboardAssistant | null }) {
@@ -47,7 +47,7 @@ export default function Dashboard({ assistant }: { assistant: DashboardAssistant
     <main>
       {crumbs}
       <div className="ew-anchor">
-        {assistant && role !== "staff" && <ElenaWalker name={assistant.name} still={assistant.pose.src} video={assistant.video} />}
+        {assistant && role !== "staff" && <ElenaWalker name={assistant.name} still={assistant.pose.src} video={assistant.video} brand={assistant.brand} />}
         <h1>Dashboard</h1>
       </div>
       <p className="muted">Your tasks as {{ owner: "an owner", agent: "an agent", buyer: "a buyer", staff: "staff" }[role]}.</p>

@@ -2,6 +2,9 @@
 const DEFAULT_NAME = "OwnerListing";
 const DEFAULT_TAGLINE = "Sell or rent your property yourself";
 
+/** The name the pre-recorded presenter clips say aloud; those clips are only used while the site brand is still this. */
+export const DEFAULT_BRAND_NAME = DEFAULT_NAME;
+
 export interface Brand { name: string; tagline: string }
 
 const clean = (v: string | undefined) => {
