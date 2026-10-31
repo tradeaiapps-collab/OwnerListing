@@ -27,6 +27,11 @@ function target(home: { x: number; y: number }, spot = 0): { x: number; y: numbe
   return { x: Math.max(12, Math.min(vw * 0.42 + spot * 40, maxX)), y: Math.max(90, (vh - s) / 2) };
 }
 
+function centreTarget(): { x: number; y: number } {
+  const s = size(), vw = window.innerWidth, vh = window.innerHeight;
+  return { x: Math.max(12, Math.min((vw - s) / 2, vw - PANEL_W - GUTTER * 2 - s)), y: Math.max(90, (vh - s) / 2) };
+}
+
 /**
  * Elena sits on top of the page heading. When the chat opens she walks down to the middle of the page and stays there while it is open
  * (talking clip while she answers), and a few seconds after it closes she walks back up to the heading. The body wrapper (.ew-body) is
@@ -105,13 +110,13 @@ export default function ElenaWalker({ name, still, video, brand }: { name: strin
       if (d.open) {
         document.body.classList.add("ew-active");
         if (p !== "stopped" && p !== "down") spot.current = Math.random();
-        if (p === "perched") walk(slotPt(), target(slotPt(), spot.current), "down", "stopped");
-        else if (p === "up") walk(posRef.current, target(slotPt(), spot.current), "down", "stopped");
+        if (p === "perched" || p === "stopped") walk(posRef.current, centreTarget(), "down", "stopped");
+        else if (p === "up") walk(posRef.current, centreTarget(), "down", "stopped");
       } else {
         timer.current = window.setTimeout(() => {
           const q = phaseRef.current;
           if (q === "perched") return;
-          walk(q === "stopped" ? target(slotPt(), spot.current) : posRef.current, slotPt(), "up", "perched");
+          walk(posRef.current, target(slotPt(), spot.current), "up", "stopped");
           document.body.classList.remove("ew-active");
         }, RETURN_DELAY_MS);
       }
