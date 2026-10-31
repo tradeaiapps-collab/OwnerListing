@@ -2,8 +2,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { OPEN_GUIDE_EVENT, GUIDE_STATE_EVENT } from "./guide-assistant";
 import PresenterStage from "./presenter/presenter-stage";
-import { PRESENTER_SPEAK_EVENT } from "./presenter/presenter-core";
-import PresenterControls from "./presenter/presenter-controls";
 import "./styles/elena-walker.css";
 
 type Phase = "perched" | "down" | "stopped" | "up";
@@ -59,10 +57,6 @@ export default function ElenaWalker({ name, still, video, brand }: { name: strin
 
   const arrive = useCallback((p: Phase) => {
     window.clearTimeout(guard.current); go(p);
-    // The first time she reaches the middle in a session she introduces herself (a scripted, lip-synced clip).
-    if (p === "stopped") {
-      try { if (window.sessionStorage.getItem("ol:presenter-intro") !== "1") { window.sessionStorage.setItem("ol:presenter-intro", "1"); window.setTimeout(() => window.dispatchEvent(new CustomEvent(PRESENTER_SPEAK_EVENT, { detail: { script: "intro" } })), 400); } } catch { /* storage unavailable: no intro */ }
-    }
   }, []);
   const walk = useCallback((from: { x: number; y: number }, to: { x: number; y: number }, via: Phase, end: Phase) => {
     window.clearTimeout(guard.current);
@@ -166,7 +160,6 @@ export default function ElenaWalker({ name, still, video, brand }: { name: strin
           )}
         </span>
       </button>
-      {video && <PresenterControls />}
     </span>
   );
 }
