@@ -116,16 +116,22 @@ export default function ElenaWalker({ name, still, video, brand }: { name: strin
 
   // First-load arrival: lean against the heading, then walk to a clear central waiting position.
   useEffect(() => {
+    let cancelled = false;
+    let attempt = 0;
+    let timer: number | undefined;
     const start = () => {
+      if (cancelled) return;
+      const heading = document.querySelector(".ew-anchor h1") ?? document.querySelector("main h1");
+      if (!heading && attempt++ < 25) { timer = window.setTimeout(start, 120); return; }
       const h = homePoint();
       const c = centrePoint();
       setPos({ ...h, animate: false });
       posRef.current = h;
       changePhase("perched");
-      window.setTimeout(() => walk(h, c, "down", "stopped"), 450);
+      timer = window.setTimeout(() => { if (!cancelled) walk(h, c, "down", "stopped"); }, 450);
     };
     const raf = requestAnimationFrame(start);
-    return () => cancelAnimationFrame(raf);
+    return () => { cancelled = true; cancelAnimationFrame(raf); window.clearTimeout(timer); };
   }, [changePhase, walk]);
 
   useEffect(() => {
@@ -208,11 +214,10 @@ export default function ElenaWalker({ name, still, video, brand }: { name: strin
               <source src={`/assistant/elena-video-${phase === "down" ? "walk-to-camera" : "turn-away-left"}-alpha.webm`} type="video/webm; codecs=vp9" />
               <source src={`/assistant/elena-video-${phase === "down" ? "walk-to-camera" : "turn-away-left"}${dark ? "-dark" : ""}.mp4`} type="video/mp4" />
             </video>
-          ) : showPresenter && video ? (
-            <PresenterStage dark={dark} brand={brand} />
           ) : (
             <img className="ew-media ew-still" src={still} alt="" width={408} height={414} decoding="async" />
           )}
+          {video && <span className={"ew-presenter-layer" + (showPresenter ? " is-visible" : "")} aria-hidden="true"><PresenterStage dark={dark} brand={brand} /></span>}
         </span>
       </button>
     </span>
