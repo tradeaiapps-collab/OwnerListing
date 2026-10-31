@@ -25,11 +25,6 @@
   transform-origin: 50% 100%;
   z-index: 45;
 }
-.ew:hover:not(:disabled), .ew:active:not(:disabled) {
-  background: transparent;
-  box-shadow: none;
-  transform: var(--ew-position-transform);
-}
 .ew-body {
   display: block;
   position: relative;
@@ -38,6 +33,8 @@
   transform-origin: 50% 100%;
   will-change: transform;
 }
+.ew-presenter-layer { position: absolute; inset: 0; visibility: hidden; }
+.ew-presenter-layer.is-visible { visibility: visible; }
 .ew-media {
   display: block;
   width: 100%;
