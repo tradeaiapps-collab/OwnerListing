@@ -3,7 +3,6 @@ import { useEffect, useState } from "react";
 import { dashboardLinks, dashboardRole, type DashboardRole } from "../../src/domain/dashboard";
 import type { JourneyStep } from "../../src/domain/journey";
 import type { PoseImage } from "../../src/domain/assistant-persona";
-import ElenaWalker from "../elena-walker";
 import Breadcrumbs from "../breadcrumbs";
 import "../styles/settings.css";
 import "../styles/journey.css";
@@ -47,7 +46,6 @@ export default function Dashboard({ assistant }: { assistant: DashboardAssistant
     <main>
       {crumbs}
       <div className="ew-anchor">
-        {assistant && role !== "staff" && <ElenaWalker name={assistant.name} still={assistant.pose.src} video={assistant.video} brand={assistant.brand} />}
         <h1>Dashboard</h1>
       </div>
       <p className="muted">Your tasks as {{ owner: "an owner", agent: "an agent", buyer: "a buyer", staff: "staff" }[role]}.</p>
