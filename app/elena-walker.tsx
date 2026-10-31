@@ -1,162 +1,219 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { OPEN_GUIDE_EVENT, GUIDE_STATE_EVENT } from "./guide-assistant";
+import { PRESENTER_SPEAK_EVENT } from "./presenter/presenter-core";
 import PresenterStage from "./presenter/presenter-stage";
 import "./styles/elena-walker.css";
 
 type Phase = "perched" | "down" | "stopped" | "up";
-type Pt = { x: number; y: number; animate: boolean; dur?: number; delay?: number };
+type Point = { x: number; y: number };
+type MotionPoint = Point & { animate: boolean; dur?: number; delay?: number };
+type IdleAction = "settle" | "weight" | "step" | "gesture";
 
-const SIZE_WIDE = 180, SIZE_NARROW = 132;
-const WALK_PX_PER_S = 115; // her pace in the clip at the wide size (about 1.3 m/s for a figure 150 px tall); scaled by frame size
-const PANEL_W = 380, GUTTER = 16, CLIP_MS = 6000, RETURN_DELAY_MS = 5000;
+const FIGURE_H = 300;
+const FIGURE_W = 170;
+const SMALL_H = 220;
+const SMALL_W = 125;
+const RETURN_DELAY = 15000;
+const WALK_MS = 3000;
 
-const size = () => (window.innerWidth < 600 ? SIZE_NARROW : SIZE_WIDE);
+const dimensions = (): { w: number; h: number } => window.innerWidth < 600
+  ? { w: SMALL_W, h: SMALL_H }
+  : { w: FIGURE_W, h: FIGURE_H };
 const reduced = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-/** Where she stops. On wide screens she walks sideways along the heading row to just right of the heading (kept clear of the chat panel). On phones the panel becomes a bottom sheet, so she stands with her feet on the sheet's top edge. */
-function target(home: { x: number; y: number }, spot = 0): { x: number; y: number } {
-  const s = size(), vw = window.innerWidth, vh = window.innerHeight;
-  if (vw < 600) return { x: (vw - s) / 2, y: Math.max(8, vh * 0.42 - s + 4) };
-  const h1 = document.querySelector<HTMLElement>(".ew-anchor h1");
-  const headEnd = h1 ? (() => { const r = document.createRange(); r.selectNodeContents(h1); return r.getBoundingClientRect().right; })() : home.x + s;
-  const maxX = vw - PANEL_W - GUTTER * 2 - s;
-  const near = Math.max(home.x, Math.min(headEnd + GUTTER * 2, maxX));
-  // `spot` (0 to 1) picks a place between just beside the heading and as far along the row as the chat panel allows.
-  return { x: near + (Math.max(near, maxX) - near) * spot, y: Math.max(12, (vh - s) / 2) };
+function homePoint(): Point {
+  const h1 = document.querySelector<HTMLElement>(".ew-anchor h1") ?? document.querySelector<HTMLElement>("main h1");
+  const r = h1?.getBoundingClientRect();
+  const { w, h } = dimensions();
+  if (!r) return { x: 18, y: Math.max(90, window.innerHeight - h - 24) };
+  // Place her just over the first letter, as if resting one shoulder against the heading.
+  const x = Math.max(8, Math.min(window.innerWidth - w - 8, r.left - 18));
+  const y = Math.max(90, Math.min(window.innerHeight - h - 12, r.top - 22));
+  return { x, y };
+}
+
+function centrePoint(): Point {
+  const { w, h } = dimensions();
+  const panelClearance = window.innerWidth >= 900 ? 0 : 0;
+  return {
+    x: Math.max(8, Math.min(window.innerWidth - w - 8, (window.innerWidth - w) * 0.48 - panelClearance)),
+    y: Math.max(90, Math.min(window.innerHeight - h - 12, (window.innerHeight - h) * 0.48)),
+  };
 }
 
 /**
- * Elena sits on top of the page heading. When the chat opens she walks down to the middle of the page and stays there while it is open
- * (talking clip while she answers), and a few seconds after it closes she walks back up to the heading. The body wrapper (.ew-body) is
- * left free for stepping and weight-shifting animations; the walk itself only moves the outer element.
- * Elena has short clips; other personas get their still pose. Motion is skipped under prefers-reduced-motion.
+ * One shared page companion. She starts beside the page heading, walks into a clear
+ * central position, responds only to guide answers, then returns to her resting pose
+ * after a period of inactivity. The movement wrapper and body-language layer are separate.
  */
 export default function ElenaWalker({ name, still, video, brand }: { name: string; still: string; video: boolean; brand: string }) {
-  const slot = useRef<HTMLSpanElement>(null);
   const [phase, setPhase] = useState<Phase>("perched");
-  const [pos, setPos] = useState<Pt>({ x: 0, y: 0, animate: false });
+  const [home, setHome] = useState<Point>({ x: 18, y: 120 });
+  const [pos, setPos] = useState<MotionPoint>({ x: 18, y: 120, animate: false });
   const [busy, setBusy] = useState(false);
-  const [typing, setTyping] = useState(false);
-  const [reply, setReply] = useState<"" | "agree" | "talking">("");
-  const wasBusy = useRef(false);
-  const replyTimer = useRef<number | undefined>(undefined);
-  const [calm, setCalm] = useState(true);
+  const [idleAction, setIdleAction] = useState<IdleAction>("settle");
   const [dark, setDark] = useState(false);
   const phaseRef = useRef<Phase>("perched");
-  const spot = useRef(0);
+  const posRef = useRef<Point>({ x: 18, y: 120 });
+  const idleTimer = useRef<number | undefined>(undefined);
+  const walkTimer = useRef<number | undefined>(undefined);
+  const actionTimer = useRef<number | undefined>(undefined);
+  const actionRef = useRef<number | undefined>(undefined);
+  const replyTimer = useRef<number | undefined>(undefined);
   const rate = useRef(1);
-  const timer = useRef<number | undefined>(undefined);
-  const guard = useRef<number | undefined>(undefined);
-  const go = (p: Phase) => { phaseRef.current = p; setPhase(p); };
 
-  const slotPt = useCallback(() => {
-    const r = slot.current?.getBoundingClientRect();
-    return r ? { x: r.left, y: r.top } : { x: 0, y: 0 };
+  const changePhase = useCallback((next: Phase) => {
+    phaseRef.current = next;
+    setPhase(next);
   }, []);
 
-  const arrive = useCallback((p: Phase) => {
-    window.clearTimeout(guard.current); go(p);
+  const randomIdle = useCallback(() => {
+    const actions: IdleAction[] = ["settle", "weight", "step", "gesture"];
+    const next = actions[Math.floor(Math.random() * actions.length)] ?? "settle";
+    setIdleAction(next);
+    actionTimer.current = window.setTimeout(() => setIdleAction("settle"), 2600 + Math.random() * 1800);
+    actionRef.current = window.setTimeout(() => {
+      if (phaseRef.current === "stopped") randomIdle();
+    }, 5200 + Math.random() * 5000);
   }, []);
-  const walk = useCallback((from: { x: number; y: number }, to: { x: number; y: number }, via: Phase, end: Phase) => {
-    window.clearTimeout(guard.current);
-    if (reduced()) { setPos({ ...to, animate: false }); arrive(end); return; }
-    // The walk is one continuous clip (6s): walking out she walks for the first half then turns to face the user; walking back she turns first, then walks off.
-    const out = via === "down";
-    // Her feet only look planted when the ground speed matches the stride in the clip, so play the clip faster or slower to suit the distance and move her linearly over exactly the walking part of the clip.
-    const dist = Math.hypot(to.x - from.x, to.y - from.y);
-    const speed = WALK_PX_PER_S * (size() / SIZE_WIDE);
-    rate.current = dist < 1 ? 1 : Math.min(1.6, Math.max(0.6, (3 * speed) / dist));
+
+  const walk = useCallback((from: Point, to: Point, next: Phase, done: Phase) => {
+    window.clearTimeout(walkTimer.current);
+    if (reduced()) {
+      posRef.current = to;
+      setPos({ ...to, animate: false });
+      changePhase(done);
+      return;
+    }
+    const distance = Math.hypot(to.x - from.x, to.y - from.y);
+    rate.current = distance < 1 ? 1 : Math.min(1.45, Math.max(0.65, distance / 260));
+    posRef.current = from;
     setPos({ ...from, animate: false });
-    go(via);
-    requestAnimationFrame(() => requestAnimationFrame(() => setPos({ ...to, animate: true, dur: (out ? 3000 : 3300) / rate.current, delay: out ? 0 : 2500 / rate.current })));
-    guard.current = window.setTimeout(() => arrive(end), CLIP_MS / rate.current + 100);
-  }, [arrive]);
+    changePhase(next);
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      posRef.current = to;
+      setPos({ ...to, animate: true, dur: WALK_MS / rate.current });
+    }));
+    walkTimer.current = window.setTimeout(() => changePhase(done), WALK_MS / rate.current + 120);
+  }, [changePhase]);
+
+  const goHome = useCallback(() => {
+    window.clearTimeout(idleTimer.current);
+    window.clearTimeout(actionRef.current);
+    window.clearTimeout(actionTimer.current);
+    setIdleAction("settle");
+    if (phaseRef.current === "perched" || phaseRef.current === "up") return;
+    const to = homePoint();
+    setHome(to);
+    walk(posRef.current, to, "up", "perched");
+  }, [walk]);
+
+  const goCentre = useCallback(() => {
+    window.clearTimeout(idleTimer.current);
+    if (phaseRef.current === "stopped" || phaseRef.current === "down") return;
+    const to = centrePoint();
+    walk(phaseRef.current === "perched" || phaseRef.current === "up" ? homePoint() : posRef.current, to, "down", "stopped");
+  }, [walk]);
+
+  // First-load arrival: lean against the heading, then walk to a clear central waiting position.
+  useEffect(() => {
+    const start = () => {
+      const h = homePoint();
+      const c = centrePoint();
+      setHome(h);
+      setPos({ ...h, animate: false });
+      posRef.current = h;
+      changePhase("perched");
+      window.setTimeout(() => walk(h, c, "down", "stopped"), 450);
+    };
+    const raf = requestAnimationFrame(start);
+    return () => cancelAnimationFrame(raf);
+  }, [changePhase, walk]);
 
   useEffect(() => {
-    const onState = (e: Event) => {
+    const onGuideState = (e: Event) => {
       const d = (e as CustomEvent<{ open: boolean; busy: boolean; typing?: boolean }>).detail;
       setBusy(d.busy);
-      setTyping(!!d.typing);
-      // When an answer lands she nods first, then talks for a few seconds.
-      if (wasBusy.current && !d.busy) {
-        window.clearTimeout(replyTimer.current);
-        setReply("agree");
-        replyTimer.current = window.setTimeout(() => { setReply("talking"); replyTimer.current = window.setTimeout(() => setReply(""), 6000); }, 1800);
-      }
-      if (d.busy) { window.clearTimeout(replyTimer.current); setReply(""); }
-      wasBusy.current = d.busy;
-      window.clearTimeout(timer.current);
-      const p = phaseRef.current;
-      if (d.open) {
-        document.body.classList.add("ew-active");
-        if (p !== "stopped" && p !== "down") spot.current = Math.random();
-        if (p === "perched") walk(slotPt(), target(slotPt(), spot.current), "down", "stopped");
-        else if (p === "up") walk(posRef.current, target(slotPt(), spot.current), "down", "stopped");
+      if (d.open || d.busy || d.typing) {
+        goCentre();
+        window.clearTimeout(idleTimer.current);
       } else {
-        timer.current = window.setTimeout(() => {
-          const q = phaseRef.current;
-          if (q === "perched") return;
-          walk(q === "stopped" ? target(slotPt(), spot.current) : posRef.current, slotPt(), "up", "perched");
-          document.body.classList.remove("ew-active");
-        }, RETURN_DELAY_MS);
+        idleTimer.current = window.setTimeout(goHome, RETURN_DELAY);
       }
     };
-    window.addEventListener(GUIDE_STATE_EVENT, onState);
-    return () => { window.removeEventListener(GUIDE_STATE_EVENT, onState); window.clearTimeout(timer.current); window.clearTimeout(guard.current); window.clearTimeout(replyTimer.current); document.body.classList.remove("ew-active"); };
-  }, [walk, slotPt]);
+    const onSpeak = () => {
+      goCentre();
+      window.clearTimeout(replyTimer.current);
+      setIdleAction("gesture");
+      replyTimer.current = window.setTimeout(() => {
+        if (phaseRef.current === "stopped") randomIdle();
+      }, 7000);
+    };
+    window.addEventListener(GUIDE_STATE_EVENT, onGuideState);
+    window.addEventListener(PRESENTER_SPEAK_EVENT, onSpeak);
+    return () => {
+      window.removeEventListener(GUIDE_STATE_EVENT, onGuideState);
+      window.removeEventListener(PRESENTER_SPEAK_EVENT, onSpeak);
+      window.clearTimeout(idleTimer.current);
+      window.clearTimeout(walkTimer.current);
+      window.clearTimeout(actionTimer.current);
+      window.clearTimeout(actionRef.current);
+      window.clearTimeout(replyTimer.current);
+    };
+  }, [goCentre, goHome, randomIdle]);
 
-  const posRef = useRef(pos);
-  posRef.current = pos;
-
-  // Keep her in the middle if the window is resized while she is out.
   useEffect(() => {
-    const onResize = () => { if (phaseRef.current === "stopped") setPos({ ...target(slotPt(), spot.current), animate: false }); };
+    const onResize = () => {
+      const h = homePoint();
+      const c = centrePoint();
+      setHome(h);
+      if (phaseRef.current === "perched") { posRef.current = h; setPos({ ...h, animate: false }); }
+      else if (phaseRef.current === "stopped") { posRef.current = c; setPos({ ...c, animate: false }); }
+    };
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, []);
 
   useEffect(() => {
-    const q = window.matchMedia("(prefers-reduced-motion: reduce)");
-    const sync = () => setCalm(q.matches);
+    const media = window.matchMedia("(prefers-color-scheme: dark)");
+    const sync = () => {
+      const mode = document.documentElement.getAttribute("data-theme-mode");
+      setDark(mode === "dark" || (mode !== "light" && media.matches));
+    };
     sync();
-    q.addEventListener("change", sync);
-    return () => q.removeEventListener("change", sync);
+    media.addEventListener("change", sync);
+    const observer = new MutationObserver(sync);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme-mode"] });
+    return () => { media.removeEventListener("change", sync); observer.disconnect(); };
   }, []);
 
-  // Dark pages get the clips with a dark or transparent backdrop instead of the white one.
-  useEffect(() => {
-    const q = window.matchMedia("(prefers-color-scheme: dark)");
-    const sync = () => { const m = document.documentElement.getAttribute("data-theme-mode"); setDark(m === "dark" || (m !== "light" && q.matches)); };
-    sync();
-    q.addEventListener("change", sync);
-    const mo = new MutationObserver(sync);
-    mo.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme-mode"] });
-    return () => { q.removeEventListener("change", sync); mo.disconnect(); };
-  }, []);
-
-  const out = phase !== "perched";
-  // Always an animated clip for Elena: idle on the heading, listening while someone types or she thinks, nodding then talking on an answer.
-  const clip = !video || calm ? null : phase === "down" ? "walk-to-camera" : phase === "up" ? "turn-away-left" : "presenter";
-  const style = out ? { transform: `translate(${pos.x}px, ${pos.y}px)`, transition: pos.animate ? `transform ${pos.dur ?? 3000}ms linear ${pos.delay ?? 0}ms` : "none" } : undefined;
+  const isMoving = phase === "down" || phase === "up";
+  const showPresenter = phase === "stopped" && busy;
+  const style = {
+    transform: `translate(${pos.x}px, ${pos.y}px)`,
+    transition: pos.animate ? `transform ${pos.dur ?? WALK_MS}ms cubic-bezier(.25,.72,.32,1)` : "none",
+  };
 
   return (
-    <span ref={slot} className="ew-slot">
+    <span className="ew-slot" aria-hidden="false">
       <button
-        type="button" className={`ew ew-${phase}${busy ? " is-talking" : ""}${clip ? " is-walk-clip" : ""}${clip && dark ? " is-dark" : ""}`} style={style} data-ew-phase={phase}
+        type="button"
+        className={`ew ew-${phase} ew-action-${idleAction}${busy ? " is-talking" : ""}${isMoving ? " is-walk-clip" : ""}${dark ? " is-dark" : ""}`}
+        style={style}
         onClick={() => window.dispatchEvent(new Event(OPEN_GUIDE_EVENT))}
         aria-label={`Ask ${name} a question`}
       >
         <span className="ew-body">
-          {clip === "presenter" ? (
-            <PresenterStage dark={dark} brand={brand} />
-          ) : clip ? (
-            <video key={clip} className="ew-media" autoPlay loop={phase !== "down" && phase !== "up"} muted playsInline disablePictureInPicture disableRemotePlayback controls={false} controlsList="nodownload nofullscreen noremoteplayback" tabIndex={-1} preload="auto" ref={(v) => { if (v) v.playbackRate = phase === "down" || phase === "up" ? rate.current : 1; }} aria-hidden="true">
-              <source src={`/assistant/elena-video-${clip}-alpha.webm`} type="video/webm; codecs=vp9" />
-              <source src={dark ? `/assistant/elena-video-${clip}-dark.mp4` : `/assistant/elena-video-${clip}.mp4`} type="video/mp4" />
+          {isMoving && video ? (
+            <video className="ew-media" autoPlay muted playsInline loop={false} controls={false} controlsList="nodownload nofullscreen noremoteplayback" disablePictureInPicture disableRemotePlayback tabIndex={-1} ref={v => { if (v) v.playbackRate = rate.current; }} aria-hidden="true">
+              <source src={`/assistant/elena-video-${phase === "down" ? "walk-to-camera" : "turn-away-left"}-alpha.webm`} type="video/webm; codecs=vp9" />
+              <source src={`/assistant/elena-video-${phase === "down" ? "walk-to-camera" : "turn-away-left"}${dark ? "-dark" : ""}.mp4`} type="video/mp4" />
             </video>
+          ) : showPresenter && video ? (
+            <PresenterStage dark={dark} brand={brand} />
           ) : (
-            <img className="ew-media" src={still} alt="" width={408} height={414} decoding="async" />
+            <img className="ew-media ew-still" src={still} alt="" width={408} height={414} decoding="async" />
           )}
         </span>
       </button>
