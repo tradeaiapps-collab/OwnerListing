@@ -2,8 +2,8 @@
 import { useEffect, useState } from "react";
 import { dashboardLinks, dashboardRole, type DashboardRole } from "../../src/domain/dashboard";
 import type { JourneyStep } from "../../src/domain/journey";
-import { personaLabel, type PoseImage } from "../../src/domain/assistant-persona";
-import AskAssistant from "../ask-assistant";
+import type { PoseImage } from "../../src/domain/assistant-persona";
+import ElenaWalker from "../elena-walker";
 import Breadcrumbs from "../breadcrumbs";
 import "../styles/settings.css";
 import "../styles/journey.css";
@@ -12,7 +12,7 @@ import "../styles/assistant.css";
 interface Journey { steps: JourneyStep[]; next: JourneyStep | null; progress: { done: number; total: number } }
 
 /** The live assistant, when the public guide is on (null on the admin site and when staff turned the guide off). */
-export interface DashboardAssistant { name: string; pose: PoseImage }
+export interface DashboardAssistant { name: string; pose: PoseImage; video: boolean }
 
 /** Next-step checklist plus task links for the signed-in type. Links only guide; every page and API still enforces access on the server. */
 export default function Dashboard({ assistant }: { assistant: DashboardAssistant | null }) {
@@ -46,7 +46,10 @@ export default function Dashboard({ assistant }: { assistant: DashboardAssistant
   return (
     <main>
       {crumbs}
-      <h1>Dashboard</h1>
+      <div className="ew-anchor">
+        {assistant && role !== "staff" && <ElenaWalker name={assistant.name} still={assistant.pose.src} video={assistant.video} />}
+        <h1>Dashboard</h1>
+      </div>
       <p className="muted">Your tasks as {{ owner: "an owner", agent: "an agent", buyer: "a buyer", staff: "staff" }[role]}.</p>
       {journey && (
         <section className="jr" aria-labelledby="jr-title">
@@ -80,16 +83,6 @@ export default function Dashboard({ assistant }: { assistant: DashboardAssistant
           <li key={l.href}><a href={l.href}><strong>{l.label}</strong><span className="dash-text">{l.text}</span></a></li>
         ))}
       </ul>
-      {assistant && role !== "staff" && (
-        <section className="dash-ai" aria-labelledby="dash-ai-t">
-          <span className={`ga-pose${assistant.pose.full ? " is-full" : ""}`}><img src={assistant.pose.src} alt="" width={408} height={414} loading="lazy" decoding="async" /></span>
-          <div>
-            <h2 id="dash-ai-t">{personaLabel(assistant)}</h2>
-            <p className="muted">Ask {assistant.name} how listing, offers or fees work, any time. She gives automatic answers, not advice, and never accepts an offer for you.</p>
-            <AskAssistant name={assistant.name} />
-          </div>
-        </section>
-      )}
     </main>
   );
 }
