@@ -6,7 +6,7 @@ import "./styles/elena-walker.css";
 type Phase = "perched" | "down" | "stopped" | "up";
 type Pt = { x: number; y: number; animate: boolean; dur?: number; delay?: number };
 
-const SIZE_WIDE = 112, SIZE_NARROW = 88;
+const SIZE_WIDE = 180, SIZE_NARROW = 132;
 const PANEL_W = 380, GUTTER = 16, CLIP_MS = 6000, RETURN_DELAY_MS = 5000;
 
 const size = () => (window.innerWidth < 600 ? SIZE_NARROW : SIZE_WIDE);
@@ -140,18 +140,9 @@ export default function ElenaWalker({ name, still, video }: { name: string; stil
       >
         <span className="ew-body">
           {clip ? (
-            <video key={clip} className="ew-media" autoPlay loop={phase !== "down" && phase !== "up"} muted playsInline disablePictureInPicture disableRemotePlayback controls={false} controlsList="nodownload nofullscreen noremoteplayback" tabIndex={-1} preload="auto" poster={dark ? undefined : `/assistant/elena-video-${clip}.jpg`} aria-hidden="true">
-              {dark ? (
-                <>
-                  <source src={`/assistant/elena-video-${clip}-alpha.webm`} type="video/webm; codecs=vp9" />
-                  <source src={`/assistant/elena-video-${clip}-dark.mp4`} type="video/mp4" />
-                </>
-              ) : (
-                <>
-                  <source src={`/assistant/elena-video-${clip}.webm`} type="video/webm" />
-                  <source src={`/assistant/elena-video-${clip}.mp4`} type="video/mp4" />
-                </>
-              )}
+            <video key={clip} className="ew-media" autoPlay loop={phase !== "down" && phase !== "up"} muted playsInline disablePictureInPicture disableRemotePlayback controls={false} controlsList="nodownload nofullscreen noremoteplayback" tabIndex={-1} preload="auto" aria-hidden="true">
+              <source src={`/assistant/elena-video-${clip}-alpha.webm`} type="video/webm; codecs=vp9" />
+              <source src={dark ? `/assistant/elena-video-${clip}-dark.mp4` : `/assistant/elena-video-${clip}.mp4`} type="video/mp4" />
             </video>
           ) : (
             <img className="ew-media" src={still} alt="" width={408} height={414} decoding="async" />
