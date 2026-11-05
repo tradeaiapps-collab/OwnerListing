@@ -65,13 +65,14 @@ function fakeRepo(opts: { budgetCents?: number; photos?: number; listingStatus?:
     pullForward: async (job, now) => { const v = videos.find(x => x.providerJobId === job); if (v) v.nextAttemptAt = now; },
     markReady: async (id, key, ct, now) => { Object.assign(videos.find(v => v.id === id)!, { status: "ready", storageKey: key, contentType: ct, generatedAt: now }); },
     scheduleRetry: async (id, attempts, next, error) => { Object.assign(videos.find(v => v.id === id)!, { status: "queued", providerJobId: null, attempts, nextAttemptAt: next, error }); },
-    markFailed: async (id, error, now, a) => {
+    markFailed: async (id, error, _now, a) => {
       const v = videos.find(x => x.id === id)!;
       Object.assign(v, { status: "failed", error }); audits.push(a.eventType);
-      if (v.model === "team") ledger.push({ teamId: v.teamId!, videoId: id, kind: "refund", cents: -v.costCents, at: now });
+      if (v.model === "team") ledger.push({ teamId: v.teamId!, videoId: id, kind: "refund", cents: -v.costCents, at: v.requestedAt });
     },
-    createPurchase: async p => { purchases.push({ ...p }); },
-    attachCheckout: async (id, s) => { purchases.find(p => p.id === id)!.sessionId = s; },
+    createPurchase: async p => { if (purchases.some(x => x.listingId === p.listingId && x.buyerId === p.buyerId && x.status === "pending")) return false; purchases.push({ ...p, createdAt: "2026-11-05T01:00:00.000Z" }); return true; },
+    pendingPurchase: async (l, b) => purchases.find(p => p.listingId === l && p.buyerId === b && p.status === "pending"),
+    attachCheckout: async (id, s, u) => { Object.assign(purchases.find(p => p.id === id)!, { sessionId: s, checkoutUrl: u }); },
     purchaseBySession: async s => purchases.find(p => p.sessionId === s),
     hasPaid: async (l, b) => purchases.some(p => p.listingId === l && p.buyerId === b && p.status === "paid"),
     settlePurchase: async (event, pid, vid, now, a) => {
@@ -458,5 +459,37 @@ describe("Stripe Checkout and the video webhook", () => {
     expect(f.videos).toHaveLength(1);
     const expired = JSON.stringify({ id: "evt_2", type: "checkout.session.expired", data: { object: { id: "cs_x" } } });
     expect((await handleVideoStripeWebhook(f.repo, expired, sign(expired), secret, ids)).status).toBe(200);
+  });
+});
+
+describe("review fixes", () => {
+  it("a poll or download error keeps the Hedra job and never resubmits", async () => {
+    const f = fakeRepo({ budgetCents: 5000 });
+    const c = clock();
+    const q = await requestTeamVideo(f.repo, agent, LISTING, pricing, fakeProvider().p, c.ids);
+    if (!q.ok) throw new Error("q");
+    const { p, calls } = fakeProvider();
+    let boom = true;
+    p.poll = async () => { if (boom) throw new Error("timeout"); return { state: "ready", downloadUrl: "https://files.example/v.mp4", contentType: "video/mp4" }; };
+    const deps = { repo: f.repo, provider: p, storage: fakeStorage(), ids: c.ids };
+    await runVideoQueue(deps);
+    const job = f.videos[0]!.providerJobId;
+    c.advance(31_000);
+    expect(await runVideoQueue(deps)).toMatchObject({ waiting: 1, retried: 0 });
+    expect(f.videos[0]).toMatchObject({ providerJobId: job, attempts: 0, status: "processing" });
+    boom = false;
+    c.advance(31_000);
+    expect(await runVideoQueue(deps)).toMatchObject({ ready: 1 });
+    expect(calls.submit).toHaveLength(1);
+  });
+
+  it("a double click reuses the open Checkout instead of opening a second payment", async () => {
+    const f = fakeRepo();
+    const { ids } = clock();
+    const a = await startBuyerPurchase(f.repo, checkout, { configured: true }, buyer, LISTING, pricing, urls, ids);
+    const b = await startBuyerPurchase(f.repo, checkout, { configured: true }, buyer, LISTING, pricing, urls, ids);
+    expect(a.ok && b.ok && "checkoutUrl" in a.value && "checkoutUrl" in b.value && a.value.checkoutUrl === b.value.checkoutUrl).toBe(true);
+    expect(f.purchases).toHaveLength(1);
+    expect(checkout.made.filter(m => (m as { purchaseId: string }).purchaseId === f.purchases[0]!.id)).toHaveLength(1);
   });
 });

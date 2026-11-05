@@ -70,8 +70,10 @@ export interface VideoRepository {
   /** Ends the video as failed; a team video also gets its refund row, in the same write. */
   markFailed(id: string, error: string, nowIso: string, audit: AuditEvent): Promise<void>;
   // Buyer payments
-  createPurchase(p: Purchase): Promise<void>;
-  attachCheckout(purchaseId: string, sessionId: string): Promise<void>;
+  /** False when this buyer already has an open payment for the listing (the unique index); that one is reused. */
+  createPurchase(p: Purchase): Promise<boolean>;
+  pendingPurchase(listingId: string, buyerId: string): Promise<Purchase | undefined>;
+  attachCheckout(purchaseId: string, sessionId: string, url: string): Promise<void>;
   purchaseBySession(sessionId: string): Promise<Purchase | undefined>;
   hasPaid(listingId: string, buyerId: string): Promise<boolean>;
   /** Claims the Stripe event id, marks the purchase paid and links the video; false when the event was already handled. */
@@ -80,7 +82,7 @@ export interface VideoRepository {
   appendAudit(e: AuditEvent): Promise<void>;
 }
 
-export interface Purchase { id: string; listingId: string; buyerId: string; videoId: string | null; amountCents: number; sessionId: string | null; status: "pending" | "paid" | "expired" }
+export interface Purchase { id: string; listingId: string; buyerId: string; videoId: string | null; amountCents: number; sessionId: string | null; checkoutUrl?: string | null; createdAt?: string; status: "pending" | "paid" | "expired" }
 export interface AgentVideoRow {
   listingId: string; title: string; suburb: string; status: string; photoCount: number;
   video: Pick<ListingVideo, "id" | "status" | "visibility" | "requestedAt" | "generatedAt" | "error" | "attempts"> | null;
@@ -197,13 +199,18 @@ export async function startBuyerPurchase(
   const bad = await photoCheck(repo, listingId);
   if (bad) return bad;
   const purchase: Purchase = { id: ids.newId(), listingId, buyerId: actor.userId, videoId: null, amountCents: pricing.buyerPriceCents, sessionId: null, status: "pending" };
-  await repo.createPurchase(purchase);
+  if (!(await repo.createPurchase(purchase))) {
+    // An open payment exists (double click, second tab): send the buyer to the same Checkout instead of opening another.
+    const open = await repo.pendingPurchase(listingId, actor.userId);
+    if (open?.checkoutUrl && Date.parse(ids.now()) - Date.parse(open.createdAt ?? ids.now()) < 23 * 3600_000) return { ok: true, value: { checkoutUrl: open.checkoutUrl } };
+    return fail("conflict", "A payment for this video is already open. Finish it, or try again in a moment.");
+  }
   try {
     const s = await pay.createCheckout({
       purchaseId: purchase.id, amountCents: purchase.amountCents, description: `Tour video: ${listing.title}`.slice(0, 120),
       successUrl: urls.success(listingId), cancelUrl: urls.cancel(listingId), ...(buyerEmail ? { buyerEmail } : {})
     });
-    await repo.attachCheckout(purchase.id, s.sessionId);
+    await repo.attachCheckout(purchase.id, s.sessionId, s.url);
     return { ok: true, value: { checkoutUrl: s.url } };
   } catch {
     return fail("unavailable", "Could not start the payment. Nothing was charged.");
@@ -351,18 +358,22 @@ async function processOne(d: QueueDeps, v: ListingVideo, s: QueueSummary): Promi
     } catch (e) { await failOrRetry(d, v, msg(e), s); }
     return;
   }
+  // A poll or download error says nothing about the Hedra job, so the job id is kept and only the check is repeated
+  // (resubmitting could pay for a second job while the first still finishes). Only a FAILED report, or the deadline, ends an attempt.
+  let r: JobPoll;
+  try { r = await d.provider.poll(v.providerJobId); } catch { await d.repo.keepWaiting(v.id, at(now, POLL_MS)); s.waiting++; return; }
+  if (r.state === "running") { await d.repo.keepWaiting(v.id, at(now, POLL_MS)); s.waiting++; return; }
+  if (r.state === "failed") return failOrRetry(d, { ...v, providerJobId: null }, r.message, s);
+  let file: { bytes: Uint8Array; contentType: string };
+  try { file = await d.provider.download(r.downloadUrl); } catch { await d.repo.keepWaiting(v.id, at(now, POLL_MS)); s.waiting++; return; }
   try {
-    const r = await d.provider.poll(v.providerJobId);
-    if (r.state === "running") { await d.repo.keepWaiting(v.id, at(now, POLL_MS)); s.waiting++; return; }
-    if (r.state === "failed") return failOrRetry(d, { ...v, providerJobId: null }, r.message, s);
-    const file = await d.provider.download(r.downloadUrl);
     if (file.bytes.byteLength === 0 || file.bytes.byteLength > MAX_VIDEO_BYTES) return failOrRetry(d, v, "The video file was empty or too large.", s);
     const key = `listings/${v.listingId}/video-${v.id}`;
     const ct = r.contentType.startsWith("video/") ? r.contentType : "video/mp4";
     await d.storage.put(key, file.bytes, ct);
     await d.repo.markReady(v.id, key, ct, d.ids.now());
     s.ready++;
-  } catch (e) { await failOrRetry(d, v, msg(e), s); }
+  } catch (e) { await d.repo.keepWaiting(v.id, at(now, POLL_MS)); s.waiting++; void e; }
 }
 
 /** One pass of the queue (called by the scheduler and, best effort, right after a request). Each due video is worked on at most once per pass. */

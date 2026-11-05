@@ -59,7 +59,7 @@ export function hedraVideoFromEnv(env: Env = process.env, fetchImpl: typeof fetc
     },
     async download(url) {
       if (!url.startsWith("https://")) throw new Error("Refusing a non-https download.");
-      const res = await fetchImpl(url, { signal: AbortSignal.timeout(120_000) });
+      const res = await fetchImpl(url, { redirect: "error", signal: AbortSignal.timeout(120_000) });
       if (!res.ok) throw new Error(`Download failed: ${res.status}`);
       const len = Number(res.headers.get("content-length") ?? 0);
       if (len > MAX_DOWNLOAD_BYTES) throw new Error("The video is too large.");

@@ -117,4 +117,26 @@ describe.skipIf(!DATABASE_URL)("tour videos on Postgres", () => {
     expect(await repo.hasPaid(s.listing, b2.userId)).toBe(true);
     expect(await repo.hasPaid(s.listing, randomUUID())).toBe(false);
   });
+
+  it("one open payment per buyer and listing; the refund is dated like its charge", async () => {
+    const repo = createPgVideoRepository(t.db), s = await setup();
+    const b = { userId: await addUser(t.db, "buyer"), userType: "buyer" } as Actor;
+    const pay = { enabled: true, createCheckout: async (i: { purchaseId: string }) => ({ sessionId: `cs_${i.purchaseId}`, url: "https://checkout.stripe.com/same" }) };
+    const urls = { success: (id: string) => `https://x/${id}`, cancel: (id: string) => `https://x/${id}` };
+    const [r1, r2] = await Promise.all([
+      startBuyerPurchase(repo, pay, { configured: true }, b, s.listing, pricing, urls, ids),
+      startBuyerPurchase(repo, pay, { configured: true }, b, s.listing, pricing, urls, ids)
+    ]);
+    expect(Number((await t.db.query("SELECT COUNT(*) AS n FROM video_purchase WHERE buyer_id = $1", [b.userId])).rows[0]!["n"])).toBe(1);
+    expect([r1.ok, r2.ok].filter(Boolean).length).toBeGreaterThanOrEqual(1);
+    await setTeamBudget(repo, s.manager, s.team, { monthlyBudgetCents: 5000 }, ids);
+    const v = await requestTeamVideo(repo, s.agent, s.listing, pricing, provider({ state: "running" }), ids);
+    if (!v.ok) throw new Error("v");
+    await t.db.query("UPDATE listing_video SET deadline_at = now() - interval '1 minute' WHERE id = $1", [v.value.id]);
+    await t.db.query("UPDATE listing_video SET next_attempt_at = now() + interval '1 day' WHERE id <> $1", [v.value.id]);
+    await runVideoQueue({ repo, provider: provider({ state: "running" }), storage, ids });
+    const rows = (await t.db.query("SELECT kind, created_at FROM team_video_ledger WHERE video_id = $1 ORDER BY kind", [v.value.id])).rows;
+    expect(rows).toHaveLength(2);
+    expect(String(rows[0]!["created_at"])).toBe(String(rows[1]!["created_at"]));
+  });
 });

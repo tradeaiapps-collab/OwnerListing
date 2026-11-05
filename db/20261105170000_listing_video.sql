@@ -35,11 +35,14 @@ CREATE TABLE video_purchase (
   amount_cents INT NOT NULL CHECK (amount_cents > 0),
   currency TEXT NOT NULL DEFAULT 'aud' CHECK (currency = 'aud'),
   checkout_session_id TEXT UNIQUE,
+  checkout_url TEXT CHECK (checkout_url IS NULL OR checkout_url LIKE 'https://%'),
   status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'paid', 'expired')),
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   paid_at TIMESTAMPTZ
 );
 CREATE INDEX video_purchase_buyer_idx ON video_purchase (buyer_id, listing_id);
+-- One open payment per buyer and listing, so a double click or a second tab reuses it instead of opening a second Checkout.
+CREATE UNIQUE INDEX video_purchase_one_pending ON video_purchase (listing_id, buyer_id) WHERE status = 'pending';
 
 -- A team's monthly allowance for videos. Spend is derived from the ledger below, never stored, so it cannot drift.
 CREATE TABLE team_video_budget (

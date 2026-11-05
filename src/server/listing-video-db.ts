@@ -12,7 +12,11 @@ import { parseCheckoutEvent, stripeCheckoutFromEnv } from "./stripe-checkout";
 import { stripeSignatureValid } from "./stripe-payouts";
 
 // Constant SQL text; input only travels as bound parameters. Nothing here deletes a video or a ledger row.
-const atomic = <T>(db: Queryable, fn: (tx: Queryable) => Promise<T>): Promise<T> => (db.transaction ? db.transaction(fn) : fn(db));
+// Fails closed: without a real transaction the budget row lock would do nothing and the allowance check could be raced.
+const atomic = <T>(db: Queryable, fn: (tx: Queryable) => Promise<T>): Promise<T> => {
+  if (!db.transaction) throw new Error("A database transaction is required.");
+  return db.transaction(fn);
+};
 const s = (v: unknown) => String(v);
 const iso = (v: unknown) => (v instanceof Date ? v.toISOString() : new Date(String(v)).toISOString());
 const isoOrNull = (v: unknown) => (v === null || v === undefined ? null : iso(v));
@@ -34,6 +38,10 @@ export const SPENT_SQL = "SELECT COALESCE(SUM(amount_cents), 0) AS spent FROM te
 export const UPSERT_BUDGET_SQL =
   "INSERT INTO team_video_budget (team_id, monthly_budget_cents, set_by) VALUES ($1::uuid, $2, $3::uuid) " +
   "ON CONFLICT (team_id) DO UPDATE SET monthly_budget_cents = EXCLUDED.monthly_budget_cents, set_by = EXCLUDED.set_by, updated_at = now()";
+/** The refund is dated like the charge it undoes, so a video charged in one month and failed in the next never skews either month's spend. */
+export const INSERT_REFUND_SQL =
+  "INSERT INTO team_video_ledger (id, team_id, video_id, kind, amount_cents, created_at) " +
+  "SELECT $1::uuid, team_id, video_id, 'refund', -amount_cents, created_at FROM team_video_ledger WHERE video_id = $2::uuid AND kind = 'charge' ON CONFLICT DO NOTHING";
 export const INSERT_LEDGER_SQL = "INSERT INTO team_video_ledger (id, team_id, video_id, kind, amount_cents, created_at) VALUES ($1::uuid,$2::uuid,$3::uuid,$4,$5,$6::timestamptz)";
 export const LIVE_BUYER_SQL = `SELECT ${VIDEO_COLS} FROM listing_video WHERE listing_id = $1::uuid AND model = 'buyer' AND archived_at IS NULL AND status <> 'failed'`;
 export const CLAIM_SQL =
@@ -68,9 +76,9 @@ const videoParams = (v: ListingVideo) => [
 ];
 const toPurchase = (r: Record<string, unknown>): Purchase => ({
   id: s(r["id"]), listingId: s(r["listing_id"]), buyerId: s(r["buyer_id"]), videoId: strOrNull(r["video_id"]), amountCents: Number(r["amount_cents"]),
-  sessionId: strOrNull(r["checkout_session_id"]), status: s(r["status"]) as Purchase["status"]
+  sessionId: strOrNull(r["checkout_session_id"]), checkoutUrl: strOrNull(r["checkout_url"]), createdAt: iso(r["created_at"]), status: s(r["status"]) as Purchase["status"]
 });
-const PURCHASE_COLS = "id, listing_id, buyer_id, video_id, amount_cents, checkout_session_id, status";
+const PURCHASE_COLS = "id, listing_id, buyer_id, video_id, amount_cents, checkout_session_id, checkout_url, created_at, status";
 
 export function createPgVideoRepository(db: Queryable): VideoRepository {
   const one = async (sql: string, params: unknown[], q: Queryable = db) => (await q.query(sql, params)).rows[0];
@@ -144,9 +152,9 @@ export function createPgVideoRepository(db: Queryable): VideoRepository {
     },
     async claimDue(nowIso, leaseUntilIso, limit) { return (await db.query(CLAIM_SQL, [nowIso, leaseUntilIso, limit])).rows.map(toVideo); },
     async markSubmitted(id, jobId, attempts, nextIso) {
-      await db.query("UPDATE listing_video SET status = 'processing', provider_job_id = $2, attempts = $3, next_attempt_at = $4::timestamptz WHERE id = $1::uuid", [id, jobId, attempts, nextIso]);
+      await db.query("UPDATE listing_video SET status = 'processing', provider_job_id = $2, attempts = $3, next_attempt_at = $4::timestamptz WHERE id = $1::uuid AND status IN ('queued','processing') AND archived_at IS NULL", [id, jobId, attempts, nextIso]);
     },
-    async keepWaiting(id, nextIso) { await db.query("UPDATE listing_video SET next_attempt_at = $2::timestamptz WHERE id = $1::uuid", [id, nextIso]); },
+    async keepWaiting(id, nextIso) { await db.query("UPDATE listing_video SET next_attempt_at = $2::timestamptz WHERE id = $1::uuid AND status IN ('queued','processing')", [id, nextIso]); },
     async pullForward(jobId, nowIso) {
       await db.query("UPDATE listing_video SET next_attempt_at = $2::timestamptz WHERE provider_job_id = $1 AND status = 'processing' AND archived_at IS NULL", [jobId, nowIso]);
     },
@@ -154,18 +162,19 @@ export function createPgVideoRepository(db: Queryable): VideoRepository {
       await db.query("UPDATE listing_video SET status = 'ready', storage_key = $2, content_type = $3, generated_at = $4::timestamptz, error = '' WHERE id = $1::uuid AND status IN ('queued','processing')", [id, key, contentType, nowIso]);
     },
     async scheduleRetry(id, attempts, nextIso, error) {
-      await db.query("UPDATE listing_video SET status = 'queued', provider_job_id = NULL, attempts = $2, next_attempt_at = $3::timestamptz, error = $4 WHERE id = $1::uuid", [id, attempts, nextIso, error.slice(0, 500)]);
+      await db.query("UPDATE listing_video SET status = 'queued', provider_job_id = NULL, attempts = $2, next_attempt_at = $3::timestamptz, error = $4 WHERE id = $1::uuid AND status IN ('queued','processing')", [id, attempts, nextIso, error.slice(0, 500)]);
     },
     markFailed: (id, error, nowIso, audit) => atomic(db, async tx => {
       const r = await one("UPDATE listing_video SET status = 'failed', error = $2 WHERE id = $1::uuid AND status IN ('queued','processing') RETURNING team_id, cost_cents, model", [id, error.slice(0, 500)], tx);
       if (!r) return;
-      if (r["model"] === "team" && r["team_id"]) await tx.query(INSERT_LEDGER_SQL, [randomUUID(), s(r["team_id"]), id, "refund", -Number(r["cost_cents"]), nowIso]);
+      if (r["model"] === "team" && r["team_id"]) await tx.query(INSERT_REFUND_SQL, [randomUUID(), id]);
       await appendAuditPg(tx, audit);
     }),
     async createPurchase(p) {
-      await db.query("INSERT INTO video_purchase (id, listing_id, buyer_id, amount_cents) VALUES ($1::uuid,$2::uuid,$3::uuid,$4)", [p.id, p.listingId, p.buyerId, p.amountCents]);
+      return (await db.query("INSERT INTO video_purchase (id, listing_id, buyer_id, amount_cents) VALUES ($1::uuid,$2::uuid,$3::uuid,$4) ON CONFLICT DO NOTHING RETURNING id", [p.id, p.listingId, p.buyerId, p.amountCents])).rows.length > 0;
     },
-    async attachCheckout(purchaseId, sessionId) { await db.query("UPDATE video_purchase SET checkout_session_id = $2 WHERE id = $1::uuid", [purchaseId, sessionId]); },
+    async pendingPurchase(listingId, buyerId) { const r = await one(`SELECT ${PURCHASE_COLS} FROM video_purchase WHERE listing_id = $1::uuid AND buyer_id = $2::uuid AND status = 'pending'`, [listingId, buyerId]); return r ? toPurchase(r) : undefined; },
+    async attachCheckout(purchaseId, sessionId, url) { await db.query("UPDATE video_purchase SET checkout_session_id = $2, checkout_url = $3 WHERE id = $1::uuid", [purchaseId, sessionId, url]); },
     async purchaseBySession(sessionId) { const r = await one(`SELECT ${PURCHASE_COLS} FROM video_purchase WHERE checkout_session_id = $1`, [sessionId]); return r ? toPurchase(r) : undefined; },
     async hasPaid(listingId, buyerId) { return !!(await one("SELECT 1 FROM video_purchase WHERE listing_id = $1::uuid AND buyer_id = $2::uuid AND status = 'paid'", [listingId, buyerId])); },
     settlePurchase: (eventId, purchaseId, videoId, nowIso, audit) => atomic(db, async tx => {
