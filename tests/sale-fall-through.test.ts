@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  allPaid, businessDaysAfter, nextPayout, parseFallThrough, parseResolution, partyMayRaise, planRespond, planWithdraw, proposeOutcome, reasonsFor, RULES_CONFIRMED,
+  allPaid, businessDaysAfter, nextPayout, parseFallThrough, parseResolution, partyMayRaise, payoutBlockedByRules, planCasePayout, planResolutionDecision, localDay, planRespond, planWithdraw, proposeOutcome, reasonsFor, RULES_CONFIRMED, RULES_VERSION,
   type OutcomeInput
 } from "../src/domain/sale-fall-through";
 
@@ -98,6 +98,7 @@ describe("answers and payouts", () => {
     const body = { source: "court_order", reference: "NSWSC 123", refundCents: 1_000_000, releaseCents: 3_000_000, reason: "Order made on 4 Nov" };
     expect(parseResolution(body, 4_000_000).ok).toBe(true);
     expect(parseResolution({ ...body, reference: "" }, 4_000_000).ok).toBe(false);
+    expect(parseResolution({ ...body, source: "agreement", reference: "" }, 4_000_000).ok).toBe(false); // a written agreement needs its reference too
     expect(parseResolution({ ...body, releaseCents: 3_000_001 }, 4_000_000).ok).toBe(false);
     expect(parseResolution({ ...body, reason: "short" }, 4_000_000).ok).toBe(false);
     expect(parseResolution({ source: "sale_continues", reason: "Parties settled their dispute" }, 0)).toMatchObject({ ok: true, value: { refundCents: 0, releaseCents: 0 } });
@@ -111,5 +112,30 @@ describe("answers and payouts", () => {
     expect(allPaid(c, [{ kind: "refund", status: "approved" }])).toBe(false);
     expect(allPaid(c, [{ kind: "refund", status: "approved" }, { kind: "release", status: "approved" }])).toBe(true);
     expect(allPaid({ ...c, releaseCents: 0 }, [{ kind: "refund", status: "approved" }])).toBe(true);
+  });
+
+  it("payouts that rest on unconfirmed cooling-off figures are refused; staff-recorded amounts and full refunds are not", () => {
+    const base = { status: "agreed" as const, raisedByParty: "buyer" as const, refundCents: 3_800_000, releaseCents: 200_000, rulesVersion: RULES_VERSION, penaltyUnconfirmed: false };
+    expect(payoutBlockedByRules({ ...base, reason: "cooling_off", resolutionSource: "parties" })).toContain("counsel");
+    expect(payoutBlockedByRules({ ...base, reason: "cooling_off", resolutionSource: "parties" }, true, RULES_VERSION)).toBeNull();
+    expect(payoutBlockedByRules({ ...base, reason: "cooling_off", resolutionSource: "parties", rulesVersion: "old" }, true, RULES_VERSION)).toContain("counsel");
+    expect(payoutBlockedByRules({ ...base, reason: "cooling_off", resolutionSource: "parties", penaltyUnconfirmed: true }, true, RULES_VERSION)).toContain("counsel");
+    expect(payoutBlockedByRules({ ...base, reason: "cooling_off", resolutionSource: "court_order" })).toBeNull();
+    expect(payoutBlockedByRules({ ...base, reason: "finance_condition", resolutionSource: "parties" })).toBeNull();
+    expect(planCasePayout({ ...base, reason: "cooling_off", resolutionSource: "parties" }, [], false, 4_000_000)).toMatchObject({ ok: false });
+  });
+  it("a proposed resolution needs a different person to decide it", () => {
+    expect(planResolutionDecision({ status: "disputed", proposedBy: "a" }, "b")).toEqual({ allow: true });
+    expect(planResolutionDecision({ status: "disputed", proposedBy: "a" }, "a")).toMatchObject({ allow: false, status: 403 });
+    expect(planResolutionDecision({ status: "disputed", proposedBy: null }, "b")).toMatchObject({ allow: false, status: 409 });
+    expect(planResolutionDecision({ status: "agreed", proposedBy: "a" }, "b")).toMatchObject({ allow: false, status: 409 });
+  });
+  it("state rules are looked up as own keys only, and days are counted where the property is", () => {
+    const i = { reason: "cooling_off" as const, party: "buyer" as const, priceCents: 80_000_000, heldCents: 4_000_000, acceptedOn: "2026-11-02", raisedOn: "2026-11-03" };
+    expect(proposeOutcome({ ...i, state: "constructor" })).toMatchObject({ ok: false });
+    expect(proposeOutcome({ ...i, state: "__proto__" })).toMatchObject({ ok: false });
+    expect(localDay(new Date("2026-11-04T14:30:00Z"), "NSW")).toBe("2026-11-05"); // 1:30am AEDT the next day
+    expect(localDay(new Date("2026-11-04T14:30:00Z"), "QLD")).toBe("2026-11-05");
+    expect(localDay(new Date("2026-11-04T14:30:00Z"), "WA")).toBe("2026-11-04");
   });
 });

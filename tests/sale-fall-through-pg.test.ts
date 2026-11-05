@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createHolding, decideRelease, getHolding, recordReceipt, requestRelease, cancelHolding, type StaffRef } from "../src/server/deposit-escrow-db";
 import {
-  fallThroughView, previewFallThrough, raiseFallThrough, requestCasePayout, resolveDispute, respondFallThrough, withdrawFallThrough
+  fallThroughView, previewFallThrough, decideResolution, raiseFallThrough, requestCasePayout, resolveDispute, respondFallThrough, withdrawFallThrough
 } from "../src/server/sale-fall-through-db";
 import { addListing, addUser, createTestDb, DATABASE_URL, type TestDb } from "./helpers/pg-db";
 
@@ -32,10 +32,17 @@ describe.skipIf(!DATABASE_URL)("sale fell through on Postgres", () => {
     if (opts.received !== false) must(await recordReceipt(t.db, a, holdingId, { amountCents: 4_000_000, receivedOn: new Date().toISOString().slice(0, 10), bankReference: null }));
     return { owner, buyer, a, b, listingId, offerId, holdingId };
   }
-  const pay = async (s: { a: StaffRef; b: StaffRef }, caseId: string) => {
-    const r = must(await requestCasePayout(t.db, s.a, caseId));
+  const pay = async (s: { a: StaffRef; b: StaffRef; holdingId: string }, caseId: string) => {
+    const r = must(await requestCasePayout(t.db, s.a, s.holdingId, caseId));
     must(await decideRelease(t.db, s.b, r.releaseId, "approve", "Approved as agreed in the case"));
     return r;
+  };
+
+  /** Two-person resolution: a proposes, b decides. */
+  const resolve = async (s: { a: StaffRef; b: StaffRef; holdingId: string }, id: string, input: Parameters<typeof resolveDispute>[4]) => {
+    const p = await resolveDispute(t.db, s.a, s.holdingId, id, input);
+    if (!p.ok) return p;
+    return decideResolution(t.db, s.b, s.holdingId, id, "approve", "Checked the order against the proposal");
   };
 
   it("cooling-off: the buyer raises, the owner agrees, staff pay the refund and then the penalty in two approved steps", async () => {
@@ -53,7 +60,7 @@ describe.skipIf(!DATABASE_URL)("sale fell through on Postgres", () => {
     expect(await requestRelease(t.db, s.a, s.holdingId, { kind: "refund", amountCents: 1_000_000, reason: "Refund to the buyer now", settlementConfirmed: false })).toMatchObject({ ok: false, status: 409 });
     expect(await recordReceipt(t.db, s.a, s.holdingId, { amountCents: 1, receivedOn: "2026-11-05", bankReference: null })).toMatchObject({ ok: false, status: 409 });
     expect(await cancelHolding(t.db, s.a, s.holdingId, "Opened in error, wrong one")).toMatchObject({ ok: false, status: 409 });
-    expect(await requestCasePayout(t.db, s.a, id)).toMatchObject({ ok: false }); // not agreed yet
+    expect(await requestCasePayout(t.db, s.a, s.holdingId, id)).toMatchObject({ ok: false }); // not agreed yet
 
     // The raiser cannot answer their own request; a stranger sees nothing.
     expect(await respondFallThrough(t.db, s.buyer, "buyer", s.offerId, "agree", null)).toMatchObject({ ok: false, status: 403 });
@@ -65,23 +72,56 @@ describe.skipIf(!DATABASE_URL)("sale fell through on Postgres", () => {
     const ev = (await t.db.query("SELECT actor_kind, from_status, to_status FROM offer_event WHERE offer_id = $1 AND event_type = 'fallen_through'", [s.offerId])).rows;
     expect(ev).toEqual([{ actor_kind: "owner", from_status: "accepted", to_status: "fallen_through" }]);
 
-    // Still frozen for ordinary use, but the pre-filled payouts go through the two-person flow: refund first, then the penalty.
+    // Still frozen for ordinary use. The cooling-off split rests on draft state figures, so no payout can be requested until counsel confirms them.
     expect(await requestRelease(t.db, s.a, s.holdingId, { kind: "refund", amountCents: 1_000_000, reason: "Refund to the buyer now", settlementConfirmed: false })).toMatchObject({ ok: false, status: 409 });
-    const first = must(await requestCasePayout(t.db, s.a, id));
-    expect(first).toMatchObject({ kind: "refund", amountCents: 3_800_000 });
-    expect(await requestCasePayout(t.db, s.a, id)).toMatchObject({ ok: false, error: expect.stringContaining("waiting for approval") });
-    expect(await decideRelease(t.db, s.a, first.releaseId, "approve", "Approving my own request")).toMatchObject({ ok: false, status: 403 });
-    must(await decideRelease(t.db, s.b, first.releaseId, "approve", "Approved as agreed in the case"));
-    expect((await fallThroughView(t.db, s.owner, "owner", s.offerId)).ok && (await getHolding(t.db, s.holdingId))!.cases[0]!.status).toBe("agreed");
-    const second = must(await requestCasePayout(t.db, s.a, id));
-    expect(second).toMatchObject({ kind: "release", amountCents: 200_000 });
-    must(await decideRelease(t.db, s.b, second.releaseId, "approve", "Approved as agreed in the case"));
+    expect(await requestCasePayout(t.db, s.a, s.holdingId, id)).toMatchObject({ ok: false, status: 409, error: expect.stringContaining("counsel") });
+    expect(await getHolding(t.db, s.holdingId).then(d => d!.releases.length)).toBe(0);
+  });
 
+  it("a full-refund case pays out in two-person steps and closes the record", async () => {
+    const s = await setup();
+    const { id } = must(await raiseFallThrough(t.db, s.buyer, "buyer", s.offerId, "finance_condition", null));
+    must(await respondFallThrough(t.db, s.owner, "owner", s.offerId, "agree", null));
+    const first = must(await requestCasePayout(t.db, s.a, s.holdingId, id));
+    expect(first).toMatchObject({ kind: "refund", amountCents: 4_000_000 });
+    expect(await requestCasePayout(t.db, s.a, s.holdingId, id)).toMatchObject({ ok: false, error: expect.stringContaining("waiting for approval") });
+    expect(await decideRelease(t.db, s.a, first.releaseId, "approve", "Approving my own request")).toMatchObject({ ok: false, status: 403 });
+    // The database also holds the two-person rule (the app check is bypassed here on purpose).
+    await expect(t.db.query("UPDATE deposit_release SET status = 'approved', decided_by = requested_by, decided_at = now(), decision_reason = 'x' WHERE id = $1", [first.releaseId])).rejects.toThrow();
+    must(await decideRelease(t.db, s.b, first.releaseId, "approve", "Approved as agreed in the case"));
     const d = (await getHolding(t.db, s.holdingId))!;
     expect(d.cases[0]).toMatchObject({ status: "resolved", resolutionSource: "parties" });
-    expect(d.holding.status).toBe("released");
-    expect(d.releases.map(r => [r.kind, r.amountCents, r.status, r.fallThroughId])).toEqual([["refund", 3_800_000, "approved", id], ["release", 200_000, "approved", id]]);
-    expect(await requestCasePayout(t.db, s.a, id)).toMatchObject({ ok: false });
+    expect(d.holding.status).toBe("refunded");
+    expect(await requestCasePayout(t.db, s.a, s.holdingId, id)).toMatchObject({ ok: false });
+  });
+
+  it("a staff-recorded agreement carries its own amounts, so the unconfirmed cooling-off figures do not block it; a case from another deposit is not found", async () => {
+    const s = await setup();
+    const { id } = must(await raiseFallThrough(t.db, s.buyer, "buyer", s.offerId, "cooling_off", null));
+    must(await respondFallThrough(t.db, s.owner, "owner", s.offerId, "dispute", "We agreed a different split in writing"));
+    expect(await resolveDispute(t.db, s.a, randomUUID(), id, { source: "agreement", reference: "Letter 4 Nov", refundCents: 3_900_000, releaseCents: 100_000, reason: "Solicitors' letter of 4 Nov" })).toMatchObject({ ok: false, status: 404 });
+    must(await resolve(s, id, { source: "agreement", reference: "Letter 4 Nov", refundCents: 3_900_000, releaseCents: 100_000, reason: "Solicitors' letter of 4 Nov" }));
+    expect(await requestCasePayout(t.db, s.a, randomUUID(), id)).toMatchObject({ ok: false, status: 404 });
+    expect(must(await requestCasePayout(t.db, s.a, s.holdingId, id))).toMatchObject({ kind: "refund", amountCents: 3_900_000 });
+  });
+
+  it("a proposal the second person rejects is cleared and can be proposed again; an owner who is also the buyer has no side", async () => {
+    const s = await setup();
+    const { id } = must(await raiseFallThrough(t.db, s.owner, "owner", s.offerId, "buyer_default", null));
+    must(await respondFallThrough(t.db, s.buyer, "buyer", s.offerId, "dispute", "The seller never delivered the building report"));
+    must(await resolveDispute(t.db, s.a, s.holdingId, id, { source: "agreement", reference: "Letter", refundCents: 4_000_000, releaseCents: 0, reason: "Solicitors' letter of 4 Nov" }));
+    must(await decideResolution(t.db, s.b, s.holdingId, id, "reject", "The letter does not say that"));
+    expect(await decideResolution(t.db, s.b, s.holdingId, id, "approve", "Nothing proposed any more")).toMatchObject({ ok: false, status: 409 });
+    expect((await getHolding(t.db, s.holdingId))!.cases[0]).toMatchObject({ status: "disputed" });
+    await t.db.query("UPDATE formal_offer SET buyer_user_id = $2 WHERE id = $1", [s.offerId, s.owner]);
+    expect(await fallThroughView(t.db, s.owner, "owner", s.offerId)).toMatchObject({ ok: false, status: 404 });
+    expect(await fallThroughView(t.db, s.owner, "buyer", s.offerId)).toMatchObject({ ok: false, status: 404 });
+  });
+
+  it("no more than three requests on one offer in a day", async () => {
+    const s = await setup();
+    for (let i = 0; i < 3; i++) { must(await raiseFallThrough(t.db, s.buyer, "buyer", s.offerId, "mutual_termination", null)); must(await withdrawFallThrough(t.db, s.buyer, "buyer", s.offerId)); }
+    expect(await raiseFallThrough(t.db, s.buyer, "buyer", s.offerId, "mutual_termination", null)).toMatchObject({ ok: false, status: 409, error: expect.stringContaining("Too many") });
   });
 
   it("a release from an agreed case needs no settlement tick, but an ordinary release still does (database check)", async () => {
@@ -97,14 +137,20 @@ describe.skipIf(!DATABASE_URL)("sale fell through on Postgres", () => {
     must(await respondFallThrough(t.db, s.buyer, "buyer", s.offerId, "dispute", "The seller never delivered the building report"));
     expect(await offerStatus(s.offerId)).toBe("accepted");
     expect(await withdrawFallThrough(t.db, s.owner, "owner", s.offerId)).toMatchObject({ ok: false, status: 409 });
-    expect(await requestCasePayout(t.db, s.a, id)).toMatchObject({ ok: false });
+    expect(await requestCasePayout(t.db, s.a, s.holdingId, id)).toMatchObject({ ok: false });
     expect(await requestRelease(t.db, s.a, s.holdingId, { kind: "release", amountCents: 4_000_000, reason: "Seller keeps the deposit", settlementConfirmed: true })).toMatchObject({ ok: false, status: 409 });
 
-    expect(await resolveDispute(t.db, s.a, id, { source: "court_order", reference: "NSWSC 123", refundCents: 1_000_000, releaseCents: 3_500_000, reason: "Order made on 4 Nov" })).toMatchObject({ ok: false, status: 409 });
-    expect(must(await resolveDispute(t.db, s.a, id, { source: "court_order", reference: "NSWSC 123", refundCents: 1_000_000, releaseCents: 3_000_000, reason: "Order made on 4 Nov" })).status).toBe("agreed");
-    expect(await resolveDispute(t.db, s.a, id, { source: "agreement", reference: null, refundCents: 0, releaseCents: 0, reason: "Second try after it was settled" })).toMatchObject({ ok: false, status: 409 });
+    expect(await resolveDispute(t.db, s.a, s.holdingId, id, { source: "court_order", reference: "NSWSC 123", refundCents: 1_000_000, releaseCents: 3_500_000, reason: "Order made on 4 Nov" })).toMatchObject({ ok: false, status: 409 });
+    // One person only proposes: nothing changes until a different person decides.
+    expect(must(await resolveDispute(t.db, s.a, s.holdingId, id, { source: "court_order", reference: "NSWSC 123", refundCents: 1_000_000, releaseCents: 3_000_000, reason: "Order made on 4 Nov" }))).toMatchObject({ status: "disputed", pendingApproval: true });
+    expect(await offerStatus(s.offerId)).toBe("accepted");
+    expect(await requestCasePayout(t.db, s.a, s.holdingId, id)).toMatchObject({ ok: false });
+    expect(await decideResolution(t.db, s.a, s.holdingId, id, "approve", "Approving my own proposal")).toMatchObject({ ok: false, status: 403 });
+    expect(await decideResolution(t.db, s.b, randomUUID(), id, "approve", "Wrong deposit record in the URL")).toMatchObject({ ok: false, status: 404 });
+    expect(must(await decideResolution(t.db, s.b, s.holdingId, id, "approve", "Checked the order against the proposal")).status).toBe("agreed");
+    expect(await resolveDispute(t.db, s.a, s.holdingId, id, { source: "agreement", reference: "letter", refundCents: 0, releaseCents: 0, reason: "Second try after it was settled" })).toMatchObject({ ok: false, status: 409 });
     expect(await offerStatus(s.offerId)).toBe("fallen_through");
-    expect(must(await requestCasePayout(t.db, s.a, id))).toMatchObject({ kind: "refund", amountCents: 1_000_000 });
+    expect(must(await requestCasePayout(t.db, s.a, s.holdingId, id))).toMatchObject({ kind: "refund", amountCents: 1_000_000 });
     const d = (await getHolding(t.db, s.holdingId))!;
     expect(d.cases[0]).toMatchObject({ status: "agreed", resolutionSource: "court_order", resolutionReference: "NSWSC 123", refundCents: 1_000_000, releaseCents: 3_000_000 });
     expect(d.audit.map(x => x.event)).toEqual(expect.arrayContaining(["escrow.fall_through_raised", "escrow.fall_through_disputed", "escrow.fall_through_resolved"]));
@@ -115,7 +161,7 @@ describe.skipIf(!DATABASE_URL)("sale fell through on Postgres", () => {
     const s = await setup();
     const { id } = must(await raiseFallThrough(t.db, s.buyer, "buyer", s.offerId, "finance_condition", null));
     must(await respondFallThrough(t.db, s.owner, "owner", s.offerId, "dispute", "The finance condition was waived in writing"));
-    must(await resolveDispute(t.db, s.a, id, { source: "sale_continues", reference: null, refundCents: 0, releaseCents: 0, reason: "Parties confirmed the condition was waived" }));
+    must(await resolve(s, id, { source: "sale_continues", reference: null, refundCents: 0, releaseCents: 0, reason: "Parties confirmed the condition was waived" }));
     expect(await offerStatus(s.offerId)).toBe("accepted");
     expect((await getHolding(t.db, s.holdingId))!.cases[0]!.status).toBe("withdrawn");
     must(await requestRelease(t.db, s.a, s.holdingId, { kind: "refund", amountCents: 100_000, reason: "Normal request after the dispute", settlementConfirmed: false }));

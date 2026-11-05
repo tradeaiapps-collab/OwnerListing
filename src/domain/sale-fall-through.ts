@@ -48,6 +48,16 @@ export const STATE_RULES: Record<string, StateRule> = {
   TAS: { coolingOffBusinessDays: null, penaltyBps: null }
 };
 
+/** The calendar day a moment falls on where the property is (cooling-off is counted in local days, not UTC days). */
+const STATE_TZ: Record<string, string> = {
+  NSW: "Australia/Sydney", ACT: "Australia/Sydney", VIC: "Australia/Melbourne", TAS: "Australia/Hobart", QLD: "Australia/Brisbane",
+  SA: "Australia/Adelaide", NT: "Australia/Darwin", WA: "Australia/Perth"
+};
+export function localDay(at: Date, state: string): string {
+  const tz = Object.hasOwn(STATE_TZ, state) ? STATE_TZ[state]! : "Australia/Sydney";
+  return new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }).format(at);
+}
+
 const DAY = 86_400_000;
 const dayMs = (iso: string) => Date.parse(`${iso}T00:00:00Z`);
 /** Weekdays after `from`, up to and including `to`. Public holidays are not excluded (counsel to confirm). 0 when `to` is not after `from`. */
@@ -91,7 +101,7 @@ export function proposeOutcome(i: OutcomeInput): Result<Outcome> {
     case "buyer_default":
       return { ok: true, value: { refundCents: 0, releaseCents: held, penaltyCents: 0, penaltyUnconfirmed: false, basis: "The buyer did not meet the contract, so the seller keeps the deposit held in trust.", ...base } };
     case "cooling_off": {
-      const rule = STATE_RULES[i.state];
+      const rule = Object.hasOwn(STATE_RULES, i.state) ? STATE_RULES[i.state] : undefined;
       if (!rule) return bad(`We do not have cooling-off rules for ${i.state || "this state"}. Choose another reason or ask us for help.`);
       if (rule.coolingOffBusinessDays === null) return bad(`${i.state} has no statutory cooling-off period. If both sides agree to end the sale, choose “${REASON_LABEL.mutual_termination}”.`);
       const used = businessDaysAfter(i.acceptedOn, i.raisedOn), limit = rule.coolingOffBusinessDays;
@@ -151,6 +161,7 @@ export function parseResolution(body: Record<string, unknown>, heldCents: number
   const reference = typeof body["reference"] === "string" && body["reference"].trim() ? body["reference"].trim() : null;
   if (reference && reference.length > 200) return bad("The reference is at most 200 characters.");
   if (source === "court_order" && !reference) return bad("Enter the court order reference.");
+  if (source === "agreement" && !reference) return bad("Enter where the written agreement is kept (for example the solicitors' letter reference).");
   if (source === "sale_continues") return { ok: true, value: { source, reference, refundCents: 0, releaseCents: 0, reason: (body["reason"] as string).trim() } };
   const refund = body["refundCents"] ?? 0, release = body["releaseCents"] ?? 0;
   if (!cents0(refund) || !cents0(release)) return bad("Enter the refund and release amounts in whole cents.");
@@ -163,7 +174,21 @@ export function parseResolution(body: Record<string, unknown>, heldCents: number
 const yes: Plan = { allow: true };
 const no = (status: number, error: string): Plan => ({ allow: false, status, error });
 
-export interface CaseLike { status: CaseStatus; raisedByParty: Party; refundCents: number; releaseCents: number }
+export interface CaseLike {
+  status: CaseStatus; raisedByParty: Party; refundCents: number; releaseCents: number;
+  reason?: FallThroughReason; rulesVersion?: string; resolutionSource?: ResolutionSource | null; penaltyUnconfirmed?: boolean;
+}
+
+/**
+ * Figures taken from the draft state rules (cooling-off split) are not paid out until counsel confirms them. A case staff resolved from an
+ * agreement or court order carries its own amounts and is not affected. Full refunds or full releases do not depend on the state figures.
+ */
+export function payoutBlockedByRules(c: CaseLike, rulesConfirmed: boolean = RULES_CONFIRMED, currentVersion: string = RULES_VERSION): string | null {
+  if (c.resolutionSource === "agreement" || c.resolutionSource === "court_order") return null;
+  if (c.reason !== "cooling_off") return null;
+  if (rulesConfirmed && c.rulesVersion === currentVersion && !c.penaltyUnconfirmed) return null;
+  return "This split uses state cooling-off figures that counsel has not confirmed yet. It cannot be paid out until they are, or staff record the agreed amounts from a written agreement or court order.";
+}
 
 export function planRespond(c: Pick<CaseLike, "status" | "raisedByParty">, party: Party): Plan {
   if (c.status !== "proposed") return no(409, "This has already been answered.");
@@ -173,6 +198,13 @@ export function planRespond(c: Pick<CaseLike, "status" | "raisedByParty">, party
 export function planWithdraw(c: Pick<CaseLike, "status" | "raisedByParty">, party: Party): Plan {
   if (c.raisedByParty !== party) return no(403, "Only the person who raised this can withdraw it.");
   if (c.status !== "proposed") return no(409, "It can only be withdrawn while the other side has not answered.");
+  return yes;
+}
+/** A proposed resolution waits for a different person with approval rights; the proposer cannot approve their own. */
+export function planResolutionDecision(c: { status: CaseStatus; proposedBy: string | null }, actorId: string): Plan {
+  if (c.status !== "disputed") return no(409, "Only a disputed case has a resolution to decide.");
+  if (!c.proposedBy) return no(409, "No resolution has been proposed yet.");
+  if (c.proposedBy === actorId) return no(403, "A second person must decide. You proposed this resolution.");
   return yes;
 }
 export const planStaffResolve = (c: Pick<CaseLike, "status">): Plan => (c.status === "disputed" ? yes : no(409, "Only a disputed case needs a recorded resolution."));
@@ -187,6 +219,8 @@ export function nextPayout(c: CaseLike, linked: readonly { kind: "refund" | "rel
 }
 export function planCasePayout(c: CaseLike, linked: readonly { kind: "refund" | "release"; status: string }[], anyPending: boolean, heldCents: number): Result<PayoutLine> {
   if (c.status !== "agreed") return bad("Only an agreed outcome can be paid out from here.");
+  const held = payoutBlockedByRules(c);
+  if (held) return bad(held);
   if (anyPending) return bad("A payment is already waiting for approval.");
   const next = nextPayout(c, linked);
   if (!next) return bad("Every payment for this outcome has been requested.");

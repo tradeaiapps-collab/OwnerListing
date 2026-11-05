@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { balanceOf, displayStatus, STATUS_LABEL, type DepositHolding, type DepositMovement, type DepositRelease } from "../../../src/domain/deposit-escrow";
-import { isFrozen, nextPayout, REASON_LABEL, STATUS_LABEL as CASE_LABEL } from "../../../src/domain/sale-fall-through";
+import { isFrozen, nextPayout, payoutBlockedByRules, REASON_LABEL, STATUS_LABEL as CASE_LABEL } from "../../../src/domain/sale-fall-through";
 import type { FallThroughCase } from "../../../src/server/sale-fall-through-db";
 import { dateLabel, money, toCents } from "../../commissions-ui";
 import type { Act } from "./page";
@@ -14,12 +14,12 @@ const EVENT: Record<string, string> = {
   "escrow.refund_requested": "Refund to buyer requested", "escrow.release_approved": "Release approved", "escrow.release_rejected": "Release rejected",
   "escrow.refund_approved": "Refund approved", "escrow.refund_rejected": "Refund rejected", "escrow.holding_cancelled": "Record cancelled", "escrow.reconciled": "Matched to bank statement",
   "escrow.fall_through_raised": "Sale fell through: outcome proposed", "escrow.fall_through_agreed": "Sale fell through: outcome agreed", "escrow.fall_through_disputed": "Sale fell through: outcome disputed, deposit frozen",
-  "escrow.fall_through_withdrawn": "Sale fell through: request withdrawn", "escrow.fall_through_resolved": "Sale fell through: dispute recorded by staff", "escrow.fall_through_finished": "Sale fell through: all payments approved"
+  "escrow.fall_through_withdrawn": "Sale fell through: request withdrawn", "escrow.fall_through_resolved": "Sale fell through: dispute resolution approved", "escrow.fall_through_resolution_proposed": "Sale fell through: resolution proposed by staff", "escrow.fall_through_resolution_rejected": "Sale fell through: proposed resolution rejected", "escrow.fall_through_finished": "Sale fell through: all payments approved"
 };
 const todayStr = () => new Date().toISOString().slice(0, 10);
 const when = (iso: string) => new Date(iso).toLocaleString("en-AU", { day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit" });
 
-export default function HoldingDetail({ holding, canManage, act }: { holding: DepositHolding; canManage: boolean; act: Act }) {
+export default function HoldingDetail({ holding, canManage, canApprove, me, act }: { holding: DepositHolding; canManage: boolean; canApprove: boolean; me: string; act: Act }) {
   const [d, setD] = useState<Detail | null>(null);
   const [err, setErr] = useState("");
   const [amount, setAmount] = useState("");
@@ -66,7 +66,7 @@ export default function HoldingDetail({ holding, canManage, act }: { holding: De
       </dl>
       {h.closedReason && <p className="cm-note">Closed: {h.closedReason}</p>}
 
-      {cases.length > 0 && <FallThroughCases cases={cases} releases={d.releases} canManage={canManage && open} url={url} act={act} />}
+      {cases.length > 0 && <FallThroughCases cases={cases} releases={d.releases} canManage={canManage && open} canApprove={canApprove && open} me={me} url={url} act={act} />}
 
       {canManage && open && !frozen && (
         <div className="es-actions-grid">
@@ -156,28 +156,29 @@ export default function HoldingDetail({ holding, canManage, act }: { holding: De
 const SOURCE: Record<string, string> = { agreement: "Agreement between the parties", court_order: "Court order", sale_continues: "Sale goes ahead after all" };
 
 /** Sale-fell-through cases on this deposit. A disputed one is settled by staff recording the agreement or order; an agreed one is paid out in the two-person flow. */
-function FallThroughCases({ cases, releases, canManage, url, act }: { cases: FallThroughCase[]; releases: DepositRelease[]; canManage: boolean; url: string; act: Act }) {
+function FallThroughCases({ cases, releases, canManage, canApprove, me, url, act }: { cases: FallThroughCase[]; releases: DepositRelease[]; canManage: boolean; canApprove: boolean; me: string; url: string; act: Act }) {
   return (
     <>
       <h3>Sale fell through</h3>
       <p className="cm-note">While a case is open the deposit is frozen: no receipts, ordinary requests, approvals or cancelling. Only the payments an agreed case asks for can be approved.</p>
       <ul className="es-list">
-        {cases.map(c => <li key={c.id}><CaseRow c={c} releases={releases.filter(r => r.fallThroughId === c.id)} canManage={canManage} url={url} act={act} /></li>)}
+        {cases.map(c => <li key={c.id}><CaseRow c={c} releases={releases.filter(r => r.fallThroughId === c.id)} canManage={canManage} canApprove={canApprove} me={me} url={url} act={act} /></li>)}
       </ul>
     </>
   );
 }
 
-function CaseRow({ c, releases, canManage, url, act }: { c: FallThroughCase; releases: DepositRelease[]; canManage: boolean; url: string; act: Act }) {
+function CaseRow({ c, releases, canManage, canApprove, me, url, act }: { c: FallThroughCase; releases: DepositRelease[]; canManage: boolean; canApprove: boolean; me: string; url: string; act: Act }) {
   const [source, setSource] = useState<"agreement" | "court_order" | "sale_continues">("agreement");
   const [reference, setReference] = useState("");
   const [refund, setRefund] = useState((c.refundCents / 100).toFixed(2));
   const [release, setRelease] = useState((c.releaseCents / 100).toFixed(2));
   const [why, setWhy] = useState("");
+  const [decisionWhy, setDecisionWhy] = useState("");
   const next = c.status === "agreed" ? nextPayout(c, releases) : null;
   const pending = releases.some(r => r.status === "pending");
   const goesAhead = source === "sale_continues";
-  const bad = why.trim().length < 10 || (source === "court_order" && !reference.trim()) || (!goesAhead && (Number.isNaN(toCents(refund)) || Number.isNaN(toCents(release))));
+  const bad = why.trim().length < 10 || (source !== "sale_continues" && !reference.trim()) || (!goesAhead && (Number.isNaN(toCents(refund)) || Number.isNaN(toCents(release))));
   return (
     <>
       <strong>{REASON_LABEL[c.reason]}</strong> · raised by the {c.raisedByParty} · <span className={`es-status ${c.status === "disputed" ? "overdue" : c.status === "resolved" ? "held" : c.status === "withdrawn" ? "cancelled" : "part_received"}`}>{CASE_LABEL[c.status]}</span>
@@ -188,15 +189,31 @@ function CaseRow({ c, releases, canManage, url, act }: { c: FallThroughCase; rel
       {c.resolutionSource && <><br /><span className="muted">Settled by: {c.resolutionSource === "parties" ? "both sides agreed" : SOURCE[c.resolutionSource]}{c.resolutionReference ? ` (${c.resolutionReference})` : ""}</span></>}
       {c.status === "proposed" && <><br /><span className="muted">Waiting for the {c.raisedByParty === "buyer" ? "owner" : "buyer"} to agree or dispute.</span></>}
 
+      {c.status === "disputed" && c.proposal && (
+        <div className="es-form">
+          <h3>Proposed resolution, waiting for a second person</h3>
+          <p className="muted">{SOURCE[c.proposal.source]}{c.proposal.reference ? ` (${c.proposal.reference})` : ""}
+            {c.proposal.source === "sale_continues" ? "" : ` · refund ${money(c.proposal.refundCents)} · to seller ${money(c.proposal.releaseCents)}`}. Reason: {c.proposal.reason}</p>
+          {canApprove && c.proposedBy !== me ? (
+            <>
+              <label className="es-wide">Your reason (10+ characters)<textarea className="staff-reason" value={decisionWhy} onChange={e => setDecisionWhy(e.target.value)} minLength={10} /></label>
+              <div className="cm-actions">
+                <button type="button" disabled={decisionWhy.trim().length < 10} onClick={() => void act(url, { action: "case_resolve_decide", caseId: c.id, outcome: "approve", reason: decisionWhy }, "Resolution approved.")}>Approve resolution</button>
+                <button type="button" className="secondary" disabled={decisionWhy.trim().length < 10} onClick={() => void act(url, { action: "case_resolve_decide", caseId: c.id, outcome: "reject", reason: decisionWhy }, "Proposal rejected.")}>Reject</button>
+              </div>
+            </>
+          ) : <p className="muted">{c.proposedBy === me ? "You proposed this, so a different person with approval rights has to decide it." : "A person with approval rights has to decide it."}</p>}
+        </div>
+      )}
       {canManage && c.status === "disputed" && (
         <form className="es-form" onSubmit={async e => {
           e.preventDefault();
-          await act(url, { action: "case_resolve", caseId: c.id, source, reference: reference || null, refundCents: goesAhead ? 0 : toCents(refund), releaseCents: goesAhead ? 0 : toCents(release), reason: why }, "Recorded.");
+          await act(url, { action: "case_resolve", caseId: c.id, source, reference: reference || null, refundCents: goesAhead ? 0 : toCents(refund), releaseCents: goesAhead ? 0 : toCents(release), reason: why }, "Proposed. A second person must approve it.");
         }}>
-          <h3>Record how the dispute ended</h3>
+          <h3>{c.proposal ? "Replace the proposed resolution" : "Propose how the dispute ended"}</h3>
           <div className="cm-row">
             <label>How<select value={source} onChange={e => setSource(e.target.value as typeof source)}>{Object.entries(SOURCE).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></label>
-            <label>Reference{source === "court_order" ? "" : " (optional)"}<input value={reference} maxLength={200} onChange={e => setReference(e.target.value)} /></label>
+            <label>Reference{source === "sale_continues" ? " (optional)" : ""}<input value={reference} maxLength={200} onChange={e => setReference(e.target.value)} /></label>
           </div>
           {!goesAhead && (
             <div className="cm-row">
@@ -205,7 +222,7 @@ function CaseRow({ c, releases, canManage, url, act }: { c: FallThroughCase; rel
             </div>
           )}
           <label className="es-wide">Reason (10+ characters)<textarea className="staff-reason" value={why} onChange={e => setWhy(e.target.value)} required minLength={10} /></label>
-          <div className="cm-actions"><button type="submit" disabled={bad}>{goesAhead ? "Record: sale goes ahead" : "Record outcome"}</button></div>
+          <div className="cm-actions"><button type="submit" disabled={bad}>{goesAhead ? "Propose: sale goes ahead" : "Propose outcome"}</button></div>
         </form>
       )}
       {canManage && c.status === "agreed" && (
@@ -215,6 +232,7 @@ function CaseRow({ c, releases, canManage, url, act }: { c: FallThroughCase; rel
               Request {next.kind === "refund" ? "refund to buyer" : "release to seller"} {money(next.amountCents)}
             </button>
             {pending && <span className="muted"> A payment is already waiting for approval.</span>}
+            {payoutBlockedByRules(c) && <span className="muted"> {payoutBlockedByRules(c)}</span>}
           </div>
         ) : <p className="muted">Every payment for this outcome has been requested.</p>
       )}

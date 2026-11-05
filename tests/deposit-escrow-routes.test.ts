@@ -16,7 +16,7 @@ vi.mock("../src/server/deposit-escrow-db", () => {
 
 vi.mock("../src/server/sale-fall-through-db", () => {
   const rec = (name: string) => async (...a: unknown[]) => { state.calls.push([name, ...a.slice(2)]); return state.out; };
-  return { requestCasePayout: rec("casePayout"), resolveDispute: rec("caseResolve") };
+  return { requestCasePayout: rec("casePayout"), resolveDispute: rec("caseResolve"), decideResolution: rec("caseDecide") };
 });
 
 import * as list from "../app/api/staff/escrow/route";
@@ -98,11 +98,20 @@ describe("deposit escrow routes", () => {
     expect((await post(one, { action: "case_payout", caseId: "nope" })).status).toBe(400);
     expect((await post(one, { action: "case_resolve", caseId: C, source: "court_order", refundCents: 1, releaseCents: 0, reason: "Order made on 4 Nov" })).status).toBe(400); // no reference
     expect((await post(one, { action: "case_resolve", caseId: C, source: "whim", reason: "Order made on 4 Nov" })).status).toBe(400);
+    expect((await post(one, { action: "case_resolve", caseId: C, source: "agreement", refundCents: 1, releaseCents: 0, reason: "Solicitors letter of 4 Nov" })).status).toBe(400); // no reference
+    expect((await post(one, { action: "case_resolve_decide", caseId: C, outcome: "approve", reason: "Checked the letter" })).status).toBe(403); // accountant lacks escrow.approve
+    state.staff = compliance;
+    expect((await post(one, { action: "case_resolve_decide", caseId: C, outcome: "maybe", reason: "Checked the letter" })).status).toBe(400);
+    expect((await post(one, { action: "case_resolve_decide", caseId: C, outcome: "approve", reason: "short" })).status).toBe(400);
+    state.staff = accountant;
     expect(state.calls).toEqual([]);
     expect((await post(one, { action: "case_payout", caseId: C, amountCents: 99 })).status).toBe(200);
     expect((await post(one, { action: "case_resolve", caseId: C, source: "sale_continues", reason: "Parties confirmed the sale goes ahead" })).status).toBe(200);
-    expect(state.calls.map(c => c[0])).toEqual(["casePayout", "caseResolve"]);
-    expect(state.calls[0]).toEqual(["casePayout", C]);
+    state.staff = compliance;
+    expect((await post(one, { action: "case_resolve_decide", caseId: C, outcome: "approve", reason: "Checked the letter" })).status).toBe(200);
+    expect(state.calls.map(c => c[0])).toEqual(["casePayout", "caseResolve", "caseDecide"]);
+    expect(state.calls[0]).toEqual(["casePayout", U(100), C]); // the case is looked up under the deposit record in the URL
+    expect(state.calls[2]).toEqual(["caseDecide", U(100), C, "approve", "Checked the letter"]);
   });
 
   it("returns the database refusal as is", async () => {
