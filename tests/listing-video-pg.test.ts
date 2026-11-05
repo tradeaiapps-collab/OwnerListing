@@ -139,4 +139,37 @@ describe.skipIf(!DATABASE_URL)("tour videos on Postgres", () => {
     expect(rows).toHaveLength(2);
     expect(String(rows[0]!["created_at"])).toBe(String(rows[1]!["created_at"]));
   });
+  it("a failed buyer video opens one Stripe refund per paid purchase, refunds each once, and hasPaid turns false", async () => {
+    const repo = createPgVideoRepository(t.db), s = await setup();
+    const buyers = [await addUser(t.db, "buyer"), await addUser(t.db, "buyer")];
+    const pay = { enabled: true, createCheckout: async (i: { purchaseId: string }) => ({ sessionId: `cs_${i.purchaseId}`, url: "https://checkout.stripe.com/x" }) };
+    const urls = { success: (id: string) => `https://x/${id}`, cancel: (id: string) => `https://x/${id}` };
+    for (const b of buyers) await startBuyerPurchase(repo, pay, { configured: true }, { userId: b, userType: "buyer" } as Actor, s.listing, pricing, urls, ids);
+    const secret = "whsec_pg";
+    const sessions = (await t.db.query("SELECT checkout_session_id AS s FROM video_purchase WHERE listing_id = $1 ORDER BY created_at", [s.listing])).rows.map(r => String(r["s"]));
+    for (const [i, session] of sessions.entries()) {
+      const body = JSON.stringify({ id: `evt_rf_${s.listing}_${i}`, type: "checkout.session.completed", data: { object: { id: session, payment_status: "paid", payment_intent: `pi_rf_${i}` } } });
+      const ts = Math.floor(Date.now() / 1000);
+      await handleVideoStripeWebhook(repo, body, `t=${ts},v1=${createHmac("sha256", secret).update(`${ts}.${body}`).digest("hex")}`, secret, ids);
+    }
+    const video = (await repo.liveVideo(s.listing, "buyer"))!;
+    const ev = { id: randomUUID(), occurredAt: ids.now(), actorType: "system" as const, actorId: buyers[0]!, aggregateType: "listing_video", aggregateId: video.id, eventType: "video.failed", correlationId: video.id, payload: { reason: "nsfw" } };
+    await repo.markFailed(video.id, "nsfw", ids.now(), ev);
+    await repo.markFailed(video.id, "nsfw", ids.now(), { ...ev, id: randomUUID() }); // a repeat adds nothing
+    const rows = (await t.db.query("SELECT status, amount_cents, reason FROM video_refund WHERE listing_id = $1", [s.listing])).rows;
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toMatchObject({ status: "pending", amount_cents: 600, reason: "Video generation failed: nsfw" });
+    expect(await repo.hasPaid(s.listing, buyers[0]!)).toBe(false);
+    const sent: string[] = [];
+    const refunds = { enabled: true, refund: async (i: { paymentIntentId: string; amountCents: number }) => { sent.push(`${i.paymentIntentId}:${i.amountCents}`); return { stripeRefundId: `re_${i.paymentIntentId}` }; } };
+    const inert = { configured: false } as unknown as VideoProvider;
+    await Promise.all([runVideoQueue({ repo, provider: inert, storage, ids, refunds }, 50), runVideoQueue({ repo, provider: inert, storage, ids, refunds }, 50)]);
+    await runVideoQueue({ repo, provider: inert, storage, ids, refunds }, 50);
+    expect(sent.sort()).toEqual(["pi_rf_0:600", "pi_rf_1:600"]);
+    const done = (await t.db.query("SELECT status, stripe_refund_id, refunded_at FROM video_refund WHERE listing_id = $1", [s.listing])).rows;
+    expect(done.every(r => r["status"] === "succeeded" && r["refunded_at"] !== null)).toBe(true);
+    const trail = await repo.refundsForListing(s.listing);
+    expect(trail).toHaveLength(2);
+    expect((await t.db.query("SELECT event_type FROM audit_event WHERE aggregate_id = $1 AND event_type LIKE 'video.refund%'", [video.id])).rows).toHaveLength(4);
+  });
 });

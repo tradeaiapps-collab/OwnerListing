@@ -19,6 +19,8 @@ export interface LeadFact {
   enquiryId: string; listingId: string; listingTitle: string; buyerId: string; buyerName: string; enquiredAt: string;
   buyerMessages: number; agentMessages: number; lastBuyerAt?: string; firstAgentAt?: string;
   offerStatus?: string; offerPriceCents?: number; stage?: Stage; followUpAt?: string; notes: number;
+  /** The listing's property type, for filtering team reports. */
+  propertyType?: string;
 }
 export interface Lead extends LeadFact { score: number; band: "hot" | "warm" | "cold"; reasons: string[]; nextAction: string; stage: Stage; overdue: boolean }
 

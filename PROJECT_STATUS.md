@@ -274,3 +274,5 @@ Owner-generated documents from staff-published templates, built-in e-signing wit
 
 ## Phone app (5 Nov 2026, PR feature/mobile-app)
 React Native with Expo in mobile/ (one codebase, iPhone and Android). Phone sign-in: POST /api/mobile/auth/login|refresh|logout, 15-minute bearer access tokens, single-use rotating refresh tokens (reuse revokes the session), table mobile_session; bearer requests ignore cookies, second step required as on the web. Screens: search, property, saved, appointments, agent messages, alerts, push topics. Push uses the PR #166 FCM/APNs senders with native device tokens. Open: Apple and Google developer accounts, Firebase project, APNs key, final app id, Google sign-in and sign-up in the app, store listing. Details: mobile/README.md.
+
+- Calendar import (PR: portal-calendar-import): Airbnb/VRBO/Booking.com iCal links imported hourly into syndication_booking (source 'ical'), clashes flagged, shown on the listing syndication page and agent workspace. Needs no partner API access. Imported blocks are not echoed on our own iCal feed (avoids loops between portals).

@@ -4,6 +4,8 @@ import { useParams } from "next/navigation";
 import { AMENITY_LABELS, formatPrice, isAmenity } from "../../../src/domain/listing-details";
 import { actionHref } from "../../../src/domain/listing-actions";
 import { ListingGallery } from "../gallery";
+import MortgageCalc from "../../mortgage-calc";
+import { monthlyEstimate } from "../../../src/domain/mortgage";
 import { VideoTour } from "../video-tour";
 import { LocationMap } from "../location-map";
 import { JSON_HEADERS } from "../ui";
@@ -270,6 +272,7 @@ export default function ListingDetail() {
   }
 
   const tx = listing.transactionType as "sale" | "rent";
+  const est = tx === "sale" ? monthlyEstimate(listing.priceCents) : undefined;
   const facts: [string, string][] = [];
   if (listing.bedrooms !== undefined) facts.push([String(listing.bedrooms), listing.bedrooms === 1 ? "Bedroom" : "Bedrooms"]);
   if (listing.bathrooms !== undefined) facts.push([String(listing.bathrooms), listing.bathrooms === 1 ? "Bathroom" : "Bathrooms"]);
@@ -332,12 +335,19 @@ export default function ListingDetail() {
             <LocationMap latitude={listing.latitude} longitude={listing.longitude} title={listing.title} address={listing.address} transactionType={tx} />
           )}
 
+          {tx === "sale" && listing.priceCents !== undefined && (
+            <section className="pd-section" id="pd-mortgage" aria-label="Mortgage calculator">
+              <MortgageCalc price={listing.priceCents / 100} heading="Estimate your repayments for this home" />
+            </section>
+          )}
+
           {compliance
             ? <><Disclosures c={compliance} state={listing.jurisdiction} tx={tx} /><Documents docs={docs} /><Safety c={compliance} tx={tx} /></>
             : <Documents docs={docs} />}
         </div>
         <aside className="detail-aside" aria-label="Contact the seller">
           {listing.priceCents !== undefined && <p className="detail-price">{formatPrice(listing.priceCents, tx)}</p>}
+          {est !== undefined && <p className="mc-est">You&apos;d pay about <strong>{est.toLocaleString("en-AU", { style: "currency", currency: "AUD", maximumFractionDigits: 0 })}/month</strong> in loan repayments (30 years, 20% deposit, example rate). <a href="#pd-mortgage">Adjust</a></p>}
           <div className="detail-actions">
             <a className="button" href={actionHref(listing.id, "enquire", userType !== null)}>Enquire</a>
             <SaveButton listingId={listing.id} userType={userType} />
