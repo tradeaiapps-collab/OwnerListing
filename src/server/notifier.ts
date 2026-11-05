@@ -3,10 +3,11 @@ import { renderEmail } from "../domain/email-templates";
 import { planChannels, renderNotification, type Kind, type NotificationParams } from "../domain/notifications";
 import type { Queryable } from "./db";
 import { getEmailPort, getSmsPort } from "./messaging";
+import { pushToUser } from "./push";
 import { createNotificationPg, getPreferencesPg, makeNotificationUnsubscribeToken, recipientPg } from "./notifications-db";
 
 type Env = Readonly<Record<string, string | undefined>>;
-export interface NotifyResult { inApp: boolean; email: "sent" | "skipped" | "failed"; sms: "sent" | "skipped" | "failed" }
+export interface NotifyResult { inApp: boolean; email: "sent" | "skipped" | "failed"; sms: "sent" | "skipped" | "failed"; push: "sent" | "skipped" | "failed" }
 
 /**
  * Tells one user about something, on the channels they have chosen (preferences are read at send time, so an opt-out is honoured at once).
@@ -14,13 +15,16 @@ export interface NotifyResult { inApp: boolean; email: "sent" | "skipped" | "fai
  * block the action that caused it. Marketing email carries a signed one-click unsubscribe link and is refused without one.
  */
 export async function notifyUser(db: Queryable, userId: string, kind: Kind, params: NotificationParams = {}, env: Env = process.env): Promise<NotifyResult> {
-  const result: NotifyResult = { inApp: false, email: "skipped", sms: "skipped" };
+  const result: NotifyResult = { inApp: false, email: "skipped", sms: "skipped", push: "skipped" };
   try {
     const n = renderNotification(kind, params);
     const [prefs, to] = await Promise.all([getPreferencesPg(db, userId), recipientPg(db, userId)]);
     const plan = planChannels(kind, prefs, to.phone !== null);
     const base = env["APP_URL"]?.replace(/\/+$/, "");
-    if (plan.inApp) { await createNotificationPg(db, userId, n); result.inApp = true; }
+    let notificationId: string | null = null;
+    if (plan.inApp) { notificationId = await createNotificationPg(db, userId, n); result.inApp = true; }
+    // Push goes out alongside, on the user's own topic setting; Elena personalises it. A failure here never affects the other channels.
+    result.push = (await pushToUser(db, userId, kind, n, notificationId, env)).status;
 
     if (plan.email && to.email) {
       const unsub = n.category === "marketing" && base

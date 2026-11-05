@@ -83,6 +83,47 @@ const PROVIDERS = [
     }
   },
   {
+    id: "webpush", label: "Browser push (Web Push, VAPID)", required: false,
+    unlocks: "Push notifications to Chrome, Edge, Firefox and Safari (including Home Screen apps).",
+    whenOff: "Browsers cannot subscribe and no browser push is sent; in-app, email and SMS are unaffected.",
+    keys: ["VAPID_PUBLIC_KEY", "VAPID_PRIVATE_KEY", "VAPID_SUBJECT"],
+    check(get) {
+      const p = [];
+      if (get("VAPID_PUBLIC_KEY") && !/^[A-Za-z0-9_-]{87}$/.test(get("VAPID_PUBLIC_KEY"))) p.push("VAPID_PUBLIC_KEY must be the 87-character base64url public key (npx web-push generate-vapid-keys).");
+      if (get("VAPID_PRIVATE_KEY") && !/^[A-Za-z0-9_-]{43}$/.test(get("VAPID_PRIVATE_KEY"))) p.push("VAPID_PRIVATE_KEY must be the 43-character base64url private key from the same pair.");
+      if (get("VAPID_SUBJECT") && !/^(mailto:[^\s@]+@[^\s@]+|https:\/\/[^\s]+)$/.test(get("VAPID_SUBJECT"))) p.push("VAPID_SUBJECT must be mailto:you@example.com.au or an https URL.");
+      return p;
+    }
+  },
+  {
+    id: "fcm", label: "Android push (Firebase Cloud Messaging)", required: false,
+    unlocks: "Push notifications to the Android app.",
+    whenOff: "Android devices are not pushed to; the app still shows the in-app inbox.",
+    keys: ["FCM_PROJECT_ID", "FCM_CLIENT_EMAIL", "FCM_PRIVATE_KEY"],
+    check(get) {
+      const p = [];
+      if (get("FCM_PROJECT_ID") && !/^[a-z][a-z0-9-]{4,29}$/.test(get("FCM_PROJECT_ID"))) p.push("FCM_PROJECT_ID is the Firebase project id (lower case letters, digits and dashes).");
+      if (get("FCM_CLIENT_EMAIL") && !/^[^\s@]+@[^\s@]+\.iam\.gserviceaccount\.com$/.test(get("FCM_CLIENT_EMAIL"))) p.push("FCM_CLIENT_EMAIL must be the service account email ending .iam.gserviceaccount.com.");
+      if (get("FCM_PRIVATE_KEY") && !get("FCM_PRIVATE_KEY").replace(/\\n/g, "\n").trim().startsWith("-----BEGIN")) p.push("FCM_PRIVATE_KEY must be the service account private key (-----BEGIN PRIVATE KEY-----).");
+      return p;
+    }
+  },
+  {
+    id: "apns", label: "iPhone push (Apple APNs)", required: false,
+    unlocks: "Push notifications to the iPhone app.",
+    whenOff: "iPhones are not pushed to; the app still shows the in-app inbox.",
+    keys: ["APNS_KEY_ID", "APNS_TEAM_ID", "APNS_BUNDLE_ID", "APNS_PRIVATE_KEY"], optionalKeys: ["APNS_PRODUCTION"],
+    check(get) {
+      const p = [];
+      if (get("APNS_KEY_ID") && !/^[A-Z0-9]{10}$/.test(get("APNS_KEY_ID"))) p.push("APNS_KEY_ID is the 10-character key id from Apple Developer.");
+      if (get("APNS_TEAM_ID") && !/^[A-Z0-9]{10}$/.test(get("APNS_TEAM_ID"))) p.push("APNS_TEAM_ID is the 10-character Apple team id.");
+      if (get("APNS_BUNDLE_ID") && !/^[A-Za-z0-9.-]+$/.test(get("APNS_BUNDLE_ID"))) p.push("APNS_BUNDLE_ID is the app's bundle id, like au.com.example.ownerlisting.");
+      if (get("APNS_PRIVATE_KEY") && !get("APNS_PRIVATE_KEY").replace(/\\n/g, "\n").trim().startsWith("-----BEGIN")) p.push("APNS_PRIVATE_KEY must be the .p8 key contents (-----BEGIN PRIVATE KEY-----).");
+      if (get("APNS_PRODUCTION") && !["0", "1"].includes(get("APNS_PRODUCTION"))) p.push("APNS_PRODUCTION is 1 for the live APNs service, or 0/unset for the sandbox.");
+      return p;
+    }
+  },
+  {
     id: "abn", label: "ABN Lookup (ABR)", required: false,
     unlocks: "Confirming agent and business ABNs with the Australian Business Register.",
     whenOff: "ABNs are only checksum-checked and recorded as \"not confirmed\"; staff review them.",

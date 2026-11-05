@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { CATEGORIES, CHANNELS, type Category, type Channel, type ElenaReply, type NotificationView, type Preferences } from "../../src/domain/notifications";
 import { JSON_HEADERS } from "../listings/ui";
+import PushSettings from "./push-settings";
 import "../styles/notifications.css";
 
 type Tab = "inbox" | "history" | "preferences";
@@ -72,7 +73,7 @@ export default function Notifications() {
           </div>
           <div id="nt-panel" role="tabpanel" aria-labelledby={`tab-${tab}`}>
             {msg ? <p role="status">{msg}</p> : null}
-            {tab === "preferences" ? <Prefs onMessage={setMsg} /> : (
+            {tab === "preferences" ? <><Prefs onMessage={setMsg} /><PushSettings onMessage={setMsg} /></> : (
               <>
                 <div className="nt-toolbar">
                   {tab === "inbox" ? (<>

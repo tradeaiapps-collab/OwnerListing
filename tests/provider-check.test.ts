@@ -24,6 +24,16 @@ const FULL: Record<string, string> = {
   SMS_AUTH_TOKEN: "t".repeat(32),
   SMS_SENDER: "+61400000000",
   SMS_CODE_SECRET: "c".repeat(40),
+  VAPID_PUBLIC_KEY: "B".repeat(87),
+  VAPID_PRIVATE_KEY: "C".repeat(43),
+  VAPID_SUBJECT: "mailto:support@example.com.au",
+  FCM_PROJECT_ID: "ownerlisting-prod",
+  FCM_CLIENT_EMAIL: "push@ownerlisting-prod.iam.gserviceaccount.com",
+  FCM_PRIVATE_KEY: "-----BEGIN PRIVATE KEY-----\\nMIIB\\n-----END PRIVATE KEY-----\\n",
+  APNS_KEY_ID: "ABC123DEFG",
+  APNS_TEAM_ID: "TEAM123456",
+  APNS_BUNDLE_ID: "au.com.example.ownerlisting",
+  APNS_PRIVATE_KEY: "-----BEGIN PRIVATE KEY-----\\nMIIB\\n-----END PRIVATE KEY-----\\n",
   ABN_LOOKUP_GUID: "12345678-90ab-cdef-1234-567890abcdef",
   GOOGLE_PLACES_API_KEY: "AIza" + "b".repeat(35),
   NEXT_PUBLIC_MAP_TILE_URL: "https://tiles.example.com/{z}/{x}/{y}.png",
@@ -35,7 +45,7 @@ const by = (env: Record<string, string | undefined>, production = true) =>
 describe("provider readiness check", () => {
   it("reports every provider ready with a full set of real-looking keys", () => {
     const r = checkProviders(FULL, { production: true });
-    expect(r.map(x => x.id)).toEqual(["google", "mfa", "payway", "smtp", "sms", "abn", "address", "maptiles"]);
+    expect(r.map(x => x.id)).toEqual(["google", "mfa", "payway", "smtp", "sms", "webpush", "fcm", "apns", "abn", "address", "maptiles"]);
     expect(r.filter(x => x.status !== "ready")).toEqual([]);
     expect(r.some(x => x.blocking)).toBe(false);
   });
