@@ -10,7 +10,7 @@ export interface StaffSection { href: string; label: string; permissions: readon
 export const STAFF_SECTIONS: readonly StaffSection[] = [
   { href: "/staff/dashboard", label: "Admin dashboard", permissions: ["report.sales", "report.operations", "listing.moderate", "user.manage"] },
   { href: "/staff/settlements", label: "Settlements", permissions: ["report.sales", "report.operations"] },
-  { href: "/staff/projects", label: "Internal projects", permissions: ["project.manage", "project.review", "project.tech_lead"] },
+  { href: "/staff/disputes", label: "Disputes", permissions: ["case.manage"] },
   { href: "/staff/negotiation-coaching", label: "Negotiation coaching", permissions: ["report.sales", "report.operations"] },
   { href: "/staff/sale-events", label: "Sold and rented events", permissions: ["sale_event.manage", "report.sales"] },
   { href: "/staff/listings", label: "Listing moderation", permissions: ["listing.moderate"] },
@@ -59,6 +59,7 @@ export const STAFF_SECTIONS: readonly StaffSection[] = [
   { href: "/staff/campaigns", label: "Campaigns", permissions: ["campaign.manage"] },
   { href: "/staff/feeds", label: "Property data feeds", permissions: ["feeds.manage"] },
   { href: "/staff/lead-scoring", label: "Lead scoring", permissions: ["feeds.manage"] },
+  { href: "/staff/projects", label: "Internal projects", permissions: ["project.manage", "project.review", "project.tech_lead"] },
   { href: "/staff/investments", label: "Investor projects review", permissions: ["investment.review"] },
   { href: "/staff/investments/settings", label: "Investor module switch", permissions: ["investment.manage"] }
 ];
