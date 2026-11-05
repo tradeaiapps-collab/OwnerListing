@@ -1,10 +1,13 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type KeyboardEvent, type ReactNode } from "react";
 import type { Analytics, Bucket } from "../../../src/domain/admin-analytics";
 import { formatKpi } from "../../../src/domain/admin-dashboard";
 import type { TeamComparison, Trend } from "../../../src/domain/team-compare";
 import { BarList, LineChart } from "../charts";
 import { loadError } from "../staff-api";
+import { BenchmarkPanel } from "./benchmark-panel";
+import { ForecastPanel } from "./forecast-panel";
+import { TrendsPanel } from "./trends-panel";
 
 const PRESETS: { label: string; days: number; bucket: Bucket }[] = [
   { label: "Last 30 days", days: 30, bucket: "day" },
@@ -16,8 +19,70 @@ const dollars = (cents: number) => formatKpi(cents, "cents");
 const compact = (cents: number) => { const d = cents / 100; return d >= 1_000_000 ? `$${(d / 1_000_000).toFixed(1)}M` : d >= 1_000 ? `$${Math.round(d / 1_000)}k` : `$${Math.round(d)}`; };
 const delta =(t: Trend) => (t.changePct === undefined ? "new" : `${t.changePct > 0 ? "+" : ""}${t.changePct}%`);
 
-/** Platform analytics over time: listings, offers, acceptance, platform fees and new accounts, with a period and bucket filter. */
+const TABS = [
+  { key: "overview", label: "Platform overview" },
+  { key: "forecast", label: "Market forecast" },
+  { key: "benchmarks", label: "Agent benchmarks" },
+  { key: "trends", label: "Team trends" }
+] as const;
+type Tab = (typeof TABS)[number]["key"];
+
+/** Analytics suite: platform overview, market forecast, agent benchmarks and team trends, one tab each. The tab is kept in the URL hash. */
 export default function StaffAnalytics() {
+  const [tab, setTab] = useState<Tab>("overview");
+  useEffect(() => {
+    const fromHash = () => {
+      const h = window.location.hash.slice(1);
+      setTab(TABS.some(t => t.key === h) ? (h as Tab) : "overview");
+    };
+    fromHash();
+    window.addEventListener("hashchange", fromHash);
+    return () => window.removeEventListener("hashchange", fromHash);
+  }, []);
+  const choose = (t: Tab) => {
+    setTab(t);
+    window.history.replaceState(null, "", t === "overview" ? window.location.pathname : `#${t}`);
+  };
+  const onKey = (e: KeyboardEvent<HTMLDivElement>) => {
+    const i = TABS.findIndex(t => t.key === tab);
+    const next = e.key === "ArrowRight" ? (i + 1) % TABS.length : e.key === "ArrowLeft" ? (i + TABS.length - 1) % TABS.length : e.key === "Home" ? 0 : e.key === "End" ? TABS.length - 1 : -1;
+    if (next < 0) return;
+    e.preventDefault();
+    choose(TABS[next]!.key);
+    document.getElementById(`an-tab-${TABS[next]!.key}`)?.focus();
+  };
+
+  return (
+    <main className="admin-page">
+      <h1>Analytics</h1>
+      <p><a href="/staff/dashboard">Back to the admin dashboard</a></p>
+      <div className="an-tabs" role="tablist" aria-label="Analytics views" onKeyDown={onKey}>
+        {TABS.map(t => (
+          <button key={t.key} type="button" role="tab" id={`an-tab-${t.key}`} aria-controls={`an-panel-${t.key}`} aria-selected={tab === t.key}
+            tabIndex={tab === t.key ? 0 : -1} onClick={() => choose(t.key)}>{t.label}</button>
+        ))}
+      </div>
+      {/* Panels mount on first view and stay mounted, so switching back keeps their filters. */}
+      {TABS.map(t => (
+        <div key={t.key} role="tabpanel" id={`an-panel-${t.key}`} aria-labelledby={`an-tab-${t.key}`} hidden={tab !== t.key} tabIndex={0} className="an-panel">
+          <Lazy show={tab === t.key}>
+            {t.key === "overview" ? <Overview /> : t.key === "forecast" ? <ForecastPanel endpoint="/api/staff/analytics/forecast" />
+              : t.key === "benchmarks" ? <BenchmarkPanel /> : <TrendsPanel />}
+          </Lazy>
+        </div>
+      ))}
+    </main>
+  );
+}
+
+function Lazy({ show, children }: { show: boolean; children: ReactNode }) {
+  const [seen, setSeen] = useState(show);
+  useEffect(() => { if (show) setSeen(true); }, [show]);
+  return seen ? <>{children}</> : null;
+}
+
+/** Platform analytics over time: listings, offers, acceptance, platform fees and new accounts, with a period and bucket filter. */
+function Overview() {
   const [f, setF] = useState({ from: "", to: "", bucket: "week" as Bucket });
   const [data, setData] = useState<Analytics | null>(null);
   const [teams, setTeams] = useState<TeamComparison | null>(null);
@@ -50,9 +115,7 @@ export default function StaffAnalytics() {
   };
 
   return (
-    <main className="admin-page">
-      <h1>Platform analytics</h1>
-      <p><a href="/staff/dashboard">Back to the admin dashboard</a></p>
+    <section aria-label="Platform overview">
       <form className="filters" onSubmit={e => { e.preventDefault(); void load(f); }}>
         <label>From <input type="date" value={f.from} onChange={e => setF({ ...f, from: e.target.value })} /></label>
         <label>To <input type="date" value={f.to} onChange={e => setF({ ...f, to: e.target.value })} /></label>
@@ -125,6 +188,6 @@ export default function StaffAnalytics() {
           )}
         </>
       )}
-    </main>
+    </section>
   );
 }
