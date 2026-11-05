@@ -221,26 +221,26 @@ function tally(xs: string[]): Array<[string, number]> {
 
 // ---- Loosening a search that finds nothing ------------------------------------------------------------------------------------------
 
-export interface Relaxation { label: string; query: SearchQuery }
+export interface Relaxation { label: string; query: SearchQuery; /** URL parameter names to remove from the search to get this variant. */ clear: string[] }
 
 /** One variant per active filter with that filter removed. The route counts each, so the person sees what a change would give. */
 export function relaxations(q: SearchQuery): Relaxation[] {
   const out: Relaxation[] = [];
-  const without = (label: string, drop: Array<keyof SearchQuery>) => {
+  const without = (label: string, drop: Array<keyof SearchQuery>, clear: string[]) => {
     const next = { ...q, page: 1, pageSize: 1 } as SearchQuery;
     for (const k of drop) delete (next as unknown as Record<string, unknown>)[k];
-    out.push({ label, query: next });
+    out.push({ label, query: next, clear });
   };
-  if (q.q) without("the search words", ["q"]);
-  if (q.suburb || q.postcode) without("the suburb or postcode", ["suburb", "postcode"]);
-  if (q.near) without("the distance limit", ["near"]);
-  if (q.minPriceCents !== undefined || q.maxPriceCents !== undefined) without("the price range", ["minPriceCents", "maxPriceCents"]);
-  if (q.minBedrooms !== undefined) without("the bedroom minimum", ["minBedrooms"]);
-  if (q.minBathrooms !== undefined) without("the bathroom minimum", ["minBathrooms"]);
-  if (q.minParking !== undefined) without("the parking minimum", ["minParking"]);
-  if (q.amenities) without("the features", ["amenities"]);
-  if (q.propertyType) without("the property type", ["propertyType"]);
-  if (q.jurisdiction) without("the state", ["jurisdiction"]);
+  if (q.q) without("the search words", ["q"], ["q"]);
+  if (q.suburb || q.postcode) without("the suburb or postcode", ["suburb", "postcode"], ["suburb", "postcode"]);
+  if (q.near) without("the distance limit", ["near"], ["lat", "lng", "radiusKm"]);
+  if (q.minPriceCents !== undefined || q.maxPriceCents !== undefined) without("the price range", ["minPriceCents", "maxPriceCents"], ["minPriceCents", "maxPriceCents"]);
+  if (q.minBedrooms !== undefined) without("the bedroom minimum", ["minBedrooms"], ["minBedrooms"]);
+  if (q.minBathrooms !== undefined) without("the bathroom minimum", ["minBathrooms"], ["minBathrooms"]);
+  if (q.minParking !== undefined) without("the parking minimum", ["minParking"], ["minParking"]);
+  if (q.amenities) without("the features", ["amenities"], ["amenities"]);
+  if (q.propertyType) without("the property type", ["propertyType"], ["propertyType"]);
+  if (q.jurisdiction) without("the state", ["jurisdiction"], ["jurisdiction"]);
   return out;
 }
 
