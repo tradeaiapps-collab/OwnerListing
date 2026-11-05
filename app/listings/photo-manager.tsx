@@ -1,5 +1,6 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { classifyTour } from "../../src/domain/virtual-tour";
 import { FEATURE_LIMITS, PHOTO_BASE, PHOTO_CATEGORIES, PHOTO_LIMITS, PROJECT_PHOTO_MAX, isPhotoCategory, makeCover, moveEntry, photoUrl, type PhotoKind, type PhotoView } from "../../src/domain/listing-photos";
 import { JSON_HEADERS } from "./ui";
 import "../styles/gallery.css";
@@ -79,7 +80,7 @@ export function PhotoManager({ listingId, projectId }: { listingId?: string; pro
     if (dirty) { setError("Save or undo your changes before adding photos."); return; }
     setError("");
     const showing = rows.filter(r => !r.hidden && r.kind === kind).length;
-    const room = (isProject ? PROJECT_PHOTO_MAX : kind === "photo" ? PHOTO_LIMITS.maxPhotos : PHOTO_LIMITS.maxFloorplans) - showing;
+    const room = (isProject ? PROJECT_PHOTO_MAX : kind === "photo" ? PHOTO_LIMITS.maxPhotos : kind === "photo360" ? PHOTO_LIMITS.max360 : PHOTO_LIMITS.maxFloorplans) - showing;
     const items: QueueItem[] = files.map((f, i) => {
       const bad = precheck(f);
       if (bad) return { name: f.name, state: "error", message: bad };
@@ -160,7 +161,7 @@ export function PhotoManager({ listingId, projectId }: { listingId?: string; pro
     <section className="gl-mgr" aria-labelledby="gl-mgr-h">
       <h2 id="gl-mgr-h">{isProject ? "Gallery" : "Photos and floor plans"}</h2>
       <p className="muted">
-        {isProject ? `${counts.photo} of ${PROJECT_PHOTO_MAX} photos.` : `${counts.photo} of ${PHOTO_LIMITS.maxPhotos} photos, ${counts.floorplan} of ${PHOTO_LIMITS.maxFloorplans} floor plans.`} JPEG, PNG or WebP, up to {MB} MB each.
+        {isProject ? `${counts.photo} of ${PROJECT_PHOTO_MAX} photos.` : `${counts.photo} of ${PHOTO_LIMITS.maxPhotos} photos, ${counts.floorplan} of ${PHOTO_LIMITS.maxFloorplans} floor plans, ${rows.filter(r => !r.hidden && r.kind === "photo360").length} of ${PHOTO_LIMITS.max360} 360 photos.`} JPEG, PNG or WebP, up to {MB} MB each.
         Location and camera details are removed from every image. The first photo is the cover.
       </p>
       {isProject && <p className="muted">Photos are shown only to investors who can see the full project. They are kept on record: you can hide, reorder or replace them, but not delete them. Any change except hiding sends an approved project back to staff review.</p>}
@@ -180,6 +181,7 @@ export function PhotoManager({ listingId, projectId }: { listingId?: string; pro
                 <select id="gl-kind" value={kind} onChange={e => setKind(e.target.value as PhotoKind)} disabled={busy}>
                   <option value="photo">Photos</option>
                   <option value="floorplan">Floor plans</option>
+                  <option value="photo360">360 photos (2:1 panorama)</option>
                 </select>
               </>
             )}
@@ -233,7 +235,7 @@ export function PhotoManager({ listingId, projectId }: { listingId?: string; pro
       {rows.length === 0 ? <p className="muted">No photos yet.</p> : (
         <ol className="gl-list" aria-label="Gallery order">
           {rows.map((r, i) => {
-            const label = `${r.kind === "floorplan" ? "Floor plan" : "Photo"} ${i + 1}`;
+            const label = `${r.kind === "floorplan" ? "Floor plan" : r.kind === "photo360" ? "360 photo" : "Photo"} ${i + 1}`;
             return (
               <li key={r.id} className={["gl-item", r.hidden && "is-hidden", drag === i && "is-dragging", target === i && drag !== i && "is-target"].filter(Boolean).join(" ")}
                 draggable={manage} onDragStart={e => { setDrag(i); e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", r.id); }}
@@ -247,6 +249,7 @@ export function PhotoManager({ listingId, projectId }: { listingId?: string; pro
                     <span className="gl-badge">{i + 1}</span>
                     {r.id === coverId && <span className="gl-badge is-cover">Cover</span>}
                     {r.kind === "floorplan" && <span className="gl-badge">Floor plan</span>}
+                    {r.kind === "photo360" && <span className="gl-badge">360</span>}
                     {r.category && <span className="gl-badge">{PHOTO_CATEGORIES.find(c => c.key === r.category)?.label}</span>}
                     {r.hidden && <span className="gl-badge">Hidden</span>}
                   </span>
@@ -301,9 +304,17 @@ export function PhotoManager({ listingId, projectId }: { listingId?: string; pro
 
       {manage && !isProject && (
         <div className="stack gl-tour">
-          <label>Video or virtual tour link (optional)
-            <input type="url" inputMode="url" placeholder="https://" maxLength={PHOTO_LIMITS.tourUrlMax} value={tour} onChange={e => { setTour(e.target.value); setDirty(true); }} />
+          <label>3D tour, video or virtual tour link (optional)
+            <input type="url" inputMode="url" placeholder="https://my.matterport.com/show/?m=..." maxLength={PHOTO_LIMITS.tourUrlMax} value={tour} onChange={e => { setTour(e.target.value); setDirty(true); }} aria-describedby="gl-tour-hint" />
           </label>
+          <p id="gl-tour-hint" className="muted">
+            {(() => {
+              const t = classifyTour(tour.trim());
+              if (!tour.trim()) return "Matterport, Kuula, YouTube and Vimeo links play right on your listing. Any other https link opens in a new tab.";
+              if (!t) return "Use a full https:// address.";
+              return t.embedUrl ? `Recognised as a ${t.label}. It will play on your listing page.` : "This link will open in a new tab. It cannot play on the page.";
+            })()}
+          </p>
         </div>
       )}
       {manage && (

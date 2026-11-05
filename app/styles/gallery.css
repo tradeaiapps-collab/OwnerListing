@@ -136,6 +136,21 @@ html.gl-lock { overflow: hidden; }
 .gl-mini-btn:hover:not(:disabled) { background: var(--surface); border-color: var(--brand); }
 .gl-mini-btn .gl-badge { position: absolute; left: 4px; top: 4px; }
 
+/* 360 photo viewer and hosted tour frame */
+.gl-pano-view { height: clamp(260px, 56vw, 560px); border-radius: calc(var(--radius) + 4px); background-color: var(--surface); background-size: auto 100%; background-repeat: repeat-x; cursor: grab; touch-action: pan-y; box-shadow: var(--shadow-2); user-select: none; }
+.gl-pano-view:active { cursor: grabbing; }
+.gl-pano-bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin-top: var(--space-3); }
+.gl-pano-bar .gl-tab { min-height: 44px; }
+.gl-pano-cap { color: var(--muted); font-size: 0.9rem; }
+.gl-tourbox { aspect-ratio: 16 / 9; border-radius: calc(var(--radius) + 4px); overflow: hidden; background: var(--surface); box-shadow: var(--shadow-2); }
+.gl-tourframe { width: 100%; height: 100%; border: 0; display: block; }
+.gl-tourstart { width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-2); border: 0; border-radius: 0; background: linear-gradient(160deg, var(--tint-2), var(--tint)) center / cover; color: #fff; font-weight: 700; font-size: 1.125rem; box-shadow: none; }
+.gl-tourstart:hover:not(:disabled) { background-color: var(--surface); color: #fff; }
+.gl-tourhint { font-size: 0.8rem; font-weight: 500; opacity: 0.9; }
+@media (max-width: 719px) { .gl-tourbox { aspect-ratio: 4 / 5; margin: 0 calc(-1 * var(--space-4)); border-radius: 0; } .gl-pano-view { margin: 0 calc(-1 * var(--space-4)); border-radius: 0; } }
+.gl-elena { margin: var(--space-2) 0 0; }
+.gl-elena .gl-tab { min-height: 44px; }
+
 /* Rooms, features and Elena's caption suggestions */
 .gl-elena { display: grid; gap: var(--space-2, 0.5rem); margin-block: var(--space-3, 1rem); }
 .gl-sugg { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-2, 0.5rem); }
