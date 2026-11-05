@@ -52,7 +52,7 @@ export default function SellerMarketInsights() {
       {signedOut && <p role="alert">Sign in to see market insights. <a href="/login">Sign in</a></p>}
       {busy && !res && <p className="muted" role="status">Loading…</p>}
       {res && <InsightPanels i={res} />}
-      <p className="si-links"><a href="/owner/pricing-advice">Get pricing advice for one of your listings</a> <a href="/market">Full market tool, with Elena</a></p>
+      <p className="si-links"><a href="/owner/listing-performance">See how your listing is performing</a> <a href="/owner/pricing-advice">Get pricing advice for one of your listings</a> <a href="/market">Full market tool, with Elena</a></p>
     </main>
   );
 }
