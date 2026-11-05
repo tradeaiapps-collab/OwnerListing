@@ -14,6 +14,7 @@ import AskAssistant from "./ask-assistant";
 import { CardMedia } from "./listings/card-media";
 import HomeSearch from "./home-search";
 import SavingsCalc from "./savings-calc";
+import MortgageCalc from "./mortgage-calc";
 import "./styles/cards.css";
 import "./styles/home.css";
 import "./styles/assistant.css";
@@ -199,6 +200,18 @@ export default async function Home() {
             <a className="button secondary" href="/plans">See plans and fees</a>
           </div>
           <SavingsCalc />
+        </div>
+      </section>
+
+      <section className="home-sec" aria-labelledby="home-mortgage">
+        <div className="home-wrap home-calc">
+          <div>
+            <p className="eyebrow">Buying</p>
+            <h2 id="home-mortgage">What would a home cost you each month?</h2>
+            <p>Try a price, deposit and loan term to see an estimated monthly repayment, using the latest published average home-loan rate. It helps you work out what to look for before you talk to a lender.</p>
+            <a className="button secondary" href="/listings">Browse homes for sale</a>
+          </div>
+          <MortgageCalc />
         </div>
       </section>
 
