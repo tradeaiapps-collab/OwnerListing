@@ -8,6 +8,7 @@ import { appendAuditPg, type Queryable } from "./db";
 import { notifyDeposit } from "./deposit-notify";
 import { notifyFallThrough } from "./fall-through-notify";
 import type { StaffRef } from "./deposit-escrow-db";
+import { holidayDatesPg } from "./public-holidays-db";
 
 // Parameterised SQL only. Every write and its audit_event row share one transaction, with the deposit row locked first (the same lock the
 // escrow screens take), so a dispute and a payout can never race. The case table is never deleted from (db trigger).
@@ -125,7 +126,9 @@ export async function fallThroughView(db: Queryable, userId: string, expected: P
 
 async function compute(q: Queryable, ctx: Ctx, party: Party, reason: FallThroughReason): Promise<Out<Outcome & { heldCents: number }>> {
   const heldCents = await heldOf(q, ctx.holdingId!);
-  const r = proposeOutcome({ reason, party, state: ctx.state, priceCents: ctx.priceCents, heldCents, acceptedOn: ctx.acceptedOn, raisedOn: today(ctx.state) });
+  const raisedOn = today(ctx.state);
+  const holidays = reason === "cooling_off" ? await holidayDatesPg(q, ctx.state, ctx.acceptedOn, raisedOn) : [];
+  const r = proposeOutcome({ reason, party, state: ctx.state, priceCents: ctx.priceCents, heldCents, acceptedOn: ctx.acceptedOn, raisedOn, holidays });
   return r.ok ? { ok: true, value: { ...r.value, heldCents } } : no(409, r.error);
 }
 

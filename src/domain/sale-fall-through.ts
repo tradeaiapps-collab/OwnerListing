@@ -63,11 +63,23 @@ export function localDay(at: Date, state: string): string {
 
 const DAY = 86_400_000;
 const dayMs = (iso: string) => Date.parse(`${iso}T00:00:00Z`);
-/** Weekdays after `from`, up to and including `to`. Public holidays are not excluded (counsel to confirm). 0 when `to` is not after `from`. */
-export function businessDaysAfter(from: string, to: string): number {
+/**
+ * Business days after `from`, up to and including `to`: Monday to Friday, leaving out the state's public holidays (YYYY-MM-DD dates in
+ * `holidays`). A holiday on a weekend changes nothing. 0 when `to` is not after `from`. Counsel has not confirmed the holiday treatment.
+ */
+export function businessDaysAfter(from: string, to: string, holidays: Iterable<string> = []): number {
+  const off = new Set(holidays);
   let n = 0;
-  for (let t = dayMs(from) + DAY; t <= dayMs(to); t += DAY) { const d = new Date(t).getUTCDay(); if (d !== 0 && d !== 6) n++; }
+  for (let t = dayMs(from) + DAY; t <= dayMs(to); t += DAY) {
+    const d = new Date(t).getUTCDay();
+    if (d !== 0 && d !== 6 && !off.has(new Date(t).toISOString().slice(0, 10))) n++;
+  }
   return n;
+}
+
+/** How many weekday public holidays fall after `from` up to and including `to`. */
+export function holidaysSkipped(from: string, to: string, holidays: Iterable<string> = []): number {
+  return businessDaysAfter(from, to) - businessDaysAfter(from, to, holidays);
 }
 
 // ---------- the proposed outcome ----------
@@ -76,6 +88,8 @@ export interface OutcomeInput {
   reason: FallThroughReason; party: Party; state: string; priceCents: number; heldCents: number;
   /** The date the offer was accepted (the contract date for cooling-off) and the date this is raised. */
   acceptedOn: string; raisedOn: string;
+  /** The state's public holidays (YYYY-MM-DD) around those dates; they are not counted as business days. */
+  holidays?: readonly string[];
 }
 export interface Outcome {
   refundCents: number; releaseCents: number; penaltyCents: number; penaltyUnconfirmed: boolean; basis: string; rulesVersion: string; rulesConfirmed: boolean;
@@ -107,8 +121,9 @@ export function proposeOutcome(i: OutcomeInput): Result<Outcome> {
       const rule = Object.hasOwn(STATE_RULES, i.state) ? STATE_RULES[i.state] : undefined;
       if (!rule) return bad(`We do not have cooling-off rules for ${i.state || "this state"}. Choose another reason or ask us for help.`);
       if (rule.coolingOffBusinessDays === null) return bad(`${i.state} has no statutory cooling-off period. If both sides agree to end the sale, choose “${REASON_LABEL.mutual_termination}”.`);
-      const used = businessDaysAfter(i.acceptedOn, i.raisedOn), limit = rule.coolingOffBusinessDays;
+      const used = businessDaysAfter(i.acceptedOn, i.raisedOn, i.holidays), limit = rule.coolingOffBusinessDays;
       if (used > limit) return bad(`The ${limit} business day cooling-off period in ${i.state} ended ${used - limit} business day${used - limit === 1 ? "" : "s"} ago.`);
+      const skipped = holidaysSkipped(i.acceptedOn, i.raisedOn, i.holidays);
       let penalty = 0;
       if (rule.penaltyBps !== null) {
         penalty = Math.round((i.priceCents * rule.penaltyBps) / 10_000);
@@ -117,7 +132,7 @@ export function proposeOutcome(i: OutcomeInput): Result<Outcome> {
       }
       const unconfirmed = rule.penaltyBps === null;
       const pct = rule.penaltyBps === null ? "" : `${rule.penaltyBps / 100}% of the price${rule.penaltyMinCents ? ` or ${aud(rule.penaltyMinCents)}, whichever is greater` : ""}`;
-      const basis = `Cooling-off in ${i.state}: ${limit} business days from the contract, used ${used}. ` + (unconfirmed
+      const basis = `Cooling-off in ${i.state}: ${limit} business days from the contract, used ${used}${skipped ? ` (${skipped} public holiday${skipped === 1 ? "" : "s"} not counted)` : ""}. ` + (unconfirmed
         ? "The penalty for this state is not yet confirmed, so none is taken in this estimate; staff check it before any payment."
         : `The buyer forfeits ${pct} (${aud(penalty)}) to the seller and the rest (${aud(held - penalty)}) is refunded.`);
       return { ok: true, value: { refundCents: held - penalty, releaseCents: penalty, penaltyCents: penalty, penaltyUnconfirmed: unconfirmed, basis, ...base } };
