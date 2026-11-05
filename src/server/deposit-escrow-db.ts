@@ -6,6 +6,7 @@ import {
   type ReceiptInput, type ReleaseRequestInput, type StatementLine
 } from "../domain/deposit-escrow";
 import { appendAuditPg, type Queryable } from "./db";
+import { casesForHolding, finishIfPaid, FROZEN_MESSAGE, holdingFrozen, liveCases, type FallThroughCase } from "./sale-fall-through-db";
 
 // Constant SQL text; user input only travels as bound parameters. Every write and its audit_event row run in one transaction, with the
 // deposit row locked first so two staff members cannot act on the same deposit at once. Nothing here deletes a row (db triggers block it).
@@ -36,7 +37,7 @@ const MOVEMENT_COLS =
   "m.id, m.holding_id, m.kind, m.amount_cents, to_char(m.occurred_on,'YYYY-MM-DD') AS occurred_on, m.bank_reference, m.release_id, m.recorded_by, m.created_at, " +
   "EXISTS (SELECT 1 FROM trust_statement_line s WHERE s.matched_movement_id = m.id) AS reconciled";
 const RELEASE_COLS =
-  "r.id, r.holding_id, r.kind, r.amount_cents, r.reason, r.settlement_confirmed, r.requested_by, r.requested_at, r.status, r.decided_by, r.decided_at, r.decision_reason";
+  "r.id, r.holding_id, r.kind, r.amount_cents, r.reason, r.settlement_confirmed, r.requested_by, r.requested_at, r.status, r.decided_by, r.decided_at, r.decision_reason, r.fall_through_id";
 const LINE_COLS =
   "s.id, s.trust_account_id, to_char(s.line_date,'YYYY-MM-DD') AS line_date, s.amount_cents, s.description, s.reference, s.matched_movement_id";
 
@@ -79,7 +80,7 @@ export const releaseFromRow = (r: Record<string, unknown>): DepositRelease => ({
   id: String(r["id"]), holdingId: String(r["holding_id"]), kind: String(r["kind"]) as DepositRelease["kind"], amountCents: Number(r["amount_cents"]),
   reason: String(r["reason"]), settlementConfirmed: r["settlement_confirmed"] === true, requestedBy: String(r["requested_by"]), requestedAt: iso(r["requested_at"])!,
   status: String(r["status"]) as DepositRelease["status"], decidedBy: r["decided_by"] ? String(r["decided_by"]) : null, decidedAt: iso(r["decided_at"]),
-  decisionReason: r["decision_reason"] ? String(r["decision_reason"]) : null
+  decisionReason: r["decision_reason"] ? String(r["decision_reason"]) : null, fallThroughId: r["fall_through_id"] ? String(r["fall_through_id"]) : null
 });
 export const lineFromRow = (r: Record<string, unknown>): StatementLine => ({
   id: String(r["id"]), trustAccountId: String(r["trust_account_id"]), lineDate: String(r["line_date"]), amountCents: Number(r["amount_cents"]),
@@ -89,15 +90,15 @@ export const lineFromRow = (r: Record<string, unknown>): StatementLine => ({
 export interface AcceptedOffer { offerId: string; listingId: string; listingTitle: string; priceCents: number; depositCents: number; buyerName: string; accountLabel: string | null }
 export interface Overview {
   holdings: DepositHolding[]; movements: DepositMovement[]; releases: DepositRelease[]; acceptedWithout: AcceptedOffer[];
-  accounts: { id: string; label: string; bsb: string }[];
+  accounts: { id: string; label: string; bsb: string }[]; cases: FallThroughCase[];
 }
 
 /** Everything the deposits screen needs: records, their ledgers and requests, accepted offers still without a record, and accounts. */
 export async function overview(db: Queryable): Promise<Overview> {
   const holdings = (await db.query(LIST_HOLDINGS_SQL)).rows.map(holdingFromRow);
   const ids = holdings.map(h => h.id);
-  const [movements, releases, accepted, accounts] = await Promise.all([
-    db.query(MOVEMENTS_FOR_SQL, [ids]), db.query(RELEASES_FOR_SQL, [ids]), db.query(ACCEPTED_WITHOUT_SQL), db.query(ACCOUNTS_SQL)
+  const [movements, releases, accepted, accounts, cases] = await Promise.all([
+    db.query(MOVEMENTS_FOR_SQL, [ids]), db.query(RELEASES_FOR_SQL, [ids]), db.query(ACCEPTED_WITHOUT_SQL), db.query(ACCOUNTS_SQL), liveCases(db)
   ]);
   return {
     holdings, movements: movements.rows.map(movementFromRow), releases: releases.rows.map(releaseFromRow),
@@ -105,22 +106,22 @@ export async function overview(db: Queryable): Promise<Overview> {
       offerId: String(r["offer_id"]), listingId: String(r["listing_id"]), listingTitle: String(r["listing_title"] ?? ""), priceCents: Number(r["price_cents"]),
       depositCents: Number(r["deposit_cents"]), buyerName: maskName(String(r["buyer_name"] ?? "")), accountLabel: r["account_label"] ? String(r["account_label"]) : null
     })),
-    accounts: accounts.rows.map(r => ({ id: String(r["id"]), label: String(r["label"]), bsb: String(r["bsb"]) }))
+    accounts: accounts.rows.map(r => ({ id: String(r["id"]), label: String(r["label"]), bsb: String(r["bsb"]) })), cases
   };
 }
 
 export const pendingReleases = async (db: Queryable) => (await db.query(PENDING_RELEASES_SQL)).rows.map(releaseFromRow);
 
 export interface AuditEntry { at: string; event: string; actor: string; payload: Record<string, unknown> }
-export interface HoldingDetail { holding: DepositHolding; movements: DepositMovement[]; releases: DepositRelease[]; audit: AuditEntry[] }
+export interface HoldingDetail { holding: DepositHolding; movements: DepositMovement[]; releases: DepositRelease[]; audit: AuditEntry[]; cases: FallThroughCase[] }
 
 export async function getHolding(db: Queryable, id: string): Promise<HoldingDetail | null> {
   const row = (await db.query(HOLDING_ONE_SQL, [id])).rows[0];
   if (!row) return null;
-  const [m, r, a] = await Promise.all([db.query(MOVEMENTS_FOR_SQL, [[id]]), db.query(RELEASES_FOR_SQL, [[id]]), db.query(AUDIT_SQL, [id])]);
+  const [m, r, a, cases] = await Promise.all([db.query(MOVEMENTS_FOR_SQL, [[id]]), db.query(RELEASES_FOR_SQL, [[id]]), db.query(AUDIT_SQL, [id]), casesForHolding(db, id)]);
   return {
     holding: holdingFromRow(row), movements: m.rows.map(movementFromRow), releases: r.rows.map(releaseFromRow),
-    audit: a.rows.map(x => ({ at: iso(x["occurred_at"])!, event: String(x["event_type"]), actor: String(x["actor_name"]), payload: (x["payload"] ?? {}) as Record<string, unknown> }))
+    audit: a.rows.map(x => ({ at: iso(x["occurred_at"])!, event: String(x["event_type"]), actor: String(x["actor_name"]), payload: (x["payload"] ?? {}) as Record<string, unknown> })), cases
   };
 }
 
@@ -178,6 +179,7 @@ const MATCH_LINE_SQL =
 /** Records money the bank shows arrived in trust. With a statement line, the receipt is created from it and reconciled at once. */
 export function recordReceipt(db: Queryable, staff: StaffRef, holdingId: string, input: ReceiptInput, statementLineId: string | null = null) {
   return withHolding<{ movementId: string }>(db, holdingId, async (tx, h, movements) => {
+    if (await holdingFrozen(tx, holdingId)) return no(409, FROZEN_MESSAGE);
     const stop = denied(planReceipt(h, movements, input.amountCents));
     if (stop) return stop;
     const movementId = randomUUID();
@@ -194,6 +196,7 @@ export function recordReceipt(db: Queryable, staff: StaffRef, holdingId: string,
 /** First person: asks for the held deposit to be paid out. Nothing moves until a different person approves. */
 export function requestRelease(db: Queryable, staff: StaffRef, holdingId: string, input: ReleaseRequestInput) {
   return withHolding<{ releaseId: string }>(db, holdingId, async (tx, h, movements, releases) => {
+    if (await holdingFrozen(tx, holdingId)) return no(409, FROZEN_MESSAGE);
     const stop = denied(planReleaseRequest(h, movements, releases, input));
     if (stop) return stop;
     const releaseId = randomUUID();
@@ -220,6 +223,8 @@ export async function decideRelease(db: Queryable, staff: StaffRef, releaseId: s
     if (stop) return stop;
     const text = String(reason).trim();
     const approved = outcome === "approve";
+    // While a case is open only the payments it asked for can be approved; anything else waits (it can still be rejected).
+    if (approved && !r.fallThroughId && (await holdingFrozen(tx, String(holdingId)))) return no(409, FROZEN_MESSAGE);
     await tx.query(
       "UPDATE deposit_release SET status = $2, decided_by = $3::uuid, decided_at = now(), decision_reason = $4 WHERE id = $1::uuid AND status = 'pending'",
       [releaseId, approved ? "approved" : "rejected", staff.id, text]
@@ -236,6 +241,7 @@ export async function decideRelease(db: Queryable, staff: StaffRef, releaseId: s
     await audit(tx, staff, "deposit_holding", String(holdingId), `escrow.${r.kind}_${approved ? "approved" : "rejected"}`, {
       releaseId, amountCents: r.amountCents, requestedBy: r.requestedBy, reason: text, holdingStatus: status
     });
+    if (approved && r.fallThroughId) await finishIfPaid(tx, staff, r.fallThroughId);
     return { ok: true, value: { outcome: approved ? "approved" : "rejected", holdingStatus: status } };
   });
 }
@@ -243,6 +249,7 @@ export async function decideRelease(db: Queryable, staff: StaffRef, releaseId: s
 /** Cancels a record opened in error or for an offer that fell through before any money arrived. */
 export function cancelHolding(db: Queryable, staff: StaffRef, holdingId: string, reason: string) {
   return withHolding<{ status: HoldingStatus }>(db, holdingId, async (tx, h, movements, releases) => {
+    if (await holdingFrozen(tx, holdingId)) return no(409, FROZEN_MESSAGE);
     const stop = denied(planCancel(h, movements, releases));
     if (stop) return stop;
     await tx.query("UPDATE deposit_holding SET status = 'cancelled', closed_reason = $2, updated_at = now() WHERE id = $1::uuid", [holdingId, reason]);

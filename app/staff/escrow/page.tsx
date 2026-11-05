@@ -4,6 +4,8 @@ import {
   balanceOf, displayStatus, isOverdue, STATUS_LABEL,
   type DepositHolding, type DepositMovement, type DepositRelease
 } from "../../../src/domain/deposit-escrow";
+import { STATUS_LABEL as CASE_LABEL } from "../../../src/domain/sale-fall-through";
+import type { FallThroughCase } from "../../../src/server/sale-fall-through-db";
 import { dateLabel, money, toCents } from "../../commissions-ui";
 import { loadError, postStaff } from "../staff-api";
 import Approvals from "./approvals";
@@ -16,7 +18,7 @@ import "../../styles/escrow.css";
 interface AcceptedOffer { offerId: string; listingId: string; listingTitle: string; priceCents: number; depositCents: number; buyerName: string; accountLabel: string | null }
 export interface EscrowData {
   holdings: DepositHolding[]; movements: DepositMovement[]; releases: DepositRelease[]; acceptedWithout: AcceptedOffer[];
-  accounts: { id: string; label: string; bsb: string }[]; pending: DepositRelease[]; me: string; can: { manage: boolean; approve: boolean };
+  accounts: { id: string; label: string; bsb: string }[]; cases?: FallThroughCase[]; pending: DepositRelease[]; me: string; can: { manage: boolean; approve: boolean };
 }
 export type Act = (url: string, body: unknown, done: string) => Promise<boolean>;
 type Tab = "deposits" | "approvals" | "reconcile";
@@ -105,7 +107,12 @@ export default function StaffEscrow() {
                           <td>{h.listingTitle}<br /><small className="muted">Buyer {h.buyerName}</small></td>
                           <td className="num">{money(h.requiredCents)}</td>
                           <td className="num">{money(balance.receivedCents)}</td>
-                          <td><span className={`es-status ${overdue ? "overdue" : status}`}>{overdue ? "Overdue" : STATUS_LABEL[status]}</span></td>
+                          <td>
+                            <span className={`es-status ${overdue ? "overdue" : status}`}>{overdue ? "Overdue" : STATUS_LABEL[status]}</span>
+                            {(data.cases ?? []).filter(c => c.holdingId === h.id).map(c => (
+                              <div key={c.id}><span className={`es-status ${c.status === "disputed" ? "overdue" : "part_received"}`}>Sale fell through: {CASE_LABEL[c.status]}</span></div>
+                            ))}
+                          </td>
                           <td className="es-nowrap">{h.dueDate ? dateLabel(h.dueDate) : <span className="muted">Not set</span>}</td>
                           <td><button type="button" className="secondary" aria-expanded={selected === h.id} onClick={() => setSelected(selected === h.id ? null : h.id)}>{selected === h.id ? "Close" : "Open"}</button></td>
                         </tr>

@@ -10,7 +10,7 @@
 .compare-table { min-width: 36rem; }
 .negotiation small { display: block; }
 .badge-buyer_countered, .badge-open, .badge-agreed { color: var(--brand-strong); border-color: color-mix(in srgb, var(--brand) 45%, var(--bg)); background: var(--tint); }
-.badge-expired, .badge-withdrawn { color: var(--muted); }
+.badge-expired, .badge-withdrawn, .badge-fallen_through { color: var(--muted); }
 .timeline { list-style: none; margin: 0 0 var(--space-4); padding: 0 0 0 var(--space-6); border-left: 1px solid color-mix(in srgb, var(--gold) 45%, var(--border)); display: grid; gap: var(--space-3); }
 .timeline > li { position: relative; }
 .timeline > li::before { content: ""; position: absolute; left: calc(-1 * var(--space-6) - 6px); top: 0.4rem; width: 11px; height: 11px; border-radius: 50%; background: var(--gold); box-shadow: 0 0 0 4px var(--bg); }
@@ -114,3 +114,10 @@ main .od-links { font-size: 0.9375rem; }
 .coach .table-wrap { overflow-x: auto; }
 .coach table td.num, .coach table th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .coach-stats small { display: block; }
+
+/* Sale fell through (app/offers/fall-through-panel.tsx) */
+.ft-panel { display: grid; gap: var(--space-3); }
+.ft-case, .ft-outcome { display: grid; gap: var(--space-2); }
+.ft-case p, .ft-outcome p { margin: 0; overflow-wrap: anywhere; }
+.ft-panel .offer-form { max-width: 34rem; padding: 0; border: 0; background: none; box-shadow: none; }
+.ft-panel .offer-form select, .ft-panel .offer-form textarea { width: 100%; }

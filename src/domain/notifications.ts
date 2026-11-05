@@ -105,6 +105,9 @@ export const KINDS = {
   offer_accepted: "offers",
   offer_rejected: "offers",
   offer_countered: "offers",
+  fall_through_proposed: "offers",
+  fall_through_update: "offers",
+  offer_fallen_through: "offers",
   saved_search_match: "listings",
   document_analysed: "listings",
   market_shift: "listings",
@@ -118,7 +121,7 @@ export type Kind = keyof typeof KINDS;
 export const isKind = (v: unknown): v is Kind => typeof v === "string" && Object.prototype.hasOwnProperty.call(KINDS, v);
 
 /** Kinds worth a text message when the user has opted in: they are time-critical and short. */
-const SMS_KINDS: ReadonlySet<Kind> = new Set<Kind>(["message_received", "appointment_invited", "appointment_reminder", "consultation_booked", "consultation_cancelled", "offer_received", "offer_accepted", "offer_rejected", "offer_countered", "automation_alert"]);
+const SMS_KINDS: ReadonlySet<Kind> = new Set<Kind>(["message_received", "appointment_invited", "appointment_reminder", "consultation_booked", "consultation_cancelled", "offer_received", "offer_accepted", "offer_rejected", "offer_countered", "fall_through_proposed", "offer_fallen_through", "automation_alert"]);
 
 export interface NotificationParams { [key: string]: string | undefined }
 export interface RenderedNotification { kind: Kind; category: Category; title: string; body: string; link: string | null; smsText: string | null }
@@ -157,6 +160,9 @@ export function renderNotification(kind: Kind, p: NotificationParams = {}): Rend
     case "offer_accepted": return t("Offer accepted", `Your offer on ${listing} was accepted by the owner.`);
     case "offer_rejected": return t("Offer not accepted", `Your offer on ${listing} was not accepted.`);
     case "offer_countered": return t("Counter-offer", `There is a counter-offer on ${listing}.`);
+    case "fall_through_proposed": return t("Sale of your property may have fallen through", `The other side says the contract on ${listing} will not go ahead (${clip(p["reason"], 80, "reason given")}). Open it to see the proposed outcome for the deposit and agree or dispute it.`);
+    case "fall_through_update": return t(clip(p["title"], 80, "Update on a sale that fell through"), clip(p["text"], 300, `There is an update on the deposit for ${listing}.`), false);
+    case "offer_fallen_through": return t("Sale marked as fallen through", `The contract on ${listing} is now marked as fallen through. The deposit is returned or released by the solicitor's trust account once staff approve it. Nothing moves until then.`);
     case "document_analysed": return t("Elena summarised a document", `Elena has read ${doc} for ${listing}. Open it to see the summary, flags and next steps.`, false);
     case "saved_search_match": return t("New property matches your search", `${listing} matches one of your saved searches.`);
     case "market_shift": return t(clip(p["title"], 80, "Market update"), clip(p["text"], 400, "There is a change in one of your areas."));
