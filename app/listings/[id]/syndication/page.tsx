@@ -6,7 +6,9 @@ import "../../../styles/syndication.css";
 type Portal = "airbnb" | "vrbo" | "booking_com";
 interface Custom { houseRules?: string; cancellationPolicy?: string; minNights?: number; maxGuests?: number }
 interface PortalView { portal: Portal; label: string; mode: "api" | "manual"; eligibleReason: string | null; enabled: boolean; custom: Custom; manualUrl: string | null; state: string | null; externalUrl: string | null; lastError: string | null; lastSyncedAt: string | null }
-interface Booking { id: string; portal: Portal; guestName: string; guests: number | null; checkIn: string; checkOut: string; totalCents: number | null; status: string }
+interface CalendarView { portal: Portal; label: string; lastStatus: "ok" | "failed" | null; lastError: string | null; lastSyncedAt: string | null; blockedCount: number }
+const IMPORT_PORTALS: { portal: Portal; label: string }[] = [{ portal: "airbnb", label: "Airbnb" }, { portal: "vrbo", label: "VRBO" }, { portal: "booking_com", label: "Booking.com" }];
+interface Booking { id: string; portal: Portal; source: "webhook" | "ical"; guestName: string; guests: number | null; checkIn: string; checkOut: string; totalCents: number | null; status: string }
 
 const STATE_TEXT: Record<string, [string, string]> = {
   live: ["Live", "is-live"], manual: ["Linked", "is-live"], pending: ["Waiting to send", ""], failed: ["Needs attention", "is-bad"],
@@ -86,10 +88,51 @@ function PortalCard({ id, v, onChanged }: { id: string; v: PortalView; onChanged
   );
 }
 
+
+function CalendarImportCard({ id, portal, label, view, onChanged }: { id: string; portal: Portal; label: string; view: CalendarView | undefined; onChanged: (c: CalendarView[]) => void }) {
+  const [url, setUrl] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState("");
+  const [error, setError] = useState("");
+
+  async function send(method: "PUT" | "POST" | "DELETE", body: Record<string, unknown>, done: string) {
+    setBusy(true); setError(""); setMsg("");
+    try {
+      const r = await fetch(`/api/listings/${id}/syndication/calendar`, { method, headers: { "content-type": "application/json" }, body: JSON.stringify({ portal, ...body }) });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) setError(d.error ?? "Something went wrong.");
+      else { onChanged(d.calendars); setUrl(""); if (d.outcome === "failed") setError("Saved, but the import failed. See the problem below."); else setMsg(done); }
+    } catch { setError("Something went wrong."); } finally { setBusy(false); }
+  }
+
+  return (
+    <section className="syn-panel" aria-labelledby={`syn-cal-${portal}`}>
+      <div className="syn-head">
+        <h3 id={`syn-cal-${portal}`}>{label}</h3>
+        {view && <span className={`syn-pill ${view.lastStatus === "ok" ? "is-live" : view.lastStatus === "failed" ? "is-bad" : ""}`}>{view.lastStatus === "ok" ? `${view.blockedCount} blocked` : view.lastStatus === "failed" ? "Needs attention" : "Waiting"}</span>}
+      </div>
+      {view?.lastSyncedAt && <p className="syn-note">Last imported {new Date(view.lastSyncedAt).toLocaleString("en-AU", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })}.</p>}
+      {view?.lastError && <p role="alert">Last problem: {view.lastError}</p>}
+      <form className="syn-form" onSubmit={e => { e.preventDefault(); void send("PUT", { url }, "Saved and imported."); }}>
+        <label>{view ? `New ${label} calendar link` : `${label} calendar link`}
+          <input type="url" required value={url} onChange={e => setUrl(e.target.value)} placeholder="https://…" autoComplete="off" />
+        </label>
+        <div className="syn-actions">
+          <button type="submit" disabled={busy || url.trim() === ""}>{busy ? "Working…" : view ? "Replace link" : "Save and import"}</button>
+          {view && <button type="button" disabled={busy} onClick={() => void send("POST", {}, "Imported.")}>Import now</button>}
+          {view && <button type="button" disabled={busy} onClick={() => void send("DELETE", {}, "Stopped. Those dates are free again.")}>Stop importing</button>}
+        </div>
+        <div aria-live="polite">{msg && <p role="status">{msg}</p>}{error && <p role="alert">{error}</p>}</div>
+      </form>
+    </section>
+  );
+}
+
 export default function ListingSyndication() {
   const { id } = useParams<{ id: string }>();
   const [portals, setPortals] = useState<PortalView[] | null>(null);
   const [bookings, setBookings] = useState<Booking[]>([]);
+  const [calendars, setCalendars] = useState<CalendarView[]>([]);
   const [loadError, setLoadError] = useState("");
   const [feed, setFeed] = useState("");
   const [feedError, setFeedError] = useState("");
@@ -99,7 +142,7 @@ export default function ListingSyndication() {
     try {
       const r = await fetch(`/api/listings/${id}/syndication`);
       const d = await r.json().catch(() => ({}));
-      if (r.ok) { setPortals(d.portals); setBookings(d.bookings); }
+      if (r.ok) { setPortals(d.portals); setBookings(d.bookings); setCalendars(d.calendars ?? []); }
       else setLoadError(r.status === 401 ? "Sign in to manage this listing." : r.status === 404 ? "Listing not found." : d.error ?? "Could not load.");
     } catch { setLoadError("Could not load."); }
   }, [id]);
@@ -123,6 +166,13 @@ export default function ListingSyndication() {
       {!loadError && portals === null && <p className="syn-note" role="status">Loading…</p>}
       {portals && portals.length === 0 && <p className="empty">No portals are switched on yet. We will list them here as soon as they are.</p>}
       <div className="syn-grid">{portals?.map(p => <PortalCard key={p.portal} id={id} v={p} onChanged={setPortals} />)}</div>
+      {portals && (
+        <section className="syn-panel" aria-labelledby="syn-import-h">
+          <h2 id="syn-import-h">Import booked dates</h2>
+          <p className="syn-note">Dates booked on Airbnb, VRBO or Booking.com are copied here every hour and blocked on this listing. In the portal, find the calendar export (iCal) link and paste it below. If a portal booking overlaps a stay from another portal, it is marked as a clash and you are told.</p>
+          <div className="syn-grid">{IMPORT_PORTALS.map(p => <CalendarImportCard key={p.portal} id={id} portal={p.portal} label={p.label} view={calendars.find(c => c.portal === p.portal)} onChanged={setCalendars} />)}</div>
+        </section>
+      )}
       {portals && portals.length > 0 && (
         <>
           <section className="syn-panel" aria-labelledby="syn-bookings-h">
@@ -134,7 +184,7 @@ export default function ListingSyndication() {
                   <tbody>
                     {bookings.map(b => (
                       <tr key={b.id}>
-                        <td>{b.guestName}</td><td>{b.portal === "booking_com" ? "Booking.com" : b.portal === "vrbo" ? "VRBO" : "Airbnb"}</td><td>{date(b.checkIn)}</td><td>{date(b.checkOut)}</td>
+                        <td>{b.guestName}{b.source === "ical" ? " (imported)" : ""}</td><td>{b.portal === "booking_com" ? "Booking.com" : b.portal === "vrbo" ? "VRBO" : "Airbnb"}</td><td>{date(b.checkIn)}</td><td>{date(b.checkOut)}</td>
                         <td className="num">{b.guests ?? ""}</td><td className="num">{money(b.totalCents)}</td>
                         <td><span className={`syn-pill ${b.status === "confirmed" ? "is-live" : b.status === "conflict" ? "is-bad" : ""}`}>{b.status === "conflict" ? "Clash" : b.status === "cancelled" ? "Cancelled" : "Booked"}</span></td>
                       </tr>

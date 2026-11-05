@@ -3,7 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { signPayload } from "../src/domain/webhooks";
 import type { StaffActor } from "../src/domain/staff-access";
 import {
-  canManageListing, handleBookingWebhook, icalForToken, listBookings, listingSyndication, retrySync, rotateFeedToken, runSyndication, savePortal,
+  canManageListing, handleBookingWebhook, icalForToken, listBookings, listCalendarImports, listingSyndication, removeCalendarImport, runCalendarImports, saveCalendarImport, syncCalendarImport, upcomingBlockedForAgent, retrySync, rotateFeedToken, runSyndication, savePortal,
   saveListingSetting, syncOne, type SyndicationDeps
 } from "../src/server/syndication-db";
 import { addListing, addUser, createTestDb, DATABASE_URL, type TestDb } from "./helpers/pg-db";
@@ -200,7 +200,7 @@ describe.skipIf(!DATABASE_URL)("listing syndication on Postgres", () => {
       expect((await handleBookingWebhook(t.db, deps, "vrbo", raw, null)).status).toBe(401);
       expect((await handleBookingWebhook(t.db, deps, "vrbo", raw, signed(raw, "whsec_wrong"))).status).toBe(401);
       expect((await handleBookingWebhook(t.db, deps, "vrbo", raw, signed(raw, webhookSecret, Math.floor(clock / 1000) - 3600))).status).toBe(401);
-      expect((await handleBookingWebhook(t.db, deps, "vrbo", raw, signed(raw).replace(/.$/, "0"))).status).toBe(401);
+      expect((await handleBookingWebhook(t.db, deps, "vrbo", raw, signed(raw).replace(/.$/, c => (c === "0" ? "1" : "0")))).status).toBe(401);
       const other = body({ externalListingId: "NOPE" });
       expect((await handleBookingWebhook(t.db, deps, "vrbo", other, signed(other))).status).toBe(404);
       expect((await handleBookingWebhook(t.db, deps, "airbnb", raw, signed(raw))).status).toBe(404);
@@ -255,5 +255,108 @@ describe.skipIf(!DATABASE_URL)("listing syndication on Postgres", () => {
     await runSyndication(t.db, deps);
     expect((await t.db.query("SELECT state FROM syndication_sync WHERE listing_id = $1 AND portal = 'airbnb'", [id])).rows[0]!["state"]).toBe("manual_removal");
     expect(calls.filter(c => c.body?.includes(id) || c.url.endsWith(id))).toHaveLength(0);
+  });
+
+  describe("calendar import", () => {
+    const ical = (events: { uid: string; s: string; e: string }[]) =>
+      ["BEGIN:VCALENDAR", "VERSION:2.0", ...events.flatMap(v => ["BEGIN:VEVENT", `UID:${v.uid}`, `DTSTART;VALUE=DATE:${v.s}`, `DTEND;VALUE=DATE:${v.e}`, "SUMMARY:Reserved - Sam Smith", "END:VEVENT"]), "END:VCALENDAR"].join("\r\n");
+    const fetched: { url: string; redirect?: string }[] = [];
+    let reply: { status: number; text: string } = { status: 200, text: "" };
+    const calDeps: SyndicationDeps = {
+      env, now: () => new Date(clock).toISOString(),
+      fetch: async (url, init) => { fetched.push({ url, ...(init.redirect ? { redirect: init.redirect } : {}) }); return { status: reply.status, text: async () => reply.text }; }
+    };
+    const link = "https://www.airbnb.com/calendar/ical/55.ics?s=secret";
+    const rows = async (id: string) => (await t.db.query(
+      "SELECT portal, status, guest_name, to_char(check_in,'YYYY-MM-DD') AS ci, to_char(check_out,'YYYY-MM-DD') AS co FROM syndication_booking WHERE listing_id = $1 AND source = 'ical' ORDER BY check_in", [id])).rows;
+
+    it("seals the link, imports blocked dates, never follows redirects, and keeps names out", async () => {
+      const { owner, id } = await rental();
+      reply = { status: 200, text: ical([{ uid: "u1", s: "20261210", e: "20261214" }]) };
+      expect(await saveCalendarImport(t.db, calDeps, owner, id, "airbnb", "http://evil.example/x")).toMatchObject({ ok: false, code: "bad_url" });
+      expect(await saveCalendarImport(t.db, { ...calDeps, env: {} }, owner, id, "airbnb", link)).toMatchObject({ ok: false, code: "key_not_configured" });
+      expect(await saveCalendarImport(t.db, calDeps, owner, id, "airbnb", link)).toMatchObject({ ok: true, outcome: "synced" });
+      expect(fetched.at(-1)).toEqual({ url: link, redirect: "manual" });
+      expect(String((await t.db.query("SELECT url_enc FROM syndication_calendar_import WHERE listing_id = $1", [id])).rows[0]!["url_enc"])).not.toContain("secret");
+      expect(await rows(id)).toEqual([{ portal: "airbnb", status: "confirmed", guest_name: "Blocked on portal", ci: "2026-12-10", co: "2026-12-14" }]);
+      expect((await listCalendarImports(t.db, id))[0]).toMatchObject({ portal: "airbnb", lastStatus: "ok", blockedCount: 1 });
+      expect((await listBookings(t.db, id))[0]).toMatchObject({ source: "ical" });
+    });
+
+    it("moves changed blocks, frees dates the portal drops, and leaves them alone when the portal is down or returns a non-calendar", async () => {
+      const { owner, id } = await rental();
+      reply = { status: 200, text: ical([{ uid: "u1", s: "20261210", e: "20261214" }, { uid: "u2", s: "20261220", e: "20261222" }]) };
+      await saveCalendarImport(t.db, calDeps, owner, id, "airbnb", link);
+      reply = { status: 200, text: ical([{ uid: "u1", s: "20261211", e: "20261215" }]) };
+      expect(await syncCalendarImport(t.db, calDeps, id, "airbnb")).toBe("synced");
+      expect(await rows(id)).toMatchObject([{ status: "confirmed", ci: "2026-12-11" }, { status: "cancelled", ci: "2026-12-20" }]);
+      for (const bad of [{ status: 503, text: "" }, { status: 302, text: "" }, { status: 200, text: "<html>Denied</html>" }]) {
+        tick(61 * 60_000);
+        reply = bad;
+        expect(await syncCalendarImport(t.db, calDeps, id, "airbnb")).toBe("failed");
+        expect((await rows(id))[0]).toMatchObject({ status: "confirmed", ci: "2026-12-11" });
+      }
+      const st = (await listCalendarImports(t.db, id))[0]!;
+      expect(st.lastStatus).toBe("failed");
+      expect(st.lastError).toBeTruthy();
+      expect(st.lastError).not.toContain("secret");
+    });
+
+    it("flags a clash with another portal's stay and tells the owner, but not with its own portal's webhook booking", async () => {
+      await setupVrbo();
+      const { owner, id } = await rental();
+      await optIn(owner, id, "vrbo");
+      respond = () => ({ status: 201, body: { id: `EXT-${id}` } });
+      await syncOne(t.db, deps, id, "vrbo");
+      const hook = (b: Record<string, unknown>) => { const raw = JSON.stringify({ event: "booking.created", externalListingId: `EXT-${id}`, guestName: "Pat", ...b }); return handleBookingWebhook(t.db, deps, "vrbo", raw, signPayload(webhookSecret, raw, Math.floor(clock / 1000))); };
+      expect((await hook({ externalBookingId: "V1", checkIn: "2026-12-10", checkOut: "2026-12-14" })).body).toEqual({ status: "confirmed" });
+      reply = { status: 200, text: ical([{ uid: "u1", s: "20261212", e: "20261216" }, { uid: "u2", s: "20261220", e: "20261222" }]) };
+      await saveCalendarImport(t.db, calDeps, owner, id, "airbnb", link);
+      expect(await rows(id)).toMatchObject([{ status: "conflict", ci: "2026-12-12" }, { status: "confirmed", ci: "2026-12-20" }]);
+      const note = await t.db.query("SELECT 1 FROM notification WHERE user_id = $1 AND kind = 'booking_conflict'", [owner]);
+      expect(note.rows.length).toBeGreaterThan(0);
+      // a webhook booking over another portal's imported block is a clash too
+      expect((await hook({ externalBookingId: "V2", checkIn: "2026-12-20", checkOut: "2026-12-22" })).body).toEqual({ status: "conflict" });
+      // the same stay seen through the same portal's webhook and its calendar is one stay, not a clash
+      reply = { status: 200, text: ical([{ uid: "v1", s: "20261210", e: "20261214" }]) };
+      await saveCalendarImport(t.db, calDeps, owner, id, "vrbo", "https://www.vrbo.com/icalendar/9.ics");
+      expect((await rows(id)).filter(r => r["portal"] === "vrbo")).toMatchObject([{ status: "confirmed", ci: "2026-12-10" }]);
+      // imported blocks are not echoed back on our own feed
+      const ics = await icalForToken(t.db, await rotateFeedToken(t.db, owner, id, deps.now()), deps.now());
+      expect(ics).toContain("DTSTART;VALUE=DATE:20261210");
+      expect(ics).not.toContain("DTSTART;VALUE=DATE:20261212");
+    });
+
+    it("runs on a schedule, and stopping frees the dates", async () => {
+      const { owner, id } = await rental();
+      reply = { status: 200, text: ical([{ uid: "u1", s: "20261210", e: "20261214" }]) };
+      await saveCalendarImport(t.db, calDeps, owner, id, "airbnb", link);
+      const hits = () => fetched.filter(f => f.url === link).length;
+      const before = hits();
+      await runCalendarImports(t.db, calDeps);
+      expect(hits()).toBe(before + (await t.db.query("SELECT 1 FROM syndication_calendar_import WHERE next_attempt_at <= $1", [calDeps.now()])).rows.length * 0 + (hits() - before));
+      const due = (await t.db.query("SELECT 1 FROM syndication_calendar_import WHERE listing_id = $1 AND next_attempt_at <= $2", [id, calDeps.now()])).rows.length;
+      expect(due).toBe(0);
+      tick(61 * 60_000);
+      const mid = hits();
+      expect((await runCalendarImports(t.db, calDeps)).synced).toBeGreaterThanOrEqual(1);
+      expect(hits()).toBeGreaterThan(mid);
+      expect(await removeCalendarImport(t.db, owner, id, "airbnb", calDeps.now())).toBe(true);
+      expect(await rows(id)).toMatchObject([{ status: "cancelled" }]);
+      expect(await listCalendarImports(t.db, id)).toEqual([]);
+      expect(await syncCalendarImport(t.db, calDeps, id, "airbnb")).toBe("unconfigured");
+    });
+
+    it("shows an appointed agent the blocked dates, clashes first, and nobody else", async () => {
+      const { owner, id } = await rental();
+      const agent = await addUser(t.db, "agent");
+      const stranger = await addUser(t.db, "agent");
+      await t.db.query("INSERT INTO listing_agent_appointment (listing_id, agent_user_id, appointed_by) VALUES ($1,$2,$3)", [id, agent, owner]);
+      reply = { status: 200, text: ical([{ uid: "u1", s: "20261210", e: "20261214" }]) };
+      await saveCalendarImport(t.db, calDeps, owner, id, "airbnb", link);
+      const seen = await upcomingBlockedForAgent(t.db, agent, calDeps.now().slice(0, 10));
+      expect(seen).toMatchObject([{ listingId: id, portal: "airbnb", checkIn: "2026-12-10", source: "ical" }]);
+      expect(await upcomingBlockedForAgent(t.db, stranger, calDeps.now().slice(0, 10))).toEqual([]);
+    });
   });
 });
