@@ -36,7 +36,7 @@ async function handlePost(req: Request) {
   if (row["user_type"] === "admin") {
     if (!surface.staff || !isRoleKey(row["role"])) return NextResponse.json({ error: "Staff accounts sign in on the admin site." }, { status: 400 });
     const res = NextResponse.json({ ok: true, redirect: "/staff" });
-    res.cookies.set(STAFF_COOKIE, signStaffSession({ uid: userId, exp: now + STAFF_TTL_SECONDS }, secret), { ...opts, maxAge: STAFF_TTL_SECONDS });
+    res.cookies.set(STAFF_COOKIE, signStaffSession({ uid: userId, exp: now + STAFF_TTL_SECONDS, mfa: now }, secret), { ...opts, maxAge: STAFF_TTL_SECONDS });
     res.cookies.set(SESSION_COOKIE, "", { ...opts, maxAge: 0 });
     return res;
   }
