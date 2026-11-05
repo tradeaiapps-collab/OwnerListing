@@ -52,6 +52,7 @@ export const PERMISSION_CATALOGUE = [
   { key: "billing.manage", area: "pricing", label: "Reconcile payments and answer payment issues", description: "Confirm bank transfers against invoices and answer customers' payment issues at /staff/finance. Moves no money; every action is logged.", sensitive: true },
   { key: "pricing.manage", area: "pricing", label: "Set plan prices", description: "Add new plan prices with a reason. Existing subscriptions keep their price.", sensitive: true },
   { key: "messaging.settings", area: "messaging", label: "Email and SMS settings", description: "Enter or change the email and SMS provider details and send test messages.", sensitive: true },
+  { key: "syndication.manage", area: "marketplace", label: "Manage listing portals", description: "Connect Airbnb, VRBO and Booking.com, set their keys and limits, and retry failed syncs.", sensitive: true },
   { key: "staff.manage", area: "staff", label: "Manage staff access", description: "Invite staff, change their role and revoke access, only within the access you hold yourself. Editing roles is for super admins only.", sensitive: true },
   { key: "theme.edit", area: "website", label: "Edit site appearance", description: "Change the website colours, fonts and logo (draft, preview, publish, revert) at /staff/site.", sensitive: false },
   { key: "site.content.edit", area: "website", label: "Edit website content", description: "Draft changes to website pages and blocks, including the guide assistant's text at /staff/assistant.", sensitive: false },

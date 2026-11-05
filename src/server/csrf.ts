@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { appOriginFor, readAppMode } from "../config/app-mode";
+import { readSessionEnv } from "./auth/config";
+import { mobileBearer, verifyMobileAccess } from "./auth/mobile-token";
 
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 
@@ -24,10 +26,17 @@ const originOf = (value: string | null): string | null => {
  */
 export function csrfGuard(req: Request, opts: { json?: boolean } = {}): NextResponse | null {
   if (SAFE_METHODS.has(req.method.toUpperCase())) return null;
+  // The phone app sends no Origin. A request carrying its bearer token is signed in by that token alone (the cookie is ignored, see
+  // sessionFromRequestChecked), and a browser cannot attach that header to a cross-site request, so the origin check does not apply.
+  // Only a correctly signed, unexpired token skips it; anything else is checked like a browser request.
+  const auth = readSessionEnv();
+  const mobile = auth !== null && verifyMobileAccess(mobileBearer(req), auth.secret, Math.floor(Date.now() / 1000)) !== null;
   const expected = appOriginFor(readAppMode());
-  if (!expected) return deny("Request origin could not be verified.");
-  const supplied = req.headers.has("origin") ? originOf(req.headers.get("origin")) : originOf(req.headers.get("referer"));
-  if (supplied !== expected) return deny("Cross-origin request denied.");
+  if (!mobile) {
+    if (!expected) return deny("Request origin could not be verified.");
+    const supplied = req.headers.has("origin") ? originOf(req.headers.get("origin")) : originOf(req.headers.get("referer"));
+    if (supplied !== expected) return deny("Cross-origin request denied.");
+  }
   if (opts.json !== false) {
     const type = (req.headers.get("content-type") ?? "").split(";")[0]!.trim().toLowerCase();
     if (type !== "application/json") return deny("Content-Type must be application/json.");
