@@ -77,6 +77,8 @@ export const PERMISSION_CATALOGUE = [
   { key: "sale_event.manage", area: "marketplace", label: "Record sold and rented events", description: "See the sold and rented log at /staff/sale-events, add historical sales and rentals, void a wrong or fallen-through one with a reason, and sweep accepted offers that have no event. Every action is logged.", sensitive: false },
   { key: "user.mfa_reset", area: "marketplace", label: "Reset two-step sign-in", description: "Reset an owner's or agent's two-step sign-in when they lose their phone, at /staff/security/mfa-reset (super admin only). Every reset is logged and the user is emailed.", sensitive: true },
   { key: "user.delete", area: "marketplace", label: "Delete and restore accounts", description: "Delete an owner's, agent's or buyer's account (listings archived, open offers cancelled, records kept 7 years) and restore it within the recovery window, at /staff/users/deleted-accounts (super admin only). Every step is logged and the people affected are emailed.", sensitive: true },
+  { key: "escrow.manage", area: "trust_accounts", label: "Manage deposits in trust", description: "Open the deposit record for an accepted offer, record deposits the bank shows were received, import trust account bank statements and reconcile them, and ask for a deposit to be released or refunded, at /staff/escrow. The platform holds no money; deposits stay in the solicitor's trust account. Every step is logged.", sensitive: true },
+  { key: "escrow.approve", area: "trust_accounts", label: "Approve deposit releases", description: "Approve or reject a request to release a deposit to the seller or refund it to the buyer. Never the person who asked for it. Every decision is logged.", sensitive: true },
   { key: "commission.manage", area: "commissions", label: "Manage agent commissions", description: "Record agent commission deals, override amounts with a reason, set payout dates, mark deals earned or cancelled, and confirm a payment was made to the agent, at /staff/commissions. The platform holds no money; this is a record. Every step is logged.", sensitive: true }
 ] as const satisfies readonly PermissionInfo[];
 
@@ -94,8 +96,8 @@ const ROLE_PERMISSIONS: Record<StaffRole, readonly StaffPermission[]> = {
   super_admin: ALL,
   compliance: ["report.audit", "report.solicitor", "report.broker", "pii.view_full", "case.manage",
     "trust_account.approve", "licence.verify", "dispute.read_chat", "signing.support_view", "override.request", "identity.review", "investment.review",
-    "wording.review", "sale_event.manage", "disclosure.config_edit", "disclosure.config_approve", "disclosure.verify", "doc_template.edit", "doc_template.publish", "listing.moderate", "listing.bulk", "user.manage"],
-  accountant: ["report.financial", "report.sales", "pii.view_masked", "billing.manage", "commission.manage"],
+    "wording.review", "sale_event.manage", "disclosure.config_edit", "disclosure.config_approve", "disclosure.verify", "doc_template.edit", "doc_template.publish", "listing.moderate", "listing.bulk", "user.manage", "escrow.manage", "escrow.approve"],
+  accountant: ["report.financial", "report.sales", "pii.view_masked", "billing.manage", "commission.manage", "escrow.manage"],
   support: ["report.buyer", "report.seller", "pii.view_masked", "case.manage", "signing.support_view", "override.request", "listing.moderate"],
   technical: ["logs.technical", "report.operations", "config.edit"],
   reporting: ["report.sales", "report.suburb", "report.operations"],
@@ -106,8 +108,8 @@ const ROLE_PERMISSIONS: Record<StaffRole, readonly StaffPermission[]> = {
 /** Built-in (system) roles and their labels. They cannot be edited, disabled or deleted. */
 export const SYSTEM_ROLES: readonly { key: StaffRole; label: string; description: string }[] = [
   { key: "super_admin", label: "Super admin", description: "Everything, including roles and staff access. Safety gates still need a second person." },
-  { key: "compliance", label: "Compliance", description: "Trust accounts, licences, identity review, audit, disputes, listing moderation and user accounts." },
-  { key: "accountant", label: "Accountant", description: "Financial and sales reports with masked personal details." },
+  { key: "compliance", label: "Compliance", description: "Trust accounts and deposits in trust, licences, identity review, audit, disputes, listing moderation and user accounts." },
+  { key: "accountant", label: "Accountant", description: "Financial and sales reports with masked personal details, and deposit records and trust account reconciliation." },
   { key: "support", label: "Support", description: "Admin cases, listing moderation, and owner and buyer reports with masked personal details." },
   { key: "technical", label: "Technical", description: "Technical logs, operations report and platform settings. No personal data." },
   { key: "reporting", label: "Reporting", description: "Sales, suburb and operations reports." },

@@ -33,6 +33,7 @@ const META: Record<string, { group: string; icon: AdminIcon; blurb: string }> = 
   "/staff/cases": { group: "compliance", icon: "case", blurb: "Claim and resolve admin cases" },
   "/staff/safety": { group: "compliance", icon: "safety", blurb: "Messages held by the safety filter" },
   "/staff/trust-accounts": { group: "compliance", icon: "bank", blurb: "Two-person trust account approvals" },
+  "/staff/escrow": { group: "compliance", icon: "bank", blurb: "Buyer deposits in trust, bank reconciliation and release approvals" },
   "/staff/id-review": { group: "compliance", icon: "id", blurb: "Identity checks waiting for review" },
   "/staff/wording-flags": { group: "compliance", icon: "wording", blurb: "Listings flagged for discriminatory wording" },
   "/staff/disclosures": { group: "compliance", icon: "disclosure", blurb: "State disclosure requirements and versions" },
