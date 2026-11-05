@@ -10,6 +10,10 @@ import { newWebhookSecret, verifySignature } from "../domain/webhooks";
 import type { StaffActor } from "../domain/staff-access";
 import { appendAuditPg, type Queryable } from "./db";
 import { notifyUser } from "./notifier";
+import {
+  ackRevision, buildAri, buildChannexContent, channelScreenUrl, channexConfig, ensureStructure, getRevision, listChannels, parseChannexRevision, pushAri, revisionFeed,
+  setChannelActive, updateContent, verifyChannexWebhook, type ChannexConfig, type ChannexRevision
+} from "../adapters/portals/channex";
 
 type Env = Readonly<Record<string, string | undefined>>;
 type Fetch = (url: string, init: { method: string; headers: Record<string, string>; body?: string; signal?: AbortSignal; redirect?: "manual" }) => Promise<{ status: number; text(): Promise<string> }>;
@@ -36,7 +40,7 @@ const keyField = (p: Portal, kind: "apiKey" | "webhookSecret") => `syndication.$
 
 const toPortal = (r: Record<string, unknown>): PortalRow => {
   const base = {
-    portal: r["portal"] as Portal, enabled: r["enabled"] === true, mode: (r["mode"] === "api" ? "api" : "manual") as PortalMode,
+    portal: r["portal"] as Portal, enabled: r["enabled"] === true, mode: (r["mode"] === "api" || r["mode"] === "channex" ? r["mode"] : "manual") as PortalMode,
     baseUrl: typeof r["base_url"] === "string" ? r["base_url"] : null, hasKey: typeof r["api_key_enc"] === "string",
     hasWebhookSecret: typeof r["webhook_secret_enc"] === "string", allowedTransactionTypes: r["allowed_transaction_types"] as string[],
     maxPerMinute: Number(r["max_per_minute"]), updatedAt: iso(r["updated_at"])
@@ -82,6 +86,9 @@ export async function savePortal(
     enabled: input.enabled ?? cur.row.enabled, mode: input.mode ?? cur.row.mode, baseUrl: input.baseUrl === undefined ? cur.row.baseUrl : input.baseUrl,
     hasKey: apiKeyEnc === undefined ? cur.row.hasKey : apiKeyEnc !== null, hasWebhookSecret: whEnc !== undefined || cur.row.hasWebhookSecret
   };
+  if (next.enabled && next.mode === "channex" && !channexConfig(deps.env)) {
+    return { ok: false, error: "Channex is not set up yet: set CHANNEX_API_KEY (and CHANNEX_WEBHOOK_SECRET) first.", code: "not_ready" };
+  }
   if (next.enabled && !portalReady(next)) {
     return { ok: false, error: next.mode === "api" ? "To switch an API portal on, set its address, API key and webhook secret first." : "Portal is not ready.", code: "not_ready" };
   }
@@ -116,6 +123,8 @@ export async function canManageListing(db: Queryable, listingId: string, userId:
 export interface ListingPortalView {
   portal: Portal; label: string; mode: PortalMode; available: boolean; eligibleReason: string | null; enabled: boolean; custom: PortalCustomFields;
   manualUrl: string | null; state: SyncState | null; externalUrl: string | null; lastError: string | null; lastSyncedAt: string | null;
+  /** Channex mode only: whether the owner's own account for this portal is connected (null in other modes). */
+  connected: boolean | null;
 }
 
 /** What the owner sees: one row per portal staff have switched on and ready, with this listing's choice and sync state. */
@@ -126,6 +135,8 @@ export async function listingSyndication(db: Queryable, listingId: string): Prom
   const portals = await listPortals(db);
   const settings = await db.query("SELECT portal, enabled, custom, manual_url FROM syndication_listing_setting WHERE listing_id = $1::uuid", [listingId]);
   const syncs = await db.query("SELECT portal, state, external_url, last_error, last_synced_at FROM syndication_sync WHERE listing_id = $1::uuid", [listingId]);
+  const cx = await db.query("SELECT connected_portals FROM channex_property WHERE listing_id = $1::uuid", [listingId]);
+  const connected = new Set((cx.rows[0]?.["connected_portals"] as string[] | undefined) ?? []);
   return portals.filter(p => p.ready).map(p => {
     const s = settings.rows.find(x => x["portal"] === p.portal);
     const y = syncs.rows.find(x => x["portal"] === p.portal);
@@ -134,7 +145,8 @@ export async function listingSyndication(db: Queryable, listingId: string): Prom
       eligibleReason: ineligibleReason({ status: String(listing["status"]), transactionType: String(listing["transaction_type"]) }, p.allowedTransactionTypes),
       enabled: s?.["enabled"] === true, custom: (s?.["custom"] as PortalCustomFields | undefined) ?? {}, manualUrl: typeof s?.["manual_url"] === "string" ? s["manual_url"] : null,
       state: y ? (y["state"] as SyncState) : null, externalUrl: typeof y?.["external_url"] === "string" ? y["external_url"] : null,
-      lastError: typeof y?.["last_error"] === "string" ? y["last_error"] : null, lastSyncedAt: iso(y?.["last_synced_at"])
+      lastError: typeof y?.["last_error"] === "string" ? y["last_error"] : null, lastSyncedAt: iso(y?.["last_synced_at"]),
+      connected: p.mode === "channex" ? connected.has(p.portal) : null
     };
   });
 }
@@ -258,6 +270,10 @@ export async function syncOne(db: Queryable, deps: SyndicationDeps, listingId: s
                 lease_until = NULL, updated_at = $11::timestamptz WHERE listing_id = $1::uuid AND portal = $2`,
         [listingId, portal, patch.state, patch.externalId ?? null, patch.externalUrl ?? null, patch.hash ?? null, patch.attempts, patch.next, patch.error, patch.synced === true, now]);
 
+    if (p.row.mode === "channex") {
+      return await syncChannex(db, deps, { listingId, portal, listing, wanted, state, externalId, attempts: Number(sync["attempts"]), maxPerMinute: p.row.maxPerMinute, force: opts.force === true, save, now });
+    }
+
     if (p.row.mode === "manual") {
       const url = typeof set?.["manual_url"] === "string" ? set["manual_url"] : null;
       if (wanted) { await save({ state: "manual", externalUrl: url, attempts: 0, next: null, error: null, synced: true }); return "manual"; }
@@ -307,6 +323,266 @@ export async function syncOne(db: Queryable, deps: SyndicationDeps, listingId: s
   }
 }
 
+// ---- Channex (one channel manager for Airbnb, Booking.com and Vrbo) --------------------------------------------------------------
+
+type SavePatch = { state: SyncState; externalId?: string | null; externalUrl?: string | null; hash?: string | null; attempts: number; next: string | null; error: string | null; synced?: boolean };
+interface ChannexSyncInput {
+  listingId: string; portal: Portal; listing: SyndicationListing | null; wanted: boolean; state: SyncState; externalId: string | null; attempts: number;
+  maxPerMinute: number; force: boolean; save: (p: SavePatch) => Promise<unknown>; now: string;
+}
+interface ChannexMapping {
+  propertyId: string | null; roomTypeId: string | null; ratePlanId: string | null; contentHash: string | null; ariHash: string | null; ariClosed: boolean; connected: Portal[]; syncedAt: string | null;
+}
+type StepResult = { ok: true; propertyId: string | null; calls: number } | { ok: false; status: number | null; error: string };
+const hashOf = (v: unknown) => createHash("sha256").update(JSON.stringify(v)).digest("hex");
+const releaseSync = (db: Queryable, listingId: string, portal: Portal) =>
+  db.query("UPDATE syndication_sync SET lease_until = NULL WHERE listing_id = $1::uuid AND portal = $2", [listingId, portal]);
+
+/** Portals in channex mode that want this listing now (published, opted in, category allowed), in a fixed order. The first one's fields are used. */
+async function channexWanted(db: Queryable, listingId: string): Promise<{ portal: Portal; custom: PortalCustomFields }[]> {
+  const r = await db.query(
+    `SELECT s.portal, s.custom FROM syndication_listing_setting s
+       JOIN syndication_portal p ON p.portal = s.portal AND p.enabled AND p.mode = 'channex'
+       JOIN property_listing l ON l.id = s.listing_id AND l.status = 'published' AND l.transaction_type = ANY(p.allowed_transaction_types)
+      WHERE s.listing_id = $1::uuid AND s.enabled ORDER BY s.portal`, [listingId]);
+  return r.rows.map(x => ({ portal: x["portal"] as Portal, custom: (x["custom"] as PortalCustomFields | undefined) ?? {} }));
+}
+
+async function bookedStays(db: Queryable, listingId: string, today: string): Promise<{ checkIn: string; checkOut: string }[]> {
+  const r = await db.query(
+    "SELECT to_char(check_in, 'YYYY-MM-DD') AS ci, to_char(check_out, 'YYYY-MM-DD') AS co FROM syndication_booking WHERE listing_id = $1::uuid AND status = 'confirmed' AND check_out > $2::date ORDER BY check_in",
+    [listingId, today]);
+  return r.rows.map(x => ({ checkIn: String(x["ci"]), checkOut: String(x["co"]) }));
+}
+
+const saveMapping = (db: Queryable, listingId: string, m: Partial<Record<"property_id" | "room_type_id" | "rate_plan_id" | "content_hash" | "ari_hash", string | null>> & { ari_closed?: boolean; connected_portals?: Portal[]; synced_at?: string }, now: string) => {
+  const keys = Object.keys(m);
+  const sets = keys.map((k, i) => `${k} = $${i + 2}${k === "synced_at" ? "::timestamptz" : k === "connected_portals" ? "::text[]" : ""}`);
+  return db.query(`UPDATE channex_property SET ${[...sets, `updated_at = $${keys.length + 2}::timestamptz`].join(", ")} WHERE listing_id = $1::uuid`,
+    [listingId, ...keys.map(k => (m as Record<string, unknown>)[k]), now]);
+};
+
+/**
+ * One listing on one portal, through Channex. All portals of a listing share one Channex property, so the second portal to sync usually costs one call
+ * (reading its channel). Turning a portal off switches off that portal's channel when it serves only this listing; when no portal wants the listing,
+ * every night is closed so nothing more can be booked (the property and its history stay).
+ */
+async function syncChannex(db: Queryable, deps: SyndicationDeps, x: ChannexSyncInput): Promise<SyncOutcome> {
+  const { listingId, portal, now } = x;
+  const cfg = channexConfig(deps.env);
+  if (!cfg) { await x.save({ state: "failed", attempts: MAX_ATTEMPTS, next: null, error: "Channex is not set up (CHANNEX_API_KEY)." }); return "failed"; }
+  if (!x.wanted && (!x.externalId || x.state === "removed")) { await x.save({ state: "removed", attempts: 0, next: null, error: null }); return "skipped"; }
+  await db.query("INSERT INTO channex_property (listing_id) VALUES ($1::uuid) ON CONFLICT DO NOTHING", [listingId]);
+  const got = await db.query(
+    `UPDATE channex_property SET lease_until = $2::timestamptz + interval '2 minutes' WHERE listing_id = $1::uuid AND (lease_until IS NULL OR lease_until < $2::timestamptz)
+     RETURNING property_id, room_type_id, rate_plan_id, content_hash, ari_hash, ari_closed, connected_portals, synced_at`, [listingId, now]);
+  const row = got.rows[0];
+  if (!row) { await releaseSync(db, listingId, portal); return "skipped"; }
+  const str = (k: string) => (typeof row[k] === "string" ? (row[k] as string) : null);
+  const m: ChannexMapping = {
+    propertyId: str("property_id"), roomTypeId: str("room_type_id"), ratePlanId: str("rate_plan_id"), contentHash: str("content_hash"), ariHash: str("ari_hash"),
+    ariClosed: row["ari_closed"] === true, connected: (row["connected_portals"] as Portal[] | null) ?? [], syncedAt: iso(row["synced_at"])
+  };
+  try {
+    if (!(await underRateLimit(db, portal, x.maxPerMinute, now))) { await releaseSync(db, listingId, portal); return "rate_limited"; }
+    const action: Action = !x.wanted ? "remove" : x.externalId ? "update" : "create";
+    const r = x.wanted ? await channexPush(db, deps, cfg, x, m) : await channexStop(db, deps, cfg, x, m);
+    if (r.ok && r.calls === 0 && x.wanted) { await releaseSync(db, listingId, portal); return "unchanged"; }
+    if (!r.ok || r.calls > 0) await logCall(db, portal, listingId, action, r.ok ? { ok: true, status: 200 } : { ok: false, status: r.status, error: r.error }, now);
+    if (r.ok && x.wanted) {
+      await x.save({ state: "live", externalId: r.propertyId, attempts: 0, next: null, error: null, synced: true });
+      await audit(db, "system", "syndication", "listing", listingId, action === "create" ? "syndication.published" : "syndication.updated", { portal, via: "channex" }, now);
+      return "pushed";
+    }
+    if (r.ok) {
+      await x.save({ state: "removed", attempts: 0, next: null, error: null, synced: true });
+      await db.query("UPDATE syndication_sync SET external_id = NULL, external_url = NULL, content_hash = NULL WHERE listing_id = $1::uuid AND portal = $2", [listingId, portal]);
+      await audit(db, "system", "syndication", "listing", listingId, "syndication.delisted", { portal, via: "channex" }, now);
+      return "removed";
+    }
+    const attempts = x.attempts + 1;
+    await x.save({ state: "failed", attempts, next: nextAttemptAt(now, attempts), error: r.error });
+    return "failed";
+  } finally {
+    await db.query("UPDATE channex_property SET lease_until = NULL WHERE listing_id = $1::uuid", [listingId]);
+  }
+}
+
+async function channexPush(db: Queryable, deps: SyndicationDeps, cfg: ChannexConfig, x: ChannexSyncInput, m: ChannexMapping): Promise<StepResult> {
+  const { listingId, portal, now } = x;
+  const wanted = await channexWanted(db, listingId);
+  const content = buildChannexContent(x.listing!, wanted[0]?.custom ?? {});
+  if (content.nightlyRateCents === null) return { ok: false, status: null, error: "Set a nightly price (or a weekly rent) before sharing on this portal." };
+  const contentHash = hashOf(content);
+  const today = now.slice(0, 10);
+  const booked = await bookedStays(db, listingId, today);
+  const stale = !m.syncedAt || Date.parse(now) - Date.parse(m.syncedAt) > STALE_AFTER_HOURS * 3_600_000;
+  const ariFor = (ids: { propertyId: string; roomTypeId: string; ratePlanId: string }) => buildAri(ids, today, content, booked);
+  if (m.propertyId && m.roomTypeId && m.ratePlanId && x.state === "live" && !x.force && !stale && !m.ariClosed && m.contentHash === contentHash
+      && m.ariHash === hashOf(ariFor({ propertyId: m.propertyId, roomTypeId: m.roomTypeId, ratePlanId: m.ratePlanId })) && m.connected.includes(portal)) {
+    return { ok: true, propertyId: m.propertyId, calls: 0 };
+  }
+  let calls = 0;
+  const s = await ensureStructure(cfg, deps.fetch, { propertyId: m.propertyId, roomTypeId: m.roomTypeId, ratePlanId: m.ratePlanId }, content,
+    async ids => { calls++; await saveMapping(db, listingId, { property_id: ids.propertyId, room_type_id: ids.roomTypeId, rate_plan_id: ids.ratePlanId }, now); });
+  if (!s.ok) return s;
+  if (!s.created && (m.contentHash !== contentHash || x.force)) {
+    const r = await updateContent(cfg, deps.fetch, s.ids, content);
+    calls++;
+    if (!r.ok) return { ok: false, status: r.status, error: r.error ?? "Channex refused the update." };
+  }
+  await saveMapping(db, listingId, { content_hash: contentHash }, now);
+  const ari = ariFor(s.ids);
+  const ariHash = hashOf(ari);
+  if (s.created || m.ariHash !== ariHash || m.ariClosed || stale || x.force) {
+    const r = await pushAri(cfg, deps.fetch, ari);
+    calls++;
+    if (!r.ok) return { ok: false, status: r.status, error: r.error ?? "Channex refused the calendar." };
+    await saveMapping(db, listingId, { ari_hash: ariHash, ari_closed: false }, now);
+  }
+  const ch = await listChannels(cfg, deps.fetch, s.ids.propertyId);
+  calls++;
+  let connected = m.connected;
+  if (ch.ok) {
+    for (const c of ch.channels) {
+      if (c.portal === portal && !c.active && c.properties.length === 1 && c.properties[0] === s.ids.propertyId) {
+        const r = await setChannelActive(cfg, deps.fetch, c.id, true);
+        calls++;
+        if (r.ok) c.active = true;
+      }
+    }
+    connected = [...new Set(ch.channels.filter(c => c.active && c.portal !== null).map(c => c.portal!))].sort();
+  }
+  await saveMapping(db, listingId, { connected_portals: connected, synced_at: now }, now);
+  return { ok: true, propertyId: s.ids.propertyId, calls };
+}
+
+async function channexStop(db: Queryable, deps: SyndicationDeps, cfg: ChannexConfig, x: ChannexSyncInput, m: ChannexMapping): Promise<StepResult> {
+  const { listingId, portal, now } = x;
+  if (!m.propertyId) return { ok: true, propertyId: null, calls: 0 };
+  let calls = 0;
+  const ch = await listChannels(cfg, deps.fetch, m.propertyId);
+  calls++;
+  if (!ch.ok) return { ok: false, status: null, error: ch.error };
+  for (const c of ch.channels.filter(c => c.portal === portal && c.active)) {
+    if (c.properties.some(p => p !== m.propertyId)) {
+      return { ok: false, status: null, error: `This ${PORTAL_LABELS[portal]} connection also serves other listings. Remove this listing from it in the connection screen.` };
+    }
+    const r = await setChannelActive(cfg, deps.fetch, c.id, false);
+    calls++;
+    if (!r.ok) return { ok: false, status: r.status, error: r.error ?? "Channex did not switch the channel off." };
+  }
+  const others = (await channexWanted(db, listingId)).filter(w => w.portal !== portal);
+  if (others.length === 0 && !m.ariClosed && m.roomTypeId && m.ratePlanId) {
+    const r = await pushAri(cfg, deps.fetch, buildAri({ propertyId: m.propertyId, roomTypeId: m.roomTypeId, ratePlanId: m.ratePlanId }, now.slice(0, 10), null, [], true));
+    calls++;
+    if (!r.ok) return { ok: false, status: r.status, error: r.error ?? "Channex did not close the calendar." };
+    await saveMapping(db, listingId, { ari_closed: true, ari_hash: null }, now);
+  }
+  await saveMapping(db, listingId, { connected_portals: m.connected.filter(p => p !== portal) }, now);
+  return { ok: true, propertyId: m.propertyId, calls };
+}
+
+export type RevisionOutcome = "confirmed" | "conflict" | "cancelled" | "changed" | "duplicate" | "unknown" | "ignored";
+
+/** Stores one Channex booking revision against its listing. A changed stay keeps its row: new dates, re-checked for a clash. Other OTAs are ignored. */
+export async function applyChannexRevision(db: Queryable, deps: SyndicationDeps, rev: ChannexRevision): Promise<RevisionOutcome> {
+  const r = await db.query(
+    "SELECT c.listing_id::text AS listing_id, l.owner_user_id::text AS owner, l.address_text FROM channex_property c JOIN property_listing l ON l.id = c.listing_id WHERE c.property_id = $1",
+    [rev.propertyId]);
+  const row = r.rows[0];
+  const portal = rev.portal;
+  if (!row || !portal) return "ignored";
+  const listingId = String(row["listing_id"]);
+  const now = deps.now();
+  const e: IncomingBooking = {
+    event: rev.status === "cancelled" ? "booking.cancelled" : "booking.created", externalListingId: rev.propertyId, externalBookingId: rev.bookingId,
+    guestName: rev.guestName, guests: rev.guests, checkIn: rev.checkIn, checkOut: rev.checkOut, totalCents: rev.totalCents
+  };
+  const outcome: RevisionOutcome = await inTx(db, async tx => {
+    if (rev.status === "modified") {
+      await tx.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`syndication:${listingId}`]);
+      const ex = (await tx.query("SELECT id FROM syndication_booking WHERE portal = $1 AND external_booking_id = $2 AND status <> 'cancelled'", [portal, rev.bookingId])).rows[0];
+      if (ex) {
+        const clash = await tx.query(
+          "SELECT 1 FROM syndication_booking WHERE listing_id = $1::uuid AND id <> $4 AND status = 'confirmed' AND NOT (source = 'ical' AND portal = $5) AND check_in < $3::date AND $2::date < check_out LIMIT 1",
+          [listingId, rev.checkIn, rev.checkOut, ex["id"], portal]);
+        const status = clash.rows.length > 0 ? "conflict" : "confirmed";
+        await tx.query("UPDATE syndication_booking SET check_in = $2::date, check_out = $3::date, guests = $4, total_cents = $5, guest_name = $6, status = $7 WHERE id = $1",
+          [ex["id"], rev.checkIn, rev.checkOut, rev.guests, rev.totalCents, rev.guestName, status]);
+        await audit(tx, "system", "syndication", "listing", listingId, status === "confirmed" ? "syndication.booking_changed" : "syndication.booking_conflict", { portal, nights: nights(rev.checkIn, rev.checkOut) }, now);
+        return status === "confirmed" ? "changed" : "conflict";
+      }
+    }
+    return handleBooking(tx, portal, listingId, e, now);
+  });
+  const params = { listing: String(row["address_text"]), name: rev.guestName, link: `/listings/${listingId}/syndication` };
+  if (outcome === "confirmed") await notifyUser(db, String(row["owner"]), "booking_received", params, deps.env);
+  if (outcome === "conflict") await notifyUser(db, String(row["owner"]), "booking_conflict", params, deps.env);
+  if (outcome === "confirmed" || outcome === "changed" || outcome === "cancelled") await db.query("UPDATE channex_property SET ari_hash = NULL WHERE listing_id = $1::uuid", [listingId]);
+  return outcome;
+}
+
+/** Parse, store, then acknowledge. A revision that fails to store is not acknowledged, so the feed offers it again. */
+async function takeRevision(db: Queryable, deps: SyndicationDeps, cfg: ChannexConfig, raw: unknown): Promise<RevisionOutcome | "failed"> {
+  const p = parseChannexRevision(raw);
+  if (!p.ok) return "failed";
+  let outcome: RevisionOutcome;
+  try { outcome = await applyChannexRevision(db, deps, p.value); } catch { return "failed"; }
+  const ack = await ackRevision(cfg, deps.fetch, p.value.revisionId);
+  return ack.ok ? outcome : "failed";
+}
+
+/** Periodic pull of unacknowledged booking revisions (Channex asks for this every 15-20 minutes even with the webhook on). */
+export async function runChannexBookings(db: Queryable, deps: SyndicationDeps): Promise<{ stored: number; ignored: number; failed: number } | null> {
+  const cfg = channexConfig(deps.env);
+  if (!cfg) return null;
+  const on = await db.query("SELECT 1 FROM syndication_portal WHERE enabled AND mode = 'channex' LIMIT 1");
+  if (on.rows.length === 0) return null;
+  const feed = await revisionFeed(cfg, deps.fetch);
+  const counts = { stored: 0, ignored: 0, failed: feed.ok ? 0 : 1 };
+  for (const raw of feed.ok && Array.isArray(feed.data) ? feed.data : []) {
+    const o = await takeRevision(db, deps, cfg, raw);
+    if (o === "failed") counts.failed++; else if (o === "ignored") counts.ignored++; else counts.stored++;
+  }
+  return counts;
+}
+
+/**
+ * Channex webhook. Verified (HMAC or shared secret header, see verifyChannexWebhook) before anything is read; 404 while CHANNEX_WEBHOOK_SECRET is unset.
+ * Booking events carry only ids, so the revision is fetched, stored and acknowledged. Answers 200 once verified so Channex does not retry; the feed pull catches anything missed.
+ */
+export async function handleChannexWebhook(db: Queryable, deps: SyndicationDeps, rawBody: string, h: { timestamp: string | null; signature: string | null; sharedSecret: string | null }): Promise<WebhookResult> {
+  const cfg = channexConfig(deps.env);
+  if (!cfg?.webhookSecret) return { status: 404, body: { error: "Not found." } };
+  if (!verifyChannexWebhook(cfg.webhookSecret, rawBody, h, Math.floor(Date.parse(deps.now()) / 1000))) return { status: 401, body: { error: "Bad signature." } };
+  let json: Record<string, unknown>;
+  try { const j: unknown = JSON.parse(rawBody); if (!j || typeof j !== "object") throw new Error(); json = j as Record<string, unknown>; } catch { return { status: 400, body: { error: "Send JSON." } }; }
+  const event = typeof json["event"] === "string" ? json["event"] : "";
+  const payload = (json["payload"] && typeof json["payload"] === "object" ? json["payload"] : {}) as Record<string, unknown>;
+  const revisionId = typeof payload["revision_id"] === "string" && payload["revision_id"].length <= 64 ? payload["revision_id"] : null;
+  if (!event.startsWith("booking") || !revisionId) return { status: 200, body: { status: "ignored" } };
+  const rev = await getRevision(cfg, deps.fetch, revisionId);
+  if (!rev.ok) return { status: 200, body: { status: "later" } };
+  return { status: 200, body: { status: await takeRevision(db, deps, cfg, rev.data) } };
+}
+
+export type ConnectResult = { ok: true; url: string } | { ok: false; error: string; code: "not_configured" | "not_synced" | "failed" };
+
+/** Owner: a one-time address of Channex's channel screen for this listing, where they connect their own Airbnb, Booking.com or Vrbo account. */
+export async function channexConnectUrl(db: Queryable, deps: SyndicationDeps, userId: string, listingId: string): Promise<ConnectResult> {
+  const cfg = channexConfig(deps.env);
+  const portals = (await listPortals(db)).filter(p => p.enabled && p.mode === "channex").map(p => p.portal);
+  if (!cfg || portals.length === 0) return { ok: false, error: "Connecting portal accounts is not switched on yet.", code: "not_configured" };
+  const r = await db.query("SELECT property_id FROM channex_property WHERE listing_id = $1::uuid AND property_id IS NOT NULL", [listingId]);
+  const propertyId = r.rows[0]?.["property_id"];
+  if (typeof propertyId !== "string") return { ok: false, error: "Share the listing on a portal first, then connect your account.", code: "not_synced" };
+  const u = await channelScreenUrl(cfg, deps.fetch, propertyId, userId, portals);
+  if (!u.ok) return { ok: false, error: "Could not open the connection screen. Please try again in a minute.", code: "failed" };
+  await audit(db, "user", userId, "listing", listingId, "syndication.connect_opened", { portals }, deps.now());
+  return u;
+}
+
 /** Best effort right after a publish, toggle or withdrawal: never throws, never blocks the caller's action. */
 export async function syndicateListing(db: Queryable, deps: SyndicationDeps, listingId: string): Promise<void> {
   try {
@@ -334,7 +610,8 @@ export async function runSyndication(db: Queryable, deps: SyndicationDeps): Prom
       WHERE s.enabled AND l.status = 'published'
         AND (y.listing_id IS NULL OR y.state IN ('pending', 'removed', 'manual_removal')
              OR (y.state = 'failed' AND y.next_attempt_at IS NOT NULL AND y.next_attempt_at <= $1::timestamptz)
-             OR (y.state IN ('live', 'manual') AND (l.updated_at > y.last_synced_at OR y.last_synced_at < $1::timestamptz - make_interval(hours => $2::int))))
+             OR (y.state IN ('live', 'manual') AND (l.updated_at > y.last_synced_at OR y.last_synced_at < $1::timestamptz - make_interval(hours => $2::int)))
+             OR (y.state = 'live' AND p.mode = 'channex' AND EXISTS (SELECT 1 FROM channex_property c WHERE c.listing_id = s.listing_id AND c.ari_hash IS NULL AND NOT c.ari_closed)))
         AND (y.lease_until IS NULL OR y.lease_until < $1::timestamptz)
       ORDER BY y.last_synced_at NULLS FIRST LIMIT $3`, [now, STALE_AFTER_HOURS, BATCH]);
   const gone = await db.query(
