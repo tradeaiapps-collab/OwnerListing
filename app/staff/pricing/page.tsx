@@ -5,7 +5,10 @@ import { JSON_HEADERS } from "../../listings/ui";
 import { money } from "../../plans/view";
 
 interface Row { id: string; planId: string; priceCents: number; reason: string; setBy: string; effectiveFrom: string }
-const PLANS = [["basic", "Basic"], ["standard", "Standard"], ["premium", "Premium"]] as const;
+const PLANS = [
+  ["basic", "Basic (per listing)"], ["standard", "Standard (per listing)"], ["premium", "Premium (per listing)"],
+  ["owner_plus", "Owner Plus (per month)"], ["agent_pro", "Agent Pro (per month)"], ["agent_team", "Agent Team (per month)"]
+] as const;
 
 export default function StaffPricing() {
   const [current, setCurrent] = useState<Record<string, number>>({});

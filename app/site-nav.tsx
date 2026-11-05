@@ -85,6 +85,8 @@ export default function SiteNav({ items, iconStyle, signInHref }: { items?: NavI
       {/* Not in the admin nav catalogue: adding an id there would invalidate every saved theme's navigation list. */}
       {who === "buyer" && <a href="/offers">My offers</a>}
       {(who === "owner" || who === "buyer") && <a href="/notifications">Notifications{unread > 0 ? <span className="nt-badge nt-bell-badge" aria-label={`${unread} unread`}>{unread}</span> : null}</a>}
+      {(who === "owner" || who === "buyer") && <a href="/market">Market insights</a>}
+      {(who === "owner" || who === "buyer") && <a href="/inspections">Inspections</a>}
       {(who === "owner" || who === "buyer" || who === "staff") && <button type="button" className="nav-signout" onClick={signOut}>Sign out</button>}
       </div>
     </nav>
