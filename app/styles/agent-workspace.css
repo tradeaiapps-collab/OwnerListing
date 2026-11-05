@@ -43,3 +43,7 @@
 .aw-ask input { flex: 1; min-width: 0; min-height: 44px; padding: 0 var(--space-3); font: inherit; border: 1px solid var(--border); border-radius: 999px; background: var(--bg); color: var(--text); }
 .aw-ask button { min-height: 44px; padding: 0 var(--space-4); border: 0; border-radius: 999px; background: var(--brand); color: var(--brand-text); font: inherit; cursor: pointer; }
 .aw-ask :is(input, button):focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.aw-card section[aria-labelledby="client-h"] { margin-top: var(--space-6); padding-top: var(--space-4); border-top: 1px solid var(--border); }
+.aw-lead-head button { background: transparent; }
+/* This page has its own assistant card, so the floating launcher would only cover it. */
+body:has(.aw) .ga-launcher { display: none; }
