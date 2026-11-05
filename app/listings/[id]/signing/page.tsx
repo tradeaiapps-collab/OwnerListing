@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Breadcrumbs from "../../../breadcrumbs";
-import { STATUS_LABEL } from "../../../signing/labels";
+import { ROLE_SUGGESTIONS, STATUS_LABEL } from "../../../signing/labels";
 import { JSON_HEADERS } from "../../ui";
 import "../../../styles/signing.css";
 
@@ -92,7 +92,7 @@ export default function ListingDocuments() {
                   {signers.map((s, i) => (
                     <div className="sg-row" key={i}>
                       <label>Email on their account<input type="email" value={s.email} onChange={e => setSigner(i, { email: e.target.value })} required maxLength={320} /></label>
-                      <label>Role (for example Agent or Buyer)<input value={s.roleLabel} onChange={e => setSigner(i, { roleLabel: e.target.value })} required minLength={2} maxLength={60} /></label>
+                      <label>Role (Buyer, Seller, Agent, Inspector or your own)<input list="sg-roles" value={s.roleLabel} onChange={e => setSigner(i, { roleLabel: e.target.value })} required minLength={2} maxLength={60} /></label>
                       {signers.length > 1 && <button type="button" className="secondary" onClick={() => setSigners(x => x.filter((_, j) => j !== i))}>Remove</button>}
                     </div>
                   ))}
@@ -105,6 +105,7 @@ export default function ListingDocuments() {
           )}
         </>
       )}
+          <datalist id="sg-roles">{ROLE_SUGGESTIONS.map(r => <option key={r} value={r} />)}</datalist>
     </main>
   );
 }

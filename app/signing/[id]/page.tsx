@@ -11,9 +11,10 @@ import "../../styles/signing.css";
 
 type Signer = { id: string; userId: string; displayName: string; roleLabel: string; status: "pending" | "signed" | "declined"; signedAt?: string };
 type Clause = { id: string; heading: string; text: string };
-type Doc = { id: string; listingId: string; listingTitle: string; title: string; status: string; bodySha256: string; clauses: Clause[]; signers: Signer[]; createdAt: string };
+type Doc = { id: string; listingId: string; listingTitle: string; title: string; status: string; bodySha256: string; provider: "builtin" | "docusign"; clauses: Clause[]; signers: Signer[]; createdAt: string };
+type Artifact = { id: string; kind: "signed_pdf" | "certificate"; sha256: string; sizeBytes: number; createdAt: string };
 type Ev = { id: number; actorName: string; eventType: string; ip?: string; detail: Record<string, unknown>; occurredAt: string };
-type View = { mfaFresh?: boolean; document: Doc; viewer: { role: "owner" | "signer"; canSign: boolean }; events: Ev[]; persona: ChatPersona };
+type View = { mfaFresh?: boolean; document: Doc; viewer: { role: "owner" | "signer"; canSign: boolean }; events: Ev[]; artifacts?: Artifact[]; persona: ChatPersona };
 type Explained = { heading: string; explanation: string; disclaimer: string };
 
 /**
@@ -34,6 +35,7 @@ export default function SigningPage() {
   const [typedName, setTypedName] = useState("");
   const [consent, setConsent] = useState(false);
   const [reason, setReason] = useState("");
+  const [returning, setReturning] = useState(false);
   const alive = useRef(true);
 
   const load = useCallback(async () => {
@@ -45,6 +47,13 @@ export default function SigningPage() {
     } catch { setLoadError("Could not load the document."); }
   }, [id]);
   useEffect(() => { void load(); }, [load]);
+  // Back from DocuSign: ask for the latest status once, in case the webhook has not arrived yet, then show the page as it stands.
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("docusign") !== "return") return;
+    setReturning(true);
+    void (async () => { try { await post({ action: "refresh" }); } catch { /* the webhook will catch up */ } await load(); setReturning(false); })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   // The floating guide is the same character; on this page she is already on stage, so the launcher steps aside.
   useEffect(() => { document.body.classList.add("el-chat-page"); return () => document.body.classList.remove("el-chat-page"); }, []);
   useEffect(() => { alive.current = true; return () => { alive.current = false; window.speechSynthesis?.cancel(); }; }, []);
@@ -71,11 +80,33 @@ export default function SigningPage() {
       else setError((r.data["error"] as string) ?? failMessage);
     } catch { setError(failMessage); } finally { setBusy(false); }
   }
+  async function openDocusign() {
+    setBusy(true); setError("");
+    try {
+      const r = await post({ action: "docusign_link" });
+      if (r.ok && typeof r.data["url"] === "string") { window.location.assign(r.data["url"]); return; }
+      if (r.data["code"] === "mfa_required") { window.location.assign(`/mfa?next=${encodeURIComponent(`/signing/${id}`)}`); return; }
+      setError((r.data["error"] as string) ?? "Could not open DocuSign.");
+    } catch { setError("Could not open DocuSign."); }
+    setBusy(false);
+  }
+  async function retry() {
+    setBusy(true); setError("");
+    try {
+      const r = await post({ action: "retry" });
+      const next = (r.data["document"] as { id?: string } | undefined)?.id;
+      if (r.ok && next) { window.location.assign(`/signing/${next}`); return; }
+      setError((r.data["error"] as string) ?? "Could not send this again.");
+    } catch { setError("Could not send this again."); }
+    setBusy(false);
+  }
   const walkTo = (i: number) => { const c = view?.document.clauses[i]; if (c) void explain(c); else { setWalk(false); setCurrent(null); } };
 
   if (loadError) return <main><h1>Document</h1><p role="alert">{loadError}</p></main>;
   if (!view) return <main><h1>Document</h1><p className="muted" role="status">Loading…</p></main>;
   const { document: d, viewer, events, persona } = view;
+  const artifacts = view.artifacts ?? [];
+  const viaDocusign = d.provider === "docusign";
   const idx = d.clauses.findIndex(c => c.id === current);
   const stage: StageState = speaking ? { pose: "tablet", status: "explaining", pointing: false, mood: "explain" }
     : current ? { pose: "tablet", status: "presenting", pointing: false } : { pose: "front", status: "welcome", pointing: false };
@@ -122,7 +153,20 @@ export default function SigningPage() {
             ))}
           </ul>
 
-          {viewer.canSign && (
+          {returning && <p className="muted" role="status">Checking with DocuSign…</p>}
+          {viewer.canSign && viaDocusign && (
+            <section className="sg-sign stack" aria-label="Sign with DocuSign">
+              <h2>Sign this document</h2>
+              {view.mfaFresh === false && <p role="status">Signing is binding, so we ask you to confirm it's you with your second sign-in step first. <a href={`/mfa?next=${encodeURIComponent(`/signing/${id}`)}`}>Confirm now</a></p>}
+              <p>This document is signed through DocuSign. You will go to DocuSign to review and sign, then come straight back here. Your signature, the time and your device details are recorded in the audit trail below.</p>
+              <div className="sg-actions">
+                <button type="button" disabled={busy} onClick={() => void openDocusign()}>{busy ? "Opening…" : "Sign with DocuSign"}</button>
+                <button type="button" className="secondary" disabled={busy} onClick={() => void act({ action: "refresh" }, "Could not check DocuSign.")}>I have signed: check status</button>
+              </div>
+              <p className="muted">To decline, use the decline option on the DocuSign page.</p>
+            </section>
+          )}
+          {viewer.canSign && !viaDocusign && (
             <form className="sg-sign stack" onSubmit={e => { e.preventDefault(); void act({ action: "sign", typedName, consent }, "Could not sign the document."); }}>
               <h2>Sign this document</h2>
               {view.mfaFresh === false && <p role="status">Signing is binding, so we ask you to confirm it's you with your second sign-in step first. <a href={`/mfa?next=${encodeURIComponent(`/signing/${id}`)}`}>Confirm it's you</a></p>}
@@ -147,7 +191,26 @@ export default function SigningPage() {
             </div>
           )}
           {viewer.role === "owner" && d.status === "out_for_signature" && (
-            <div className="sg-actions"><button type="button" className="secondary" disabled={busy} onClick={() => void act({ action: "cancel" }, "Could not cancel.")}>Cancel this document</button></div>
+            <div className="sg-actions">
+              {viaDocusign && <button type="button" disabled={busy} onClick={() => void act({ action: "refresh" }, "Could not check DocuSign.")}>Check status with DocuSign</button>}
+              <button type="button" className="secondary" disabled={busy} onClick={() => void act({ action: "cancel" }, "Could not cancel.")}>Cancel this document</button>
+            </div>
+          )}
+          {viewer.role === "owner" && (d.status === "declined" || d.status === "cancelled") && (
+            <div className="sg-actions"><button type="button" disabled={busy} onClick={() => void retry()}>Send again as a new document</button></div>
+          )}
+          {artifacts.length > 0 && (
+            <>
+              <h2>Signed copies</h2>
+              <ul className="sg-signers">
+                {artifacts.map(a => (
+                  <li key={a.id}>
+                    <a href={`/api/signing-documents/${d.id}/files/${a.kind}`} download>{a.kind === "signed_pdf" ? "Signed document (PDF)" : "Certificate of completion (PDF)"}</a>
+                    <span className="muted">{Math.max(1, Math.round(a.sizeBytes / 1024))} KB · {new Date(a.createdAt).toLocaleString("en-AU")}</span>
+                  </li>
+                ))}
+              </ul>
+            </>
           )}
           {error && <p role="alert">{error}</p>}
 
