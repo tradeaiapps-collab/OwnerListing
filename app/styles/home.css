@@ -326,3 +326,5 @@ a.home-link:hover::after { transform: translateX(4px); }
   .home-find { padding: var(--space-16) 0 var(--space-12); }
   .hl-modes { gap: var(--space-12); }
 }
+
+.home-invest-note { max-width: 70ch; margin-top: var(--space-6); font-size: 0.875rem; }

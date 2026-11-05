@@ -29,6 +29,7 @@
 @media (prefers-color-scheme: dark) {
   :root:where(:not([data-theme-mode="light"])) { --map-tile-filter: invert(1) hue-rotate(180deg) brightness(0.92) contrast(0.88) saturate(0.6); }
 }
+:root[data-theme-mode="dark"] { --map-tile-filter: invert(1) hue-rotate(180deg) brightness(0.92) contrast(0.88) saturate(0.6); }
 .map-canvas .map-tiles { filter: var(--map-tile-filter, none); }
 
 /* Price pins: a rounded label with a pointer, anchored at its tip. Leaflet positions the icon with transform, so the label moves inside it. */

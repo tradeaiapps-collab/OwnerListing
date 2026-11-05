@@ -4,6 +4,7 @@ import "./globals.css";
 import GuideAssistant from "./guide-assistant";
 import AdminShell from "./admin-shell";
 import SiteNav from "./site-nav";
+import { THEME_INIT_SCRIPT } from "./theme-toggle";
 import ThemePreviewBridge from "./theme-preview-bridge";
 import "./styles/a11y.css";
 import { appOriginFor, readAppMode } from "../src/config/app-mode";
@@ -63,8 +64,9 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   const devSignIn = !admin && devLoginAllowed({ url: `http://${h.get("host") ?? ""}/`, headers: { get: n => h.get(n) } });
 
   return (
-    <html lang="en-AU" data-theme-mode={fixedLight ? "light" : undefined}>
+    <html lang="en-AU" data-theme-mode={fixedLight ? "light" : undefined} suppressHydrationWarning>
       <head>
+        {!admin && !fixedLight && <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />}
         {fontUrl && <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />}
         {fontUrl && <link id="site-theme-font" rel="stylesheet" href={fontUrl} />}
         <style id="site-theme" dangerouslySetInnerHTML={{ __html: buildThemeCss(settings) }} />
@@ -78,7 +80,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
             <header className="site-header">
               <div className="site-header-inner">
                 <a className="brand" href="/">{logo ?? brand.name}</a>
-                <SiteNav items={settings.navigation} iconStyle={settings.layout.iconStyle} {...(devSignIn ? { signInHref: "/dev-login" as const } : {})} />
+                <SiteNav items={settings.navigation} iconStyle={settings.layout.iconStyle} themeToggle={!fixedLight} {...(devSignIn ? { signInHref: "/dev-login" as const } : {})} />
               </div>
             </header>
             <div className="page" id="main-content" tabIndex={-1}>{children}</div>
