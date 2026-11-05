@@ -47,6 +47,7 @@ const META: Record<string, { group: string; icon: AdminIcon; blurb: string }> = 
   "/staff/pricing": { group: "settings", icon: "price", blurb: "Listing packages and fees" },
   "/staff/messaging": { group: "settings", icon: "message", blurb: "Email and SMS delivery settings" },
   "/staff/listing-syndication": { group: "settings", icon: "toggle", blurb: "Share listings on Airbnb, VRBO and Booking.com" },
+  "/staff/white-label": { group: "settings", icon: "palette", blurb: "Approve agency brands and custom domains" },
   "/staff/site": { group: "settings", icon: "palette", blurb: "Brand, colours, fonts and home page" },
   "/staff/assistant": { group: "settings", icon: "assistant", blurb: "Pick the AI assistant (Elena and others), answers and chips" },
   "/staff/ai": { group: "settings", icon: "ai", blurb: "Self-hosted AI engine and limits" },

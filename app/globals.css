@@ -461,3 +461,27 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 /* Unread count on the Notifications nav link (the rest of the notification styles load with that page). */
 .nt-badge { display: inline-block; min-width: 1.5em; margin-left: var(--space-1); padding: 0 var(--space-2); border-radius: 999px; background: var(--brand); color: var(--brand-text); font-size: 0.8125rem; line-height: 1.5; text-align: center; }
 .nt-bell-badge { margin-left: var(--space-1); }
+
+/* Elena's listing assistant (guided creation) and her field tips. */
+.ela-assist { border: 1px solid var(--border); border-radius: var(--radius); background: var(--elevated, var(--surface)); padding: var(--space-4); margin-bottom: var(--space-6); }
+.ela-head { display: flex; gap: var(--space-3); align-items: center; width: 100%; text-align: left; background: transparent; border: 0; padding: 0; box-shadow: none; min-height: 44px; font-weight: 400; }
+.ela-head:hover:not(:disabled) { background: transparent; color: inherit; }
+.ela-head-text { flex: 1; display: block; }
+.ela-sub { display: block; }
+.ela-avatar { border-radius: 50%; object-fit: cover; flex: none; }
+.ela-sub { margin: 0; font-size: 0.875rem; }
+.ela-body { display: grid; gap: var(--space-4); margin-top: var(--space-4); }
+.ela-body h3 { margin: 0 0 var(--space-2); font-size: 1rem; }
+.ela-body details { border-top: 1px solid var(--line); padding-top: var(--space-3); }
+.ela-body summary { cursor: pointer; font-weight: 600; min-height: 44px; display: flex; align-items: center; }
+.ela-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-3); }
+.ela-list p { margin: 0 0 var(--space-2); }
+.ela-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.ela-chips { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.ela-chip { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); border: 1px solid var(--border); border-radius: var(--radius); padding: var(--space-2) var(--space-3); font-size: 0.875rem; }
+.ela-preview { white-space: pre-wrap; border-left: 3px solid var(--gold); padding-left: var(--space-3); margin: var(--space-2) 0; }
+.ela-fine { font-size: 0.8125rem; }
+.ela-tip { display: inline-block; position: relative; vertical-align: middle; }
+.ela-tip-btn { min-height: 28px; min-width: 28px; padding: 0; border-radius: 50%; font-size: 0.8125rem; line-height: 1; }
+.ela-tip-text { display: block; margin-top: var(--space-2); max-width: 36ch; padding: var(--space-2) var(--space-3); border: 1px solid var(--border); border-radius: 10px; background: var(--elevated, var(--surface)); font-weight: 400; font-size: 0.8125rem; color: var(--text); }
+@media (max-width: 479px) { .ela-actions > button { flex: 1 1 100%; } .ela-tip-text { max-width: none; } }

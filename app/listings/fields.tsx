@@ -3,6 +3,8 @@ import { AMENITIES, AMENITY_LABELS } from "../../src/domain/listing-details";
 import { BOND_PATHWAY_LABELS, centsToInput } from "./ui";
 import { AddressField } from "./address-field";
 import { WordingHint } from "./wording-hint";
+import { ElenaListingAssistant, ElenaTip } from "./elena-listing-assistant";
+import { fieldTips } from "../../src/domain/listing-assistant-tips";
 
 export type BondState = "idle" | "saving" | "saved" | "error";
 
@@ -24,24 +26,26 @@ export interface ListingDefaults {
 }
 
 /** The draft fields, shared by the create and edit pages. Read the values with listingFormBody(FormData). */
-export function ListingFields({ defaults = {} }: { defaults?: ListingDefaults }) {
+export function ListingFields({ defaults = {}, photoCount }: { defaults?: ListingDefaults; photoCount?: number }) {
   const [tx, setTx] = useState(defaults.transactionType ?? "sale");
   const [title, setTitle] = useState(defaults.title ?? "");
   const [description, setDescription] = useState(defaults.description ?? "");
-  const num = (name: string, label: string, v: number | undefined) => (
-    <label className="field">{label}
+  const tips = fieldTips({ transactionType: tx === "rent" ? "rent" : "sale", propertyType: "house" });
+  const num = (name: string, label: string, v: number | undefined, tip: string) => (
+    <label className="field"><span>{label} <ElenaTip text={tip} /></span>
       <input name={name} type="number" inputMode="numeric" min={0} max={20} step={1} defaultValue={v ?? ""} />
     </label>
   );
   return (
     <>
+      <ElenaListingAssistant {...(photoCount !== undefined ? { photoCount } : {})} />
       <fieldset className="form-section">
         <legend>The basics</legend>
-        <label className="field">Title
+        <label className="field"><span>Title <ElenaTip text={tips.title} /></span>
           <input name="title" placeholder="e.g. Renovated home with pool" maxLength={200} required value={title} onChange={e => setTitle(e.target.value)} />
         </label>
         <WordingHint text={title} field="title" />
-        <label className="field">Street address
+        <label className="field"><span>Street address <ElenaTip text={tips.address} /></span>
           <AddressField defaultValue={defaults.address ?? ""} />
         </label>
       </fieldset>
@@ -75,20 +79,20 @@ export function ListingFields({ defaults = {} }: { defaults?: ListingDefaults })
       <fieldset className="form-section">
         <legend>Location and price</legend>
         <div className="form-grid">
-          <label className="field">Suburb
+          <label className="field"><span>Suburb <ElenaTip text={tips.suburb} /></span>
             <input name="suburb" maxLength={80} defaultValue={defaults.suburb ?? ""} autoComplete="address-level2" />
           </label>
           <label className="field">Postcode
             <input name="postcode" inputMode="numeric" pattern="[0-9]{4}" maxLength={4} defaultValue={defaults.postcode ?? ""} autoComplete="postal-code" />
           </label>
-          <label className="field span-all">{tx === "rent" ? "Rent per week (AUD)" : "Asking price (AUD)"}
+          <label className="field span-all"><span>{tx === "rent" ? "Rent per week (AUD)" : "Asking price (AUD)"} <ElenaTip text={tips.price} /></span>
             <input name="price" inputMode="decimal" placeholder={tx === "rent" ? "650" : "850000"} defaultValue={defaults.priceCents !== undefined ? centsToInput(defaults.priceCents) : ""} />
           </label>
         </div>
       </fieldset>
       <fieldset className="form-section">
         <legend>Description</legend>
-        <label className="field">Describe the property
+        <label className="field"><span>Describe the property <ElenaTip text={tips.description} /></span>
           <textarea name="description" rows={8} maxLength={5000} value={description} onChange={e => setDescription(e.target.value)}
             placeholder="Rooms, condition, outdoor space, what is nearby. Describe the property, not who should live there." />
         </label>
@@ -98,12 +102,12 @@ export function ListingFields({ defaults = {} }: { defaults?: ListingDefaults })
       <fieldset className="form-section">
         <legend>Features</legend>
         <div className="form-grid cols-3">
-          {num("bedrooms", "Bedrooms", defaults.bedrooms)}
-          {num("bathrooms", "Bathrooms", defaults.bathrooms)}
-          {num("parking", "Parking spaces", defaults.parking)}
+          {num("bedrooms", "Bedrooms", defaults.bedrooms, tips.bedrooms)}
+          {num("bathrooms", "Bathrooms", defaults.bathrooms, tips.bathrooms)}
+          {num("parking", "Parking spaces", defaults.parking, tips.parking)}
         </div>
         <fieldset className="mf-group">
-          <legend>Extras buyers can filter by</legend>
+          <legend>Extras buyers can filter by <ElenaTip text={tips.amenities} /></legend>
           <div className="amenity-checks">
             {AMENITIES.map(a => (
               <label key={a} className="check"><input type="checkbox" name="amenities" value={a} defaultChecked={defaults.amenities?.includes(a) ?? false} /><span>{AMENITY_LABELS[a]}</span></label>

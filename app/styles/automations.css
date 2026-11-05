@@ -1,0 +1,45 @@
+/* Automations: workflow list, visual step builder, test panel, activity log. Theme tokens only; mobile first. Builds on agent-workspace.css. */
+.au-main { grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 1024px) { .au-main { grid-template-columns: 340px minmax(0, 1fr); } }
+.au-col { display: grid; gap: var(--space-6); min-width: 0; align-content: start; }
+.au-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-3); }
+.au-list li { display: grid; gap: var(--space-2); padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius); min-width: 0; }
+.au-list li.is-open { border-color: var(--gold); background: var(--gold-tint); }
+.au-list .au-name { background: none; border: 0; padding: 0; min-height: 44px; font: inherit; font-weight: 600; color: var(--link); text-align: left; cursor: pointer; overflow-wrap: anywhere; box-shadow: none; }
+.au-pill { display: inline-block; padding: 2px var(--space-2); border-radius: 999px; font-size: 0.8125rem; font-weight: 600; background: var(--tint); color: var(--muted); white-space: nowrap; }
+.au-pill.on { background: var(--ok-tint); color: var(--ok); }
+.au-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2); }
+.au-tpls { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-2); }
+.au-tpls button, .au-tpls button:hover:not(:disabled) { width: 100%; display: grid; gap: var(--space-1); justify-items: start; text-align: left; padding: var(--space-3); min-height: 44px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); color: var(--text); box-shadow: none; transform: none; }
+.au-tpls strong { color: var(--heading); }
+.au-tpls small { color: var(--muted); font-weight: 400; }
+.au-form { display: grid; gap: var(--space-4); }
+.au-fields { display: grid; gap: var(--space-3); grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); }
+.au-form label { display: grid; gap: 2px; font-size: 0.875rem; color: var(--muted); min-width: 0; }
+.au-form :is(input, select, textarea) { min-height: 44px; padding: 0 var(--space-2); max-width: 100%; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); }
+.au-form textarea { min-height: 96px; padding: var(--space-2); }
+.au-form :is(input, select, textarea, button):focus-visible, .au-list button:focus-visible, .au-tpls button:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.au-flow { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; }
+.au-flow > li { position: relative; display: grid; gap: var(--space-2); padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); min-width: 0; }
+.au-flow > li + li { margin-top: var(--space-6); }
+.au-flow > li + li::before { content: ""; position: absolute; left: var(--space-6); top: calc(-1 * var(--space-6)); height: var(--space-6); border-left: 2px solid var(--gold); }
+.au-flow .au-trigger { background: var(--gold-tint); border-color: var(--gold); }
+.au-kind { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2); }
+.au-kind strong { color: var(--heading); }
+.au-kind .au-tools { display: flex; gap: var(--space-1); }
+.au-tools button { min-width: 44px; min-height: 44px; padding: 0 var(--space-2); }
+.au-cond { display: grid; gap: var(--space-2); grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 640px) { .au-cond { grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1fr) auto; align-items: end; } }
+.au-add { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.au-add button { min-height: 44px; }
+.au-sim { margin: 0; padding: 0; list-style: none; display: grid; gap: var(--space-2); }
+.au-sim li { padding: var(--space-2) var(--space-3); border-left: 3px solid var(--gold); background: var(--tint); border-radius: 0 8px 8px 0; overflow-wrap: anywhere; }
+.au-scroll { overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius); }
+.au-scroll table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+.au-scroll :is(th, td) { padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--border); text-align: left; vertical-align: top; }
+.au-scroll thead th { background: var(--surface); white-space: nowrap; }
+.au-scroll td:last-child, .au-scroll td:nth-child(3) { overflow-wrap: anywhere; }
+.au-scroll tbody tr:last-child :is(td) { border-bottom: 0; }
+.au-scroll:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.au-err { color: var(--danger); font-weight: 600; }
+.au-empty { color: var(--muted); }
