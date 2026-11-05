@@ -37,6 +37,7 @@ const META: Record<string, { group: string; icon: AdminIcon; blurb: string }> = 
   "/staff/disclosures/reviews": { group: "compliance", icon: "evidence", blurb: "Verify uploaded disclosure evidence" },
   "/staff/audit": { group: "compliance", icon: "audit", blurb: "Every staff action, in order" },
   "/staff/analytics": { group: "insights", icon: "chart", blurb: "Trends across listings, offers and fees" },
+  "/staff/elena-insights": { group: "insights", icon: "assistant", blurb: "Elena's read on agents, areas, alerts and next steps" },
   "/staff/report-builder": { group: "insights", icon: "builder", blurb: "Build and export custom reports" },
   "/staff/reports": { group: "insights", icon: "report", blurb: "Sales and operations reports" },
   "/staff/pricing": { group: "settings", icon: "price", blurb: "Listing packages and fees" },
