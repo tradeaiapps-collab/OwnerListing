@@ -17,18 +17,20 @@ export interface NotifyResult { inApp: boolean; email: "sent" | "skipped" | "fai
  * In-app is the record and is written first; email and SMS go through the logged messaging ports. Never throws: a notification must not
  * block the action that caused it. Marketing email carries a signed one-click unsubscribe link and is refused without one.
  */
-export async function notifyUser(db: Queryable, userId: string, kind: Kind, params: NotificationParams = {}, env: Env = process.env): Promise<NotifyResult> {
+export async function notifyUser(db: Queryable, userId: string, kind: Kind, params: NotificationParams = {}, env: Env = process.env, only?: "in_app" | "email" | "sms"): Promise<NotifyResult> {
   const result: NotifyResult = { inApp: false, email: "skipped", sms: "skipped", push: "skipped" };
   try {
     const n = renderNotification(kind, params);
     const [prefs, to] = await Promise.all([getPreferencesPg(db, userId), recipientPg(db, userId)]);
-    const plan = planChannels(kind, prefs, to.phone !== null);
+    const full = planChannels(kind, prefs, to.phone !== null);
+    // `only` narrows to one channel (an automation step that says "email" sends email only); it never adds a channel the user has not allowed.
+    const plan = only ? { inApp: full.inApp && only === "in_app", email: full.email && only === "email", sms: full.sms && only === "sms" } : full;
     const base = env["APP_URL"]?.replace(/\/+$/, "");
     const statusUrl = webhookUrl(env, "status");
     let notificationId: string | null = null;
     if (plan.inApp) { notificationId = await createNotificationPg(db, userId, n); result.inApp = true; }
     // Push goes out alongside, on the user's own topic setting; Elena personalises it. A failure here never affects the other channels.
-    result.push = (await pushToUser(db, userId, kind, n, notificationId, env)).status;
+    if (!only) result.push = (await pushToUser(db, userId, kind, n, notificationId, env)).status;
 
     if (plan.email && to.email) {
       const unsub = n.category === "marketing" && base

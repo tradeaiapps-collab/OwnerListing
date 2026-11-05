@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { publishListing } from "../../../../../src/domain/listing-service";
 import { forbiddenFor } from "../../../../../src/domain/access";
-import { getActor, getDeps } from "../../../../../src/server/context";
+import { getActor, getDb, getDeps } from "../../../../../src/server/context";
+import { fireAutomation } from "../../../../../src/server/automation-db";
 import { failure, unauthenticated } from "../../../../../src/server/http";
 import { csrfGuard } from "../../../../../src/server/csrf";
 import { withApi } from "../../../../../src/server/api/with-api";
@@ -27,6 +28,7 @@ async function handlePost(req: Request, { params }: Ctx) {
   }
   const { id } = await params;
   const r = await publishListing(getDeps(), actor, id, dryRun);
+  if (r.ok && !dryRun) await fireAutomation(getDb(), { trigger: "property_listed", listingId: id });
   return r.ok ? NextResponse.json(r.value) : failure(r);
 }
 
