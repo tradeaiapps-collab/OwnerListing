@@ -84,7 +84,7 @@ async function openRequestForOwner(deps: OfferLinkDeps, actor: Actor, enquiryId:
   // checked by participantEnquiry) may answer a request. Buyers and everyone else are denied. Deciding on offers stays with the owner.
   const denied = forbiddenFor({ id: actor.userId, role: actor.userType }, "offer.analyse");
   if (denied) return denied;
-  const p = await participantEnquiry(deps, actor, enquiryId);
+  const p = await participantEnquiry(deps, actor, enquiryId, "offer_links.issue");
   if (!p.ok) return p;
   if (p.value.ownerUserId === actor.userId) {
     const notOwnerRole = forbiddenFor({ id: actor.userId, role: actor.userType }, "offer.approve");

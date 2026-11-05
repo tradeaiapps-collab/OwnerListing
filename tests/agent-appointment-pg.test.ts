@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { inviteAgent, ownerAgentView, respondToInvite, revokeAppointment, agentAppointments } from "../src/domain/agent-appointment-service";
+import { inviteAgent, ownerAgentView, respondToInvite, revokeAppointment, agentAppointments, setAgentPermissions } from "../src/domain/agent-appointment-service";
 import type { Actor } from "../src/domain/listing-service";
 import { createPgAgentAppointmentRepository } from "../src/server/agent-appointment-db";
 import { appointmentForPg } from "../src/server/db";
@@ -88,5 +88,43 @@ describe.skipIf(!DATABASE_URL)("agent appointments on Postgres", () => {
     await respondToInvite(repo, agent1, inv.value.id, { action: "accept" }, ids);
     await expect(t.db.query("DELETE FROM agent_appointment_invite WHERE id = $1", [inv.value.id])).rejects.toThrow(/permanent record/);
     await expect(t.db.query("DELETE FROM listing_agent_appointment WHERE listing_id = $1", [listingId])).rejects.toThrow(/permanent record/);
+  });
+});
+
+describe.skipIf(!DATABASE_URL)("agent permissions on Postgres", () => {
+  let t: TestDb;
+  beforeAll(async () => { t = await createTestDb(); }, 60_000);
+  afterAll(async () => { await t?.close(); });
+  const ids = { newId: () => randomUUID(), now: () => new Date().toISOString() };
+
+  it("stores the owner's list on invite and appointment, exposes it to access checks, and lets the owner change it", async () => {
+    const owner: Actor = { userId: await addUser(t.db, "owner"), userType: "owner" };
+    const agent: Actor = { userId: await addUser(t.db, "agent"), userType: "agent" };
+    await t.db.query("INSERT INTO agent_licence (user_id, jurisdiction, licence_number, status, verified_by, verified_at) VALUES ($1,'QLD','L-1','verified',$1, now())", [agent.userId]);
+    const listingId = await addListing(t.db, owner.userId, { jurisdiction: "QLD" });
+    const repo = createPgAgentAppointmentRepository(t.db);
+    const inv = await inviteAgent(repo, owner, listingId, { agentUserId: agent.userId, scope: "full", permissions: ["enquiries.handle", "listing.publish"] }, ids);
+    if (!inv.ok) throw new Error(JSON.stringify(inv));
+    expect((await repo.getInvite(inv.value.id))?.permissions).toEqual(["enquiries.handle", "listing.publish"]);
+    const acc = await respondToInvite(repo, agent, inv.value.id, { action: "accept" }, ids);
+    if (!acc.ok || !acc.value.appointment) throw new Error(JSON.stringify(acc));
+    expect(await appointmentForPg(t.db, listingId, agent.userId)).toMatchObject({ scope: "full", permissions: ["enquiries.handle", "listing.publish"] });
+    expect(await setAgentPermissions(repo, owner, acc.value.appointment.id, { permissions: ["offers.view"] }, ids)).toMatchObject({ ok: true });
+    expect((await appointmentForPg(t.db, listingId, agent.userId))?.permissions).toEqual(["offers.view"]);
+    expect(Number((await t.db.query("SELECT count(*) AS n FROM audit_event WHERE aggregate_id = $1 AND event_type = 'agent_appointment.permissions_changed'",
+      [acc.value.appointment.id])).rows[0]!["n"])).toBe(1);
+  });
+
+  it("the database refuses unknown permissions, an empty list and publishing without the full scope", async () => {
+    const owner = await addUser(t.db, "owner");
+    const agent = await addUser(t.db, "agent");
+    const listingId = await addListing(t.db, owner);
+    const ins = (scope: string, perms: string[]) => t.db.query(
+      "INSERT INTO listing_agent_appointment (listing_id, agent_user_id, appointed_by, scope, permissions, revoked_at) VALUES ($1,$2,$3,$4,$5::text[], now())",
+      [listingId, agent, owner, scope, perms]);
+    await expect(ins("full", ["offer.approve"])).rejects.toThrow(/agent_appointment_permissions_known/);
+    await expect(ins("full", [])).rejects.toThrow(/agent_appointment_permissions_known/);
+    await expect(ins("enquiries_and_offers", ["listing.publish"])).rejects.toThrow(/agent_appointment_publish_needs_full/);
+    await ins("full", ["listing.publish"]);
   });
 });

@@ -16,7 +16,7 @@ const noStore = { "cache-control": "private, no-store" };
 
 /** The owner edits. An appointed agent edits only with a "full" appointment; with "enquiries_and_offers" they can view. */
 async function access(req: Request, id: string) {
-  const h = await requireListingHandler(req, id);
+  const h = await requireListingHandler(req, id, "offers.view");
   if (h instanceof NextResponse) return h;
   if (!h.asAgent) return { ...h, canEdit: true };
   const appointment = await getDeps().appointmentFor?.(id, h.actor.userId);
