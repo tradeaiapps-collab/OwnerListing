@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
-import { metaConfig } from "../../../../src/adapters/ad-lead-providers";
 import { LEAD_STATUSES } from "../../../../src/domain/ad-leads";
 import { staffCan } from "../../../../src/domain/staff-access";
 import { getDb, getStaff } from "../../../../src/server/context";
 import { listAgents, listLeads, sourceReports, type LeadFilter } from "../../../../src/server/ad-lead-db";
+import { loadMetaConfig } from "../../../../src/server/meta-lead-settings-db";
 import { withApi } from "../../../../src/server/api/with-api";
 
 const NO_STORE = { "cache-control": "no-store" };
@@ -25,8 +25,8 @@ async function handleGet(req: Request) {
     limit: 25, offset: Math.max(0, Math.floor(Number(q.get("offset") ?? "0")) || 0)
   };
   const db = getDb();
-  const [inbox, sources, agents] = await Promise.all([listLeads(db, filter), sourceReports(db, RANGES.has(days) ? days : 30, new Date().toISOString()), listAgents(db)]);
-  return NextResponse.json({ ...inbox, pageSize: 25, offset: filter.offset, days: RANGES.has(days) ? days : 30, sources, agents, metaConfigured: metaConfig(process.env) !== null }, { headers: NO_STORE });
+  const [inbox, sources, agents, meta] = await Promise.all([listLeads(db, filter), sourceReports(db, RANGES.has(days) ? days : 30, new Date().toISOString()), listAgents(db), loadMetaConfig(db, process.env)]);
+  return NextResponse.json({ ...inbox, pageSize: 25, offset: filter.offset, days: RANGES.has(days) ? days : 30, sources, agents, metaConfigured: meta !== null }, { headers: NO_STORE });
 }
 
 export const GET = withApi(handleGet);
