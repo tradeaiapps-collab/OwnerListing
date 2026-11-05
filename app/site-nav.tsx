@@ -90,6 +90,8 @@ export default function SiteNav({ items, iconStyle, signInHref }: { items?: NavI
       {(who === "owner" || who === "buyer") && <a href="/inspections">Inspections</a>}
       {who !== "staff" && who !== "loading" && <a href="/marketplace/agents">Find an agent</a>}
       {(who === "owner" || who === "buyer") && <a href="/marketplace/consultations">My consultations</a>}
+      {who === "owner" && <a href="/owner/agent-performance">Agent performance</a>}
+      {who === "buyer" && <a href="/buyer/rate-agent">Rate your agent</a>}
       {(who === "owner" || who === "buyer" || who === "staff") && <button type="button" className="nav-signout" onClick={signOut}>Sign out</button>}
       </div>
     </nav>
