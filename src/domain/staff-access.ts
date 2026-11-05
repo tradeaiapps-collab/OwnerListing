@@ -55,7 +55,7 @@ export const PERMISSION_CATALOGUE = [
   { key: "messaging.settings", area: "messaging", label: "Email and SMS settings", description: "Enter or change the email and SMS provider details and send test messages.", sensitive: true },
   { key: "syndication.manage", area: "marketplace", label: "Manage listing portals", description: "Connect Airbnb, VRBO and Booking.com, set their keys and limits, and retry failed syncs.", sensitive: true },
   { key: "staff.manage", area: "staff", label: "Manage staff access", description: "Invite staff, change their role and revoke access, only within the access you hold yourself. Editing roles is for super admins only.", sensitive: true },
-  { key: "theme.edit", area: "website", label: "Edit site appearance", description: "Change the website colours, fonts and logo (draft, preview, publish, revert) at /staff/site.", sensitive: false },
+  { key: "theme.edit", area: "website", label: "Edit site appearance", description: "Change the website colours, fonts and logo (draft, preview, publish, revert) at /staff/site, and approve agency white-label brands at /staff/white-label.", sensitive: false },
   { key: "site.content.edit", area: "website", label: "Edit website content", description: "Draft changes to website pages and blocks, including the guide assistant's text at /staff/assistant.", sensitive: false },
   { key: "site.content.publish", area: "website", label: "Publish website content", description: "Make drafted website content live, including turning the guide assistant on or off.", sensitive: false },
   { key: "ai.engine_set", area: "platform", label: "Choose the AI engine", description: "Turn the self-hosted AI on or off and test the model server at /staff/ai (super admin only).", sensitive: true },
