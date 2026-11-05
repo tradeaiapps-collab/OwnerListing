@@ -4,7 +4,7 @@ import {
   META_FIELDS, META_WEBHOOK_PATH, isMetaField, metaSettingsKey, metaStatus, resolveMeta, validateMetaField, type MetaField
 } from "../../../../src/domain/meta-lead-settings";
 import { getDb } from "../../../../src/server/context";
-import { disconnectMeta, loadMetaFieldStates, loadMetaStored, loadMetaTest, saveMetaSettings, type MetaChanges } from "../../../../src/server/meta-lead-settings-db";
+import { disconnectMeta, loadMetaFieldStates, loadMetaStoredDetail, loadMetaTest, saveMetaSettings, type MetaChanges } from "../../../../src/server/meta-lead-settings-db";
 import { fail, readJsonObject, staffGate } from "../../../../src/server/staff-route";
 import { withApi } from "../../../../src/server/api/with-api";
 
@@ -13,11 +13,11 @@ const PERMISSION = "ad_leads.manage";
 
 async function view() {
   const env = process.env, db = getDb();
-  const [states, stored, test] = await Promise.all([loadMetaFieldStates(db, env), loadMetaStored(db, env), loadMetaTest(db)]);
-  const configured = resolveMeta(stored, env) !== null;
+  const [states, detail, test] = await Promise.all([loadMetaFieldStates(db, env), loadMetaStoredDetail(db, env), loadMetaTest(db)]);
+  const configured = resolveMeta(detail.values, env) !== null;
   const fields = {} as Record<MetaField, { set: boolean; source: string; value?: string }>;
   for (const f of META_FIELDS) fields[f] = { set: states[f].set, source: states[f].source, ...(states[f].value !== undefined ? { value: states[f].value } : {}) };
-  return { keyConfigured: messagingKeyUsable(metaSettingsKey(env)), fields, configured, status: metaStatus(configured, test), test, webhookPath: META_WEBHOOK_PATH };
+  return { keyConfigured: messagingKeyUsable(metaSettingsKey(env)), unreadable: detail.unreadable, fields, configured, status: metaStatus(configured, test), test, webhookPath: META_WEBHOOK_PATH };
 }
 
 /** Current connection, status and last test. Secrets are never returned, only "set" or "not set". */

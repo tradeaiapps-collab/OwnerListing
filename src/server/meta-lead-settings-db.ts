@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import type { MetaConfig } from "../adapters/ad-lead-providers";
 import { openSetting, sealSetting, messagingKeyUsable } from "../domain/messaging-crypto";
 import {
@@ -13,19 +13,32 @@ const aadField = (f: MetaField) => `meta-lead.${f}`;
 
 /** Stored values, secrets opened. A secret that cannot be opened (no key, wrong key, tampered) is absent, so the webhook stays off. Constant SQL. */
 export async function loadMetaStored(db: Queryable, env: Env): Promise<Partial<Record<MetaField, string>>> {
+  return (await loadMetaStoredDetail(db, env)).values;
+}
+
+/** Same, plus the secret fields that are saved but cannot be opened with the current key (so the screen can say so instead of just "Disconnected"). */
+export async function loadMetaStoredDetail(db: Queryable, env: Env): Promise<{ values: Partial<Record<MetaField, string>>; unreadable: MetaField[] }> {
   const r = await db.query("SELECT field, value, value_enc FROM meta_lead_setting");
   const key = metaSettingsKey(env);
   const out: Partial<Record<MetaField, string>> = {};
+  const unreadable: MetaField[] = [];
   for (const row of r.rows) {
     const field = (META_FIELDS as readonly string[]).includes(String(row["field"])) ? (row["field"] as MetaField) : undefined;
     if (!field) continue;
     if (typeof row["value"] === "string" && !isMetaSecret(field)) out[field] = row["value"];
-    else if (typeof row["value_enc"] === "string" && isMetaSecret(field) && messagingKeyUsable(key)) {
-      const v = await openSetting(row["value_enc"], key, aadField(field)).catch(() => undefined);
+    else if (typeof row["value_enc"] === "string" && isMetaSecret(field)) {
+      const v = messagingKeyUsable(key) ? await openSetting(row["value_enc"], key, aadField(field)).catch(() => undefined) : undefined;
       if (v !== undefined) out[field] = v;
+      else unreadable.push(field);
     }
   }
-  return out;
+  return { values: out, unreadable };
+}
+
+/** Fingerprint of the connection as it applies now. A test result is only kept when this is the same before and after the call to Meta. */
+export async function metaConfigFingerprint(db: Queryable, env: Env): Promise<string> {
+  const cfg = await loadMetaConfig(db, env);
+  return createHash("sha256").update(JSON.stringify(cfg ?? null)).digest("hex");
 }
 
 /** The connection as it applies right now (environment over database), or null while incomplete. Called per webhook request, so a change applies at once. */

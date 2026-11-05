@@ -9,7 +9,7 @@ type Field = "appId" | "appSecret" | "verifyToken" | "pageToken";
 interface FieldView { set: boolean; source: "env" | "database" | "none"; value?: string }
 interface Test { at: string; ok: boolean; message: string; pageName: string | null; pageId: string | null; appChecked: boolean }
 type Status = "connected" | "untested" | "test_failed" | "disconnected";
-interface View { keyConfigured: boolean; fields: Record<Field, FieldView>; configured: boolean; status: Status; test: Test | null; webhookPath: string }
+interface View { keyConfigured: boolean; unreadable: Field[]; fields: Record<Field, FieldView>; configured: boolean; status: Status; test: Test | null; webhookPath: string }
 
 const FIELDS: { f: Field; label: string; help: string; secret: boolean }[] = [
   { f: "appId", label: "App ID (optional)", help: "From your Meta app dashboard. Lets Test connection also check the app secret.", secret: false },
@@ -85,6 +85,7 @@ export default function StaffMetaLeads() {
       {view && (
         <>
           {!view.keyConfigured && <p role="alert" className="leads-msg bad">Encryption key not configured (PROVIDER_CREDENTIAL_KEY, MESSAGING_SETTINGS_KEY or MFA_SECRET_KEY). Nothing can be saved until the server has one.</p>}
+          {view.keyConfigured && view.unreadable.length > 0 && <p role="alert" className="leads-msg bad">Saved keys cannot be read with the server&apos;s current encryption key ({view.unreadable.join(", ")}). The encryption key was probably changed. Lead webhooks answer 503. Enter these keys again to fix it, or put the previous key back.</p>}
           <section className="meta-status" aria-label="Connection status">
             <span className={`status-pill ${PILL[view.status].tone}`}>{PILL[view.status].label}</span>
             <p>

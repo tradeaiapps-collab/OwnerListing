@@ -80,6 +80,28 @@ describe.skipIf(!DATABASE_URL)("Meta lead settings on Postgres", () => {
     expect(await loadMetaConfig(db, process.env)).toBeNull();
   });
 
+  it("reports saved keys that cannot be read after the encryption key changes", async () => {
+    await put(GOOD);
+    let v = await (await get()).json();
+    expect(v.unreadable).toEqual([]);
+    process.env["PROVIDER_CREDENTIAL_KEY"] = randomBytes(32).toString("base64");
+    v = await (await get()).json();
+    expect([v.status, v.configured, v.keyConfigured]).toEqual(["disconnected", false, true]);
+    expect([...v.unreadable].sort()).toEqual(["appSecret", "pageToken", "verifyToken"]);
+  });
+
+  it("does not record a test result when the keys changed while Meta was answering", async () => {
+    await put(GOOD);
+    vi.stubGlobal("fetch", vi.fn(async (u: string) => {
+      if (String(u).includes("/me?")) await put({ pageToken: "EAAB-new-page-token-" + "y".repeat(40) });
+      return new Response(JSON.stringify(String(u).includes("/me?") ? { id: "P1", name: "Acme Homes" } : { id: GOOD.appId }), { status: 200 });
+    }));
+    const d = await (await runTest()).json();
+    expect(d.stale).toBe(true);
+    const v = await (await get()).json();
+    expect([v.status, v.test]).toEqual(["untested", null]);
+  });
+
   it("refuses to save with no usable key, and rejects invalid or unknown fields without saving anything", async () => {
     delete process.env["MESSAGING_SETTINGS_KEY"];
     const nokey = await put(GOOD);

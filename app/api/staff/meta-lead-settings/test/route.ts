@@ -3,7 +3,7 @@ import { testMetaConnection } from "../../../../../src/adapters/ad-lead-provider
 import { META_TEST_RATE } from "../../../../../src/domain/meta-lead-settings";
 import { withinLimit, windowStart } from "../../../../../src/domain/rate-limit";
 import { getDb } from "../../../../../src/server/context";
-import { loadMetaConfig, recordMetaTest } from "../../../../../src/server/meta-lead-settings-db";
+import { loadMetaConfig, metaConfigFingerprint, recordMetaTest } from "../../../../../src/server/meta-lead-settings-db";
 import { countHitPg } from "../../../../../src/server/offer-flow-db";
 import { fail, staffGate } from "../../../../../src/server/staff-route";
 import { withApi } from "../../../../../src/server/api/with-api";
@@ -22,9 +22,12 @@ async function handlePost(req: Request) {
   if (!withinLimit(mine, META_TEST_RATE.perStaff) || !withinLimit(all, META_TEST_RATE.allStaff)) return fail(429, "Too many tests. Try again later.");
   const cfg = await loadMetaConfig(db, process.env);
   if (!cfg) return fail(409, "The connection is not complete. Enter the app secret, verify token and Page access token first.");
+  const before = await metaConfigFingerprint(db, process.env);
   const r = await testMetaConnection(fetch, cfg);
-  await recordMetaTest(db, staff, r);
-  return NextResponse.json({ ok: r.ok, message: r.message, pageName: r.pageName, pageId: r.pageId, appChecked: r.appChecked }, { status: r.ok ? 200 : 502, headers: { "cache-control": "no-store" } });
+  // The keys may have been changed while Meta was answering: then the result describes old keys and must not be shown as the current status.
+  const stale = before !== (await metaConfigFingerprint(db, process.env));
+  if (!stale) await recordMetaTest(db, staff, r);
+  return NextResponse.json({ ok: r.ok, stale, message: stale ? "The keys changed during the test. Run Test connection again." : r.message, pageName: r.pageName, pageId: r.pageId, appChecked: r.appChecked }, { status: r.ok ? 200 : 502, headers: { "cache-control": "no-store" } });
 }
 
 export const POST = withApi(handlePost);
