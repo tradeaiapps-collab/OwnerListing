@@ -12,6 +12,13 @@ Added 5 Nov 2026 (db/20261105160000). Replaces the built-in click-to-sign for ne
 - **Decline and retry**: a decline in DocuSign closes the document (reason kept). The owner can "Send again as a new document": a new draft with the identical frozen text, hash and signers, linked by `retry_of`. Cancel voids the envelope first.
 - Built-in `sign`, `decline` and `send` are refused on a DocuSign document, so the two methods can never disagree about one document.
 
+## Signer emails and reminders
+Embedded signing means DocuSign emails nobody, so the platform does (src/server/notifier.ts, kinds `signature_requested` and `signature_reminder`, category Account so in-app and email stay on).
+- **On send**: every signer gets an email "<owner> has asked you to sign "<document>"" with a "Review and sign" button to `/signing/{id}`. Signing still needs their signed-in account and the second sign-in step.
+- **Automatic reminder**: hourly job `POST /api/internal/signing/reminders` (secret `SIGNING_REMINDER_CRON_SECRET`, workflow signing-reminders.yml). A signer still pending 72 hours after their last request gets one reminder (`signing_signer.reminded_at`).
+- **Owner resend**: "Email signers again" on the document (`action: "remind"`). Signers asked within the last hour are skipped; people who already signed or declined are never emailed.
+- Wording and delivery follow the notification centre; failures are logged in the email delivery log and never block sending the document.
+
 ## Setup (john / ops)
 1. Create a DocuSign developer (demo) account, then an **integration key** (Apps and Keys): authentication = JWT grant, generate an **RSA keypair**, add redirect URI `APP_URL`. Note the integration key, the API user id and API account id.
 2. Grant consent once: open `https://account-d.docusign.com/oauth/auth?response_type=code&scope=signature%20impersonation&client_id=<integration key>&redirect_uri=<APP_URL>` and approve as the API user.

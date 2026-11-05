@@ -26,6 +26,7 @@ export default function SigningPage() {
   const [view, setView] = useState<View | null>(null);
   const [loadError, setLoadError] = useState("");
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
   const [explained, setExplained] = useState<Record<string, Explained>>({});
   const [current, setCurrent] = useState<string | null>(null);
@@ -88,6 +89,15 @@ export default function SigningPage() {
       if (r.data["code"] === "mfa_required") { window.location.assign(`/mfa?next=${encodeURIComponent(`/signing/${id}`)}`); return; }
       setError((r.data["error"] as string) ?? "Could not open DocuSign.");
     } catch { setError("Could not open DocuSign."); }
+    setBusy(false);
+  }
+  async function remind() {
+    setBusy(true); setError(""); setNotice("");
+    try {
+      const r = await post({ action: "remind" });
+      if (r.ok) setNotice(r.data["sent"] ? `Emailed ${String(r.data["sent"])} signer${r.data["sent"] === 1 ? "" : "s"}.` : "Everyone was emailed within the last hour, so nothing more was sent. Try again later.");
+      else setError((r.data["error"] as string) ?? "Could not send the reminder.");
+    } catch { setError("Could not send the reminder."); }
     setBusy(false);
   }
   async function retry() {
@@ -153,6 +163,10 @@ export default function SigningPage() {
             ))}
           </ul>
 
+          {d.status === "completed" && !viaDocusign && (
+            <div className="sg-actions"><a className="button secondary" href={`/api/signing-documents/${d.id}/pdf`} download>Download signed copy (PDF)</a></div>
+          )}
+
           {returning && <p className="muted" role="status">Checking with DocuSign…</p>}
           {viewer.canSign && viaDocusign && (
             <section className="sg-sign stack" aria-label="Sign with DocuSign">
@@ -192,7 +206,8 @@ export default function SigningPage() {
           )}
           {viewer.role === "owner" && d.status === "out_for_signature" && (
             <div className="sg-actions">
-              {viaDocusign && <button type="button" disabled={busy} onClick={() => void act({ action: "refresh" }, "Could not check DocuSign.")}>Check status with DocuSign</button>}
+              {viaDocusign && <button type="button" disabled={busy} onClick={() => void remind()}>Email signers again</button>}
+              {viaDocusign && <button type="button" className="secondary" disabled={busy} onClick={() => void act({ action: "refresh" }, "Could not check DocuSign.")}>Check status with DocuSign</button>}
               <button type="button" className="secondary" disabled={busy} onClick={() => void act({ action: "cancel" }, "Could not cancel.")}>Cancel this document</button>
             </div>
           )}
@@ -212,6 +227,7 @@ export default function SigningPage() {
               </ul>
             </>
           )}
+          {notice && <p role="status">{notice}</p>}
           {error && <p role="alert">{error}</p>}
 
           <h2>Audit trail</h2>

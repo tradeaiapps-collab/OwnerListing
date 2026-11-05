@@ -78,8 +78,8 @@ function concat(parts: readonly Uint8Array[]): Uint8Array {
 /* ---------- PDF (A4 landscape, Helvetica) ---------- */
 
 const PAGE_W = 842, PAGE_H = 595, MARGIN = 40, ROW_H = 16, FONT = 9;
-const latin1 = (s: string) => Array.from(s).map(ch => (ch.charCodeAt(0) >= 32 && ch.charCodeAt(0) <= 255 && ch !== "\u007f" ? ch : ch === "–" || ch === "—" ? "-" : ch === "‘" || ch === "’" ? "'" : ch === "“" || ch === "”" ? '"' : ch === "…" ? "..." : "?")).join("");
-const pdfText = (s: string) => latin1(s).replace(/[\\()]/g, m => `\\${m}`);
+export const latin1 = (s: string) => Array.from(s).map(ch => (ch.charCodeAt(0) >= 32 && ch.charCodeAt(0) <= 255 && ch !== "\u007f" ? ch : ch === "–" || ch === "—" ? "-" : ch === "‘" || ch === "’" ? "'" : ch === "“" || ch === "”" ? '"' : ch === "…" ? "..." : "?")).join("");
+export const pdfText = (s: string) => latin1(s).replace(/[\\()]/g, m => `\\${m}`);
 /** Helvetica averages about half the font size per character; used to fit text into a column. */
 const fit = (s: string, widthPt: number, size: number) => { const max = Math.max(1, Math.floor(widthPt / (size * 0.5))); return s.length > max ? `${s.slice(0, Math.max(1, max - 1))}~` : s; };
 

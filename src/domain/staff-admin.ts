@@ -40,6 +40,7 @@ export const STAFF_SECTIONS: readonly StaffSection[] = [
   { href: "/staff/ad-leads", label: "Ad leads", permissions: ["ad_leads.manage"] },
   { href: "/staff/ad-leads/rules", label: "Lead routing rules", permissions: ["ad_leads.manage"] },
   { href: "/staff/feeds", label: "Property data feeds", permissions: ["feeds.manage"] },
+  { href: "/staff/lead-scoring", label: "Lead scoring", permissions: ["feeds.manage"] },
   { href: "/staff/investments", label: "Investor projects review", permissions: ["investment.review"] },
   { href: "/staff/investments/settings", label: "Investor module switch", permissions: ["investment.manage"] }
 ];

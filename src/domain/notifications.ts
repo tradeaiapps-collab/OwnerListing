@@ -93,6 +93,8 @@ export const KINDS = {
   appointment_accepted: "appointments",
   appointment_declined: "appointments",
   appointment_reminder: "appointments",
+  signature_requested: "account",
+  signature_reminder: "account",
   booking_received: "appointments",
   booking_conflict: "appointments",
   offer_received: "offers",
@@ -100,6 +102,7 @@ export const KINDS = {
   offer_rejected: "offers",
   offer_countered: "offers",
   saved_search_match: "listings",
+  market_shift: "listings",
   security_notice: "account",
   system_notice: "account",
   marketing_news: "marketing"
@@ -124,6 +127,7 @@ export const safeLink = (v: string | undefined): string | null => (typeof v === 
 export function renderNotification(kind: Kind, p: NotificationParams = {}): RenderedNotification {
   const listing = clip(p["listing"], 120, "your property");
   const name = clip(p["name"], 60, "Someone");
+  const doc = `"${clip(p["document"], 120, "a document")}"`;
   const link = safeLink(p["link"]);
   const t = (title: string, body: string, sms: boolean = SMS_KINDS.has(kind)): RenderedNotification =>
     ({ kind, category: KINDS[kind], title, body, link, smsText: sms ? `${title}. ${body}` : null });
@@ -133,6 +137,8 @@ export function renderNotification(kind: Kind, p: NotificationParams = {}): Rend
     case "appointment_accepted": return t("Appointment accepted", `${name} accepted the appointment for ${listing}.`);
     case "appointment_declined": return t("Appointment declined", `${name} declined the appointment for ${listing}.`);
     case "appointment_reminder": return t("Reminder: invitation waiting", `${name}'s invitation to act as agent for ${listing} is still waiting for your answer.`);
+    case "signature_requested": return t("Signature requested", `${name} has asked you to sign ${doc}. Open it to read the document and sign.`, false);
+    case "signature_reminder": return t("Reminder: signature waiting", `${name} is still waiting for your signature on ${doc}. Open it to read the document and sign.`, false);
     case "booking_received": return t("New booking from a portal", `${name} booked ${listing} through a listing portal. The dates are now blocked on your calendar.`);
     case "booking_conflict": return t("Booking clashes with another", `A booking from ${name} for ${listing} overlaps dates that are already booked. Contact the portal or the guest to sort it out.`);
     case "offer_received": return t("New offer received", `A new offer was made on ${listing}. Review it in your offers.`);
@@ -140,6 +146,7 @@ export function renderNotification(kind: Kind, p: NotificationParams = {}): Rend
     case "offer_rejected": return t("Offer not accepted", `Your offer on ${listing} was not accepted.`);
     case "offer_countered": return t("Counter-offer", `There is a counter-offer on ${listing}.`);
     case "saved_search_match": return t("New property matches your search", `${listing} matches one of your saved searches.`);
+    case "market_shift": return t(clip(p["title"], 80, "Market update"), clip(p["text"], 400, "There is a change in one of your areas."));
     case "security_notice": return t(clip(p["title"], 80, "Security notice"), clip(p["text"], 400, "Please review your account security settings."));
     case "system_notice": return t(clip(p["title"], 80, "Notice"), clip(p["text"], 400, "There is an update about your account."));
     case "marketing_news": return t(clip(p["title"], 80, "News"), clip(p["text"], 400, "There is news from us."));
