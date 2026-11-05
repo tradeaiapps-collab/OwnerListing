@@ -32,6 +32,10 @@ describe("local test kit storage (LOCAL_STORAGE_DIR)", () => {
     const key = "listings/00000000-0000-4000-8000-000000000001/abc";
     await s.put(key, Uint8Array.from([1, 2, 3]), "image/png");
     expect(Array.from(await s.get(key))).toEqual([1, 2, 3]);
+    // Inspection photos use their own prefix.
+    const inspKey = "inspections/00000000-0000-4000-8000-000000000001/def";
+    await s.put(inspKey, Uint8Array.from([4]), "image/png");
+    expect(Array.from(await s.get(inspKey))).toEqual([4]);
     expect(Array.from(await readFile(path.join(dir, key)))).toEqual([1, 2, 3]);
     if (process.platform !== "win32") expect((await stat(path.join(dir, key))).mode & 0o777).toBe(0o600);
     await expect(s.put(key, Uint8Array.from([9]), "image/png")).rejects.toThrow();

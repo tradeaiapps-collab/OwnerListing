@@ -2,7 +2,7 @@ export type StaffRole = "super_admin" | "compliance" | "accountant" | "support" 
 
 export type PermissionArea =
   | "cases" | "trust_accounts" | "identity" | "reports" | "personal_data" | "pricing" | "messaging"
-  | "staff" | "website" | "platform" | "overrides" | "investments" | "disclosures" | "marketplace";
+  | "staff" | "website" | "platform" | "overrides" | "investments" | "disclosures" | "documents" | "marketplace";
 
 /** Groups shown in the role builder, in display order. */
 export const PERMISSION_AREAS: readonly { key: PermissionArea; label: string }[] = [
@@ -19,6 +19,7 @@ export const PERMISSION_AREAS: readonly { key: PermissionArea; label: string }[]
   { key: "overrides", label: "Overrides" },
   { key: "investments", label: "Investor projects" },
   { key: "disclosures", label: "Property disclosures" },
+  { key: "documents", label: "Document templates" },
   { key: "marketplace", label: "Listings and accounts" }
 ];
 
@@ -47,6 +48,7 @@ export const PERMISSION_CATALOGUE = [
   { key: "report.broker", area: "reports", label: "Broker referral reports", description: "A broker's referral report for their own account.", sensitive: false },
   { key: "pii.view_masked", area: "personal_data", label: "See masked personal details", description: "Names and contact details partly hidden.", sensitive: false },
   { key: "pii.view_full", area: "personal_data", label: "See full personal details", description: "Full names and contact details.", sensitive: true },
+  { key: "billing.manage", area: "pricing", label: "Reconcile payments and answer payment issues", description: "Confirm bank transfers against invoices and answer customers' payment issues at /staff/finance. Moves no money; every action is logged.", sensitive: true },
   { key: "pricing.manage", area: "pricing", label: "Set plan prices", description: "Add new plan prices with a reason. Existing subscriptions keep their price.", sensitive: true },
   { key: "messaging.settings", area: "messaging", label: "Email and SMS settings", description: "Enter or change the email and SMS provider details and send test messages.", sensitive: true },
   { key: "staff.manage", area: "staff", label: "Manage staff access", description: "Invite staff, change their role and revoke access, only within the access you hold yourself. Editing roles is for super admins only.", sensitive: true },
@@ -63,6 +65,8 @@ export const PERMISSION_CATALOGUE = [
   { key: "disclosure.config_edit", area: "disclosures", label: "Draft disclosure requirements", description: "Draft a new version of a state's required disclosures at /staff/disclosures. A draft does nothing until someone else approves it.", sensitive: false },
   { key: "disclosure.config_approve", area: "disclosures", label: "Approve disclosure requirements", description: "Approve a drafted version so it becomes the publish requirement for that state, sale or rent and use. Never your own draft.", sensitive: true },
   { key: "disclosure.verify", area: "disclosures", label: "Verify owner disclosures", description: "Check the evidence an owner gave for each required disclosure and verify or reject it, with a reason. Never on your own listing.", sensitive: false },
+  { key: "doc_template.edit", area: "documents", label: "Draft document templates", description: "Create document templates and save new draft versions at /staff/doc-templates. A draft does nothing until someone else publishes it.", sensitive: false },
+  { key: "doc_template.publish", area: "documents", label: "Publish document templates", description: "Make a template version live so owners can generate and send it for signature. Never a version you wrote yourself, and only after counsel has reviewed the wording.", sensitive: true },
   { key: "listing.moderate", area: "marketplace", label: "Moderate listings", description: "Search every listing, suspend a published listing, lift a suspension (the owner must publish again) and send a listing under review back to draft. Always with a reason; every action is logged.", sensitive: false },
   { key: "user.manage", area: "marketplace", label: "Manage user accounts", description: "See user accounts with their verification and compliance status, and suspend or reinstate an account with a reason. Staff accounts are managed in Staff access.", sensitive: true },
   { key: "user.mfa_reset", area: "marketplace", label: "Reset two-step sign-in", description: "Reset an owner's or agent's two-step sign-in when they lose their phone, at /staff/security/mfa-reset (super admin only). Every reset is logged and the user is emailed.", sensitive: true },
@@ -83,8 +87,8 @@ const ROLE_PERMISSIONS: Record<StaffRole, readonly StaffPermission[]> = {
   super_admin: ALL,
   compliance: ["report.audit", "report.solicitor", "report.broker", "pii.view_full", "case.manage",
     "trust_account.approve", "licence.verify", "dispute.read_chat", "override.request", "identity.review", "investment.review",
-    "wording.review", "disclosure.config_edit", "disclosure.config_approve", "disclosure.verify", "listing.moderate", "user.manage"],
-  accountant: ["report.financial", "report.sales", "pii.view_masked"],
+    "wording.review", "disclosure.config_edit", "disclosure.config_approve", "disclosure.verify", "doc_template.edit", "doc_template.publish", "listing.moderate", "user.manage"],
+  accountant: ["report.financial", "report.sales", "pii.view_masked", "billing.manage"],
   support: ["report.buyer", "report.seller", "pii.view_masked", "case.manage", "override.request", "listing.moderate"],
   technical: ["logs.technical", "report.operations", "config.edit"],
   reporting: ["report.sales", "report.suburb", "report.operations"],

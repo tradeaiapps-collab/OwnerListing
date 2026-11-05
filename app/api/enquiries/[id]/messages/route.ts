@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
 import { getThread, parseMessageBody, reply } from "../../../../../src/domain/enquiry-service";
 import { isUuid } from "../../../../../src/domain/offer-decision";
-import { getActor } from "../../../../../src/server/context";
+import { getActor, getDb } from "../../../../../src/server/context";
 import { csrfGuard } from "../../../../../src/server/csrf";
 import { getEnquiryDeps } from "../../../../../src/server/enquiry-db";
 import { failure, unauthenticated } from "../../../../../src/server/http";
 import { screenWithDefaults } from "../../../../../src/server/message-safety";
+import { notifyEnquiryMessage } from "../../../../../src/server/notifier";
 import { requireCurrentTerms } from "../../../../../src/server/terms-guard";
 import { withApi } from "../../../../../src/server/api/with-api";
 
@@ -43,6 +44,7 @@ async function handlePost(req: Request, { params }: Ctx) {
   // Buyer messages only (the helper checks). The message is already stored; a flag never blocks or changes it.
   const enquiry = await deps.enquiries.get(id);
   if (enquiry) await screenWithDefaults(enquiry, r.value);
+  await notifyEnquiryMessage(getDb(), id, actor.userId);
   return NextResponse.json({ message: r.value }, { status: 201 });
 }
 

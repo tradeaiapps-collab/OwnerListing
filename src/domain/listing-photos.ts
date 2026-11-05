@@ -1,5 +1,6 @@
 import type { JobAssignment } from "./job-chat";
 import type { PhotoMime } from "./image-meta";
+import { classifyTour, type TourKind } from "./virtual-tour";
 
 /**
  * Listing photo gallery rules (pure). Two records:
@@ -9,13 +10,15 @@ import type { PhotoMime } from "./image-meta";
  * Before a listing has ever been published the owner may drop a photo from the gallery (it is then never served again).
  * After that, a photo can only be hidden, reordered or replaced; its file and every earlier layout stay on record.
  */
-export type PhotoKind = "photo" | "floorplan";
-export const PHOTO_KINDS: readonly PhotoKind[] = ["photo", "floorplan"];
+export type PhotoKind = "photo" | "floorplan" | "photo360";
+export const PHOTO_KINDS: readonly PhotoKind[] = ["photo", "floorplan", "photo360"];
 export const PHOTO_MIMES: readonly PhotoMime[] = ["image/jpeg", "image/png", "image/webp"];
 
 export const PHOTO_LIMITS = {
   maxPhotos: 40,
   maxFloorplans: 10,
+  /** Equirectangular 360 photos (one per room or outdoor area). */
+  max360: 20,
   /** Hidden entries count here too, so a published listing cannot grow without bound. */
   maxEntries: 120,
   maxBytes: 10_000_000,
@@ -46,13 +49,30 @@ export interface PhotoRecord {
   variants: Exclude<PhotoSize, "full">[];
 }
 
-export interface LayoutEntry { photoId: string; caption: string; alt: string; hidden: boolean }
+/** Rooms and areas a photo can be filed under. An empty category means "not sorted yet". */
+export const PHOTO_CATEGORIES = [
+  { key: "exterior", label: "Exterior and street" }, { key: "living", label: "Living areas" }, { key: "kitchen", label: "Kitchen" },
+  { key: "dining", label: "Dining" }, { key: "bedroom", label: "Bedrooms" }, { key: "bathroom", label: "Bathrooms" },
+  { key: "laundry", label: "Laundry" }, { key: "outdoor", label: "Outdoor and garden" }, { key: "pool", label: "Pool" },
+  { key: "garage", label: "Garage and parking" }, { key: "view", label: "Views" }, { key: "other", label: "Other" }
+] as const;
+export type PhotoCategory = (typeof PHOTO_CATEGORIES)[number]["key"];
+const CATEGORY_KEYS: ReadonlySet<string> = new Set(PHOTO_CATEGORIES.map(c => c.key));
+export const isPhotoCategory = (v: unknown): v is PhotoCategory => typeof v === "string" && CATEGORY_KEYS.has(v);
+export const categoryLabel = (key: string) => PHOTO_CATEGORIES.find(c => c.key === key)?.label ?? "";
+
+export const FEATURE_LIMITS = { maxPerPhoto: 5, maxChars: 40 } as const;
+
+/** `category` and `features` are optional so galleries saved before they existed (and investor project galleries) stay valid. */
+export interface LayoutEntry { photoId: string; caption: string; alt: string; hidden: boolean; category?: PhotoCategory; features?: string[] }
 export interface Layout { version: number; entries: LayoutEntry[]; tourUrl: string | null }
 export const EMPTY_LAYOUT: Layout = { version: 0, entries: [], tourUrl: null };
 
 /** What the browser gets for one photo. */
 export interface PhotoView {
   id: string; kind: PhotoKind; width: number; height: number; caption: string; alt: string; hidden: boolean;
+  /** "" when the owner has not filed the photo under a room. */
+  category: PhotoCategory | ""; features: string[];
   sizes: PhotoSize[];
 }
 
@@ -89,6 +109,19 @@ export function cleanText(v: unknown, max: number): string | null {
   return s.length > max ? null : s;
 }
 
+/** Up to five short feature tags ("stone benchtop"). Returns null when the input is not a list of clean short strings. */
+export function cleanFeatures(v: unknown): string[] | null {
+  if (v === undefined || v === null) return [];
+  if (!Array.isArray(v) || v.length > FEATURE_LIMITS.maxPerPhoto) return null;
+  const out: string[] = [];
+  for (const f of v) {
+    const t = cleanText(f, FEATURE_LIMITS.maxChars);
+    if (t === null) return null;
+    if (t && !out.some(x => x.toLowerCase() === t.toLowerCase())) out.push(t);
+  }
+  return out;
+}
+
 /** Optional video or virtual tour link: https only, no credentials, no odd ports. */
 export function cleanTourUrl(v: unknown): string | null | undefined {
   if (v === undefined || v === null || v === "") return null;
@@ -123,6 +156,7 @@ export function roomFor(layout: Layout, photos: ReadonlyMap<string, PhotoRecord>
   if (replacing) return null;
   if (kind === "photo" && countKind(layout.entries, photos, "photo") >= PHOTO_LIMITS.maxPhotos) return `A listing can show up to ${PHOTO_LIMITS.maxPhotos} photos.`;
   if (kind === "floorplan" && countKind(layout.entries, photos, "floorplan") >= PHOTO_LIMITS.maxFloorplans) return `A listing can show up to ${PHOTO_LIMITS.maxFloorplans} floor plans.`;
+  if (kind === "photo360" && countKind(layout.entries, photos, "photo360") >= PHOTO_LIMITS.max360) return `A listing can show up to ${PHOTO_LIMITS.max360} 360 photos.`;
   return null;
 }
 
@@ -135,7 +169,7 @@ export function layoutWithUpload(layout: Layout, photoId: string, replacesId?: s
   if (!replacesId) return [...layout.entries, fresh];
   const out: LayoutEntry[] = [];
   for (const e of layout.entries) {
-    if (e.photoId === replacesId) out.push({ ...fresh, caption: e.caption, alt: e.alt }, { ...e, hidden: true });
+    if (e.photoId === replacesId) out.push({ ...fresh, caption: e.caption, alt: e.alt, ...(e.category ? { category: e.category } : {}), ...(e.features?.length ? { features: e.features } : {}) }, { ...e, hidden: true });
     else out.push(e);
   }
   return out;
@@ -170,7 +204,14 @@ export function checkLayoutChange(
     const alt = cleanText(o["alt"], PHOTO_LIMITS.altMax);
     if (alt === null) return { ok: false, message: `Descriptions must be ${PHOTO_LIMITS.altMax} characters or fewer.` };
     if (o["hidden"] !== undefined && typeof o["hidden"] !== "boolean") return { ok: false, message: "Invalid gallery." };
-    entries.push({ photoId: id, caption, alt, hidden: o["hidden"] === true });
+    const cat = o["category"];
+    if (cat !== undefined && cat !== null && cat !== "" && !isPhotoCategory(cat)) return { ok: false, message: "Unknown room or category." };
+    const features = cleanFeatures(o["features"]);
+    if (features === null) return { ok: false, message: `Features must be up to ${FEATURE_LIMITS.maxPerPhoto} short tags of ${FEATURE_LIMITS.maxChars} characters or fewer.` };
+    entries.push({
+      photoId: id, caption, alt, hidden: o["hidden"] === true,
+      ...(isPhotoCategory(cat) ? { category: cat } : {}), ...(features.length ? { features } : {})
+    });
   }
   const dropped = current.entries.filter(e => !seen.has(e.photoId));
   if (dropped.length && ctx.everPublished) return { ok: false, message: "Photos of a published listing cannot be deleted. Hide or replace them instead." };
@@ -197,6 +238,11 @@ export function makeCover<T>(list: readonly T[], isIt: (t: T) => boolean): T[] {
   return i < 0 ? [...list] : moveEntry(list, i, 0);
 }
 
+/** Rooms that have at least one photo, in the standard order, with counts (for the gallery filter). */
+export function categoriesIn(views: readonly Pick<PhotoView, "category">[]): { key: PhotoCategory; label: string; count: number }[] {
+  return PHOTO_CATEGORIES.map(c => ({ key: c.key, label: c.label, count: views.filter(v => v.category === c.key).length })).filter(c => c.count > 0);
+}
+
 // --- Views -------------------------------------------------------------------------------------------------------
 
 /** Gallery entries joined with their file records. Public viewers never get hidden entries. */
@@ -205,24 +251,28 @@ export function viewsFor(layout: Layout, photos: ReadonlyMap<string, PhotoRecord
   for (const e of layout.entries) {
     const p = photos.get(e.photoId);
     if (!p || (e.hidden && !includeHidden)) continue;
-    out.push({ id: p.id, kind: p.kind, width: p.width, height: p.height, caption: e.caption, alt: e.alt, hidden: e.hidden, sizes: [...p.variants, "full"] });
+    out.push({ id: p.id, kind: p.kind, width: p.width, height: p.height, caption: e.caption, alt: e.alt, hidden: e.hidden,
+      category: e.category ?? "", features: e.features ?? [], sizes: [...p.variants, "full"] });
   }
   return out;
 }
 
 /** Cover photo and count for a browse card: the first visible photo (floor plans are never the cover). */
-export function coverOf(layout: Layout, photos: ReadonlyMap<string, PhotoRecord>): { cover: PhotoView | null; photoCount: number } {
-  const visible = viewsFor(layout, photos, false).filter(v => v.kind === "photo");
-  return { cover: visible[0] ?? null, photoCount: visible.length };
+export function coverOf(layout: Layout, photos: ReadonlyMap<string, PhotoRecord>): { cover: PhotoView | null; photoCount: number; tour?: TourKind } {
+  const all = viewsFor(layout, photos, false);
+  const visible = all.filter(v => v.kind === "photo");
+  const tour = classifyTour(layout.tourUrl)?.kind ?? (all.some(v => v.kind === "photo360") ? "360" : undefined);
+  return { cover: visible[0] ?? null, photoCount: visible.length, ...(tour ? { tour } : {}) };
 }
 
-export interface CardPhoto { photoCount: number; cover?: { id: string; width: number; height: number; srcSet: string; alt: string } }
+export interface CardPhoto { photoCount: number; tour?: TourKind; cover?: { id: string; width: number; height: number; srcSet: string; alt: string } }
 
 /** Fields a browse card needs: cover image (with srcset) and the visible photo count. */
-export function cardPhoto(c: { cover: PhotoView | null; photoCount: number } | undefined, base = PHOTO_BASE): CardPhoto {
-  if (!c?.cover) return { photoCount: c?.photoCount ?? 0 };
+export function cardPhoto(c: { cover: PhotoView | null; photoCount: number; tour?: TourKind } | undefined, base = PHOTO_BASE): CardPhoto {
+  const tour = c?.tour ? { tour: c.tour } : {};
+  if (!c?.cover) return { photoCount: c?.photoCount ?? 0, ...tour };
   const v = c.cover;
-  return { photoCount: c.photoCount, cover: { id: v.id, width: v.width, height: v.height, srcSet: srcSetFor(v, base), alt: v.alt || v.caption } };
+  return { photoCount: c.photoCount, ...tour, cover: { id: v.id, width: v.width, height: v.height, srcSet: srcSetFor(v, base), alt: v.alt || v.caption } };
 }
 
 /** Where listing photos are served. Investor project photos use their own routes (see project-photos.ts). */

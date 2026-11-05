@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createDraft, listingWordingFlags, parseDraftInput, searchPublished, toPublicListing } from "../../../src/domain/listing-service";
-import { parseSearchQuery } from "../../../src/domain/listing-search";
+import { distanceKm, parseSearchQuery } from "../../../src/domain/listing-search";
 import { forbiddenFor } from "../../../src/domain/access";
 import { getActor, getDb, getDeps } from "../../../src/server/context";
 import { cardPhoto } from "../../../src/domain/listing-photos";
@@ -18,7 +18,12 @@ async function handleGet(req: Request) {
   // Cover photo and photo count per card. A photo lookup failure only means cards show without photos.
   let covers: Awaited<ReturnType<PhotoStore["coversFor"]>> = new Map();
   try { covers = await createPgPhotoStore(getDb()).coversFor(page.items.map(l => l.id)); } catch { /* cards without photos */ }
-  const listings = page.items.map(l => ({ ...toPublicListing(l), ...cardPhoto(covers.get(l.id)) }));
+  const near = query.near;
+  const listings = page.items.map(l => ({
+    ...toPublicListing(l), ...cardPhoto(covers.get(l.id)),
+    // Distance from the searched point, for the card ("2.3 km away").
+    ...(near && l.latitude !== undefined && l.longitude !== undefined ? { distanceKm: Math.round(distanceKm(near.latitude, near.longitude, l.latitude, l.longitude) * 10) / 10 } : {})
+  }));
   return NextResponse.json({ listings, total: page.total, page: page.page, pageSize: page.pageSize });
 }
 

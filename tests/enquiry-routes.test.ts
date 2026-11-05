@@ -6,7 +6,7 @@ import { createInMemoryListingRepository, type Actor } from "../src/domain/listi
 
 const state = vi.hoisted(() => ({ actor: null as Actor | null, deps: null as EnquiryDeps | null }));
 
-vi.mock("../src/server/context", () => ({ getActor: () => state.actor }));
+vi.mock("../src/server/context", () => ({ getActor: () => state.actor, getDb: () => ({ async query() { return { rows: [] }; } }) }));
 vi.mock("../src/server/enquiry-db", () => ({ getEnquiryDeps: () => state.deps }));
 
 import * as inboxRoute from "../app/api/enquiries/route";

@@ -25,6 +25,14 @@ export function savedSearchFormBody(fd: FormData): { body: Record<string, unknow
     if (!/^\d{1,2}$/.test(beds)) return { error: "Minimum bedrooms must be a whole number from 0 to 20." };
     body["minBedrooms"] = Number(beds);
   }
+  for (const [field, key, label] of [["minBathrooms", "minBathrooms", "bathrooms"], ["minParking", "minParking", "parking"]] as const) {
+    const v = text(field);
+    if (v === "") continue;
+    if (!/^\d{1,2}$/.test(v)) return { error: `Minimum ${label} must be a whole number from 0 to 20.` };
+    body[key] = Number(v);
+  }
+  const amenities = fd.getAll("amenities").filter((v): v is string => typeof v === "string");
+  if (amenities.length > 0) body["amenities"] = amenities;
   const checked = parseSavedSearchInput(body);
   return checked.ok ? { body } : { error: checked.message };
 }

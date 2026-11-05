@@ -1,4 +1,5 @@
 import { dollarsToCents } from "../../src/domain/listing-details";
+import type { SearchQuery } from "../../src/domain/listing-search";
 
 /** Initial browse filters from the URL (home page search, shared links). Unknown or invalid values are dropped, never an error. */
 export interface UrlFilters {
@@ -28,13 +29,15 @@ export function filtersFromParams(p: URLSearchParams): UrlFilters {
 }
 
 /** The browse filter form. Text values exactly as typed; prices are whole dollars. */
-export const BLANK_FILTERS = { jurisdiction: "", transactionType: "", useClass: "", propertyType: "", location: "", minPrice: "", maxPrice: "", minBedrooms: "", minBathrooms: "", minParking: "" };
+export const BLANK_FILTERS = { jurisdiction: "", transactionType: "", useClass: "", propertyType: "", location: "", minPrice: "", maxPrice: "", minBedrooms: "", minBathrooms: "", minParking: "", q: "", amenities: "", lat: "", lng: "", radiusKm: "" };
 export type FilterForm = typeof BLANK_FILTERS;
 
 /** Form values to API parameters (shared by the list and the map). Price fields are dollars in the form and cents in the API; only used with sale or rent. */
 export function filterParams(f: FilterForm): URLSearchParams {
   const p = new URLSearchParams();
   for (const k of ["jurisdiction", "transactionType", "useClass", "propertyType", "minBedrooms", "minBathrooms", "minParking"] as const) if (f[k]) p.set(k, f[k]);
+  for (const k of ["amenities", "lat", "lng", "radiusKm"] as const) if (f[k]) p.set(k, f[k]);
+  if (f.q.trim()) p.set("q", f.q.trim());
   const loc = f.location.trim();
   if (loc) p.set(/^\d{4}$/.test(loc) ? "postcode" : "suburb", loc);
   if (f.transactionType) {
@@ -44,4 +47,20 @@ export function filterParams(f: FilterForm): URLSearchParams {
     if (hi !== undefined) p.set("maxPriceCents", String(hi));
   }
   return p;
+}
+
+const dollars = (cents: number) => (cents % 100 === 0 ? String(cents / 100) : (cents / 100).toFixed(2));
+
+/** A parsed search (shared link, saved search, Elena) as the filter form. Cents become dollars; a postcode goes in the location box. */
+export function formFromQuery(q: SearchQuery): FilterForm {
+  return {
+    ...BLANK_FILTERS,
+    jurisdiction: q.jurisdiction ?? "", transactionType: q.transactionType ?? "", useClass: q.useClass ?? "", propertyType: q.propertyType ?? "",
+    location: q.postcode ?? q.suburb ?? "",
+    minPrice: q.minPriceCents !== undefined ? dollars(q.minPriceCents) : "", maxPrice: q.maxPriceCents !== undefined ? dollars(q.maxPriceCents) : "",
+    minBedrooms: q.minBedrooms !== undefined ? String(q.minBedrooms) : "", minBathrooms: q.minBathrooms !== undefined ? String(q.minBathrooms) : "",
+    minParking: q.minParking !== undefined ? String(q.minParking) : "",
+    q: q.q ?? "", amenities: q.amenities?.join(",") ?? "",
+    lat: q.near ? String(q.near.latitude) : "", lng: q.near ? String(q.near.longitude) : "", radiusKm: q.near ? String(q.near.radiusKm) : ""
+  };
 }
