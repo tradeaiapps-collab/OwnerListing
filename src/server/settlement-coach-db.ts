@@ -4,18 +4,25 @@ import { OPEN_STATUSES_FOR_STRATEGY } from "../domain/negotiation-coach";
 import { SIDE_SQL } from "./settlement-db";
 import { randomUUID } from "node:crypto";
 import { appendAuditPg, type Queryable } from "./db";
+import { rankSuggestions, type Feature } from "../domain/elena-learning";
+import { configIfWeighted, learnedFor, noteMany, noteReaction, stableId } from "./elena-wiring-db";
+
+const FEATURE: Feature = "negotiation_coach";
+const SEVERITY_BASE = { risk: 3, caution: 2, info: 1 } as const;
+/** One suggestion row per person, deal, side and suggestion type, so opening the panel again never double counts. */
+const suggestionIdFor = (userId: string, offerId: string, side: Side, type: string) => stableId("settlement-coach", userId, offerId, side, type);
 
 // Parameterised SQL only. The side always comes from the database (SIDE_SQL), never from the request.
 
 export type Out<T> = { ok: true; value: T } | { ok: false; status: number; error: string };
 const no = (status: number, error: string): { ok: false; status: number; error: string } => ({ ok: false, status, error });
 
-interface Loaded { settlementId: string; offerId: string; active: boolean; facts: CoachFacts }
+interface Loaded { settlementId: string; offerId: string; active: boolean; region: string | undefined; facts: CoachFacts }
 
 async function load(db: Queryable, userId: string, settlementId: string): Promise<Loaded | undefined> {
   const r = (await db.query(
     `SELECT t.id, t.offer_id, t.current_stage, t.completed_at, o.status AS offer_status, o.price_cents, o.deposit_cents, o.settlement_days, o.conditions,
-            o.buyer_user_id, l.price_cents AS asking, l.transaction_type, ${SIDE_SQL} AS side,
+            o.buyer_user_id, l.price_cents AS asking, l.transaction_type, l.jurisdiction, ${SIDE_SQL} AS side,
             (SELECT (m.target_date - t.created_at::date) FROM settlement_milestones m WHERE m.settlement_id = t.id AND m.stage = 'inspection_completed') AS inspection_days,
             (SELECT count(*) FROM formal_offer x WHERE x.listing_id = o.listing_id AND x.id <> o.id AND x.status = ANY($3::text[])
                AND x.submitted_at BETWEEN o.submitted_at - interval '30 days' AND o.submitted_at + interval '30 days') AS others,
@@ -34,6 +41,7 @@ async function load(db: Queryable, userId: string, settlementId: string): Promis
   const finance = conditions.some(c => /\bfinance\b/i.test(c));
   return {
     settlementId: String(r["id"]), offerId: String(r["offer_id"]),
+    region: r["jurisdiction"] ? String(r["jurisdiction"]).trim() : undefined,
     active: coachingActive(stage, r["completed_at"] != null, r["offer_status"] === "fallen_through"),
     facts: {
       side: String(r["side"]) as Side, currentStage: stage,
@@ -68,8 +76,12 @@ export async function coachingView(db: Queryable, userId: string, settlementId: 
   const l = await load(db, userId, settlementId);
   if (!l) return no(404, "Settlement not found.");
   if (!l.active) return { ok: true, value: { active: false, side: l.facts.side, comparison: null, suggestions: [] } };
-  const list = suggestionsFor(l.facts);
   const side = l.facts.side;
+  // Elena's learned settings only change the ORDER the suggestions are shown in (never which apply, never the wording or safety rules).
+  const learned = await learnedFor(db, FEATURE, userId);
+  const list = rankSuggestions(configIfWeighted(learned), l.region, suggestionsFor(l.facts).map(s => ({ ...s, feature: FEATURE, baseScore: SEVERITY_BASE[s.severity] })))
+    .map(({ feature: _f, baseScore: _b, ...s }) => s as Suggestion);
+  await noteMany(db, list.map(s => ({ id: suggestionIdFor(userId, l.offerId, side, s.type), feature: FEATURE, type: s.type, userId, userRole: side, ...(l.region ? { region: l.region } : {}), offerId: l.offerId, source: "direct" as const, context: { severity: s.severity, side } })), learned);
   for (const s of list) {
     await db.query(
       "INSERT INTO negotiation_coaching_offers (offer_id, settlement_id, suggestion_type, side) VALUES ($1::uuid,$2::uuid,$3,$4) ON CONFLICT (offer_id, suggestion_type, side) DO NOTHING",
@@ -98,6 +110,7 @@ export async function decideSuggestion(db: Queryable, userId: string, settlement
     if (!seen.rows.length) return no(409, "Open the coaching panel first so the suggestion is recorded.");
     return no(409, "You have already answered this suggestion.");
   }
+  await noteReaction(db, suggestionIdFor(userId, l.offerId, l.facts.side, type), used ? "accepted" : "rejected", userId);
   await appendAuditPg(db, {
     id: randomUUID(), occurredAt: new Date().toISOString(), actorType: "user", actorId: userId, aggregateType: "settlement", aggregateId: settlementId,
     eventType: "settlement.coaching_decided", correlationId: randomUUID(), payload: { suggestion: type, used }

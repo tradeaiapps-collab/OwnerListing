@@ -2,6 +2,7 @@ import { createHash, timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 import { getDb, getDeps } from "../../../../../src/server/context";
 import { proposeMonthlyConfigPg, refreshUserPatternsPg, syncSettlementOutcomesPg } from "../../../../../src/server/elena-learning-db";
+import { sweepImpliedReactionsPg } from "../../../../../src/server/elena-wiring-db";
 import { withApi } from "../../../../../src/server/api/with-api";
 
 /**
@@ -20,9 +21,10 @@ async function handlePost(req: Request) {
   if (job !== "weekly" && job !== "monthly") return NextResponse.json({ error: "job must be weekly or monthly." }, { status: 400 });
   const db = getDb(), now = new Date(getDeps().now());
   const outcomes = await syncSettlementOutcomesPg(db);
+  const implied = await sweepImpliedReactionsPg(db);
   const patterns = await refreshUserPatternsPg(db, now);
   const proposal = job === "monthly" ? await proposeMonthlyConfigPg(db, now) : undefined;
-  return NextResponse.json({ outcomes, patterns, proposedVersion: proposal?.version ?? null });
+  return NextResponse.json({ outcomes, implied, patterns, proposedVersion: proposal?.version ?? null });
 }
 
 export const POST = withApi(handlePost);

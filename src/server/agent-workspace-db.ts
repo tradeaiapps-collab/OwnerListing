@@ -1,4 +1,6 @@
 import { median, type LeadFact, type NoteFact, type NoteKind, type OfferFacts, type PeerFacts, type Stage, type WorkspaceDeps } from "../domain/agent-workspace";
+import { adjustLeadWeights } from "../domain/elena-learning";
+import { learnedFor, noteMany, noteReaction, stableId } from "./elena-wiring-db";
 import { DEFAULT_SCORING, parseFitSearches, type ScoringConfig } from "../domain/lead-scoring";
 import { personaById } from "../domain/assistant-persona";
 import { loadLivePersona } from "./assistant-persona-db";
@@ -117,7 +119,22 @@ export function createWorkspaceDeps(db: Queryable, now: () => Date = () => new D
         [agentId, enquiryId, stage, followUpAt]);
     },
     personaName: async () => personaById(await loadLivePersona(db)).name,
-    scoring: () => loadScoringConfig(db),
+    async scoring(agentId) {
+      const cfg = await loadScoringConfig(db);
+      // Learned settings scale the three signal weights (within +-50%); the bands and the agent's own overrides are untouched.
+      const learned = await learnedFor(db, "lead_scoring", agentId);
+      return learned.weighted ? { ...cfg, weights: adjustLeadWeights(learned.config, cfg.weights) } : cfg;
+    },
+    async noteLeads(agentId, leads) {
+      const learned = await learnedFor(db, "lead_scoring", agentId);
+      await noteMany(db, leads.slice(0, 25).map(l => ({
+        id: stableId("lead-score", agentId, l.enquiryId), feature: "lead_scoring" as const, type: l.band, userId: agentId, userRole: "agent", listingId: l.listingId, source: "direct" as const,
+        context: { score: l.score, band: l.band, overdue: l.overdue, offer: l.offerStatus !== undefined, fit: l.fitPercent !== undefined }
+      })), learned, now());
+    },
+    async noteLeadAction(agentId, enquiryId, action) {
+      await noteReaction(db, stableId("lead-score", agentId, enquiryId), action === "worked" ? "accepted" : action === "overridden" ? "modified" : "rejected", agentId);
+    },
     async setOverride(agentId, enquiryId, score, reason, at) {
       await db.query(
         `INSERT INTO agent_lead_override (agent_user_id, enquiry_id, score, reason, updated_at) VALUES ($1::uuid,$2::uuid,$3,$4,$5::timestamptz)

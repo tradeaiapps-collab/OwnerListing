@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { aiLearningCovered, currentTermsVersion } from "../domain/terms";
 import {
-  assignArm, buildUserPattern, experimentResult, healthOf, proposeConfig, redactText, sanitiseContext,
+  assignArm, buildUserPattern, experimentReport, healthOf, proposeConfig, redactText, sanitiseContext,
   type Feature, type FeedbackAction, type LearnedConfig, type Outcome, type SuggestionFact
 } from "../domain/elena-learning";
 import type { Queryable } from "./db";
@@ -132,7 +132,7 @@ export async function recordManualOutcomePg(db: Queryable, o: ManualOutcome): Pr
 export async function loadFactsPg(db: Queryable, sinceIso: string, userId?: string): Promise<SuggestionFact[]> {
   const r = await db.query(
     `SELECT s.id, s.feature, s.suggestion_type, s.user_role, s.region, s.user_id, s.consent_for_training, s.arm, s.experiment_key, s.context, s.created_at,
-            f.action, f.helpful, f.rating, f.response_seconds, so.outcome
+            f.action, f.helpful, f.rating, f.response_seconds, so.outcome, so.time_to_settlement_days
      FROM elena_suggestion s
      LEFT JOIN LATERAL (SELECT action, helpful, rating, response_seconds FROM elena_feedback WHERE suggestion_id = s.id ORDER BY (source = 'user') DESC, created_at DESC, id DESC LIMIT 1) f ON true
      LEFT JOIN settlement_timeline st ON st.offer_id = s.offer_id
@@ -148,7 +148,8 @@ export async function loadFactsPg(db: Queryable, sinceIso: string, userId?: stri
     action: (x["action"] ?? undefined) as FeedbackAction | undefined, helpful: (x["helpful"] ?? undefined) as SuggestionFact["helpful"],
     rating: x["rating"] === null || x["rating"] === undefined ? undefined : Number(x["rating"]),
     responseSeconds: x["response_seconds"] === null || x["response_seconds"] === undefined ? undefined : Number(x["response_seconds"]),
-    dealOutcome: (x["outcome"] ?? undefined) as SuggestionFact["dealOutcome"]
+    dealOutcome: (x["outcome"] ?? undefined) as SuggestionFact["dealOutcome"],
+    dealDays: x["time_to_settlement_days"] === null || x["time_to_settlement_days"] === undefined ? undefined : Number(x["time_to_settlement_days"])
   }));
 }
 
@@ -217,11 +218,11 @@ export async function activateConfigPg(db: Queryable, version: number, by: strin
   return db.transaction ? db.transaction(run) : run(db);
 }
 
-export async function listConfigsPg(db: Queryable): Promise<{ version: number; status: string; trainedOn: number; notes: string[]; createdAt: string }[]> {
-  const r = await db.query("SELECT version, status, config, evidence, created_at FROM elena_learned_config ORDER BY version DESC LIMIT 12");
+export async function listConfigsPg(db: Queryable): Promise<{ version: number; status: string; trainedOn: number; notes: string[]; createdAt: string; activatedAt: string | null }[]> {
+  const r = await db.query("SELECT version, status, config, evidence, created_at, activated_at FROM elena_learned_config ORDER BY version DESC LIMIT 12");
   return r.rows.map(x => ({
     version: Number(x["version"]), status: String(x["status"]), trainedOn: Number((x["config"] as LearnedConfig).trainedOn),
-    notes: ((x["evidence"] as { notes?: string[] }).notes ?? []), createdAt: iso(x["created_at"])
+    notes: ((x["evidence"] as { notes?: string[] }).notes ?? []), createdAt: iso(x["created_at"]), activatedAt: x["activated_at"] ? iso(x["activated_at"]) : null
   }));
 }
 
@@ -245,7 +246,7 @@ export async function experimentsPg(db: Queryable, facts: readonly SuggestionFac
   const r = await db.query("SELECT key, feature, arms, status FROM elena_experiment ORDER BY created_at DESC LIMIT 20");
   return r.rows.map(x => {
     const arms = x["arms"] as string[], key = String(x["key"]);
-    return { key, feature: String(x["feature"]), status: String(x["status"]), ...experimentResult(facts.filter(f => f.experimentKey === key), arms) };
+    return { key, feature: String(x["feature"]), status: String(x["status"]), ...experimentReport(facts.filter(f => f.experimentKey === key), arms) };
   });
 }
 

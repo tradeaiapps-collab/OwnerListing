@@ -1,3 +1,4 @@
+import { noteReaction, noteSuggestion, stableId } from "./elena-wiring-db";
 import { randomUUID } from "node:crypto";
 import type { Enquiry, EnquiryMessage } from "../domain/enquiry-service";
 import { MODERATION_RULES_VERSION, moderateMessage, needsTraining, TRAINING_THRESHOLD, type ModerationFlag, type ModerationResult, type Tone } from "../domain/message-moderation";
@@ -67,6 +68,11 @@ export async function reviewModerationFlagPg(db: Queryable, id: string, by: stri
      WHERE id = $1::uuid AND status = 'open' RETURNING id`,
     [id, by, STATUS_OF[action], note, at]
   );
+  if (r.rows.length === 1) {
+    // Staff approving the message means the flag was not needed; asking for a revision or training means it was.
+    const m = (await db.query("SELECT message_id FROM message_moderation_flag WHERE id = $1::uuid", [id]).catch(() => ({ rows: [] }))).rows[0];
+    if (m) await noteReaction(db, stableId("moderation", String(m["message_id"])), action === "approve" ? "rejected" : "accepted", by);
+  }
   return r.rows.length === 1;
 }
 
@@ -75,7 +81,14 @@ export async function moderateSentMessage(db: Queryable, enquiry: Enquiry, messa
   if (message.automated || !message.senderUserId || message.senderUserId === enquiry.buyerUserId) return undefined;
   try {
     const result = moderateMessage(message.body);
-    await insertModerationFlagPg(db, enquiry.id, message, result);
+    const stored = await insertModerationFlagPg(db, enquiry.id, message, result);
+    if (stored && message.senderUserId) {
+      const top = [...result.flags].sort((a, b) => ({ high: 3, medium: 2, low: 1 })[b.severity] - ({ high: 3, medium: 2, low: 1 })[a.severity])[0];
+      await noteSuggestion(db, {
+        id: stableId("moderation", message.id), feature: "message_moderation", type: top?.category ?? "flagged", userId: message.senderUserId, userRole: "seller_side",
+        context: { risk: result.risk, tone: result.tone, flags: result.flags.length }
+      });
+    }
     return result;
   } catch {
     return undefined;

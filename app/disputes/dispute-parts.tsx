@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { ESCALATION_LABEL, STATUS_LABEL, TYPE_LABEL, type DisputeStatus, type DisputeType, type EscalationReason, type Party, type ResponseKind, type Suggestion } from "../../src/domain/dispute";
+import { ElenaFeedback } from "../elena-feedback";
 import "../styles/offers.css";
 import "../styles/settlement.css";
 import "../styles/disputes.css";
@@ -113,6 +114,7 @@ export function DisputeDetail({ d, post, busy, staff }: { d: Detail; post?: (bod
       {d.status === "mediating" ? <p className="dsp-note">Round {d.currentRound} of 3. It goes to staff after round 3, if someone asks, or on {day(d.deadlineAt)}.</p> : null}
       {d.status === "escalated" ? <p role="status"><strong>With staff.</strong> {d.escalationText}. A staff member will review and record the outcome.</p> : null}
       {d.outcome ? <p role="status"><strong>Outcome:</strong> {d.outcome}</p> : null}
+      {post && (d.status === "agreed" || d.status === "resolved") && (d.side === "buyer" || d.side === "seller") ? <ElenaFeedback overall={{ kind: "dispute", subjectId: d.id }} question="Did Elena's mediation help?" /> : null}
       {d.rounds.length ? <Rounds d={d} /> : null}
 
       {post && d.canPosition ? (

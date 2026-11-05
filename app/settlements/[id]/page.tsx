@@ -5,6 +5,7 @@ import { RiskPanel, type RiskData } from "../risk-panel";
 import "../../styles/offers.css";
 import "../../styles/settlement.css";
 import CoachingPanel from "./coaching-panel";
+import { ElenaFeedback } from "../../elena-feedback";
 
 interface Item { id: string; label: string; done: boolean; canTick: boolean }
 interface View {
@@ -57,6 +58,7 @@ export default function SettlementPage({ params }: { params: Promise<{ id: strin
       {error ? <p role="alert">{error}</p> : null}
       {risk && !v.completed && !v.fellThrough ? <RiskPanel r={risk} who="party" /> : null}
       {!v.fellThrough && !v.completed ? <CoachingPanel settlementId={v.id} /> : null}
+      {v.completed && (v.side === "buyer" || v.side === "seller") ? <ElenaFeedback overall={{ kind: "settlement", subjectId: v.id }} question="Was Elena helpful with your settlement?" /> : null}
       <ol className="settle-steps">
         {STAGES.map(stage => {
           const m = v.milestones.find(x => x.stage === stage)!;

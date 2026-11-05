@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import * as cron from "../app/api/internal/elena-learning/run/route";
 import * as feedback from "../app/api/elena/feedback/route";
+import * as overall from "../app/api/elena/feedback/overall/route";
 import * as staff from "../app/api/staff/elena-training/route";
 
 vi.mock("../src/server/context", () => ({
@@ -30,6 +31,7 @@ describe("Elena learning routes", () => {
   it("feedback and the dashboard need a signed-in person", async () => {
     const post = (body: unknown) => new Request("http://test/api/elena/feedback", { method: "POST", headers: { "content-type": "application/json", origin: "http://test" }, body: JSON.stringify(body) });
     expect((await feedback.POST(post({ suggestionId: "x", helpful: "yes" }))).status).toBe(401);
+    expect((await overall.POST(post({ kind: "settlement", subjectId: "x", helpful: "yes" }))).status).toBe(401);
     expect((await staff.GET(new Request("http://test/api/staff/elena-training", { headers: { origin: "http://test" } }))).status).toBe(401);
   });
 });
