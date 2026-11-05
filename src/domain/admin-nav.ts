@@ -24,6 +24,7 @@ export const ADMIN_GROUPS: readonly AdminGroup[] = [
 const META: Record<string, { group: string; icon: AdminIcon; blurb: string }> = {
   "/staff/dashboard": { group: "overview", icon: "dashboard", blurb: "Key figures for the last 30 days" },
   "/staff/listings": { group: "marketplace", icon: "listing", blurb: "Review, suspend and reinstate listings" },
+  "/staff/sale-events": { group: "insights", icon: "report", blurb: "Audit sold and rented events, add historical sales, void wrong ones" },
   "/staff/users": { group: "marketplace", icon: "users", blurb: "Find, review and suspend accounts" },
   "/staff/users/deleted-accounts": { group: "marketplace", icon: "users", blurb: "Delete accounts and restore them within the recovery window" },
   "/staff/investments": { group: "marketplace", icon: "building", blurb: "Check investor projects before they go live" },
@@ -45,9 +46,11 @@ const META: Record<string, { group: string; icon: AdminIcon; blurb: string }> = 
   "/staff/finance": { group: "insights", icon: "price", blurb: "Revenue, invoices, bank transfers and payment issues" },
   "/staff/pricing": { group: "settings", icon: "price", blurb: "Listing packages and fees" },
   "/staff/messaging": { group: "settings", icon: "message", blurb: "Email and SMS delivery settings" },
+  "/staff/listing-syndication": { group: "settings", icon: "toggle", blurb: "Share listings on Airbnb, VRBO and Booking.com" },
   "/staff/site": { group: "settings", icon: "palette", blurb: "Brand, colours, fonts and home page" },
   "/staff/assistant": { group: "settings", icon: "assistant", blurb: "Pick the AI assistant (Elena and others), answers and chips" },
   "/staff/ai": { group: "settings", icon: "ai", blurb: "Self-hosted AI engine and limits" },
+  "/staff/feeds": { group: "settings", icon: "chart", blurb: "Agency CRM and Domain feeds, territory, schedule and licences" },
   "/staff/invites": { group: "team", icon: "team", blurb: "Invite staff and manage their access" },
   "/staff/roles": { group: "team", icon: "key", blurb: "What each role can see and do" },
   "/staff/security/mfa-reset": { group: "team", icon: "key", blurb: "Reset a user's two-step sign-in after a lost phone" }

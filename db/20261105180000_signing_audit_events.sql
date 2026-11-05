@@ -4,4 +4,4 @@
 -- while no such rows exist.
 ALTER TABLE signing_event DROP CONSTRAINT IF EXISTS signing_event_event_type_check;
 ALTER TABLE signing_event ADD CONSTRAINT signing_event_event_type_check
-  CHECK (event_type IN ('created','sent','viewed','explained','signed','declined','completed','cancelled','owner_viewed','sign_failed'));
+  CHECK (event_type IN ('created','sent','viewed','explained','signed','declined','completed','cancelled','voided','retried','stored','owner_viewed','sign_failed'));

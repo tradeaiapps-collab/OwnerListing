@@ -265,3 +265,12 @@ Provider-neutral, Westpac PayWay stays the card provider (no live keys; checkout
 
 ## Document templates and e-signatures (5 Nov 2026)
 Owner-generated documents from staff-published templates, built-in e-signing with SHA-256 and insert-only audit trail, Elena explains clauses while signing. Details and open items: docs/DOCUMENT_SIGNING.md.
+
+## Sold and rented events (5 Nov 2026)
+- Accepting an offer writes a `property_event` sold/rented row (accepted price and date, listing's active agent, buyer, offer id) via `recordAcceptedOfferEventPg`, called from the decision route after the status change; a failure never undoes the acceptance. A property record is created (or reused by address and state) for listings that had none. Market intelligence already read these rows; voided rows are now excluded.
+- db/20261105170000_sale_events adds offer/agent/buyer/origin/void columns, one event per offer, and a trigger: sold/rented events cannot be deleted or edited, only voided with a reason.
+- Staff screen `/staff/sale-events` (permission `sale_event.manage`; `report.sales` can read): filter and audit the log, add historical sales/rentals, void, and sweep accepted offers that have no event. Names are masked without `pii.view_full`.
+- Open: no `listed` events are written yet, so days on market stays empty for platform sales; staff entries cannot link to an existing listing.
+
+## Phone app (5 Nov 2026, PR feature/mobile-app)
+React Native with Expo in mobile/ (one codebase, iPhone and Android). Phone sign-in: POST /api/mobile/auth/login|refresh|logout, 15-minute bearer access tokens, single-use rotating refresh tokens (reuse revokes the session), table mobile_session; bearer requests ignore cookies, second step required as on the web. Screens: search, property, saved, appointments, agent messages, alerts, push topics. Push uses the PR #166 FCM/APNs senders with native device tokens. Open: Apple and Google developer accounts, Firebase project, APNs key, final app id, Google sign-in and sign-up in the app, store listing. Details: mobile/README.md.

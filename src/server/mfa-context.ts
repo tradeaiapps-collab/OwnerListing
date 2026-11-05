@@ -3,6 +3,7 @@ import { readBrand } from "../config/brand";
 import { stepUpSatisfied } from "../domain/mfa";
 import { sessionFromRequestChecked, type SessionState } from "./auth/actor";
 import { readSessionEnv } from "./auth/config";
+import { markMobileMfaPassed } from "./auth/mobile-session-db";
 import { SESSION_COOKIE, signSession } from "./auth/session";
 import { getDb } from "./context";
 import type { MfaDeps } from "./mfa";
@@ -20,8 +21,15 @@ export async function getSessionState(req: Request): Promise<SessionState | null
   return auth ? sessionFromRequestChecked(getDb(), req, auth.secret, Math.floor(Date.now() / 1000)) : null;
 }
 
-/** Re-issues the session cookie marked as having passed MFA now. Same expiry as before: passing MFA never lengthens a session. */
-export function markMfaPassed(res: NextResponse, s: SessionState, nowSeconds = Math.ceil(Date.now() / 1000)): NextResponse {
+/**
+ * Re-issues the session cookie marked as having passed MFA now. Same expiry as before: passing MFA never lengthens a session.
+ * A phone app session (bearer token) gets no cookie: its own session row records the check instead.
+ */
+export async function markMfaPassed(res: NextResponse, s: SessionState, nowSeconds = Math.ceil(Date.now() / 1000)): Promise<NextResponse> {
+  if (s.payload.sid !== undefined) {
+    await markMobileMfaPassed(getDb(), s.payload.sid, s.payload.uid);
+    return res;
+  }
   const auth = readSessionEnv();
   if (!auth) return res;
   const maxAge = Math.max(0, s.payload.exp - Math.floor(Date.now() / 1000));
@@ -40,6 +48,11 @@ export const mfaRequiredResponse = () =>
  * Returns the 403 to send, or null to proceed. Call after the route's own sign-in check.
  */
 export async function requireRecentMfa(req: Request): Promise<NextResponse | null> {
+  return (await recentMfaAt(req)) === undefined ? mfaRequiredResponse() : null;
+}
+
+/** When this session last passed MFA (epoch seconds) if that is within the step-up window and still valid, else undefined. */
+export async function recentMfaAt(req: Request): Promise<number | undefined> {
   const s = await getSessionState(req);
-  return s && s.mfa.satisfied && stepUpSatisfied(s.payload.mfa, Math.floor(Date.now() / 1000)) ? null : mfaRequiredResponse();
+  return s && s.mfa.satisfied && stepUpSatisfied(s.payload.mfa, Math.floor(Date.now() / 1000)) ? s.payload.mfa : undefined;
 }

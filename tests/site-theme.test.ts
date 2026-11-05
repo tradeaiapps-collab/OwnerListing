@@ -215,6 +215,11 @@ describe("generated CSS", () => {
     expect(system).toContain("@media (prefers-color-scheme: dark){:root:root{--bg:#0b1020;");
     expect(errorsOf(mutate(t => { (t.layout as unknown as Record<string, unknown>)["colourMode"] = "dark"; }))["layout.colourMode"]).toBeTruthy();
   });
+  it("followDevice (staff console) emits the device-dark media query even when the theme is fixed to light", () => {
+    expect(DEFAULT_THEME.layout.colourMode).toBe("light");
+    expect(buildThemeCss(DEFAULT_THEME, { followDevice: true })).toContain("@media (prefers-color-scheme: dark){:root:root{--bg:#0b1020;");
+    expect(buildThemeCss(DEFAULT_THEME, { followDevice: false })).not.toContain("prefers-color-scheme");
+  });
   it("a stored theme saved before colourMode existed loads as light", () => {
     const old = clone() as unknown as { layout: Record<string, unknown> };
     delete old.layout["colourMode"];
