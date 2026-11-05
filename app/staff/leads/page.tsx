@@ -105,6 +105,7 @@ export default function StaffLeads() {
     <main className="leads">
       <h1>Ad leads</h1>
       <p className="muted">People who filled in a Facebook, Instagram or Google ad form. Assign them to an agent and follow them through to an enquiry and an offer.</p>
+      <p><a href="/staff/leads/rules">Routing rules: send leads to agents by area, property type or interest</a></p>
       {error && <p role="alert" className="leads-msg bad">{error}</p>}
       {notice && <p role="status" className="leads-msg">{notice}</p>}
       {secret && (

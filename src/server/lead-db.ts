@@ -4,6 +4,7 @@ import {
   figuresView, leadStage, renderFollowup, type FiguresView, type FollowupMode, type LeadInput, type LeadInterest, type LeadProvider, type LeadStatus,
   type MatchItem, type SourceInput
 } from "../domain/lead-ads";
+import { routeLead } from "./lead-routing-db";
 import { appendAuditPg, type Queryable } from "./db";
 import { getEmailPort, sendNotice } from "./messaging";
 
@@ -148,11 +149,15 @@ async function sendFollowup(db: Queryable, source: LeadSource, leadId: string, l
  * if the source has it on. A retried webhook returns created:false and sends nothing. Never throws on a follow-up failure.
  */
 export async function ingestLead(db: Queryable, source: LeadSource, lead: LeadInput, now: string, env: Env = process.env): Promise<IngestResult> {
+  // Routing rules, then the agent's own service area, then the form's default agent. Test leads are not routed (they would use up an agent's share).
+  const assignment = lead.isTest ? null : await routeLead(db, source.id, source.defaultAgentId, lead);
   const r = await db.query(
-    `INSERT INTO lead (source_id, external_id, name, email, phone, interest, suburb, postcode, campaign_ref, ad_ref, is_test, assigned_agent_id, assigned_at, received_at, updated_at)
-     VALUES ($1::uuid,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,CASE WHEN $12::uuid IS NULL THEN NULL ELSE $13::timestamptz END,$13::timestamptz,$13::timestamptz)
+    `INSERT INTO lead (source_id, external_id, name, email, phone, interest, suburb, postcode, property_type, campaign_ref, ad_ref, is_test, assigned_agent_id, assigned_at,
+       assignment_method, assignment_detail, received_at, updated_at)
+     VALUES ($1::uuid,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,CASE WHEN $13::uuid IS NULL THEN NULL ELSE $14::timestamptz END,$15,$16,$14::timestamptz,$14::timestamptz)
      ON CONFLICT (source_id, external_id) DO NOTHING RETURNING id`,
-    [source.id, lead.externalId, lead.name, lead.email, lead.phone, lead.interest, lead.suburb, lead.postcode, lead.campaignRef, lead.adRef, lead.isTest, source.defaultAgentId, now]);
+    [source.id, lead.externalId, lead.name, lead.email, lead.phone, lead.interest, lead.suburb, lead.postcode, lead.propertyType ?? null, lead.campaignRef, lead.adRef, lead.isTest,
+      assignment?.agentUserId ?? null, now, assignment?.method ?? null, assignment?.detail ?? null]);
   const row = r.rows[0];
   if (!row) {
     const ex = await db.query("SELECT id FROM lead WHERE source_id = $1::uuid AND external_id = $2", [source.id, lead.externalId]);
@@ -164,7 +169,7 @@ export async function ingestLead(db: Queryable, source: LeadSource, lead: LeadIn
   if (followup !== "skipped" || source.followupMode !== "off") {
     await db.query("UPDATE lead SET followup_status = $2, followup_sent_at = CASE WHEN $2 = 'sent' THEN $3::timestamptz END WHERE id = $1::uuid", [leadId, followup, now]);
   }
-  if (!lead.isTest && source.defaultAgentId) void tellAgent(db, source.defaultAgentId, lead, env);
+  if (!lead.isTest && assignment) void tellAgent(db, assignment.agentUserId, lead, env);
   return { created: true, leadId, followup };
 }
 
@@ -174,7 +179,7 @@ async function tellAgent(db: Queryable, agentId: string, lead: LeadInput, env: E
   const base = env["APP_URL"]?.replace(/\/+$/, "");
   await sendNotice(db, "lead_assigned", a.email, {
     subject: "New lead assigned to you",
-    text: `A new ${lead.interest ?? "property"} lead${lead.name ? ` from ${lead.name}` : ""} has been assigned to you.\n\nContact them as soon as you can; leads cool quickly.${base ? `\n\n${base}/staff/leads` : ""}`
+    text: `A new ${lead.interest ?? "property"} lead${lead.name ? ` from ${lead.name}` : ""} has been assigned to you.\n\nContact them as soon as you can; leads cool quickly.${base ? `\n\n${base}/agent/leads` : ""}`
   }, env);
 }
 
@@ -183,10 +188,10 @@ async function tellAgent(db: Queryable, agentId: string, lead: LeadInput, env: E
 export interface LeadRow {
   id: string; sourceId: string; sourceLabel: string; provider: LeadProvider; name: string | null; email: string | null; phone: string | null;
   interest: LeadInterest | null; suburb: string | null; postcode: string | null; campaign: string | null; ad: string | null; isTest: boolean;
-  status: LeadStatus; lostReason: string | null; assignedAgentId: string | null; assignedAgentName: string | null; followupStatus: string;
+  status: LeadStatus; lostReason: string | null; assignedAgentId: string | null; assignedAgentName: string | null; followupStatus: string; propertyType: string | null; assignmentMethod: string | null; assignmentDetail: string | null;
   enquired: boolean; offered: boolean; stage: string; receivedAt: string;
 }
-export interface LeadFilter { status?: LeadStatus | "unassigned" | "enquiry" | "offer"; sourceId?: string; agentId?: string; limit?: number; offset?: number }
+export interface LeadFilter { status?: LeadStatus | "unassigned" | "enquiry" | "offer"; sourceId?: string; agentId?: string; excludeTests?: boolean; limit?: number; offset?: number }
 
 // An enquiry or offer from an account with the lead's email, made after the lead arrived. Derived on read, never stored.
 const ENQUIRED = `EXISTS (SELECT 1 FROM enquiry e JOIN app_user u ON u.id = e.buyer_user_id WHERE u.email = l.email AND e.created_at >= l.received_at)`;
@@ -201,6 +206,7 @@ export async function listLeads(db: Queryable, f: LeadFilter = {}): Promise<{ le
   else if (f.status) add(p => `l.status = ${p}`, f.status);
   if (f.sourceId) add(p => `l.source_id = ${p}::uuid`, f.sourceId);
   if (f.agentId) add(p => `l.assigned_agent_id = ${p}::uuid`, f.agentId);
+  if (f.excludeTests) where.push("NOT l.is_test");
   const w = where.length ? `WHERE ${where.join(" AND ")}` : "";
   const total = Number((await db.query(`SELECT count(*) AS n FROM lead l ${w}`, params)).rows[0]!["n"]);
   params.push(Math.min(Math.max(f.limit ?? 50, 1), 100), Math.max(f.offset ?? 0, 0));
@@ -216,7 +222,8 @@ export async function listLeads(db: Queryable, f: LeadFilter = {}): Promise<{ le
       interest: (x["interest"] as LeadInterest | null) ?? null, suburb: x["suburb"] ? String(x["suburb"]) : null, postcode: x["postcode"] ? String(x["postcode"]) : null,
       campaign: x["campaign_ref"] ? String(x["campaign_ref"]) : null, ad: x["ad_ref"] ? String(x["ad_ref"]) : null, isTest: x["is_test"] === true,
       status, lostReason: x["lost_reason"] ? String(x["lost_reason"]) : null, assignedAgentId: x["assigned_agent_id"] ? String(x["assigned_agent_id"]) : null,
-      assignedAgentName: x["agent_name"] ? String(x["agent_name"]) : null, followupStatus: String(x["followup_status"]), enquired, offered,
+      assignedAgentName: x["agent_name"] ? String(x["agent_name"]) : null, followupStatus: String(x["followup_status"]), propertyType: x["property_type"] ? String(x["property_type"]) : null,
+      assignmentMethod: x["assignment_method"] ? String(x["assignment_method"]) : null, assignmentDetail: x["assignment_detail"] ? String(x["assignment_detail"]) : null, enquired, offered,
       stage: leadStage({ status, enquired, offered }), receivedAt: iso(x["received_at"])!
     };
   });
@@ -227,7 +234,7 @@ export async function assignLead(db: Queryable, staffId: string, leadId: string,
   if (!/^[0-9a-f-]{36}$/i.test(leadId)) return { ok: false, error: "Lead not found." };
   if (agentId && !(await activeAgent(db, agentId))) return { ok: false, error: "That agent is not an active agent account." };
   const r = await db.query(
-    "UPDATE lead SET assigned_agent_id = $2::uuid, assigned_at = CASE WHEN $2::uuid IS NULL THEN NULL ELSE $3::timestamptz END, updated_at = $3::timestamptz WHERE id = $1::uuid RETURNING name, interest, is_test, (assigned_agent_id IS DISTINCT FROM $2::uuid) AS x",
+    "UPDATE lead SET assigned_agent_id = $2::uuid, assigned_at = CASE WHEN $2::uuid IS NULL THEN NULL ELSE $3::timestamptz END, assignment_method = CASE WHEN $2::uuid IS NULL THEN NULL ELSE 'manual' END, assignment_detail = CASE WHEN $2::uuid IS NULL THEN NULL ELSE 'Assigned by staff' END, updated_at = $3::timestamptz WHERE id = $1::uuid RETURNING name, interest, is_test, (assigned_agent_id IS DISTINCT FROM $2::uuid) AS x",
     [leadId, agentId, now]);
   const x = r.rows[0];
   if (!x) return { ok: false, error: "Lead not found." };
@@ -242,6 +249,18 @@ export async function setLeadStatus(db: Queryable, staffId: string, leadId: stri
   const r = await db.query("UPDATE lead SET status = $2, lost_reason = $3, updated_at = $4::timestamptz WHERE id = $1::uuid RETURNING id", [leadId, status, status === "lost" ? lostReason : null, now]);
   if (!r.rows[0]) return { ok: false, error: "Lead not found." };
   await audit(db, staffId, leadId, "lead.status", { status }, now);
+  return { ok: true };
+}
+
+/** An agent updates a lead assigned to them. Not theirs (or missing): not found, so a lead id cannot be probed. */
+export async function setAgentLeadStatus(db: Queryable, agentId: string, leadId: string, status: LeadStatus, lostReason: string | null, now: string): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (!/^[0-9a-f-]{36}$/i.test(leadId)) return { ok: false, error: "Lead not found." };
+  if (status === "lost" && !lostReason) return { ok: false, error: "Say why the lead was lost." };
+  const r = await db.query(
+    "UPDATE lead SET status = $2, lost_reason = $3, updated_at = $4::timestamptz WHERE id = $1::uuid AND assigned_agent_id = $5::uuid AND NOT is_test RETURNING id",
+    [leadId, status, status === "lost" ? lostReason : null, now, agentId]);
+  if (!r.rows[0]) return { ok: false, error: "Lead not found." };
+  await audit(db, agentId, leadId, "lead.status", { status, by: "agent" }, now);
   return { ok: true };
 }
 

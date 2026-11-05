@@ -51,7 +51,7 @@ describe("Meta", () => {
     const r = mapMetaLead({ id: "L9", ad_id: "A9", campaign_name: "Spring sellers", field_data: [
       { name: "full_name", values: ["Jo Smith"] }, { name: "email", values: ["JO@x.com"] }, { name: "phone_number", values: ["0412345678"] },
       { name: "what_are_you_interested_in?", values: ["Selling"] }, { name: "post_code", values: ["4064"] }, { name: "city", values: ["Paddington"] }] });
-    expect(r).toEqual({ ok: true, value: { externalId: "L9", name: "Jo Smith", email: "jo@x.com", phone: "+61412345678", interest: "selling", suburb: "Paddington", postcode: "4064", campaignRef: "Spring sellers", adRef: "A9", isTest: false } });
+    expect(r).toEqual({ ok: true, value: { externalId: "L9", name: "Jo Smith", email: "jo@x.com", phone: "+61412345678", interest: "selling", suburb: "Paddington", postcode: "4064", propertyType: null, campaignRef: "Spring sellers", adRef: "A9", isTest: false } });
   });
   it("builds a name from first and last, and rejects a lead with no way to contact", () => {
     const ok = mapMetaLead({ id: "1", field_data: [{ name: "first_name", values: ["Jo"] }, { name: "last_name", values: ["Smith"] }, { name: "email", values: ["j@x.com"] }] });
@@ -72,7 +72,7 @@ describe("Google", () => {
       { column_id: "FULL_NAME", string_value: "Sam Lee" }, { column_id: "EMAIL", string_value: "sam@x.com" }, { column_id: "PHONE_NUMBER", string_value: "+61 400 111 222" },
       { column_id: "POSTAL_CODE", string_value: "4000" }, { column_id: "QUESTION_1", column_name: "Are you buying or selling?", string_value: "Buying" }] });
     expect(r.googleKey).toBe("k");
-    expect(r.lead).toEqual({ ok: true, value: { externalId: "g1", name: "Sam Lee", email: "sam@x.com", phone: "+61400111222", interest: "buying", suburb: null, postcode: "4000", campaignRef: "77", adRef: "5", isTest: true } });
+    expect(r.lead).toEqual({ ok: true, value: { externalId: "g1", name: "Sam Lee", email: "sam@x.com", phone: "+61400111222", interest: "buying", suburb: null, postcode: "4000", propertyType: null, campaignRef: "77", adRef: "5", isTest: true } });
   });
   it("reports an unreadable body without throwing", () => {
     expect(mapGoogleLead(null).lead.ok).toBe(false);
