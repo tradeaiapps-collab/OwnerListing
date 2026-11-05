@@ -1,0 +1,12 @@
+.sale-events .se-table { min-width: 52rem; }
+.sale-events .se-table th:first-child, .sale-events .se-table td:first-child { white-space: nowrap; }
+.sale-events .se-table td:nth-child(2) { min-width: 9rem; }
+.sale-events .se-prop { min-width: 14rem; }
+.sale-events .se-table th, .sale-events .se-table td { vertical-align: top; }
+.sale-events .se-num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.sale-events .se-voided { opacity: 0.65; }
+.sale-events .se-add { margin: var(--space-6) 0 var(--space-4); }
+.sale-events .se-add > summary { cursor: pointer; font-weight: 600; margin-bottom: var(--space-3); }
+.sale-events .row-actions { margin-top: var(--space-2); }
+.sale-events .se-add form.stack { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr)); gap: var(--space-4); align-items: end; max-width: none; }
+.sale-events .se-add form.stack > :is(label:has(textarea), button) { grid-column: 1 / -1; }
