@@ -42,3 +42,10 @@ Add its keys to `.env.example` (the test fails otherwise) and an entry in `src/c
 - Webhooks: `POST /api/webhooks/mls` (secret `MLS_WEBHOOK_SECRET`) and `POST /api/webhooks/push-status?provider=fcm|apns` (secret `PUSH_STATUS_WEBHOOK_SECRET`). Provisional signature scheme until each provider's real one is known: headers `x-webhook-timestamp` (unix seconds, within 5 minutes) and `x-webhook-signature` = hex HMAC-SHA256 of `<timestamp>.<raw body>`. Verified events are stored raw in `provider_events` (repeat deliveries ignored).
 - Health: `GET /api/staff/providers/health` (staff with `config.edit`; `?probe=1` makes one live call to MLS and Zillow). Startup logging of missing/invalid keys is the existing `instrumentation.ts` check.
 - Tables: `provider_credentials`, `provider_sync_logs`, `provider_events`.
+
+## Team payouts (Stripe Connect)
+
+Pays approved team commissions to members' bank accounts. Keys: `PAYOUTS_ENABLED=1`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` (endpoint `/api/webhooks/stripe`, events `account.updated`, `transfer.created`, `transfer.reversed`). Not part of `check:providers` yet.
+- Off by default; every payout route answers "not switched on yet" until set. `sk_live_` keys are refused unless `PAYOUTS_ALLOW_LIVE=1` (needs pen test and counsel sign-off).
+- Members onboard on Stripe's hosted page (`POST /api/me/payout-account`): Stripe does the identity check (KYC) and holds bank details, so no card or bank numbers reach this server (PCI scope stays with Stripe). A payout needs `kyc_status = verified`.
+- Funds come from the platform's Stripe balance; how an agency funds it (top-up) is a decision for john and counsel, as is whether this counts as the platform holding money.

@@ -13,7 +13,7 @@ type Signer = { id: string; userId: string; displayName: string; roleLabel: stri
 type Clause = { id: string; heading: string; text: string };
 type Doc = { id: string; listingId: string; listingTitle: string; title: string; status: string; bodySha256: string; clauses: Clause[]; signers: Signer[]; createdAt: string };
 type Ev = { id: number; actorName: string; eventType: string; ip?: string; detail: Record<string, unknown>; occurredAt: string };
-type View = { document: Doc; viewer: { role: "owner" | "signer"; canSign: boolean }; events: Ev[]; persona: ChatPersona };
+type View = { mfaFresh?: boolean; document: Doc; viewer: { role: "owner" | "signer"; canSign: boolean }; events: Ev[]; persona: ChatPersona };
 type Explained = { heading: string; explanation: string; disclaimer: string };
 
 /**
@@ -66,7 +66,9 @@ export default function SigningPage() {
     setBusy(true); setError("");
     try {
       const r = await post(body);
-      if (r.ok) { setConsent(false); setReason(""); await load(); } else setError((r.data["error"] as string) ?? failMessage);
+      if (r.ok) { setConsent(false); setReason(""); await load(); }
+      else if (r.data["code"] === "mfa_required") window.location.assign(`/mfa?next=${encodeURIComponent(`/signing/${id}`)}`);
+      else setError((r.data["error"] as string) ?? failMessage);
     } catch { setError(failMessage); } finally { setBusy(false); }
   }
   const walkTo = (i: number) => { const c = view?.document.clauses[i]; if (c) void explain(c); else { setWalk(false); setCurrent(null); } };
@@ -123,6 +125,7 @@ export default function SigningPage() {
           {viewer.canSign && (
             <form className="sg-sign stack" onSubmit={e => { e.preventDefault(); void act({ action: "sign", typedName, consent }, "Could not sign the document."); }}>
               <h2>Sign this document</h2>
+              {view.mfaFresh === false && <p role="status">Signing is binding, so we ask you to confirm it's you with your second sign-in step first. <a href={`/mfa?next=${encodeURIComponent(`/signing/${id}`)}`}>Confirm it's you</a></p>}
               <label>Type your full name, exactly as it appears on your account
                 <input value={typedName} onChange={e => setTypedName(e.target.value)} autoComplete="name" required maxLength={120} />
               </label>
