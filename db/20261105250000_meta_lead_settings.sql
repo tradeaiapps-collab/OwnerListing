@@ -1,5 +1,5 @@
 -- Admin-managed Facebook / Instagram lead ads connection (the Meta app and Page token the lead webhook uses).
--- Secrets only as sealed text in value_enc (AES-256-GCM, key from INTEGRATION_SETTINGS_KEY or MESSAGING_SETTINGS_KEY, never stored here). Both NULL = not set.
+-- Secrets only as sealed text in value_enc (AES-256-GCM, key from PROVIDER_CREDENTIAL_KEY, MESSAGING_SETTINGS_KEY or MFA_SECRET_KEY, never stored here). Both NULL = not set.
 CREATE TABLE meta_lead_setting (
   field       TEXT PRIMARY KEY CHECK (field IN ('appId','appSecret','verifyToken','pageToken')),
   value       TEXT,

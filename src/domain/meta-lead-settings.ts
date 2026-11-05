@@ -59,8 +59,8 @@ export function resolveMeta(stored: Partial<Record<MetaField, string>>, env: Env
   return appSecret && verifyToken && pageToken ? { appSecret, verifyToken, pageToken, ...(appId ? { appId } : {}) } : null;
 }
 
-/** Key for sealing the secrets: INTEGRATION_SETTINGS_KEY if set, otherwise the existing MESSAGING_SETTINGS_KEY (32 bytes, base64). */
-export const metaSettingsKey = (env: Env): string | undefined => (env["INTEGRATION_SETTINGS_KEY"]?.trim() ? env["INTEGRATION_SETTINGS_KEY"] : env["MESSAGING_SETTINGS_KEY"]);
+/** Key for sealing the secrets (32 bytes, base64): the first set of PROVIDER_CREDENTIAL_KEY (shared with the Domain connection), MESSAGING_SETTINGS_KEY, MFA_SECRET_KEY. */
+export const metaSettingsKey = (env: Env): string | undefined => ["PROVIDER_CREDENTIAL_KEY", "MESSAGING_SETTINGS_KEY", "MFA_SECRET_KEY"].map(k => env[k]?.trim()).find(v => v);
 
 export type MetaStatus = "connected" | "untested" | "test_failed" | "disconnected";
 export interface MetaTestResult { at: string; ok: boolean; message: string; pageName: string | null; pageId: string | null; appChecked: boolean }

@@ -29,9 +29,10 @@ describe("Meta lead settings (pure)", () => {
     expect(resolveMeta({ appId, appSecret: GOOD.appSecret, verifyToken: GOOD.verifyToken }, {})).toBeNull();
     expect(resolveMeta({ appSecret: GOOD.appSecret, verifyToken: GOOD.verifyToken }, { [META_ENV_NAMES.pageToken]: GOOD.pageToken })).toMatchObject({ pageToken: GOOD.pageToken });
   });
-  it("uses INTEGRATION_SETTINGS_KEY, falling back to MESSAGING_SETTINGS_KEY", () => {
-    expect(metaSettingsKey({ INTEGRATION_SETTINGS_KEY: "i", MESSAGING_SETTINGS_KEY: "m" })).toBe("i");
-    expect(metaSettingsKey({ INTEGRATION_SETTINGS_KEY: " ", MESSAGING_SETTINGS_KEY: "m" })).toBe("m");
+  it("uses PROVIDER_CREDENTIAL_KEY, then MESSAGING_SETTINGS_KEY, then MFA_SECRET_KEY", () => {
+    expect(metaSettingsKey({ PROVIDER_CREDENTIAL_KEY: "p", MESSAGING_SETTINGS_KEY: "m", MFA_SECRET_KEY: "f" })).toBe("p");
+    expect(metaSettingsKey({ PROVIDER_CREDENTIAL_KEY: " ", MESSAGING_SETTINGS_KEY: "m" })).toBe("m");
+    expect(metaSettingsKey({ MFA_SECRET_KEY: "f" })).toBe("f");
     expect(metaSettingsKey({})).toBeUndefined();
   });
   it("reports status from completeness and the last test", () => {

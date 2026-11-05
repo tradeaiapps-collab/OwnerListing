@@ -84,7 +84,7 @@ export default function StaffMetaLeads() {
       {!view && !error && <p className="muted">Loading...</p>}
       {view && (
         <>
-          {!view.keyConfigured && <p role="alert" className="leads-msg bad">Encryption key not configured (INTEGRATION_SETTINGS_KEY or MESSAGING_SETTINGS_KEY). Nothing can be saved until the server has one.</p>}
+          {!view.keyConfigured && <p role="alert" className="leads-msg bad">Encryption key not configured (PROVIDER_CREDENTIAL_KEY, MESSAGING_SETTINGS_KEY or MFA_SECRET_KEY). Nothing can be saved until the server has one.</p>}
           <section className="meta-status" aria-label="Connection status">
             <span className={`status-pill ${PILL[view.status].tone}`}>{PILL[view.status].label}</span>
             <p>

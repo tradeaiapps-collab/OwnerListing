@@ -24,7 +24,7 @@ describe.skipIf(!DATABASE_URL)("Meta lead settings on Postgres", () => {
   let t: TestDb;
   let db: Queryable;
   let admin: StaffActor;
-  const keys = ["APP_URL", "INTEGRATION_SETTINGS_KEY", "MESSAGING_SETTINGS_KEY", "META_APP_ID", "META_APP_SECRET", "META_WEBHOOK_VERIFY_TOKEN", "META_PAGE_ACCESS_TOKEN"] as const;
+  const keys = ["APP_URL", "PROVIDER_CREDENTIAL_KEY", "MESSAGING_SETTINGS_KEY", "MFA_SECRET_KEY", "META_APP_ID", "META_APP_SECRET", "META_WEBHOOK_VERIFY_TOKEN", "META_PAGE_ACCESS_TOKEN"] as const;
   const saved: Record<string, string | undefined> = {};
 
   beforeAll(async () => {
@@ -70,13 +70,13 @@ describe.skipIf(!DATABASE_URL)("Meta lead settings on Postgres", () => {
     expect(await loadMetaConfig(db, process.env)).toEqual(GOOD);
   });
 
-  it("works with INTEGRATION_SETTINGS_KEY and cannot be opened with a different key (fails closed)", async () => {
-    process.env["INTEGRATION_SETTINGS_KEY"] = randomBytes(32).toString("base64");
+  it("works with PROVIDER_CREDENTIAL_KEY and cannot be opened with a different key (fails closed)", async () => {
+    process.env["PROVIDER_CREDENTIAL_KEY"] = randomBytes(32).toString("base64");
     expect((await put(GOOD)).status).toBe(200);
     expect(await loadMetaConfig(db, process.env)).toEqual(GOOD);
-    process.env["INTEGRATION_SETTINGS_KEY"] = randomBytes(32).toString("base64");
+    process.env["PROVIDER_CREDENTIAL_KEY"] = randomBytes(32).toString("base64");
     expect(await loadMetaConfig(db, process.env)).toBeNull();
-    delete process.env["INTEGRATION_SETTINGS_KEY"];
+    delete process.env["PROVIDER_CREDENTIAL_KEY"];
     expect(await loadMetaConfig(db, process.env)).toBeNull();
   });
 
