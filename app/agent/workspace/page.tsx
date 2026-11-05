@@ -75,7 +75,7 @@ export default function AgentWorkspace() {
   return (
     <main className="aw">
       <h1>Agent workspace</h1>
-      <p><a href="/agent/listings">Appointed listings</a> · <a href="/agent/appointments">Invitations</a></p>
+      <p><a href="/agent/listings">Appointed listings</a> · <a href="/agent/appointments">Invitations</a> · <a href="/agent/reports">Reports</a></p>
       {error && <p role="alert">{error}</p>}
       {!data && !error && <p className="muted" role="status">Loading…</p>}
       {p && f && (
