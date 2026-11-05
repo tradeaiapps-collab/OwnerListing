@@ -161,6 +161,20 @@ const PROVIDERS = [
     }
   },
   {
+    // Mirrors metaConfig in src/adapters/lead-providers.ts: all three or the Meta lead webhook stays off (503).
+    id: "meta_leads", label: "Facebook / Instagram Lead Ads", required: false,
+    unlocks: "Leads from Facebook and Instagram lead ads arriving in the staff lead inbox at /staff/leads.",
+    whenOff: "The Meta lead webhook answers 503; Google lead forms (keyed per source in /staff/leads) still work.",
+    keys: ["META_APP_SECRET", "META_WEBHOOK_VERIFY_TOKEN", "META_PAGE_ACCESS_TOKEN"],
+    check(get) {
+      const p = [];
+      for (const k of ["META_APP_SECRET", "META_WEBHOOK_VERIFY_TOKEN", "META_PAGE_ACCESS_TOKEN"]) if (get(k) && /\s/.test(get(k))) p.push(`${k} must not contain spaces.`);
+      const set = ["META_APP_SECRET", "META_WEBHOOK_VERIFY_TOKEN", "META_PAGE_ACCESS_TOKEN"].filter(k => get(k));
+      if (set.length > 0 && set.length < 3) p.push("Set META_APP_SECRET, META_WEBHOOK_VERIFY_TOKEN and META_PAGE_ACCESS_TOKEN together; with only some set the Meta webhook stays off.");
+      return p;
+    }
+  },
+  {
     id: "address", label: "Address suggestions (Google Places)", required: false,
     unlocks: "Street address suggestions in the listing form, which also fill suburb, state and postcode.",
     whenOff: "Suggestions come from Photon's public OpenStreetMap service (ADDRESS_PHOTON_URL for a self-hosted one), which is fair-use only and not for launch traffic.",
