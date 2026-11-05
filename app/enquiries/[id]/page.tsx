@@ -4,6 +4,7 @@ import { useParams } from "next/navigation";
 import { showMeFor, type AssistantThread, type AssistantTurn, type ChatAnswer, type ChatFacts, type ChatPose, type ChatTopic } from "../../../src/domain/chat-assistant";
 import { personaPose } from "../../../src/domain/assistant-persona";
 import { formatAud } from "../../../src/domain/listing-details";
+import type { ChatLang } from "../../../src/domain/language-detect";
 import { JSON_HEADERS } from "../../listings/ui";
 import { AiReplyPanel } from "../ai-reply-panel";
 import { ElenaStage, speak, type StageState } from "../elena-stage";
@@ -78,6 +79,39 @@ export default function Thread() {
   const endRef = useRef<HTMLDivElement>(null);
   const alive = useRef(true);
   const [walking, setWalking] = useState(false);
+  // Language: her answers follow the language the person writes in, unless they choose one. Messages can be translated one by one.
+  const [lang, setLang] = useState<{ language: ChatLang | "auto"; effective: ChatLang; options: { code: ChatLang; name: string; rtl: boolean; speech: string }[] } | null>(null);
+  const [msgTr, setMsgTr] = useState<Record<string, { state: "loading" } | { state: "error"; message: string } | { state: "done"; text: string; to: ChatLang; note: string; rtl: boolean }>>({});
+  const speechTag = lang?.options.find(o => o.code === lang.effective)?.speech ?? "en-AU";
+
+  const loadLang = useCallback(async () => {
+    try {
+      const r = await fetch("/api/settings/language");
+      if (r.ok) setLang(await r.json());
+    } catch { /* English only */ }
+  }, []);
+
+  async function chooseLang(language: string) {
+    setError("");
+    const r = await fetch("/api/settings/language", { method: "PUT", headers: JSON_HEADERS, body: JSON.stringify({ language }) });
+    if (!r.ok) { setError("Couldn't save your language. Try again."); return; }
+    setLang(await r.json());
+    setMsgTr({});
+    await loadAi();
+  }
+
+  async function translateMessage(messageId: string) {
+    setMsgTr(m => ({ ...m, [messageId]: { state: "loading" } }));
+    try {
+      const r = await fetch(`/api/enquiries/${id}/messages/${messageId}/translate`, { method: "POST", headers: JSON_HEADERS, body: JSON.stringify({}) });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) { setMsgTr(m => ({ ...m, [messageId]: { state: "error", message: (d as { error?: string }).error ?? "Couldn't translate that message." } })); return; }
+      const t = (d as { translation: { text: string; to: ChatLang; note: string; rtl: boolean } }).translation;
+      setMsgTr(m => ({ ...m, [messageId]: { state: "done", ...t } }));
+    } catch {
+      setMsgTr(m => ({ ...m, [messageId]: { state: "error", message: "Couldn't translate that message." } }));
+    }
+  }
 
   const load = useCallback(async () => {
     setLoadError("");
@@ -94,7 +128,11 @@ export default function Thread() {
   const loadAi = useCallback(async () => {
     try {
       const r = await fetch(`/api/enquiries/${id}/assistant`);
-      if (r.ok) setAi(await r.json());
+      if (r.ok) {
+        const fresh: AssistantThread = await r.json();
+        // A fresh answer keeps its in-session translation note until the saved copy is returned.
+        setAi(prev => ({ ...fresh, turns: fresh.turns.map(t => { const keep = prev?.turns.find(x => x.id === t.id)?.localized; return keep ? { ...t, localized: keep } : t; }) }));
+      }
     } catch { /* the thread still works without the assistant */ }
   }, [id]);
 
@@ -106,7 +144,7 @@ export default function Thread() {
     } catch { /* the thread still works without this panel */ }
   }, [id]);
 
-  useEffect(() => { void load(); void loadOlr(); void loadAi(); }, [load, loadOlr, loadAi]);
+  useEffect(() => { void load(); void loadOlr(); void loadAi(); void loadLang(); }, [load, loadOlr, loadAi, loadLang]);
   // The floating guide is the same character; on this page she is already on stage, so the launcher steps aside.
   useEffect(() => { document.body.classList.add("el-chat-page"); return () => document.body.classList.remove("el-chat-page"); }, []);
   useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
@@ -170,7 +208,7 @@ export default function Thread() {
     const Ctor = w.SpeechRecognition ?? w.webkitSpeechRecognition;
     if (!Ctor) { setError("Speaking to her isn't supported in this browser. You can type instead."); return; }
     const rec = new Ctor();
-    rec.lang = "en-AU";
+    rec.lang = speechTag;
     setError("");
     setListening(true);
     rec.onresult = e => {
@@ -198,7 +236,10 @@ export default function Thread() {
       if (fromComposer) setDraft("");
       setAi(a => (a ? { ...a, turns: [...a.turns, turn] } : a));
       point(TARGETS[turn.topic](turn.id));
-      if (voice && speak(turn.answer, () => setSpeaking(false))) setSpeaking(true);
+      // She speaks in the language she wrote in; when only the English fallback exists she reads the English.
+      const spoken = turn.localized?.mode === "translated" ? { text: turn.localized.text, tag: lang?.options.find(o => o.code === turn.localized!.locale)?.speech ?? "en-AU" } : { text: turn.answer, tag: "en-AU" };
+      if (voice && speak(spoken.text, () => setSpeaking(false), spoken.tag)) setSpeaking(true);
+      if (turn.localized) { void loadLang(); void loadAi(); }
       requestAnimationFrame(() => endRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }));
     } catch {
       setError("The assistant could not answer just now.");
@@ -274,7 +315,8 @@ export default function Thread() {
                 <li className="el-turn">
                   <div className="el-answer">
                     <span className="el-answer-who">{ai.persona.name} · AI assistant</span>
-                    <p>{ai.welcome.text}</p>
+                    <p {...(ai.localization ? { lang: ai.localization.locale, dir: ai.localization.rtl ? "rtl" : "ltr" } : {})}>{ai.localization?.welcome ?? ai.welcome.text}</p>
+                    {ai.localization && <p className="el-tr-note">{ai.localization.machineNote}</p>}
                   </div>
                   {latestTurnId === undefined && suggestions(ai.welcome.suggestions)}
                 </li>
@@ -290,6 +332,24 @@ export default function Thread() {
                         {m.body}
                         <small>{who}, {time(m.sentAt)}</small>
                       </div>
+                      {!m.automated && (() => {
+                        const tr = msgTr[m.id];
+                        return (
+                          <div className="el-translate">
+                            {tr?.state === "done" ? (
+                              <div className="el-tr-box" lang={tr.to} dir={tr.rtl ? "rtl" : "ltr"}>
+                                <p>{tr.text}</p>
+                                <small>{tr.note}</small>
+                              </div>
+                            ) : (
+                              <button type="button" className="el-tr-btn" disabled={tr?.state === "loading"} onClick={() => void translateMessage(m.id)}>
+                                {tr?.state === "loading" ? "Translating…" : "Translate"}
+                              </button>
+                            )}
+                            {tr?.state === "error" && <p role="alert" className="el-tr-note">{tr.message}</p>}
+                          </div>
+                        );
+                      })()}
                       {flag && <MessageWarning flag={flag} />}
                     </li>
                   );
@@ -301,11 +361,30 @@ export default function Thread() {
                   <li key={t.id} className="el-turn">
                     <div className={`enq-msg el-question${mine(t.askedByUserId) ? " mine" : ""}${pc(`q-${t.id}`)}`}>
                       {t.question}
+                      {ai?.localization?.turns[t.id]?.question && <span className="el-tr-line" lang={ai.localization.locale} dir={ai.localization.rtl ? "rtl" : "ltr"}>{ai.localization.turns[t.id]!.question}</span>}
                       <small>{mine(t.askedByUserId) ? "You" : roleName(t.askedByRole)} asked {ai?.persona.name}, {time(t.createdAt)}</small>
                     </div>
                     <div className="el-answer">
                       <span className="el-answer-who">{ai?.persona.name} · AI assistant</span>
-                      <p>{t.answer}</p>
+                      {(() => {
+                        const saved = ai?.localization?.turns[t.id]?.answer;
+                        const tr = t.localized?.mode === "translated" ? t.localized : saved ? { text: saved, locale: ai!.localization!.locale, rtl: ai!.localization!.rtl, note: ai!.localization!.machineNote } : undefined;
+                        if (!tr) {
+                          return (
+                            <>
+                              {t.localized?.mode === "english_fallback" && <p className="el-tr-note" lang={t.localized.locale} dir={t.localized.rtl ? "rtl" : "ltr"}>{t.localized.text}</p>}
+                              <p>{t.answer}</p>
+                            </>
+                          );
+                        }
+                        return (
+                          <>
+                            <p lang={tr.locale} dir={tr.rtl ? "rtl" : "ltr"}>{tr.text}</p>
+                            <p className="el-tr-note" lang={tr.locale} dir={tr.rtl ? "rtl" : "ltr"}>{tr.note}</p>
+                            <details className="el-tr-orig"><summary>English original</summary><p>{t.answer}</p></details>
+                          </>
+                        );
+                      })()}
                       {pills.length > 0 && (
                         <ul className="el-pills" aria-label="What this refers to">
                           {pills.map((p, i) => <li key={i} className={`el-pill${pc(p.target)}`}>{p.text}</li>)}
@@ -345,6 +424,15 @@ export default function Thread() {
                 )}
                 <button type="submit" disabled={busy || !draft.trim()}>{busy ? "Sending…" : "Send"}</button>
               </div>
+              {ai && lang && (
+                <div className="el-lang">
+                  <label htmlFor="el-lang-select">Language for {ai.persona.name}</label>
+                  <select id="el-lang-select" value={lang.language} onChange={e => void chooseLang(e.target.value)}>
+                    <option value="auto">Automatic (the language you write in)</option>
+                    {lang.options.map(o => <option key={o.code} value={o.code}>{o.name}</option>)}
+                  </select>
+                </div>
+              )}
               {ai && <p className="el-note">{ai.persona.name} sees this listing and the offer terms you both see, never private notes or the owner&apos;s lowest price. Questions to her are shown to both of you.</p>}
               {error && <p role="alert">{error}</p>}
             </form>
