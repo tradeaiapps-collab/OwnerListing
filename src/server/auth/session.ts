@@ -8,6 +8,8 @@ export interface SessionPayload {
   exp: number;
   /** When this session last passed a second-factor check (seconds since epoch). Absent until it has. */
   mfa?: number;
+  /** Phone app only: the mobile_session id behind a bearer token. Never set on a cookie. */
+  sid?: string;
 }
 
 const b64 = (buf: Buffer) => buf.toString("base64url");

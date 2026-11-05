@@ -4,6 +4,7 @@ import { useParams } from "next/navigation";
 import { AMENITY_LABELS, formatPrice, isAmenity } from "../../../src/domain/listing-details";
 import { actionHref } from "../../../src/domain/listing-actions";
 import { ListingGallery } from "../gallery";
+import { VideoTour } from "../video-tour";
 import { LocationMap } from "../location-map";
 import { JSON_HEADERS } from "../ui";
 import { SaveAsTemplate } from "../save-as-template";
@@ -226,6 +227,12 @@ export default function ListingDetail() {
   const [docs, setDocs] = useState<Doc[]>([]);
   const [error, setError] = useState("");
   const [userType, setUserType] = useState<string | null>(null);
+  const [videoReturn, setVideoReturn] = useState<"paid" | "cancelled" | null>(null);
+
+  useEffect(() => {
+    const v = new URLSearchParams(window.location.search).get("video");
+    setVideoReturn(v === "paid" || v === "cancelled" ? v : null);
+  }, [id]);
 
   useEffect(() => {
     fetch("/api/auth/me").then(async r => setUserType(r.ok ? (await r.json()).user?.userType ?? null : null)).catch(() => setUserType(null));
@@ -285,6 +292,7 @@ export default function ListingDetail() {
             listing.bathrooms !== undefined && `${listing.bathrooms} bathroom${listing.bathrooms === 1 ? "" : "s"}`,
             listing.parking !== undefined && `${listing.parking} car space${listing.parking === 1 ? "" : "s"}`
           ].filter(Boolean).join(", ")} />
+          <VideoTour listingId={listing.id} signedIn={userType !== null} returned={videoReturn} />
           <div className="pd-head">
             <p className="pd-tags">
               <span className="lcard-tag detail-tag">{tx === "sale" ? "For sale" : "For rent"}</span>

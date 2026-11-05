@@ -93,6 +93,8 @@ export const KINDS = {
   appointment_accepted: "appointments",
   appointment_declined: "appointments",
   appointment_reminder: "appointments",
+  booking_received: "appointments",
+  booking_conflict: "appointments",
   offer_received: "offers",
   offer_accepted: "offers",
   offer_rejected: "offers",
@@ -131,6 +133,8 @@ export function renderNotification(kind: Kind, p: NotificationParams = {}): Rend
     case "appointment_accepted": return t("Appointment accepted", `${name} accepted the appointment for ${listing}.`);
     case "appointment_declined": return t("Appointment declined", `${name} declined the appointment for ${listing}.`);
     case "appointment_reminder": return t("Reminder: invitation waiting", `${name}'s invitation to act as agent for ${listing} is still waiting for your answer.`);
+    case "booking_received": return t("New booking from a portal", `${name} booked ${listing} through a listing portal. The dates are now blocked on your calendar.`);
+    case "booking_conflict": return t("Booking clashes with another", `A booking from ${name} for ${listing} overlaps dates that are already booked. Contact the portal or the guest to sort it out.`);
     case "offer_received": return t("New offer received", `A new offer was made on ${listing}. Review it in your offers.`);
     case "offer_accepted": return t("Offer accepted", `Your offer on ${listing} was accepted by the owner.`);
     case "offer_rejected": return t("Offer not accepted", `Your offer on ${listing} was not accepted.`);

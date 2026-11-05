@@ -131,6 +131,20 @@ const PROVIDERS = [
     check: get => (get("ABN_LOOKUP_GUID") && !ABN_GUID.test(get("ABN_LOOKUP_GUID")) ? ["ABN_LOOKUP_GUID must be the GUID the ABR emailed (8-4-4-4-12 hex)."] : [])
   },
   {
+    id: "docusign", label: "DocuSign e-signing", required: false, alsoIn: "docs/DOCUSIGN.md",
+    unlocks: "Signing contracts, disclosures and inspection reports through DocuSign, with signed PDFs kept in document history.",
+    whenOff: "Documents are signed with the built-in click-to-sign (SIGNING_PROVIDER unset). With SIGNING_PROVIDER=docusign and keys missing, new documents are refused.",
+    keys: ["DOCUSIGN_INTEGRATION_KEY", "DOCUSIGN_USER_ID", "DOCUSIGN_ACCOUNT_ID", "DOCUSIGN_PRIVATE_KEY", "DOCUSIGN_CONNECT_HMAC_KEY"], optionalKeys: ["DOCUSIGN_BASE_PATH", "DOCUSIGN_OAUTH_HOST", "SIGNING_PROVIDER"],
+    check(get) {
+      const p = [];
+      const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      for (const k of ["DOCUSIGN_INTEGRATION_KEY", "DOCUSIGN_USER_ID", "DOCUSIGN_ACCOUNT_ID"]) if (get(k) && !uuid.test(get(k))) p.push(`${k} must be a GUID (8-4-4-4-12 hex).`);
+      if (get("DOCUSIGN_PRIVATE_KEY") && !/-----BEGIN (?:RSA )?PRIVATE KEY-----/.test(get("DOCUSIGN_PRIVATE_KEY"))) p.push("DOCUSIGN_PRIVATE_KEY must be the RSA private key in PEM form (use \\n for line breaks).");
+      if (get("DOCUSIGN_CONNECT_HMAC_KEY") && get("DOCUSIGN_CONNECT_HMAC_KEY").length < 16) p.push("DOCUSIGN_CONNECT_HMAC_KEY should be the Connect HMAC key from DocuSign (at least 16 characters).");
+      if (get("DOCUSIGN_BASE_PATH") && !/^https:\/\/(?:[a-z0-9-]+\.)+docusign\.(?:net|com)\/restapi\/?$/i.test(get("DOCUSIGN_BASE_PATH"))) p.push("DOCUSIGN_BASE_PATH must be your DocuSign account's https .../restapi address (demo: https://demo.docusign.net/restapi).");
+      if (get("DOCUSIGN_OAUTH_HOST") && !/^(?:[a-z0-9-]+\.)+docusign\.(?:net|com)$/i.test(get("DOCUSIGN_OAUTH_HOST"))) p.push("DOCUSIGN_OAUTH_HOST must be a DocuSign host (demo: account-d.docusign.com, live: account.docusign.com).");
+      if (get("SIGNING_PROVIDER") && !["builtin", "docusign"].includes(get("SIGNING_PROVIDER").toLowerCase())) p.push("SIGNING_PROVIDER must be builtin or docusign.");
+      if (get("APP_URL") && get("DOCUSIGN_INTEGRATION_KEY") && !/^https:\/\//.test(get("APP_URL"))) p.push("APP_URL must be https so DocuSign can call the webhook.");
     // Mirrors domainConfig in src/adapters/feed-providers.ts: both keys or the Domain feed connector stays off.
     id: "domain", label: "Domain API (property feeds)", required: false,
     unlocks: "Domain listings and sold results imported into property data and, where the licence allows, comparables.",

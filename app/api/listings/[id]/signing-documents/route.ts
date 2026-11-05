@@ -3,6 +3,7 @@ import { documentsForListing, generateDocument } from "../../../../../src/domain
 import { getActor } from "../../../../../src/server/context";
 import { csrfGuard } from "../../../../../src/server/csrf";
 import { failure, unauthenticated } from "../../../../../src/server/http";
+import { getEsignDeps, signingMode } from "../../../../../src/server/esign";
 import { getSigningRepo, requestContext, signingIds } from "../../../../../src/server/signing-db";
 import { withApi } from "../../../../../src/server/api/with-api";
 
@@ -28,7 +29,9 @@ async function handlePost(req: Request, { params }: Ctx) {
   const actor = await getActor(req);
   if (!actor) return unauthenticated();
   const { id } = await params;
-  const r = await generateDocument(getSigningRepo(), actor, id, await req.json().catch(() => null), signingIds, requestContext(req));
+  const provider = signingMode();
+  if (provider === "docusign" && !getEsignDeps()) return NextResponse.json({ error: "Document signing through DocuSign is not set up yet." }, { status: 503 });
+  const r = await generateDocument(getSigningRepo(), actor, id, await req.json().catch(() => null), signingIds, requestContext(req), { provider });
   return r.ok ? NextResponse.json({ document: r.value }, { status: 201 }) : failure(r);
 }
 

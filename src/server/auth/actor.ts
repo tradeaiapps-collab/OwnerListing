@@ -1,6 +1,8 @@
 import { mfaClaimValid, mfaRequired } from "../../domain/mfa";
 import type { Actor } from "../../domain/listing-service";
 import type { Queryable } from "../db";
+import { liveMobileSession } from "./mobile-session-db";
+import { mobileBearer, verifyMobileAccess } from "./mobile-token";
 import { SESSION_COOKIE, SESSION_TTL_SECONDS, readCookie, verifySession, type SessionPayload } from "./session";
 
 /** A signed-in session and where it stands on the second factor. */
@@ -16,10 +18,26 @@ const epoch = (v: unknown): number | undefined => (v === null || v === undefined
  * The session for this request, confirmed against the database now, whether or not it has passed MFA yet. The cookie is only a claim:
  * the app_user must exist, be active, and have the same user type as the cookie. Only the MFA routes use this directly; every other
  * route uses actorFromRequestChecked, which also requires the second factor.
+ * The phone app sends a bearer access token instead of the cookie (see mobile-token.ts). When one is present only it counts: the
+ * cookie is ignored, and the phone session behind it must still be live. Its second step is read from that session, not the token.
  */
 export async function sessionFromRequestChecked(db: Queryable, req: Request, secret: string, nowSeconds: number): Promise<SessionState | null> {
-  const p = verifySession(readCookie(req, SESSION_COOKIE), secret, nowSeconds);
-  if (!p) return null;
+  const bearer = mobileBearer(req);
+  let p: SessionPayload | null;
+  /** When this sign-in began: a cookie is issued with exp = issue time + TTL; a phone session records its start. */
+  let issuedAt: number;
+  if (bearer !== undefined) {
+    const m = verifyMobileAccess(bearer, secret, nowSeconds);
+    if (!m) return null;
+    const live = await liveMobileSession(db, m.sid, m.uid);
+    if (!live) return null;
+    p = { uid: m.uid, ut: m.ut, exp: m.exp, sid: m.sid, ...(live.mfaAt !== undefined ? { mfa: live.mfaAt } : {}) };
+    issuedAt = live.createdAt;
+  } else {
+    p = verifySession(readCookie(req, SESSION_COOKIE), secret, nowSeconds);
+    if (!p) return null;
+    issuedAt = p.exp - SESSION_TTL_SECONDS;
+  }
   const res = await db.query(
     `SELECT u.id, u.user_type,
             EXISTS (SELECT 1 FROM mfa_factor f WHERE f.user_id = u.id AND f.confirmed_at IS NOT NULL AND f.revoked_at IS NULL) AS mfa_enrolled,
@@ -34,15 +52,15 @@ export async function sessionFromRequestChecked(db: Queryable, req: Request, sec
   const row = res.rows[0];
   if (!row || row["id"] !== p.uid || row["user_type"] !== p.ut) return null;
   // A staff reset of the second factor signs the user out everywhere: any session issued at or before it is refused, so a stolen or
-  // still-signed-in session cannot enrol a new factor in the user's place. Every session is issued with exp = issue time + TTL.
+  // still-signed-in session cannot enrol a new factor in the user's place.
   const resetAt = epoch(row["mfa_reset_at"]);
-  if (resetAt !== undefined && p.exp - SESSION_TTL_SECONDS <= resetAt) return null;
+  if (resetAt !== undefined && issuedAt <= resetAt) return null;
   // A session from before the account was deleted never comes back with a restore: the user signs in again.
   const restoredAt = epoch(row["restored_at"]);
-  if (restoredAt !== undefined && p.exp - SESSION_TTL_SECONDS <= restoredAt) return null;
+  if (restoredAt !== undefined && issuedAt <= restoredAt) return null;
   // A password reset signs the account out everywhere, the same way.
   const passwordAt = epoch(row["password_changed_at"]);
-  if (passwordAt !== undefined && p.exp - SESSION_TTL_SECONDS <= passwordAt) return null;
+  if (passwordAt !== undefined && issuedAt <= passwordAt) return null;
   const enrolled = row["mfa_enrolled"] === true;
   return {
     actor: { userId: p.uid, userType: p.ut },

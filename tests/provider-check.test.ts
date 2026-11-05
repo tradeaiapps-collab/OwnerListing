@@ -36,6 +36,11 @@ const FULL: Record<string, string> = {
   APNS_BUNDLE_ID: "au.com.example.ownerlisting",
   APNS_PRIVATE_KEY: "-----BEGIN PRIVATE KEY-----\\nMIIB\\n-----END PRIVATE KEY-----\\n",
   ABN_LOOKUP_GUID: "12345678-90ab-cdef-1234-567890abcdef",
+  DOCUSIGN_INTEGRATION_KEY: "11111111-2222-4333-8444-555555555555",
+  DOCUSIGN_USER_ID: "66666666-7777-4888-8999-000000000000",
+  DOCUSIGN_ACCOUNT_ID: "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+  DOCUSIGN_PRIVATE_KEY: "-----BEGIN RSA PRIVATE KEY-----\\nMIIB\\n-----END RSA PRIVATE KEY-----\\n",
+  DOCUSIGN_CONNECT_HMAC_KEY: "h".repeat(32),
   DOMAIN_CLIENT_ID: "client_0123456789abcdef0123456789abcdef",
   DOMAIN_CLIENT_SECRET: "secret_0123456789abcdef0123456789abcdef",
   GOOGLE_PLACES_API_KEY: "AIza" + "b".repeat(35),
@@ -48,7 +53,7 @@ const by = (env: Record<string, string | undefined>, production = true) =>
 describe("provider readiness check", () => {
   it("reports every provider ready with a full set of real-looking keys", () => {
     const r = checkProviders(FULL, { production: true });
-    expect(r.map(x => x.id)).toEqual(["google", "mfa", "payway", "smtp", "sms", "webpush", "fcm", "apns", "abn", "domain", "address", "maptiles"]);
+    expect(r.map(x => x.id)).toEqual(["google", "mfa", "payway", "smtp", "sms", "webpush", "fcm", "apns", "abn", "docusign", "domain", "address", "maptiles"]);
     expect(r.filter(x => x.status !== "ready")).toEqual([]);
     expect(r.some(x => x.blocking)).toBe(false);
   });
@@ -146,5 +151,15 @@ describe("provider readiness check", () => {
       if (ready && env.NEXT_PUBLIC_MAP_PROVIDER !== "openstreetmap") expect(src.provider).toBe("custom");
       if (env.NEXT_PUBLIC_MAP_PROVIDER === "openstreetmap" || !env.NEXT_PUBLIC_MAP_TILE_URL) expect(src.provider).toBe("openstreetmap");
     }
+  });
+
+  it("DocuSign is off without keys, flags a half set, and rejects a non-DocuSign host", () => {
+    expect(by({}).docusign.status).toBe("off");
+    const { DOCUSIGN_PRIVATE_KEY: _k, ...partial } = FULL;
+    expect(by(partial).docusign.status).toBe("incomplete");
+    const bad = by({ ...FULL, DOCUSIGN_BASE_PATH: "https://evil.example.com/restapi" }).docusign;
+    expect(bad.status).toBe("invalid");
+    expect(by({ ...FULL, DOCUSIGN_ACCOUNT_ID: "nope" }).docusign.status).toBe("invalid");
+    expect(by({ ...FULL, SIGNING_PROVIDER: "docusign" }).docusign.status).toBe("ready");
   });
 });
