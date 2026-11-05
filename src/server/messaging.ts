@@ -1,7 +1,7 @@
 import { createHmac } from "node:crypto";
 import { readBrand } from "../config/brand";
 import { alertDeliveryFromEnv } from "../adapters/alert-delivery";
-import { emailFromConfig, type EmailPort, type HostResolver, type TransportFactory } from "../adapters/email";
+import { emailFromConfig, type EmailAttachment, type EmailPort, type HostResolver, type TransportFactory } from "../adapters/email";
 import { failed, type SendResult } from "../adapters/messaging";
 import { SmsSendError, smsFromConfig, verificationCodeText, type SmsTextPort } from "../adapters/sms";
 import type { AlertDeliveryPort, AlertMessage } from "../domain/alerts";
@@ -68,7 +68,7 @@ export async function getEmailPort(db: Queryable, env: Env, template: string, de
 }
 
 /** Sends one plain notice email on the settings in force now. True only if it went out; never throws (a notice never blocks the action). */
-export async function sendNotice(db: Queryable, template: string, to: string, msg: { subject: string; text: string }, env: Env = process.env): Promise<boolean> {
+export async function sendNotice(db: Queryable, template: string, to: string, msg: { subject: string; text: string; attachments?: readonly EmailAttachment[] }, env: Env = process.env): Promise<boolean> {
   try {
     const port = await getEmailPort(db, env, template);
     return port.configured && (await port.send({ to, ...msg })).status === "sent";
