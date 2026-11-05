@@ -33,3 +33,10 @@ PayWay, SMTP, SMS and ABN Lookup may stay OFF; their features then stay off as d
 
 ## Adding a provider
 Add its keys to `.env.example` (the test fails otherwise) and an entry in `src/config/provider-check.mjs` that mirrors the real reader; `tests/provider-check.test.ts` checks the two agree.
+
+## Team payouts (Stripe Connect)
+
+Pays approved team commissions to members' bank accounts. Keys: `PAYOUTS_ENABLED=1`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` (endpoint `/api/webhooks/stripe`, events `account.updated`, `transfer.created`, `transfer.reversed`). Not part of `check:providers` yet.
+- Off by default; every payout route answers "not switched on yet" until set. `sk_live_` keys are refused unless `PAYOUTS_ALLOW_LIVE=1` (needs pen test and counsel sign-off).
+- Members onboard on Stripe's hosted page (`POST /api/me/payout-account`): Stripe does the identity check (KYC) and holds bank details, so no card or bank numbers reach this server (PCI scope stays with Stripe). A payout needs `kyc_status = verified`.
+- Funds come from the platform's Stripe balance; how an agency funds it (top-up) is a decision for john and counsel, as is whether this counts as the platform holding money.
