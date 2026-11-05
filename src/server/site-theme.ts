@@ -6,7 +6,7 @@ import { loadDraft, loadPublished } from "./site-theme-db";
 import { PREVIEW_PARAM, verifyPreviewToken } from "./theme-preview";
 
 /** What the layout needs to draw a page: the settings, where they came from, and (for a preview) the token to put on image links. */
-export interface ResolvedTheme { settings: ThemeSettings; version: number | null; source: "published" | "draft" | "default"; previewToken: string | null }
+export interface ResolvedTheme { settings: ThemeSettings; version: number | null; source: "published" | "draft" | "default" | "tenant"; previewToken: string | null; tenantId?: string }
 
 export const THEME_CACHE_MS = 45_000;
 const FAILURE_CACHE_MS = 10_000;
