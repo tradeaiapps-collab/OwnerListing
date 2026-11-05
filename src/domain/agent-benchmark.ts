@@ -1,5 +1,5 @@
 import { agentLabel } from "./admin-elena-insights";
-import { medianOf } from "./market-forecast";
+import { medianOf } from "./area-forecast";
 import { staffCan, type StaffActor } from "./staff-access";
 
 /**

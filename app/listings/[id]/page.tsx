@@ -350,6 +350,7 @@ export default function ListingDetail() {
           {est !== undefined && <p className="mc-est">You&apos;d pay about <strong>{est.toLocaleString("en-AU", { style: "currency", currency: "AUD", maximumFractionDigits: 0 })}/month</strong> in loan repayments (30 years, 20% deposit, example rate). <a href="#pd-mortgage">Adjust</a></p>}
           <div className="detail-actions">
             <a className="button" href={actionHref(listing.id, "enquire", userType !== null)}>Enquire</a>
+            {userType === "buyer" && <a className="button secondary" href={`/client/portal?listing=${listing.id}`}>Book a viewing</a>}
             <SaveButton listingId={listing.id} userType={userType} />
           </div>
           <SaveAsTemplate listingId={listing.id} defaultName={listing.title} userType={userType} />

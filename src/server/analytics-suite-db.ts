@@ -1,6 +1,6 @@
 import { ANALYTICS_TIME_ZONE } from "../domain/admin-analytics";
 import type { AgentMetricFacts } from "../domain/agent-benchmark";
-import type { SaleFact } from "../domain/market-forecast";
+import type { SaleFact } from "../domain/area-forecast";
 import type { Queryable } from "./db";
 
 /**

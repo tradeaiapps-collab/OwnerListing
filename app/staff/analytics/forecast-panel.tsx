@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useId, useRef, useState, type PointerEvent, type RefObject } from "react";
 import { formatKpi } from "../../../src/domain/admin-dashboard";
-import type { ForecastPoint, ForecastView } from "../../../src/domain/market-forecast";
+import type { ForecastPoint, ForecastView } from "../../../src/domain/area-forecast";
 import { DataTable } from "../charts";
 import "../../styles/analytics-suite.css";
 

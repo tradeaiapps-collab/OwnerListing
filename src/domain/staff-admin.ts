@@ -34,10 +34,14 @@ export const STAFF_SECTIONS: readonly StaffSection[] = [
   { href: "/staff/messaging", label: "Messaging settings", permissions: ["messaging.settings"] },
   { href: "/staff/listing-syndication", label: "Listing portals", permissions: ["syndication.manage"] },
   { href: "/staff/site", label: "Site appearance", permissions: ["theme.edit"] },
+  { href: "/staff/white-label", label: "Agency brands", permissions: ["theme.edit"] },
   { href: "/staff/assistant", label: "Guide assistant", permissions: ["site.content.edit", "site.content.publish"] },
   { href: "/staff/ai", label: "AI engine", permissions: ["ai.engine_set"] },
   { href: "/staff/commissions", label: "Agent commissions", permissions: ["commission.manage"] },
+  { href: "/staff/automation", label: "Automation", permissions: ["automation.manage"] },
+  { href: "/staff/campaigns", label: "Campaigns", permissions: ["campaign.manage"] },
   { href: "/staff/feeds", label: "Property data feeds", permissions: ["feeds.manage"] },
+  { href: "/staff/lead-scoring", label: "Lead scoring", permissions: ["feeds.manage"] },
   { href: "/staff/investments", label: "Investor projects review", permissions: ["investment.review"] },
   { href: "/staff/investments/settings", label: "Investor module switch", permissions: ["investment.manage"] }
 ];

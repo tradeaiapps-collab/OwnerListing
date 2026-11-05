@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { ANALYTICS_TIME_ZONE } from "../domain/admin-analytics";
-import { addMonths, buildForecastView, HISTORY_MONTHS, parseSegment } from "../domain/market-forecast";
+import { addMonths, buildForecastView, HISTORY_MONTHS, parseSegment } from "../domain/area-forecast";
 import { localDateInZone } from "../domain/timezone";
 import { loadSaleFacts } from "./analytics-suite-db";
 import { getDb } from "./context";

@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   buildBenchmark, experienceBand, metricsFor, parsePeriodDays, peerGroup, percentile, periods, priceBand, type AgentMetricFacts
 } from "../src/domain/agent-benchmark";
-import { addMonths, buildForecastView, forecastSegment, parseSegment, segmentOptions, tQuantile, type SaleFact } from "../src/domain/market-forecast";
+import { addMonths, buildForecastView, forecastSegment, parseSegment, segmentOptions, tQuantile, type SaleFact } from "../src/domain/area-forecast";
 import { buildTeamTrends, slope } from "../src/domain/team-trends";
 import type { StaffActor } from "../src/domain/staff-access";
 
