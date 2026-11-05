@@ -8,6 +8,8 @@ import { SESSION_COOKIE, SESSION_TTL_SECONDS, readCookie, verifySession, type Se
 /** A signed-in session and where it stands on the second factor. */
 export interface SessionState {
   actor: Actor;
+  /** True for a staff session (its own cookie; see getMfaSessionState). Its actor and payload.ut are placeholders: only the user id, `exp` and `mfa` mean anything. */
+  staff?: true;
   payload: SessionPayload;
   mfa: { required: boolean; enrolled: boolean; satisfied: boolean };
 }

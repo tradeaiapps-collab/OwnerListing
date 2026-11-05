@@ -4,6 +4,8 @@ import type { StaffActor } from "../src/domain/staff-access";
 const state = vi.hoisted(() => ({ staff: null as StaffActor | null, calls: [] as [string, ...unknown[]][], out: { ok: true, value: {} } as unknown }));
 vi.mock("../src/server/context", () => ({ getDb: () => ({ query: async () => ({ rows: [] }) }), getActor: async () => null, getStaff: async () => state.staff }));
 vi.mock("../src/server/db", () => ({ appendAuditPg: async () => undefined }));
+// The recent-MFA gate has its own tests (staff-mfa.test.ts); here the check always passes.
+vi.mock("../src/server/mfa-context", () => ({ requireRecentStaffMfa: async () => null }));
 vi.mock("../src/server/deposit-escrow-db", () => {
   const rec = (name: string) => async (...a: unknown[]) => { state.calls.push([name, ...a.slice(2)]); return state.out; };
   return {

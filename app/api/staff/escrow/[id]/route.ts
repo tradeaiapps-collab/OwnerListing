@@ -7,6 +7,7 @@ import { cancelHolding, getHolding, recordReceipt, requestRelease } from "../../
 import { decideResolution, requestCasePayout, resolveDispute } from "../../../../../src/server/sale-fall-through-db";
 import { staffCan } from "../../../../../src/domain/staff-access";
 import { fail, readJsonObject, staffGateAny, UUID_RE } from "../../../../../src/server/staff-route";
+import { requireRecentStaffMfa } from "../../../../../src/server/mfa-context";
 import { withApi } from "../../../../../src/server/api/with-api";
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -26,7 +27,7 @@ async function handleGet(req: Request, { params }: Ctx) {
  * settlementConfirmed } | { action: "cancel", reason } | { action: "case_resolve", caseId, source, reference?, refundCents?, releaseCents?, reason } (after a
  * dispute: only PROPOSES the resolution; "agreement" needs a reference) | { action: "case_resolve_decide", caseId, outcome: "approve" | "reject", reason } (a different
  * person with escrow.approve decides the proposal) | { action: "case_payout", caseId } (the next refund or release of an agreed sale-fell-through case, pre-filled).
- * Every step is logged; a payout needs a second person (see releases/[id]).
+ * Every step is logged; a payout needs a second person (see releases/[id]). case_resolve, case_payout and approving a proposal also need a recent MFA check (403 mfa_required).
  */
 async function handlePost(req: Request, { params }: Ctx) {
   const staff = await staffGateAny(req, ["escrow.manage", "escrow.approve"]);
@@ -37,6 +38,12 @@ async function handlePost(req: Request, { params }: Ctx) {
   if (!body) return fail(400, "Send the action.");
   // Everything here needs escrow.manage, except deciding a proposed resolution, which needs escrow.approve.
   if (!staffCan(staff, body["action"] === "case_resolve_decide" ? "escrow.approve" : "escrow.manage")) return fail(403, "Not allowed.");
+  // Money-path steps need a second-factor check in the last 15 minutes: proposing or paying out a case, and approving a proposal (rejecting is safe).
+  const action = body["action"];
+  if (action === "case_resolve" || action === "case_payout" || (action === "case_resolve_decide" && body["outcome"] === "approve")) {
+    const stale = await requireRecentStaffMfa(req);
+    if (stale) return stale;
+  }
   const db = getDb();
   let r;
   switch (body["action"]) {
