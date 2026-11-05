@@ -13,6 +13,7 @@ export const STAFF_SECTIONS: readonly StaffSection[] = [
   { href: "/staff/sale-events", label: "Sold and rented events", permissions: ["sale_event.manage", "report.sales"] },
   { href: "/staff/listings", label: "Listing moderation", permissions: ["listing.moderate"] },
   { href: "/staff/users", label: "User accounts", permissions: ["user.manage"] },
+  { href: "/staff/inspections", label: "Inspections", permissions: ["user.manage"] },
   { href: "/staff/users/deleted-accounts", label: "Deleted accounts", permissions: ["user.delete"] },
   { href: "/staff/cases", label: "Admin cases", permissions: ["case.manage"] },
   { href: "/staff/safety", label: "Message safety review", permissions: ["case.manage"] },
