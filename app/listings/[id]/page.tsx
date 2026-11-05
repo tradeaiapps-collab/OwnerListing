@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import { formatPrice } from "../../../src/domain/listing-details";
+import { AMENITY_LABELS, formatPrice, isAmenity } from "../../../src/domain/listing-details";
 import { actionHref } from "../../../src/domain/listing-actions";
 import { ListingGallery } from "../gallery";
 import { LocationMap } from "../location-map";
@@ -23,6 +23,7 @@ interface Listing {
   bedrooms?: number;
   bathrooms?: number;
   parking?: number;
+  amenities?: string[];
   latitude?: number;
   longitude?: number;
   description?: string;
@@ -308,6 +309,7 @@ export default function ListingDetail() {
             {listing.bedrooms !== undefined && <><dt>Bedrooms</dt><dd>{listing.bedrooms}</dd></>}
             {listing.bathrooms !== undefined && <><dt>Bathrooms</dt><dd>{listing.bathrooms}</dd></>}
             {listing.parking !== undefined && <><dt>Parking</dt><dd>{listing.parking}</dd></>}
+            {listing.amenities && listing.amenities.filter(isAmenity).length > 0 && <><dt>Features</dt><dd>{listing.amenities.filter(isAmenity).map(a => AMENITY_LABELS[a]).join(", ")}</dd></>}
             {compliance && <><dt>Listed</dt><dd>{day(compliance.listedAt)}</dd></>}
             <dt>Updated</dt><dd>{day(listing.updatedAt)}</dd>
             {compliance && <><dt>Reference</dt><dd className="pd-ref">{compliance.reference}</dd></>}

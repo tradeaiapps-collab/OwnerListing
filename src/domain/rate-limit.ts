@@ -64,6 +64,9 @@ export const INVESTMENT_RATE = {
 /** Guide assistant questions (public, signed in or not), per client IP hash. Counted before anything else; fails closed. */
 export const GUIDE_RATE = { windowMs: 10 * 60 * 1000, perIp: 60 } as const;
 
+/** Elena's search help (filters from a sentence, result facts, compare summaries), per client IP hash. */
+export const SEARCH_ASSIST_RATE = { windowMs: 10 * 60 * 1000, perIp: 60 } as const;
+
 /** AI: the staff "Test connection" button, and the owner's "Suggest description" button (each call uses the shared model server). */
 export const AI_TEST_RATE = { windowMs: 60 * 60 * 1000, perStaff: 10, allStaff: 30 } as const;
 export const AI_DESCRIPTION_RATE = { windowMs: 60 * 60 * 1000, perUser: 10 } as const;

@@ -11,7 +11,11 @@ const criteriaOf = (i: SavedSearchInput): string => JSON.stringify({
   jurisdictions: i.jurisdictions, suburbs: i.suburbs, propertyTypes: i.propertyTypes,
   ...(i.minPriceCents !== undefined ? { minPriceCents: i.minPriceCents } : {}),
   ...(i.maxPriceCents !== undefined ? { maxPriceCents: i.maxPriceCents } : {}),
-  ...(i.minBedrooms !== undefined ? { minBedrooms: i.minBedrooms } : {})
+  ...(i.minBedrooms !== undefined ? { minBedrooms: i.minBedrooms } : {}),
+  ...(i.minBathrooms !== undefined ? { minBathrooms: i.minBathrooms } : {}),
+  ...(i.minParking !== undefined ? { minParking: i.minParking } : {}),
+  ...(i.amenities !== undefined ? { amenities: i.amenities } : {}),
+  ...(i.near !== undefined ? { near: i.near } : {})
 });
 
 /** Re-validates stored criteria with the same parser, so a malformed row is skipped rather than trusted. */

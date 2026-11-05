@@ -1,4 +1,6 @@
 import type { Jurisdiction } from "./jurisdiction";
+import type { Amenity } from "./listing-details";
+import { distanceKm, type Near } from "./listing-search";
 import type { ListingStatus, PropertyListing, PropertyType, UseClass } from "./listing";
 
 /** Searches use only property facts. There are deliberately no demographic fields. */
@@ -13,6 +15,12 @@ export interface SavedSearch {
   minPriceCents?: number;
   maxPriceCents?: number;
   minBedrooms?: number;
+  minBathrooms?: number;
+  minParking?: number;
+  /** The listing must have every one of these. */
+  amenities?: readonly Amenity[];
+  /** Within radiusKm of a point. A listing with no map pin never matches. */
+  near?: Near;
   active: boolean;
 }
 
@@ -28,6 +36,12 @@ export interface ListingSummary {
   /** Sale price, or rent per week, in cents. A search with a price limit never matches a listing without a price. */
   priceCents?: number;
   bedrooms?: number;
+  bathrooms?: number;
+  parking?: number;
+  amenities?: readonly Amenity[];
+  /** Map pin, only used for distance searches. */
+  latitude?: number;
+  longitude?: number;
 }
 
 /** The only fields alerts and saved searches may see of a listing. Owner, address, title and documents are left out on purpose. */
@@ -37,7 +51,11 @@ export function toListingSummary(l: PropertyListing): ListingSummary {
     useClass: l.useClass, propertyType: l.propertyType,
     ...(l.suburb !== undefined ? { suburb: l.suburb } : {}),
     ...(l.priceCents !== undefined ? { priceCents: l.priceCents } : {}),
-    ...(l.bedrooms !== undefined ? { bedrooms: l.bedrooms } : {})
+    ...(l.bedrooms !== undefined ? { bedrooms: l.bedrooms } : {}),
+    ...(l.bathrooms !== undefined ? { bathrooms: l.bathrooms } : {}),
+    ...(l.parking !== undefined ? { parking: l.parking } : {}),
+    ...(l.amenities !== undefined ? { amenities: l.amenities } : {}),
+    ...(l.latitude !== undefined && l.longitude !== undefined ? { latitude: l.latitude, longitude: l.longitude } : {})
   };
 }
 
@@ -53,6 +71,13 @@ export function matchesSearch(s: SavedSearch, l: ListingSummary): boolean {
   if (s.minPriceCents !== undefined && (l.priceCents === undefined || l.priceCents < s.minPriceCents)) return false;
   if (s.maxPriceCents !== undefined && (l.priceCents === undefined || l.priceCents > s.maxPriceCents)) return false;
   if (s.minBedrooms !== undefined && (l.bedrooms === undefined || l.bedrooms < s.minBedrooms)) return false;
+  if (s.minBathrooms !== undefined && (l.bathrooms === undefined || l.bathrooms < s.minBathrooms)) return false;
+  if (s.minParking !== undefined && (l.parking === undefined || l.parking < s.minParking)) return false;
+  if (s.amenities && !s.amenities.every(a => l.amenities?.includes(a))) return false;
+  if (s.near) {
+    if (l.latitude === undefined || l.longitude === undefined) return false;
+    if (distanceKm(s.near.latitude, s.near.longitude, l.latitude, l.longitude) > s.near.radiusKm) return false;
+  }
   return true;
 }
 
