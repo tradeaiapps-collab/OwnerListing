@@ -52,6 +52,7 @@ const META: Record<string, { group: string; icon: AdminIcon; blurb: string }> = 
   "/staff/reports": { group: "insights", icon: "report", blurb: "Sales and operations reports" },
   "/staff/finance": { group: "insights", icon: "price", blurb: "Revenue, invoices, bank transfers and payment issues" },
   "/staff/valuation-settings": { group: "settings", icon: "toggle", blurb: "Turn property valuations on or off, and set how many comparable sales they need" },
+  "/staff/listing-optimization-settings": { group: "settings", icon: "toggle", blurb: "Turn Elena's seller listing suggestions on or off, and see how often sellers follow them" },
   "/staff/pricing": { group: "settings", icon: "price", blurb: "Listing packages and fees" },
   "/staff/messaging": { group: "settings", icon: "message", blurb: "Email and SMS delivery settings" },
   "/staff/listing-syndication": { group: "settings", icon: "toggle", blurb: "Share listings on Airbnb, VRBO and Booking.com" },
