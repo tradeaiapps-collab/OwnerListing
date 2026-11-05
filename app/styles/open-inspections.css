@@ -1,0 +1,80 @@
+/* Open inspection scheduling: buyer booking, buyer's list, agent availability and agent calendar. Theme tokens only; mobile first. */
+.oi { display: grid; gap: var(--space-4); min-width: 0; }
+.oi > * { min-width: 0; }
+.oi h1, .oi h2, .oi h3, .oi p { margin: 0; }
+.oi li { max-width: none; }
+.oi-card { display: grid; gap: var(--space-3); padding: var(--space-4); border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); box-shadow: var(--shadow-1); align-content: start; }
+.oi-card > * { min-width: 0; overflow-wrap: anywhere; }
+.oi-muted { color: var(--muted); font-size: 0.9375rem; }
+.oi-error { color: var(--danger); font-weight: 600; }
+.oi-ok { color: var(--ok); font-weight: 600; }
+.oi-state { padding: var(--space-6) var(--space-4); text-align: center; border: 1px dashed var(--border); border-radius: var(--radius); color: var(--muted); }
+.oi-label { font-weight: 600; margin: 0 0 var(--space-2); }
+.oi-form { display: grid; gap: var(--space-4); grid-template-columns: minmax(0, 1fr); }
+.oi-form > * { min-width: 0; }
+.oi-row { display: grid; gap: var(--space-3); grid-template-columns: minmax(0, 1fr); }
+.oi-row > * { min-width: 0; }
+.oi-card .actions, .oi-form .actions { margin: 0; }
+
+/* Day and time pickers */
+.oi-days { display: flex; gap: var(--space-2); overflow-x: auto; padding-bottom: var(--space-1); scroll-snap-type: x proximity; }
+.oi-day, .oi-time, .oi-tab { min-height: 44px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg); color: var(--text); cursor: pointer; font: inherit; padding: 0 var(--space-3); }
+.oi-day { flex: none; min-width: 4.5rem; display: grid; place-items: center; line-height: 1.2; scroll-snap-align: start; }
+.oi-day small { color: var(--muted); }
+.oi-times { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-2); }
+.oi-time small { display: block; color: var(--muted); font-size: 0.75rem; }
+.oi-day[aria-pressed="true"], .oi-time[aria-pressed="true"], .oi-tab[aria-pressed="true"] { background: var(--brand); color: var(--brand-text); border-color: transparent; }
+.oi-day[aria-pressed="true"] small, .oi-time[aria-pressed="true"] small { color: inherit; }
+.oi-day:focus-visible, .oi-time:focus-visible, .oi-tab:focus-visible, .oi-cell:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+
+/* Lists of rules, blocks and bookings */
+.oi-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-3); }
+.oi-list > li { display: grid; gap: var(--space-2); padding: var(--space-3) var(--space-4); border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); grid-template-columns: minmax(0, 1fr); align-items: center; }
+.oi-list > li > * { min-width: 0; overflow-wrap: anywhere; }
+.oi-list > li[data-status="cancelled"] { opacity: 0.7; }
+.oi-pill { display: inline-block; padding: 2px 10px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface); font-size: 0.8125rem; white-space: nowrap; }
+.oi-pill[data-status="booked"] { border-color: var(--accent); }
+.oi-pill[data-status="completed"] { color: var(--ok); border-color: var(--ok); }
+.oi-pill[data-status="no_show"], .oi-pill[data-status="cancelled"] { color: var(--danger); border-color: var(--danger); }
+.oi-alert { padding: var(--space-3) var(--space-4); border-radius: var(--radius); border: 1px solid var(--accent); background: var(--surface); font-weight: 600; }
+
+/* Agent calendar: listing colours come from tokens so both themes stay readable */
+.oi { --oi-c0: #c0392b; --oi-c1: #2563eb; --oi-c2: #15803d; --oi-c3: #b45309; --oi-c4: #7e22ce; --oi-c5: #0e7490; }
+@media (prefers-color-scheme: dark) { :root:where(:not([data-theme-mode="light"])) .oi { --oi-c0: #ff8a80; --oi-c1: #8ab4ff; --oi-c2: #5fd39a; --oi-c3: #f2b866; --oi-c4: #d2a8ff; --oi-c5: #67d4e8; } }
+.oi-bar { display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: center; justify-content: space-between; }
+.oi-bar h2 { font-size: 1.125rem; }
+.oi-legend { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-4); list-style: none; margin: 0; padding: 0; font-size: 0.875rem; }
+.oi-legend li { display: inline-flex; align-items: center; gap: var(--space-2); max-width: 100%; overflow-wrap: anywhere; }
+.oi-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--c, var(--muted)); flex: none; display: inline-block; }
+[data-c="0"] { --c: var(--oi-c0); } [data-c="1"] { --c: var(--oi-c1); } [data-c="2"] { --c: var(--oi-c2); }
+[data-c="3"] { --c: var(--oi-c3); } [data-c="4"] { --c: var(--oi-c4); } [data-c="5"] { --c: var(--oi-c5); }
+.oi-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 2px; }
+.oi-dow { text-align: center; font-size: 0.75rem; color: var(--muted); padding: var(--space-1) 0; }
+.oi-cell { min-height: 52px; padding: var(--space-1); border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); font: inherit; cursor: pointer; display: grid; align-content: start; justify-items: center; gap: var(--space-1); min-width: 0; }
+.oi-cell[data-out="true"] { opacity: 0.45; }
+.oi-cell[data-today="true"] { border-color: var(--accent); }
+.oi-cell[aria-pressed="true"] { background: var(--brand); color: var(--brand-text); border-color: transparent; }
+.oi-dots { display: flex; flex-wrap: wrap; gap: 3px; justify-content: center; }
+.oi-chip { display: none; width: 100%; font-size: 0.75rem; text-align: left; padding: 1px 4px; border-radius: 4px; border-left: 3px solid var(--c, var(--muted)); background: var(--surface); color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.oi-list > li.oi-booking { display: grid; gap: var(--space-1) var(--space-3); grid-template-columns: 28px minmax(0, 1fr); align-items: start; border-left: 4px solid var(--c, var(--muted)); }
+.oi-booking > .oi-check { grid-row: 1 / span 4; padding-top: 2px; }
+.oi-booking > :not(.oi-check) { grid-column: 2; }
+.oi-check input { width: 22px; height: 22px; }
+.oi-bulk { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
+.oi-bulk > * { margin: 0; }
+
+@media (min-width: 48rem) {
+  .oi-times { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .oi-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .oi-list > li:not(.oi-booking) { grid-template-columns: minmax(0, 1fr) auto; }
+  .oi-cell { min-height: 84px; }
+  .oi-chip { display: block; }
+  .oi-dots { display: none; }
+}
+@media (min-width: 72rem) {
+  .oi-times { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+  .oi-row.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .oi-split { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: var(--space-4); align-items: start; }
+  .oi-cell { min-height: 104px; }
+}
+@media (prefers-reduced-motion: reduce) { .oi-card { transition: none; } }
