@@ -64,6 +64,10 @@ export function createPgSigningRepository(db: Queryable): SigningRepository {
       const r = (await db.query("SELECT id, display_name, status FROM app_user WHERE email = $1::citext", [email])).rows[0];
       return r ? { id: String(r["id"]), displayName: String(r["display_name"]), status: String(r["status"]) } : undefined;
     },
+    async signerEmails(documentId) {
+      const res = await db.query("SELECT s.id, u.email FROM signing_signer s JOIN app_user u ON u.id = s.user_id WHERE s.document_id = $1::uuid", [documentId]);
+      return Object.fromEntries(res.rows.map(r => [String(r["id"]), String(r["email"])]));
+    },
     async insertDocument(d, signers, event) {
       await db.query(
         `INSERT INTO signing_document (id, listing_id, template_version_id, created_by, title, rendered, field_values, body_sha256, created_at)

@@ -3,7 +3,7 @@ import { validateTemplateContent } from "../src/domain/doc-templates";
 import type { Actor } from "../src/domain/listing-service";
 import {
   cancelDocument, createInMemorySigningRepository, declineDocument, documentsForListing, explainClause, generateDocument, listTemplates, myDocuments,
-  sendDocument, signDocument, viewDocument, type SigningRepository
+  sendDocument, signDocument, SIGNER_UNAVAILABLE, viewDocument, type SigningRepository
 } from "../src/domain/signing-service";
 import { STARTER_TEMPLATES } from "../src/config/document-templates";
 
@@ -113,11 +113,51 @@ describe("document signing service", () => {
 
     const view = await viewDocument(repo, owner, d.id, ids);
     if (!view.ok) throw new Error("view");
-    expect(view.value.events.map(e => e.eventType)).toEqual(["created", "sent", "viewed", "explained", "signed", "viewed", "signed", "completed"]);
+    const steps = view.value.events.filter(e => e.eventType !== "sign_failed" && e.eventType !== "owner_viewed");
+    expect(steps.map(e => e.eventType)).toEqual(["created", "sent", "viewed", "explained", "signed", "viewed", "signed", "completed"]);
     expect(view.value.viewer.canSign).toBe(false);
     const hashes = new Set((repo.eventsRaw as { bodySha256: string }[]).map(e => e.bodySha256));
     expect([...hashes]).toEqual([d.bodySha256]);
     expect((await signDocument(repo, owner, d.id, { typedName: "Olive Owner", consent: true }, ids)).ok).toBe(false);
+  });
+
+  it("logs the owner's reads once per 10 minutes, with the reason, and never logs a signer's read as an owner read", async () => {
+    const d = await sent();
+    let now = "2026-11-05T01:00:00.000Z";
+    const clock = { newId: ids.newId, now: () => now };
+    await viewDocument(repo, owner, d.id, clock);
+    now = "2026-11-05T01:05:00.000Z";
+    await viewDocument(repo, owner, d.id, clock);
+    now = "2026-11-05T01:11:00.000Z";
+    const v = await viewDocument(repo, owner, d.id, clock);
+    if (!v.ok) throw new Error("view");
+    const reads = v.value.events.filter(e => e.eventType === "owner_viewed");
+    expect(reads).toHaveLength(2);
+    expect(reads[0]!.detail).toEqual({ viewReason: "owner-check" });
+    await viewDocument(repo, agent, d.id, clock);
+    const after = await viewDocument(repo, agent, d.id, clock);
+    expect(after.ok && after.value.events.filter(e => e.eventType === "owner_viewed")).toHaveLength(2);
+    expect(after.ok && after.value.events.find(e => e.eventType === "viewed")?.detail).toEqual({ viewReason: "sign-attempt" });
+  });
+
+  it("records every refused signing attempt (who, when, why) and nothing the signer typed", async () => {
+    const d = await sent();
+    await viewDocument(repo, agent, d.id, ids);
+    await signDocument(repo, agent, d.id, { typedName: "Mallory Guess", consent: true }, ids, { ip: "198.51.100.9", userAgent: "ua" });
+    await signDocument(repo, agent, d.id, { typedName: "Amy Agent", consent: false }, ids);
+    await signDocument(repo, buyer, d.id, { typedName: "Bob", consent: true }, ids);
+    const v = await viewDocument(repo, agent, d.id, ids);
+    if (!v.ok) throw new Error("view");
+    const failed = v.value.events.filter(e => e.eventType === "sign_failed");
+    expect(failed.map(e => e.detail)).toEqual([{ viewReason: "sign-attempt", reason: "name_mismatch" }, { viewReason: "sign-attempt", reason: "no_consent" }]);
+    expect(failed[0]).toMatchObject({ actorName: "Amy Agent", ip: "198.51.100.9" });
+    expect(JSON.stringify(v.value.events)).not.toContain("Mallory");
+  });
+
+  it("answers a signer with no active account the same way for every address, without naming it", async () => {
+    const r = await generateDocument(repo, owner, LISTING, { ...body, signers: [{ email: "nobody@nowhere.test", roleLabel: "Agent" }] }, ids);
+    expect(!r.ok && r.message).toBe(SIGNER_UNAVAILABLE);
+    expect(!r.ok && r.message).not.toContain("nowhere");
   });
 
   it("records a signer's first view only once", async () => {
@@ -135,7 +175,7 @@ describe("document signing service", () => {
     const r = await declineDocument(repo, agent, d.id, { reason: "Fee too high" }, ids);
     expect(r.ok && r.value.status).toBe("declined");
     const v = await viewDocument(repo, owner, d.id, ids);
-    expect(v.ok && v.value.events.at(-1)).toMatchObject({ eventType: "declined", detail: { reason: "Fee too high" } });
+    expect(v.ok && v.value.events.find(e => e.eventType === "declined")).toMatchObject({ detail: { reason: "Fee too high" } });
     await viewDocument(repo, owner, d.id, ids);
     expect((await signDocument(repo, owner, d.id, { typedName: "Olive Owner", consent: true }, ids)).ok).toBe(false);
     expect((await declineDocument(repo, owner, d.id, {}, ids)).ok).toBe(false);

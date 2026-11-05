@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { cancelDocument, declineDocument, explainClause, sendDocument, signDocument, viewDocument } from "../../../../src/domain/signing-service";
-import { getActor } from "../../../../src/server/context";
 import { csrfGuard } from "../../../../src/server/csrf";
+import { SIGN_ATTEMPT_RATE } from "../../../../src/domain/rate-limit";
+import { getActor, getDb } from "../../../../src/server/context";
+import { withinRates } from "../../../../src/server/rate-guard";
 import { failure, unauthenticated } from "../../../../src/server/http";
 import { getSigningRepo, requestContext, signingIds, signingPersona } from "../../../../src/server/signing-db";
 import { withApi } from "../../../../src/server/api/with-api";
@@ -35,7 +37,10 @@ async function handlePost(req: Request, { params }: Ctx) {
     case "send": { const r = await sendDocument(repo, actor, id, signingIds, ctx); return r.ok ? NextResponse.json({ document: r.value }) : failure(r); }
     case "cancel": { const r = await cancelDocument(repo, actor, id, signingIds, ctx); return r.ok ? NextResponse.json({ document: r.value }) : failure(r); }
     case "explain": { const r = await explainClause(repo, actor, id, (body as Record<string, unknown>)["clauseId"], signingIds, ctx); return r.ok ? NextResponse.json(r.value) : failure(r); }
-    case "sign": { const r = await signDocument(repo, actor, id, body, signingIds, ctx); return r.ok ? NextResponse.json({ document: r.value }) : failure(r); }
+    case "sign": {
+      if (!(await withinRates(getDb(), "sign-attempt-user", [actor.userId], { windowMs: SIGN_ATTEMPT_RATE.windowMs, limit: SIGN_ATTEMPT_RATE.perUser })))
+        return NextResponse.json({ error: "Too many signing attempts. Wait 15 minutes and try again." }, { status: 429, headers: { "retry-after": "900" } });
+      const r = await signDocument(repo, actor, id, body, signingIds, ctx); return r.ok ? NextResponse.json({ document: r.value }) : failure(r); }
     case "decline": { const r = await declineDocument(repo, actor, id, body, signingIds, ctx); return r.ok ? NextResponse.json({ document: r.value }) : failure(r); }
     default: return NextResponse.json({ error: "Unknown action." }, { status: 400 });
   }

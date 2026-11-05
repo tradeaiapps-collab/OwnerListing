@@ -120,6 +120,10 @@ export default function SigningPage() {
             ))}
           </ul>
 
+          {d.status === "completed" && (
+            <div className="sg-actions"><a className="button secondary" href={`/api/signing-documents/${d.id}/pdf`} download>Download signed copy (PDF)</a></div>
+          )}
+
           {viewer.canSign && (
             <form className="sg-sign stack" onSubmit={e => { e.preventDefault(); void act({ action: "sign", typedName, consent }, "Could not sign the document."); }}>
               <h2>Sign this document</h2>

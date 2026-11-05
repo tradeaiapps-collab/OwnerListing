@@ -22,6 +22,7 @@ export default function ListingDocuments() {
   const [signers, setSigners] = useState<SignerInput[]>([{ email: "", roleLabel: "" }]);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState("");
 
   const load = useCallback(async () => {
     try {
@@ -37,11 +38,11 @@ export default function ListingDocuments() {
 
   async function onGenerate(e: React.FormEvent) {
     e.preventDefault();
-    setBusy(true); setError("");
+    setBusy(true); setError(""); setNotice("");
     try {
       const r = await fetch(`/api/listings/${id}/signing-documents`, { method: "POST", headers: JSON_HEADERS, body: JSON.stringify({ templateKey: key, values, signers }) });
       const d = await r.json().catch(() => ({}));
-      if (r.ok) window.location.assign(`/signing/${d.document.id}`);
+      if (r.ok) { setNotice(String(d.message ?? "Your request was received.")); await load(); }
       else setError(d.error ?? "Could not create the document.");
     } catch { setError("Could not create the document."); } finally { setBusy(false); }
   }
@@ -101,6 +102,7 @@ export default function ListingDocuments() {
               )}
               {tpl && <div><button type="submit" disabled={busy}>{busy ? "Creating…" : "Create and review"}</button></div>}
               {error && <p role="alert">{error}</p>}
+              {notice && <p role="status">{notice}</p>}
             </form>
           )}
         </>
