@@ -1,0 +1,28 @@
+/* Agent team page: roster, task list and forms. Builds on the agent workspace tiles and assistant card. Theme tokens only; mobile first. */
+.at-members, .at-tasks { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-3); }
+.at-member, .at-task { display: grid; gap: var(--space-2); padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius); min-width: 0; }
+.at-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2); }
+.at-head strong { overflow-wrap: anywhere; }
+.at-role { display: inline-block; padding: 2px var(--space-2); border-radius: 999px; background: var(--tint); color: var(--muted); font-size: 0.8125rem; font-weight: 600; text-transform: capitalize; }
+.at-stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2); margin: 0; }
+@media (min-width: 768px) { .at-stats { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.at-stats div { display: grid; gap: 2px; min-width: 0; }
+.at-stats dt { color: var(--muted); font-size: 0.8125rem; }
+.at-stats dd { margin: 0; font-weight: 600; overflow-wrap: anywhere; }
+.at-form { display: grid; gap: var(--space-2); margin-top: var(--space-3); }
+@media (min-width: 768px) { .at-form.wide { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: end; } }
+.at-form label { display: grid; gap: 2px; font-size: 0.8125rem; color: var(--muted); }
+.at-form :is(input, select, button), .at-inline :is(input, select, button) { min-height: 44px; padding: 0 var(--space-2); font: inherit; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); }
+.at-form button[type="submit"], .at-inline button { padding: 0 var(--space-4); background: var(--brand); color: var(--brand-text); border-color: transparent; cursor: pointer; }
+.at-form :is(input, select, button):focus-visible, .at-inline :is(input, select, button):focus-visible, .at-task button:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.at-inline { display: flex; flex-wrap: wrap; align-items: end; gap: var(--space-2); }
+.at-inline label { display: grid; gap: 2px; font-size: 0.8125rem; color: var(--muted); }
+.at-inline input[type="number"] { width: 6rem; }
+.at-inline .quiet, .at-task button { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 8px; min-height: 44px; padding: 0 var(--space-3); font: inherit; cursor: pointer; }
+.at-task.done .at-title { text-decoration: line-through; color: var(--muted); }
+.at-title { font-weight: 600; overflow-wrap: anywhere; }
+.at-late { color: var(--danger); font-weight: 600; }
+.at-section { margin-top: var(--space-6); padding-top: var(--space-4); border-top: 1px solid var(--border); }
+.at-note { color: var(--muted); font-size: 0.875rem; margin: 0 0 var(--space-3); }
+.at-invite { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2); padding: var(--space-3); border: 1px solid var(--gold); background: var(--gold-tint); border-radius: var(--radius); }
+body:has(.aw) .ga-launcher { display: none; }
