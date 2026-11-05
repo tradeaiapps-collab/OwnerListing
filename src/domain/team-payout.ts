@@ -126,3 +126,11 @@ export async function listPayouts(repo: TeamPayoutRepository, actor: Actor, team
   const manager = await repo.isManager(teamId, actor.userId);
   return { ok: true, value: await repo.listPayouts(teamId, manager ? undefined : actor.userId) };
 }
+
+/** Manager only: which of these members have finished the provider's identity check (so the Pay button can be shown). */
+export async function verifiedMembers(repo: TeamPayoutRepository, actor: Actor, teamId: string, userIds: string[]): Promise<string[]> {
+  if (!UUID.test(teamId) || !(await repo.isManager(teamId, actor.userId))) return [];
+  const out: string[] = [];
+  for (const u of [...new Set(userIds.filter(x => UUID.test(x)))].slice(0, 100)) if ((await repo.getAccount(u))?.kycStatus === "verified") out.push(u);
+  return out;
+}
