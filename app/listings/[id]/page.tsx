@@ -4,8 +4,12 @@ import { useParams } from "next/navigation";
 import { AMENITY_LABELS, formatPrice, isAmenity } from "../../../src/domain/listing-details";
 import { actionHref } from "../../../src/domain/listing-actions";
 import { ListingGallery } from "../gallery";
+import MortgageCalc from "../../mortgage-calc";
+import { monthlyEstimate } from "../../../src/domain/mortgage";
+import { VideoTour } from "../video-tour";
 import { LocationMap } from "../location-map";
 import { JSON_HEADERS } from "../ui";
+import { SaveAsTemplate } from "../save-as-template";
 import "../../styles/cards.css";
 import "../../styles/detail.css";
 
@@ -225,6 +229,12 @@ export default function ListingDetail() {
   const [docs, setDocs] = useState<Doc[]>([]);
   const [error, setError] = useState("");
   const [userType, setUserType] = useState<string | null>(null);
+  const [videoReturn, setVideoReturn] = useState<"paid" | "cancelled" | null>(null);
+
+  useEffect(() => {
+    const v = new URLSearchParams(window.location.search).get("video");
+    setVideoReturn(v === "paid" || v === "cancelled" ? v : null);
+  }, [id]);
 
   useEffect(() => {
     fetch("/api/auth/me").then(async r => setUserType(r.ok ? (await r.json()).user?.userType ?? null : null)).catch(() => setUserType(null));
@@ -262,6 +272,7 @@ export default function ListingDetail() {
   }
 
   const tx = listing.transactionType as "sale" | "rent";
+  const est = tx === "sale" ? monthlyEstimate(listing.priceCents) : undefined;
   const facts: [string, string][] = [];
   if (listing.bedrooms !== undefined) facts.push([String(listing.bedrooms), listing.bedrooms === 1 ? "Bedroom" : "Bedrooms"]);
   if (listing.bathrooms !== undefined) facts.push([String(listing.bathrooms), listing.bathrooms === 1 ? "Bathroom" : "Bathrooms"]);
@@ -284,6 +295,7 @@ export default function ListingDetail() {
             listing.bathrooms !== undefined && `${listing.bathrooms} bathroom${listing.bathrooms === 1 ? "" : "s"}`,
             listing.parking !== undefined && `${listing.parking} car space${listing.parking === 1 ? "" : "s"}`
           ].filter(Boolean).join(", ")} />
+          <VideoTour listingId={listing.id} signedIn={userType !== null} returned={videoReturn} />
           <div className="pd-head">
             <p className="pd-tags">
               <span className="lcard-tag detail-tag">{tx === "sale" ? "For sale" : "For rent"}</span>
@@ -323,16 +335,25 @@ export default function ListingDetail() {
             <LocationMap latitude={listing.latitude} longitude={listing.longitude} title={listing.title} address={listing.address} transactionType={tx} />
           )}
 
+          {tx === "sale" && listing.priceCents !== undefined && (
+            <section className="pd-section" id="pd-mortgage" aria-label="Mortgage calculator">
+              <MortgageCalc price={listing.priceCents / 100} heading="Estimate your repayments for this home" />
+            </section>
+          )}
+
           {compliance
             ? <><Disclosures c={compliance} state={listing.jurisdiction} tx={tx} /><Documents docs={docs} /><Safety c={compliance} tx={tx} /></>
             : <Documents docs={docs} />}
         </div>
         <aside className="detail-aside" aria-label="Contact the seller">
           {listing.priceCents !== undefined && <p className="detail-price">{formatPrice(listing.priceCents, tx)}</p>}
+          {est !== undefined && <p className="mc-est">You&apos;d pay about <strong>{est.toLocaleString("en-AU", { style: "currency", currency: "AUD", maximumFractionDigits: 0 })}/month</strong> in loan repayments (30 years, 20% deposit, example rate). <a href="#pd-mortgage">Adjust</a></p>}
           <div className="detail-actions">
             <a className="button" href={actionHref(listing.id, "enquire", userType !== null)}>Enquire</a>
+            {userType === "buyer" && <a className="button secondary" href={`/client/portal?listing=${listing.id}`}>Book a viewing</a>}
             <SaveButton listingId={listing.id} userType={userType} />
           </div>
+          <SaveAsTemplate listingId={listing.id} defaultName={listing.title} userType={userType} />
           {compliance && (
             <ul className="pd-aside-checks" aria-label="At a glance">
               <li><Mark tone={compliance.seller.handledBy === "owner" || compliance.seller.agentLicenceVerified ? "ok" : "wait"} />

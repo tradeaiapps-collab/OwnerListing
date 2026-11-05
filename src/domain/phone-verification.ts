@@ -24,6 +24,15 @@ export function normaliseAuMobile(raw: unknown): string | undefined {
   return m ? `+61${m[1]}` : undefined;
 }
 
+/** Australian (04XX) or US/Canada (+1 NXX NXX XXXX) mobile as E.164, or undefined. US numbers need the +1 or 1 prefix: ten bare digits are not guessed. */
+export function normaliseMobile(raw: unknown): string | undefined {
+  const au = normaliseAuMobile(raw);
+  if (au) return au;
+  if (typeof raw !== "string" || raw.length > 30) return undefined;
+  const m = /^\+?1([2-9]\d{2}[2-9]\d{6})$/.exec(raw.replace(/[\s\-().]/g, ""));
+  return m ? `+1${m[1]}` : undefined;
+}
+
 export const newCode = (): string => String(randomInt(0, 1_000_000)).padStart(6, "0");
 
 /** Keyed hash bound to the user and the code row, so a leaked table cannot be brute-forced offline without the key. */

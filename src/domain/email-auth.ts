@@ -47,6 +47,6 @@ export const SIGNUP_LINK_HOURS = 24;
 export const RESET_LINK_MINUTES = 60;
 /** Per IP and per address. Login: 20 tries per IP and 8 per address in 10 minutes. Links: 10 per IP and 3 per address an hour. */
 export const EMAIL_AUTH_RATE = {
-  login: { windowMs: 10 * 60 * 1000, perIp: 20, perEmail: 8 },
-  link: { windowMs: 60 * 60 * 1000, perIp: 10, perEmail: 3 }
+  login: { windowMs: 15 * 60 * 1000, perIp: 20, perEmail: 8, perPair: 5 },
+  link: { windowMs: 60 * 60 * 1000, perIp: 10, perEmail: 3, perPair: 3 }
 } as const;

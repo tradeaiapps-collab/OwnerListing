@@ -4,7 +4,7 @@ import type { ChatPersona } from "../domain/chat-assistant";
 import { getLivePersona } from "./assistant-persona-db";
 import { clientIp } from "./client-ip";
 import { parseStoredContent, type RenderedClause } from "../domain/doc-templates";
-import type { DocStatus, DocSummary, EventType, PublishedTemplate, SignerRow, SigningDoc, SigningEvent, SigningRepository } from "../domain/signing-service";
+import type { ArtifactRow, DocStatus, DocSummary, EventType, PublishedTemplate, SignerRow, SigningDoc, SigningEvent, SigningRepository } from "../domain/signing-service";
 import { getDb } from "./context";
 import type { Queryable } from "./db";
 
@@ -15,7 +15,7 @@ const iso = (v: unknown) => (v instanceof Date ? v.toISOString() : String(v));
 const opt = (v: unknown) => (v == null ? undefined : iso(v));
 
 const DOC_COLS =
-  "d.id, d.listing_id, l.title AS listing_title, l.owner_user_id, d.title, d.status, d.body_sha256, d.created_at, d.sent_at, d.closed_at";
+  "d.id, d.listing_id, l.title AS listing_title, l.owner_user_id, d.title, d.status, d.body_sha256, d.provider, d.retry_of, d.esign_envelope_id, d.created_at, d.sent_at, d.closed_at";
 const DOC_FROM = "FROM signing_document d JOIN property_listing l ON l.id = d.listing_id";
 const SIGNERS_SQL =
   "SELECT s.id, s.document_id, s.user_id, u.display_name, s.role_label, s.status, s.typed_name, s.signed_at " +
@@ -31,7 +31,8 @@ async function summaries(db: Queryable, rows: Record<string, unknown>[]): Promis
   const signers = (await db.query(SIGNERS_SQL, [rows.map(r => String(r["id"]))])).rows;
   return rows.map(r => ({
     id: String(r["id"]), listingId: String(r["listing_id"]), listingTitle: String(r["listing_title"]), ownerUserId: String(r["owner_user_id"]),
-    title: String(r["title"]), status: r["status"] as DocStatus, bodySha256: String(r["body_sha256"]), createdAt: iso(r["created_at"]),
+    title: String(r["title"]), status: r["status"] as DocStatus, bodySha256: String(r["body_sha256"]), provider: r["provider"] as DocSummary["provider"], createdAt: iso(r["created_at"]),
+    ...(r["retry_of"] ? { retryOf: String(r["retry_of"]) } : {}), ...(r["esign_envelope_id"] ? { envelopeId: String(r["esign_envelope_id"]) } : {}),
     ...(r["sent_at"] ? { sentAt: iso(r["sent_at"]) } : {}), ...(r["closed_at"] ? { closedAt: iso(r["closed_at"]) } : {}),
     signers: signers.filter(s => String(s["document_id"]) === String(r["id"])).map(toSigner)
   }));
@@ -64,11 +65,15 @@ export function createPgSigningRepository(db: Queryable): SigningRepository {
       const r = (await db.query("SELECT id, display_name, status FROM app_user WHERE email = $1::citext", [email])).rows[0];
       return r ? { id: String(r["id"]), displayName: String(r["display_name"]), status: String(r["status"]) } : undefined;
     },
+    async signerEmails(documentId) {
+      const res = await db.query("SELECT s.id, u.email FROM signing_signer s JOIN app_user u ON u.id = s.user_id WHERE s.document_id = $1::uuid", [documentId]);
+      return Object.fromEntries(res.rows.map(r => [String(r["id"]), String(r["email"])]));
+    },
     async insertDocument(d, signers, event) {
       await db.query(
-        `INSERT INTO signing_document (id, listing_id, template_version_id, created_by, title, rendered, field_values, body_sha256, created_at)
-         VALUES ($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5,$6::jsonb,$7::jsonb,$8,$9::timestamptz)`,
-        [d.id, d.listingId, d.templateVersionId, d.createdBy, d.title, JSON.stringify({ clauses: d.clauses }), JSON.stringify(d.fieldValues), d.bodySha256, d.at]
+        `INSERT INTO signing_document (id, listing_id, template_version_id, created_by, title, rendered, field_values, body_sha256, created_at, provider, retry_of)
+         VALUES ($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5,$6::jsonb,$7::jsonb,$8,$9::timestamptz,$10,$11::uuid)`,
+        [d.id, d.listingId, d.templateVersionId, d.createdBy, d.title, JSON.stringify({ clauses: d.clauses }), JSON.stringify(d.fieldValues), d.bodySha256, d.at, d.provider ?? "builtin", d.retryOf ?? null]
       );
       for (const s of signers) {
         await db.query("INSERT INTO signing_signer (id, document_id, user_id, role_label) VALUES ($1::uuid,$2::uuid,$3::uuid,$4)", [s.id, d.id, s.userId, s.roleLabel]);
@@ -76,11 +81,11 @@ export function createPgSigningRepository(db: Queryable): SigningRepository {
       await repo.appendEvent(event);
     },
     async document(id) {
-      const r = (await db.query(`SELECT ${DOC_COLS}, d.template_version_id, d.rendered ${DOC_FROM} WHERE d.id = $1::uuid`, [id])).rows[0];
+      const r = (await db.query(`SELECT ${DOC_COLS}, d.template_version_id, d.rendered, d.field_values ${DOC_FROM} WHERE d.id = $1::uuid`, [id])).rows[0];
       if (!r) return undefined;
       const [s] = await summaries(db, [r]);
       const clauses = ((r["rendered"] as { clauses?: RenderedClause[] } | null)?.clauses ?? []) as RenderedClause[];
-      return { ...s!, templateVersionId: String(r["template_version_id"]), clauses } satisfies SigningDoc;
+      return { ...s!, templateVersionId: String(r["template_version_id"]), clauses, fieldValues: (r["field_values"] ?? {}) as Record<string, string> } satisfies SigningDoc;
     },
     async documentsForListing(listingId) {
       return summaries(db, (await db.query(`SELECT ${DOC_COLS} ${DOC_FROM} WHERE d.listing_id = $1::uuid ORDER BY d.created_at DESC, d.id`, [listingId])).rows);
@@ -118,6 +123,48 @@ export function createPgSigningRepository(db: Queryable): SigningRepository {
         "UPDATE signing_signer SET status = $2::text, typed_name = $3::text, signed_at = CASE WHEN $2::text = 'signed' THEN $4::timestamptz ELSE NULL END WHERE id = $1::uuid AND status = 'pending' RETURNING id",
         [signerId, decision, typedName, at]);
       return res.rows.length > 0;
+    },
+    async signerContacts(documentId) {
+      const res = await db.query(
+        "SELECT s.id, s.user_id, u.display_name, u.email, s.role_label, s.esign_recipient_id FROM signing_signer s JOIN app_user u ON u.id = s.user_id WHERE s.document_id = $1::uuid ORDER BY s.id", [documentId]);
+      return res.rows.map(r => ({ signerId: String(r["id"]), userId: String(r["user_id"]), name: String(r["display_name"]), email: String(r["email"]), roleLabel: String(r["role_label"]),
+        ...(r["esign_recipient_id"] ? { recipientId: String(r["esign_recipient_id"]) } : {}) }));
+    },
+    async setEnvelope(documentId, envelopeId, recipients) {
+      const res = await db.query("UPDATE signing_document SET esign_envelope_id = $2 WHERE id = $1::uuid AND esign_envelope_id IS NULL RETURNING id", [documentId, envelopeId]);
+      if (res.rows.length === 0) return false;
+      for (const r of recipients) await db.query("UPDATE signing_signer SET esign_recipient_id = $2 WHERE id = $1::uuid AND document_id = $3::uuid", [r.signerId, r.recipientId, documentId]);
+      return true;
+    },
+    async documentByEnvelope(envelopeId) {
+      const id = (await db.query("SELECT id FROM signing_document WHERE esign_envelope_id = $1", [envelopeId])).rows[0]?.["id"];
+      return id ? repo.document(String(id)) : undefined;
+    },
+    async addArtifacts(documentId, items, at) {
+      for (const i of items) {
+        let propertyDocId: string | null = null;
+        if (i.kind === "signed_pdf") {
+          // Also lands in the listing's document history, owned by the listing's owner, visible to the parties to the document.
+          const pd = await db.query(
+            `INSERT INTO property_document (property_id, listing_id, kind, storage_key, sha256, uploaded_by, source, declared_mime, size_bytes, visibility, status)
+             SELECT l.property_id, l.id, 'contract', $2, $3, l.owner_user_id, 'platform', 'application/pdf', $4, 'parties', 'active'
+               FROM signing_document d JOIN property_listing l ON l.id = d.listing_id WHERE d.id = $1::uuid AND l.property_id IS NOT NULL RETURNING id`,
+            [documentId, i.storageKey, i.sha256, i.sizeBytes]);
+          propertyDocId = pd.rows[0] ? String(pd.rows[0]["id"]) : null;
+        }
+        await db.query(
+          `INSERT INTO signing_artifact (document_id, kind, storage_key, sha256, size_bytes, property_document_id, created_at)
+           VALUES ($1::uuid,$2,$3,$4,$5,$6::uuid,$7::timestamptz) ON CONFLICT (document_id, kind) DO NOTHING`,
+          [documentId, i.kind, i.storageKey, i.sha256, i.sizeBytes, propertyDocId, at]);
+      }
+    },
+    async artifacts(documentId) {
+      const res = await db.query("SELECT id, kind, sha256, size_bytes, created_at FROM signing_artifact WHERE document_id = $1::uuid ORDER BY created_at, kind", [documentId]);
+      return res.rows.map(r => ({ id: String(r["id"]), kind: r["kind"] as ArtifactRow["kind"], sha256: String(r["sha256"]), sizeBytes: Number(r["size_bytes"]), createdAt: iso(r["created_at"]) }));
+    },
+    async artifactKey(documentId, kind) {
+      const r = (await db.query("SELECT storage_key FROM signing_artifact WHERE document_id = $1::uuid AND kind = $2", [documentId, kind])).rows[0];
+      return r ? String(r["storage_key"]) : undefined;
     },
     async atomic(documentId, fn) {
       if (!db.transaction) return fn(repo);

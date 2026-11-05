@@ -11,6 +11,7 @@ import { appOriginFor, readAppMode } from "../src/config/app-mode";
 import { personaById } from "../src/domain/assistant-persona";
 import { GUIDE_DISCLAIMER } from "../src/domain/guide-assistant";
 import { assetUrl, buildThemeCss, fontStylesheetUrl } from "../src/domain/site-theme";
+import { tenantAssetUrl } from "../src/domain/white-label";
 import { devLoginAllowed } from "../src/server/dev-login";
 import { getLivePersona } from "../src/server/assistant-persona-db";
 import { getLiveGuide } from "../src/server/guide-assistant-db";
@@ -31,7 +32,7 @@ export async function generateMetadata() {
   const t = await getTheme();
   const brand = brandFor(t.settings);
   const fav = t.settings.brand.favicon;
-  const icons = fav ? { icons: { icon: assetUrl("favicon", fav, t.previewToken ?? undefined) } } : {};
+  const icons = fav ? { icons: { icon: t.tenantId ? tenantAssetUrl("favicon", fav) : assetUrl("favicon", fav, t.previewToken ?? undefined) } } : {};
   const robots = admin || t.source === "draft" ? { robots: { index: false, follow: false } } : {};
   return admin
     ? { title: { default: `${brand.name} Admin`, template: `%s | ${brand.name} Admin` }, description: "Staff only", ...robots, ...icons }
@@ -45,14 +46,16 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   const brand = brandFor(settings);
   const fontUrl = fontStylesheetUrl([settings.typography.bodyFont, settings.typography.headingFont]);
   const tok = t.previewToken ?? undefined;
+  // A white-label agency's logo is served per host (no id guessing); the platform theme keeps its own asset route.
+  const logoSrc = (name: "logo-light" | "logo-dark", id: number) => (t.tenantId ? tenantAssetUrl("logo-light", id) : assetUrl(name, id, tok));
   // The public site can be fixed to light in Site appearance; the staff console keeps following the device.
   const fixedLight = !admin && settings.layout.colourMode === "light";
   const light = settings.brand.logoLight ?? settings.brand.logoDark;
   const dark = settings.brand.logoDark ?? settings.brand.logoLight;
   const logo = light && dark ? (
     <picture>
-      {!fixedLight && <source media="(prefers-color-scheme: dark)" srcSet={assetUrl("logo-dark", dark, tok)} />}
-      <img className="brand-logo" src={assetUrl("logo-light", light, tok)} alt={admin ? "" : brand.name} />
+      {!fixedLight && <source media="(prefers-color-scheme: dark)" srcSet={logoSrc("logo-dark", dark)} />}
+      <img className="brand-logo" src={logoSrc("logo-light", light)} alt={admin ? "" : brand.name} />
     </picture>
   ) : null;
   const footer = settings.footer;
@@ -68,7 +71,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
       <head>
         {fontUrl && <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />}
         {fontUrl && <link id="site-theme-font" rel="stylesheet" href={fontUrl} />}
-        <style id="site-theme" dangerouslySetInnerHTML={{ __html: buildThemeCss(settings) }} />
+        <style id="site-theme" dangerouslySetInnerHTML={{ __html: buildThemeCss(settings, { followDevice: admin }) }} />
       </head>
       <body className={admin ? "admin-app" : undefined}>
         <a className="skip-link" href="#main-content">Skip to content</a>

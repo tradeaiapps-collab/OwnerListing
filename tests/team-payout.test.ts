@@ -1,7 +1,7 @@
 import { createHmac, randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import type { Commission } from "../src/domain/agency-team";
-import { applyProviderEvent, initiatePayout, startPayoutOnboarding, type Payout, type PayoutAccount, type PayoutProvider, type TeamPayoutRepository } from "../src/domain/team-payout";
+import { applyProviderEvent, initiatePayout, startPayoutOnboarding, verifiedMembers, type Payout, type PayoutAccount, type PayoutProvider, type TeamPayoutRepository } from "../src/domain/team-payout";
 import { createStripePayoutProvider, handleStripeWebhook, parseStripeEvent, payoutsEnabled, stripeSignatureValid } from "../src/server/stripe-payouts";
 
 const TEAM = randomUUID(), BOSS = randomUUID(), MEMBER = randomUUID(), COMM = randomUUID();
@@ -151,5 +151,17 @@ describe("Stripe adapter", () => {
     expect(String(seen[0]!.init.body)).toContain("currency=aud");
     const bad = createStripePayoutProvider({ STRIPE_SECRET_KEY: "sk_test_abcdefgh1234", PAYOUTS_ENABLED: "1" }, (async () => new Response(JSON.stringify({ error: { message: "no funds" } }), { status: 402 })) as unknown as typeof fetch);
     await expect(bad.transfer({ accountId: "a", amountCents: 1, idempotencyKey: "k", metadata: {} })).rejects.toThrow("Stripe 402: no funds");
+  });
+});
+
+describe("verifiedMembers (drives the Pay button)", () => {
+  it("tells a manager which members are verified", async () => {
+    const { repo } = fakeRepo();
+    expect(await verifiedMembers(repo, boss, TEAM, [MEMBER, randomUUID()])).toEqual([MEMBER]);
+  });
+  it("shows nothing for unverified members, non-managers or bad ids", async () => {
+    expect(await verifiedMembers(fakeRepo(commission(), "pending").repo, boss, TEAM, [MEMBER])).toEqual([]);
+    expect(await verifiedMembers(fakeRepo().repo, { userId: MEMBER, userType: "agent" }, TEAM, [MEMBER])).toEqual([]);
+    expect(await verifiedMembers(fakeRepo().repo, boss, "nope", [MEMBER, "x"])).toEqual([]);
   });
 });

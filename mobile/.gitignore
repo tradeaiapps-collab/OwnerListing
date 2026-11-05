@@ -1,0 +1,13 @@
+node_modules/
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+ios/
+android/
+# Firebase and Apple files hold project keys: download them yourself, never commit them (see README).
+google-services.json
+GoogleService-Info.plist
+*.p8
+*.jks
+*.keystore

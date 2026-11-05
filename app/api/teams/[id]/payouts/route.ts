@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { agencyIds } from "../../../../../src/server/agency-team-db";
-import { initiatePayout, listPayouts } from "../../../../../src/domain/team-payout";
+import { initiatePayout, listPayouts, verifiedMembers } from "../../../../../src/domain/team-payout";
 import { getActor } from "../../../../../src/server/context";
 import { failure, unauthenticated } from "../../../../../src/server/http";
 import { csrfGuard } from "../../../../../src/server/csrf";
@@ -14,7 +14,10 @@ async function handleGet(req: Request, { params }: Ctx) {
   const actor = await getActor(req);
   if (!actor) return unauthenticated();
   const r = await listPayouts(getTeamPayoutRepo(), actor, (await params).id);
-  return r.ok ? NextResponse.json({ payouts: r.value }) : failure(r);
+  if (!r.ok) return failure(r);
+  const users = (new URL(req.url).searchParams.get("users") ?? "").split(",");
+  const verified = await verifiedMembers(getTeamPayoutRepo(), actor, (await params).id, users);
+  return NextResponse.json({ payouts: r.value, enabled: getPayoutProvider().enabled(), verifiedUserIds: verified });
 }
 export const GET = withApi(handleGet);
 

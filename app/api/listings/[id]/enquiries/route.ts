@@ -4,6 +4,8 @@ import { isUuid } from "../../../../../src/domain/offer-decision";
 import { getActor } from "../../../../../src/server/context";
 import { csrfGuard } from "../../../../../src/server/csrf";
 import { getEnquiryDeps } from "../../../../../src/server/enquiry-db";
+import { getDb } from "../../../../../src/server/context";
+import { fireAutomation } from "../../../../../src/server/automation-db";
 import { failure, unauthenticated } from "../../../../../src/server/http";
 import { screenWithDefaults } from "../../../../../src/server/message-safety";
 import { requireCurrentTerms } from "../../../../../src/server/terms-guard";
@@ -28,6 +30,7 @@ async function handlePost(req: Request, { params }: Ctx) {
   if (!r.ok) return failure(r);
   // The message is already stored; the safety filter only adds a warning for the owner and never blocks it.
   await screenWithDefaults(r.value.enquiry, r.value.message);
+  await fireAutomation(getDb(), { trigger: "new_lead", enquiryId: r.value.enquiry.id });
   return NextResponse.json(r.value, { status: 201 });
 }
 

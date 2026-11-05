@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react
 import "../../styles/enquiries.css";
 import "../../styles/agent-workspace.css";
 import "../../styles/agent-reports.css";
+import TeamReports from "./team-reports";
 
 type Kind = "count" | "money" | "percent" | "minutes";
 type Metric = { key: string; label: string; kind: Kind };
@@ -115,6 +116,7 @@ export default function AgentReports() {
       {error && <p role="alert">{error}</p>}
       {notice && <p role="status">{notice}</p>}
       {!cat && !error && <p className="muted" role="status">Loading…</p>}
+      <TeamReports />
       {cat && (
         <div className="aw-main ar-main">
           <div className="ar-col">

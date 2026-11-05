@@ -68,3 +68,30 @@ button.danger:hover:not(:disabled) { background: var(--danger); border-color: va
 /* Deleted accounts: stage pills stay on one line; the restore column keeps its button at full width. */
 .deleted-accounts .status-pill { white-space: nowrap; }
 .deleted-accounts td:last-child { min-width: 11rem; }
+
+/* Staff listings: bulk selection bar, checkbox column and the bulk action dialog. */
+.bulk-bar { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-3); align-items: end; margin: var(--space-3) 0; padding: var(--space-3) var(--space-4); border: 1px solid var(--line); border-left: 4px solid var(--gold, var(--brand)); border-radius: var(--radius); background: var(--elevated); box-shadow: var(--shadow-2); }
+.bulk-bar .bulk-count { align-self: center; margin-right: auto; }
+.bulk-bar label { display: grid; gap: var(--space-1); font-size: 0.875rem; }
+.bulk-bar button.link-button { background: none; border: 0; box-shadow: none; min-height: 0; padding: 0; align-self: center; color: var(--brand); font: inherit; font-size: 0.875rem; cursor: pointer; text-decoration: underline; }
+.bulk-table th.bulk-check, .bulk-table td.bulk-check { width: 2.75rem; text-align: center; vertical-align: top; }
+.bulk-table input[type="checkbox"] { width: 1.125rem; height: 1.125rem; min-height: 0; margin: 0; }
+.bulk-table tr[aria-selected="true"] { background: color-mix(in srgb, var(--gold, var(--brand)) 10%, transparent); }
+.bulk-dialog { width: min(32rem, calc(100vw - 2 * var(--space-4))); max-height: calc(100vh - 2 * var(--space-4)); overflow: auto; padding: var(--space-6); border: 1px solid var(--line); border-radius: var(--radius); background: var(--elevated); color: var(--text); box-shadow: var(--shadow-2); }
+.bulk-dialog::backdrop { background: rgb(0 0 0 / 0.5); }
+.bulk-dialog h2 { margin-top: 0; }
+.bulk-dialog form, .bulk-dialog .stack-tight { display: grid; gap: var(--space-3); }
+.bulk-dialog label { display: grid; gap: var(--space-1); font-size: 0.875rem; }
+.bulk-price { display: grid; gap: var(--space-3); grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); }
+.bulk-progress { width: 100%; height: 0.75rem; accent-color: var(--brand); }
+@media (max-width: 40rem) {
+  .bulk-bar { display: grid; grid-template-columns: 1fr 1fr; align-items: end; }
+  .bulk-bar .bulk-count, .bulk-bar .bulk-pick, .bulk-bar > [role="alert"], .bulk-bar button.link-button { grid-column: 1 / -1; margin-right: 0; }
+  .bulk-bar button.link-button { justify-self: start; }
+}
+
+/* Staff listing table: buyer video refund trail under the row actions. */
+.video-refunds { margin-top: var(--space-2, 0.5rem); }
+.video-refunds button.link-button { background: none; border: 0; box-shadow: none; min-height: 0; padding: 0; color: var(--brand); font: inherit; font-size: 0.875rem; cursor: pointer; text-decoration: underline; }
+.video-refunds ul { list-style: none; margin: var(--space-2, 0.5rem) 0 0; padding: 0; display: grid; gap: var(--space-2, 0.5rem); }
+.video-refunds li { overflow-wrap: anywhere; font-size: 0.875rem; }

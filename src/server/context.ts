@@ -10,6 +10,7 @@ import type { StaffActor } from "../domain/staff-access";
 import { createPgBillingStore } from "./billing-db";
 import { staffFromRequest } from "./staff-auth";
 import { createPgPublishAlertHook } from "./publish-alerts-db";
+import { syndicateListing, syndicationDeps } from "./syndication-db";
 import { hasCurrentTermsPg } from "./terms-db";
 import { clearedWordingFlagsPg, recordWordingFlagsPg } from "./wording-flags-db";
 import { disclosureRequirementsPg, markListingDisclosureVersionPg } from "./disclosure-config-db";
@@ -63,7 +64,11 @@ function wire(): Wired {
       appointmentFor: (listingId, agentUserId) => appointmentForPg(db, listingId, agentUserId),
       trustAccountFor: listingId => trustAccountDecisionPg(db, listingId),
       termsCurrentFor: userId => hasCurrentTermsPg(db, userId, new Date().toISOString()),
-      afterPublish: createPgPublishAlertHook(db),
+      afterPublish: (() => {
+        const alerts = createPgPublishAlertHook(db);
+        // Share on the portals the owner opted into; best effort, the scheduled run retries anything that fails.
+        return async (listing: Parameters<typeof alerts>[0]) => { await alerts(listing); await syndicateListing(db, syndicationDeps(), listing.id); };
+      })(),
       clearedWordingFlags: listingId => clearedWordingFlagsPg(db, listingId),
       recordWordingFlags: (listingId, actorUserId, fields) => recordWordingFlagsPg(db, listingId, actorUserId, fields)
     }

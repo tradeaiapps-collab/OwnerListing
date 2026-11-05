@@ -7,7 +7,7 @@ import {
 import { checkSuggestion } from "../src/domain/ai-description";
 
 const state = vi.hoisted(() => ({ actor: null as Actor | null, deps: null as ListingServiceDeps | null }));
-vi.mock("../src/server/context", () => ({ getActor: () => state.actor, getDeps: () => state.deps }));
+vi.mock("../src/server/context", () => ({ getActor: () => state.actor, getDeps: () => state.deps, getDb: () => ({ query: async () => ({ rows: [] }) }) }));
 // Publish step-up is covered in tests/mfa.test.ts; here the owner has just passed it.
 vi.mock("../src/server/mfa-context", () => ({ requireRecentMfa: async () => null }));
 

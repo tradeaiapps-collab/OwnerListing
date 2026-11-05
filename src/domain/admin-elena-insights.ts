@@ -2,6 +2,7 @@ import { median } from "./agent-workspace";
 import { maskName } from "./admin-report-builder";
 import { defaultAlertSettings, type AlertSettings } from "./alert-config";
 import { staffCan, type StaffActor } from "./staff-access";
+import { buildTeamComparison, type TeamFact, type TeamRow } from "./team-compare";
 
 /**
  * Admin-side Elena insights: a rule-based read of platform performance, agent comparison, area trends, alerts and recommendations for
@@ -23,7 +24,7 @@ export interface AgentFact {
   id: string; name: string; listings: number; enquiries: number; unanswered: number;
   offers: number; accepted: number; decided: number; medianResponseMinutes?: number;
 }
-export interface InsightFacts { current: PeriodCounts; previous: PeriodCounts; areas: AreaFact[]; agents: AgentFact[] }
+export interface InsightFacts { current: PeriodCounts; previous: PeriodCounts; areas: AreaFact[]; agents: AgentFact[]; teams?: TeamFact[] }
 
 export type Severity = "high" | "medium" | "info";
 export interface Trend { current: number; previous: number; changePct?: number }
@@ -32,11 +33,11 @@ export interface AgentRow {
   acceptanceRate?: number; medianResponseMinutes?: number; rank?: number; note: string;
 }
 export interface AreaRow { area: string; enquiries: Trend; offers: Trend; offersPerEnquiryPct?: number; publishedNow: number; note: string }
-export interface Alert { id: string; severity: Severity; kind: "area" | "agent"; subject: string; message: string }
+export interface Alert { id: string; severity: Severity; kind: "area" | "agent" | "team"; subject: string; message: string }
 export interface Insights {
   summary: string;
   platform: { listings: Trend; enquiries: Trend; offers: Trend; accepted: Trend; acceptanceRate?: number; offersPerEnquiryPct?: number };
-  agents: AgentRow[]; agentsNote?: string; areas: AreaRow[]; alerts: Alert[]; recommendations: string[];
+  agents: AgentRow[]; agentsNote?: string; areas: AreaRow[]; teams?: TeamRow[]; teamsNote?: string; alerts: Alert[]; recommendations: string[];
   teamNote: string; basis: string;
 }
 
@@ -127,6 +128,9 @@ export function buildInsights(actor: StaffActor, facts: InsightFacts, config: Al
       alerts.push({ id, severity: "high", kind: "area", subject: name, message: `${name}: ${plural(a.publishedNow, "live listing")} and no enquiries this period.` });
     }
   }
+  // Teams: ranked on accepted offers once a team has enough offers. Counts only here; value and commission live on the team analytics screen.
+  const teamView = facts.teams && facts.teams.length > 0 ? buildTeamComparison(actor, facts.teams, undefined, { money: false }) : undefined;
+  for (const a of teamView?.alerts ?? []) alerts.push({ id: a.id, severity: a.severity, kind: "team", subject: a.subject, message: a.message });
   const rank: Record<Severity, number> = { high: 0, medium: 1, info: 2 };
   alerts.sort((a, b) => rank[a.severity] - rank[b.severity] || a.id.localeCompare(b.id));
 
@@ -137,6 +141,9 @@ export function buildInsights(actor: StaffActor, facts: InsightFacts, config: Al
   if (alerts.some(a => a.id.startsWith("area-conv"))) recommendations.push("For areas where enquiries do not become offers, ask owners to review price guides, photos and descriptions.");
   if (alerts.some(a => a.id.startsWith("area-drop"))) recommendations.push("For areas with falling enquiries, check seasonal effects first, then consider a local marketing push or a featured-listing offer.");
   if (alerts.some(a => a.id.startsWith("area-quiet"))) recommendations.push("Listings with no enquiries after going live may have a visibility problem: check publish status, photos and address accuracy.");
+  if (alerts.some(a => a.id.startsWith("team-sales"))) recommendations.push("For teams whose accepted offers fell, ask the manager what changed: listings that went off the market, agents away, or slower replies.");
+  if (alerts.some(a => a.id.startsWith("team-quiet") || a.id.startsWith("team-conv"))) recommendations.push("For teams with live listings but few enquiries or offers, review their price guides, photos and how quickly buyers get a first reply.");
+  if (alerts.some(a => a.id.startsWith("team-tasks"))) recommendations.push("Teams with many overdue tasks may be short of people; suggest the manager reassigns work or adds a member.");
   const grew = areas.filter(a => a.enquiries.changePct !== undefined && a.enquiries.changePct >= 50 && a.enquiries.current >= MIN_AREA_ENQUIRIES);
   if (grew.length > 0) recommendations.push(`Demand is rising in ${grew.slice(0, 3).map(a => a.area).join(", ")}; consider recruiting or assigning more agents there.`);
   if (recommendations.length === 0) recommendations.push(c.enquiries === 0 ? "No enquiries in this period; widen the date range to see trends." : "Nothing stands out this period. Keep an eye on the weekly trend.");
@@ -152,7 +159,8 @@ export function buildInsights(actor: StaffActor, facts: InsightFacts, config: Al
     platform: { listings: trend(c.listings, p.listings), enquiries: e, offers: o, accepted: trend(c.accepted, p.accepted),
       ...(platformRate !== undefined ? { acceptanceRate: platformRate } : {}), ...(platformFunnel !== undefined ? { offersPerEnquiryPct: platformFunnel } : {}) },
     agents, ...(agentsNote ? { agentsNote } : {}), areas, alerts, recommendations,
-    teamNote: "Teams are not part of the platform yet, so agents are compared individually. Team views arrive with team management.",
+    ...(teamView ? { teams: teamView.rows, ...(teamView.note ? { teamsNote: teamView.note } : {}) } : {}),
+    teamNote: teamView ? "Agents above are compared individually across the platform; teams below group agents by the team their manager set up." : "No agency teams have been set up yet, so agents are compared individually.",
     basis: `Rule-based and self-hosted, from platform counts only. Agents are compared on offers decided (min ${MIN_AGENT_DECIDED}); areas need ${MIN_AREA_ENQUIRIES}+ enquiries to be flagged.`
   };
 }

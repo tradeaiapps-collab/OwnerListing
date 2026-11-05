@@ -112,3 +112,23 @@ describe("GET /api/staff/elena-insights", () => {
     expect((await route.GET(new Request("http://x/a?from=2026-10-30&to=2026-10-01"))).status).toBe(400);
   });
 });
+
+describe("team insights", () => {
+  const team = (id: string, o: Record<string, unknown> = {}) => ({ id, name: `Team ${id}`, kind: "team", members: 3, activeListings: 2, overdueTasks: 0, current: { enquiries: 0, offers: 0, accepted: 0, acceptedCents: 9, commissionCents: 9 }, previous: { enquiries: 0, offers: 0, accepted: 0, acceptedCents: 0, commissionCents: 0 }, ...o });
+  it("compares teams with counts only and adds their alerts and a recommendation", () => {
+    const i = buildInsights(admin, facts({ teams: [
+      team("A", { current: { enquiries: 12, offers: 5, accepted: 3, acceptedCents: 5_000_000, commissionCents: 1 } }),
+      team("Q", { activeListings: 4 })
+    ] }));
+    expect(i.teams!.map(t => t.name)).toEqual(["Team A", "Team Q"]);
+    expect(JSON.stringify(i.teams)).not.toMatch(/soldCents|commissionCents/); // Elena's admin view is counts only
+    expect(i.alerts.find(a => a.kind === "team")).toMatchObject({ id: "team-quiet-Q", severity: "high" });
+    expect(i.recommendations.join(" ")).toContain("live listings but few enquiries");
+    expect(i.teamNote).toContain("teams below");
+  });
+  it("keeps working when no teams exist, with the old agent-only comparison", () => {
+    const i = buildInsights(admin, facts({}));
+    expect(i.teams).toBeUndefined();
+    expect(i.teamNote).toContain("No agency teams");
+  });
+});

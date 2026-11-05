@@ -16,7 +16,9 @@ async function handlePost(req: Request) {
   const email = await repo.userEmail(actor.userId);
   if (!email) return unauthenticated();
   const base = process.env["APP_URL"] ?? new URL(req.url).origin;
-  const r = await startPayoutOnboarding(repo, getPayoutProvider(), actor, email, { returnUrl: `${base}/teams`, refreshUrl: `${base}/teams` });
+  const body = (await req.json().catch(() => null)) as { teamId?: unknown } | null;
+  const back = typeof body?.teamId === "string" && /^[0-9a-f-]{36}$/i.test(body.teamId) ? `${base}/teams/${body.teamId}` : `${base}/teams`;
+  const r = await startPayoutOnboarding(repo, getPayoutProvider(), actor, email, { returnUrl: back, refreshUrl: back });
   return r.ok ? NextResponse.json(r.value) : failure(r);
 }
 export const POST = withApi(handlePost);
@@ -26,6 +28,6 @@ async function handleGet(req: Request) {
   const actor = await getActor(req);
   if (!actor) return unauthenticated();
   const acct = await getTeamPayoutRepo().getAccount(actor.userId);
-  return NextResponse.json({ kycStatus: acct?.kycStatus ?? "none" });
+  return NextResponse.json({ kycStatus: acct?.kycStatus ?? "none", enabled: getPayoutProvider().enabled() });
 }
 export const GET = withApi(handleGet);

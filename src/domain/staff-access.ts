@@ -34,6 +34,7 @@ export interface PermissionInfo { key: string; area: PermissionArea; label: stri
 export const PERMISSION_CATALOGUE = [
   { key: "case.manage", area: "cases", label: "Work admin cases", description: "Claim and resolve admin cases. Trust account and licence cases still need a second person.", sensitive: false },
   { key: "wording.review", area: "cases", label: "Review discriminatory wording flags", description: "Clear or uphold listing wording the anti-discrimination filter blocked, with a reason. Nobody reviews their own listing.", sensitive: false },
+  { key: "signing.support_view", area: "documents", label: "Read a sent signing document in a dispute", description: "Read a sent or signed document and its audit trail to help settle a dispute. Every view is logged with the reason.", sensitive: true },
   { key: "dispute.read_chat", area: "cases", label: "Read job chat in a dispute", description: "Read the saved job chat for a disputed job. Every view is logged.", sensitive: true },
   { key: "trust_account.approve", area: "trust_accounts", label: "Approve trust accounts", description: "Approve or reject a solicitor trust account. New or changed details always need two different people.", sensitive: true },
   { key: "licence.verify", area: "trust_accounts", label: "Verify agent licences", description: "Check and record agent licence verification.", sensitive: false },
@@ -52,12 +53,14 @@ export const PERMISSION_CATALOGUE = [
   { key: "billing.manage", area: "pricing", label: "Reconcile payments and answer payment issues", description: "Confirm bank transfers against invoices and answer customers' payment issues at /staff/finance. Moves no money; every action is logged.", sensitive: true },
   { key: "pricing.manage", area: "pricing", label: "Set plan prices", description: "Add new plan prices with a reason. Existing subscriptions keep their price.", sensitive: true },
   { key: "messaging.settings", area: "messaging", label: "Email and SMS settings", description: "Enter or change the email and SMS provider details and send test messages.", sensitive: true },
+  { key: "syndication.manage", area: "marketplace", label: "Manage listing portals", description: "Connect Airbnb, VRBO and Booking.com, set their keys and limits, and retry failed syncs.", sensitive: true },
   { key: "staff.manage", area: "staff", label: "Manage staff access", description: "Invite staff, change their role and revoke access, only within the access you hold yourself. Editing roles is for super admins only.", sensitive: true },
-  { key: "theme.edit", area: "website", label: "Edit site appearance", description: "Change the website colours, fonts and logo (draft, preview, publish, revert) at /staff/site.", sensitive: false },
+  { key: "theme.edit", area: "website", label: "Edit site appearance", description: "Change the website colours, fonts and logo (draft, preview, publish, revert) at /staff/site, and approve agency white-label brands at /staff/white-label.", sensitive: false },
   { key: "site.content.edit", area: "website", label: "Edit website content", description: "Draft changes to website pages and blocks, including the guide assistant's text at /staff/assistant.", sensitive: false },
   { key: "site.content.publish", area: "website", label: "Publish website content", description: "Make drafted website content live, including turning the guide assistant on or off.", sensitive: false },
   { key: "ai.engine_set", area: "platform", label: "Choose the AI engine", description: "Turn the self-hosted AI on or off and test the model server at /staff/ai (super admin only).", sensitive: true },
   { key: "config.edit", area: "platform", label: "Edit platform settings", description: "Change technical platform settings.", sensitive: false },
+  { key: "feeds.manage", area: "platform", label: "Property data feeds", description: "Connect agency CRM and Domain feeds, set their territory and schedule, run them and record data licences at /staff/feeds.", sensitive: true },
   { key: "logs.technical", area: "platform", label: "Technical logs", description: "Read technical logs (no personal data).", sensitive: false },
   { key: "override.request", area: "overrides", label: "Request an override", description: "Ask for a logged override with a reason. Someone else must approve it.", sensitive: false },
   { key: "override.approve", area: "overrides", label: "Approve another person's override", description: "Be the second person on an override, never on your own.", sensitive: true },
@@ -69,10 +72,17 @@ export const PERMISSION_CATALOGUE = [
   { key: "doc_template.edit", area: "documents", label: "Draft document templates", description: "Create document templates and save new draft versions at /staff/doc-templates. A draft does nothing until someone else publishes it.", sensitive: false },
   { key: "doc_template.publish", area: "documents", label: "Publish document templates", description: "Make a template version live so owners can generate and send it for signature. Never a version you wrote yourself, and only after counsel has reviewed the wording.", sensitive: true },
   { key: "listing.moderate", area: "marketplace", label: "Moderate listings", description: "Search every listing, suspend a published listing, lift a suspension (the owner must publish again) and send a listing under review back to draft. Always with a reason; every action is logged.", sensitive: false },
+  { key: "listing.bulk", area: "marketplace", label: "Bulk listing operations", description: "Act on up to 500 listings at once at /staff/listings: publish (through the publish checks), archive, delete (soft), mark sold or rented, add a tag, change property type, adjust price, reassign the agent and export CSV. Always with a reason; every listing is logged. Never on your own listings for agent changes.", sensitive: false },
   { key: "user.manage", area: "marketplace", label: "Manage user accounts", description: "See user accounts with their verification and compliance status, and suspend or reinstate an account with a reason. Staff accounts are managed in Staff access.", sensitive: true },
+  { key: "sale_event.manage", area: "marketplace", label: "Record sold and rented events", description: "See the sold and rented log at /staff/sale-events, add historical sales and rentals, void a wrong or fallen-through one with a reason, and sweep accepted offers that have no event. Every action is logged.", sensitive: false },
   { key: "user.mfa_reset", area: "marketplace", label: "Reset two-step sign-in", description: "Reset an owner's or agent's two-step sign-in when they lose their phone, at /staff/security/mfa-reset (super admin only). Every reset is logged and the user is emailed.", sensitive: true },
   { key: "user.delete", area: "marketplace", label: "Delete and restore accounts", description: "Delete an owner's, agent's or buyer's account (listings archived, open offers cancelled, records kept 7 years) and restore it within the recovery window, at /staff/users/deleted-accounts (super admin only). Every step is logged and the people affected are emailed.", sensitive: true },
-  { key: "commission.manage", area: "commissions", label: "Manage agent commissions", description: "Record agent commission deals, override amounts with a reason, set payout dates, mark deals earned or cancelled, and confirm a payment was made to the agent, at /staff/commissions. The platform holds no money; this is a record. Every step is logged.", sensitive: true }
+  { key: "escrow.manage", area: "trust_accounts", label: "Manage deposits in trust", description: "Open the deposit record for an accepted offer, record deposits the bank shows were received, import trust account bank statements and reconcile them, and ask for a deposit to be released or refunded, at /staff/escrow. The platform holds no money; deposits stay in the solicitor's trust account. Every step is logged.", sensitive: true },
+  { key: "escrow.approve", area: "trust_accounts", label: "Approve deposit releases", description: "Approve or reject a request to release a deposit to the seller or refund it to the buyer. Never the person who asked for it. Every decision is logged.", sensitive: true },
+  { key: "ad_leads.manage", area: "marketplace", label: "Manage ad leads", description: "See leads from Facebook, Instagram and Google ads at /staff/ad-leads with their full contact details, assign them to agents, track them to enquiry and offer, connect ad accounts, record ad spend and turn automatic follow-up emails on or off. Every action is logged.", sensitive: true },
+  { key: "commission.manage", area: "commissions", label: "Manage agent commissions", description: "Record agent commission deals, override amounts with a reason, set payout dates, mark deals earned or cancelled, and confirm a payment was made to the agent, at /staff/commissions. The platform holds no money; this is a record. Every step is logged.", sensitive: true },
+  { key: "automation.manage", area: "platform", label: "Workflow rules and scheduled tasks", description: "Create, switch on and off, and delete workflow rules and scheduled tasks at /staff/automation. Rules send notifications to owners, agents and buyers; tasks can archive old listings. Every change is logged.", sensitive: true },
+  { key: "campaign.manage", area: "messaging", label: "Send email and SMS campaigns", description: "Write campaigns, choose a segment, schedule or send them and read open and click rates at /staff/campaigns. Only people who opted in to marketing are reached. Every send is logged.", sensitive: true }
 ] as const satisfies readonly PermissionInfo[];
 
 export type StaffPermission = (typeof PERMISSION_CATALOGUE)[number]["key"];
@@ -88,10 +98,10 @@ export const isSensitivePermission = (p: string): boolean => SENSITIVE.has(p);
 const ROLE_PERMISSIONS: Record<StaffRole, readonly StaffPermission[]> = {
   super_admin: ALL,
   compliance: ["report.audit", "report.solicitor", "report.broker", "pii.view_full", "case.manage",
-    "trust_account.approve", "licence.verify", "dispute.read_chat", "override.request", "identity.review", "investment.review",
-    "wording.review", "disclosure.config_edit", "disclosure.config_approve", "disclosure.verify", "doc_template.edit", "doc_template.publish", "listing.moderate", "user.manage"],
-  accountant: ["report.financial", "report.sales", "pii.view_masked", "billing.manage", "commission.manage"],
-  support: ["report.buyer", "report.seller", "pii.view_masked", "case.manage", "override.request", "listing.moderate"],
+    "trust_account.approve", "licence.verify", "dispute.read_chat", "signing.support_view", "override.request", "identity.review", "investment.review",
+    "wording.review", "sale_event.manage", "disclosure.config_edit", "disclosure.config_approve", "disclosure.verify", "doc_template.edit", "doc_template.publish", "listing.moderate", "listing.bulk", "user.manage", "escrow.manage", "escrow.approve"],
+  accountant: ["report.financial", "report.sales", "pii.view_masked", "billing.manage", "commission.manage", "escrow.manage"],
+  support: ["report.buyer", "report.seller", "pii.view_masked", "case.manage", "signing.support_view", "override.request", "listing.moderate"],
   technical: ["logs.technical", "report.operations", "config.edit"],
   reporting: ["report.sales", "report.suburb", "report.operations"],
   /** Site appearance only (theme.edit). No personal data, no reports, no money. */
@@ -101,8 +111,8 @@ const ROLE_PERMISSIONS: Record<StaffRole, readonly StaffPermission[]> = {
 /** Built-in (system) roles and their labels. They cannot be edited, disabled or deleted. */
 export const SYSTEM_ROLES: readonly { key: StaffRole; label: string; description: string }[] = [
   { key: "super_admin", label: "Super admin", description: "Everything, including roles and staff access. Safety gates still need a second person." },
-  { key: "compliance", label: "Compliance", description: "Trust accounts, licences, identity review, audit, disputes, listing moderation and user accounts." },
-  { key: "accountant", label: "Accountant", description: "Financial and sales reports with masked personal details." },
+  { key: "compliance", label: "Compliance", description: "Trust accounts and deposits in trust, licences, identity review, audit, disputes, listing moderation and user accounts." },
+  { key: "accountant", label: "Accountant", description: "Financial and sales reports with masked personal details, and deposit records and trust account reconciliation." },
   { key: "support", label: "Support", description: "Admin cases, listing moderation, and owner and buyer reports with masked personal details." },
   { key: "technical", label: "Technical", description: "Technical logs, operations report and platform settings. No personal data." },
   { key: "reporting", label: "Reporting", description: "Sales, suburb and operations reports." },
