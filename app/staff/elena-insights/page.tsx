@@ -94,6 +94,24 @@ export default function ElenaInsights() {
           {i.agentsNote && <p className="muted">{i.agentsNote}</p>}
           <p className="muted">{i.teamNote}</p>
 
+          {i.teams && i.teams.length > 0 && (
+            <>
+              <h2>Teams</h2>
+              <div className="table-wrap"><table>
+                <thead><tr><th scope="col">Team</th><th scope="col" className="num">Rank</th><th scope="col" className="num">People</th><th scope="col" className="num">Listings</th><th scope="col" className="num">Enquiries</th>
+                  <th scope="col" className="num">Change</th><th scope="col" className="num">Offers</th><th scope="col" className="num">Accepted</th><th scope="col" className="num">Accepted change</th><th scope="col">Notes</th></tr></thead>
+                <tbody>
+                  {i.teams.map(t => (
+                    <tr key={t.id}><td style={{ whiteSpace: "nowrap" }}>{t.name}</td><td className="num">{t.rank ?? "–"}</td><td className="num">{t.members}</td><td className="num">{t.activeListings}</td>
+                      <td className="num">{t.enquiries.current}</td><td className="num">{change(t.enquiries)}</td><td className="num">{t.offers.current}</td><td className="num">{t.sold.current}</td><td className="num">{change(t.sold)}</td><td>{t.note}</td></tr>
+                  ))}
+                </tbody>
+              </table></div>
+              {i.teamsNote && <p className="muted">{i.teamsNote}</p>}
+              <p className="muted"><a href="/staff/analytics">Team value, commission and trends are on platform analytics.</a></p>
+            </>
+          )}
+
           <h2>Areas</h2>
           {i.areas.length === 0 ? <p className="muted">No area activity in this period.</p> : (
             <div className="table-wrap"><table>

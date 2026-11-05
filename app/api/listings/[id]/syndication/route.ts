@@ -3,7 +3,7 @@ import { isPortal, parseListingPortalInput } from "../../../../../src/domain/syn
 import { getActor, getDb } from "../../../../../src/server/context";
 import { csrfGuard } from "../../../../../src/server/csrf";
 import { failure, unauthenticated } from "../../../../../src/server/http";
-import { canManageListing, listBookings, listingSyndication, saveListingSetting, syndicateListing, syndicationDeps } from "../../../../../src/server/syndication-db";
+import { canManageListing, listBookings, listCalendarImports, listingSyndication, saveListingSetting, syndicateListing, syndicationDeps } from "../../../../../src/server/syndication-db";
 import { UUID_RE } from "../../../../../src/server/staff-route";
 import { withApi } from "../../../../../src/server/api/with-api";
 
@@ -16,7 +16,7 @@ async function handleGet(req: Request, { params }: Ctx) {
   if (!actor) return unauthenticated();
   const { id } = await params;
   if (!UUID_RE.test(id) || !(await canManageListing(getDb(), id, actor.userId))) return notFound();
-  return NextResponse.json({ portals: await listingSyndication(getDb(), id), bookings: await listBookings(getDb(), id) }, { headers: { "cache-control": "no-store" } });
+  return NextResponse.json({ portals: await listingSyndication(getDb(), id), bookings: await listBookings(getDb(), id), calendars: await listCalendarImports(getDb(), id) }, { headers: { "cache-control": "no-store" } });
 }
 
 /** Body: { portal, enabled, custom?: { houseRules, cancellationPolicy, minNights, maxGuests }, manualUrl? }. Takes effect at once (best effort) and on the next scheduled run. */

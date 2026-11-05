@@ -3,12 +3,13 @@ import { hedraVideoFromEnv } from "../adapters/hedra-video";
 import { objectStorageFromEnv } from "../adapters/object-storage";
 import type { AuditEvent } from "../domain/audit";
 import {
-  completeBuyerPurchase, runVideoQueue, type AgentVideoRow, type BudgetView, type CheckoutPort, type ListingVideo, type Membership, type Purchase,
-  type VideoIds, type VideoModel, type VideoProvider, type VideoRepository
+  MAX_REFUND_ATTEMPTS, REFUND_NOTICE_TITLE, completeBuyerPurchase, refundNoticeText, runVideoQueue, type AgentVideoRow, type BudgetView, type CheckoutPort,
+  type ListingVideo, type Membership, type Purchase, type RefundNotifier, type VideoIds, type VideoModel, type VideoProvider, type VideoRefund, type VideoRepository
 } from "../domain/listing-video";
 import { getDb } from "./context";
 import { appendAuditPg, type Queryable } from "./db";
-import { parseCheckoutEvent, stripeCheckoutFromEnv } from "./stripe-checkout";
+import { notifyUser } from "./notifier";
+import { parseCheckoutEvent, stripeCheckoutFromEnv, stripeRefundsFromEnv } from "./stripe-checkout";
 import { stripeSignatureValid } from "./stripe-payouts";
 
 // Constant SQL text; input only travels as bound parameters. Nothing here deletes a video or a ledger row.
@@ -26,6 +27,22 @@ const VIDEO_COLS =
   "id, listing_id, model, requested_by, team_id, status, provider_job_id, storage_key, content_type, cost_cents, attempts, next_attempt_at, deadline_at, error, visibility, requested_at, generated_at, published_at, archived_at";
 const INSERT_VIDEO_SQL =
   `INSERT INTO listing_video (${VIDEO_COLS}) VALUES ($1::uuid,$2::uuid,$3,$4::uuid,$5::uuid,$6,$7,$8,$9,$10,$11,$12::timestamptz,$13::timestamptz,$14,$15,$16::timestamptz,$17,$18,$19) ON CONFLICT DO NOTHING RETURNING id`;
+export const OPEN_BUYER_REFUNDS_SQL =
+  "INSERT INTO video_refund (id, purchase_id, video_id, listing_id, buyer_id, amount_cents, reason, next_attempt_at) " +
+  "SELECT gen_random_uuid(), p.id, p.video_id, p.listing_id, p.buyer_id, p.amount_cents, $2, $3::timestamptz FROM video_purchase p WHERE p.video_id = $1::uuid AND p.status = 'paid' " +
+  "ON CONFLICT (purchase_id) DO NOTHING RETURNING id, purchase_id, listing_id, amount_cents";
+const REFUND_COLS = "f.id, f.purchase_id, f.video_id, f.listing_id, f.buyer_id, f.amount_cents, f.reason, f.status, f.stripe_refund_id, f.attempts, f.last_error, f.created_at, f.refunded_at, p.payment_intent_id";
+const REFUND_SELECT = `SELECT ${REFUND_COLS} FROM video_refund f JOIN video_purchase p ON p.id = f.purchase_id`;
+/** Leases the due rows (next_attempt_at moves out) so a second queue run skips them. Rows that gave up sit at year 9999. */
+export const CLAIM_REFUNDS_SQL =
+  "UPDATE video_refund f SET next_attempt_at = $2::timestamptz FROM video_purchase p WHERE p.id = f.purchase_id AND f.id IN " +
+  "(SELECT id FROM video_refund WHERE status <> 'succeeded' AND attempts < $4 AND next_attempt_at <= $1::timestamptz ORDER BY next_attempt_at LIMIT $3 FOR UPDATE SKIP LOCKED) " +
+  `RETURNING ${REFUND_COLS}`;
+const toRefund = (r: Record<string, unknown>): VideoRefund => ({
+  id: s(r["id"]), purchaseId: s(r["purchase_id"]), videoId: s(r["video_id"]), listingId: s(r["listing_id"]), buyerId: s(r["buyer_id"]), amountCents: Number(r["amount_cents"]),
+  reason: s(r["reason"]), status: s(r["status"]) as VideoRefund["status"], stripeRefundId: strOrNull(r["stripe_refund_id"]), attempts: Number(r["attempts"]), lastError: s(r["last_error"]),
+  createdAt: iso(r["created_at"]), refundedAt: isoOrNull(r["refunded_at"]), paymentIntentId: strOrNull(r["payment_intent_id"])
+});
 export const LISTING_SQL = "SELECT id, owner_user_id, status, title, COALESCE(description, '') AS description, property_type, COALESCE(suburb, '') AS suburb FROM property_listing WHERE id = $1::uuid";
 export const APPOINTED_SQL = "SELECT 1 FROM listing_agent_appointment WHERE listing_id = $1::uuid AND agent_user_id = $2::uuid AND revoked_at IS NULL";
 export const MEMBERSHIP_SQL = "SELECT team_id, role FROM agency_team_member WHERE user_id = $1::uuid AND removed_at IS NULL AND role IN ('manager','agent') ORDER BY added_at, team_id LIMIT 1";
@@ -168,6 +185,13 @@ export function createPgVideoRepository(db: Queryable): VideoRepository {
       const r = await one("UPDATE listing_video SET status = 'failed', error = $2 WHERE id = $1::uuid AND status IN ('queued','processing') RETURNING team_id, cost_cents, model", [id, error.slice(0, 500)], tx);
       if (!r) return;
       if (r["model"] === "team" && r["team_id"]) await tx.query(INSERT_REFUND_SQL, [randomUUID(), id]);
+      // Buyer video: one pending Stripe refund per paid purchase linked to it. UNIQUE (purchase_id) makes a repeat a no-op.
+      if (r["model"] === "buyer") {
+        const opened = await tx.query(OPEN_BUYER_REFUNDS_SQL, [id, `Video generation failed: ${error}`.slice(0, 500), nowIso]);
+        for (const o of opened.rows) {
+          await appendAuditPg(tx, { ...audit, id: randomUUID(), eventType: "video.refund_requested", payload: { listingId: s(o["listing_id"]), refundId: s(o["id"]), purchaseId: s(o["purchase_id"]), amountCents: Number(o["amount_cents"]), reason: error.slice(0, 500) } });
+        }
+      }
       await appendAuditPg(tx, audit);
     }),
     async createPurchase(p) {
@@ -176,13 +200,26 @@ export function createPgVideoRepository(db: Queryable): VideoRepository {
     async pendingPurchase(listingId, buyerId) { const r = await one(`SELECT ${PURCHASE_COLS} FROM video_purchase WHERE listing_id = $1::uuid AND buyer_id = $2::uuid AND status = 'pending'`, [listingId, buyerId]); return r ? toPurchase(r) : undefined; },
     async attachCheckout(purchaseId, sessionId, url) { await db.query("UPDATE video_purchase SET checkout_session_id = $2, checkout_url = $3 WHERE id = $1::uuid", [purchaseId, sessionId, url]); },
     async purchaseBySession(sessionId) { const r = await one(`SELECT ${PURCHASE_COLS} FROM video_purchase WHERE checkout_session_id = $1`, [sessionId]); return r ? toPurchase(r) : undefined; },
-    async hasPaid(listingId, buyerId) { return !!(await one("SELECT 1 FROM video_purchase WHERE listing_id = $1::uuid AND buyer_id = $2::uuid AND status = 'paid'", [listingId, buyerId])); },
-    settlePurchase: (eventId, purchaseId, videoId, nowIso, audit) => atomic(db, async tx => {
+    async hasPaid(listingId, buyerId) { return !!(await one("SELECT 1 FROM video_purchase p WHERE p.listing_id = $1::uuid AND p.buyer_id = $2::uuid AND p.status = 'paid' AND NOT EXISTS (SELECT 1 FROM video_refund f WHERE f.purchase_id = p.id)", [listingId, buyerId])); },
+    settlePurchase: (eventId, purchaseId, videoId, nowIso, audit, paymentIntentId) => atomic(db, async tx => {
       if ((await tx.query("INSERT INTO video_webhook_event (event_id) VALUES ($1) ON CONFLICT DO NOTHING RETURNING event_id", [eventId])).rows.length === 0) return false;
-      await tx.query("UPDATE video_purchase SET status = 'paid', video_id = $2::uuid, paid_at = $3::timestamptz WHERE id = $1::uuid AND status = 'pending'", [purchaseId, videoId, nowIso]);
+      await tx.query("UPDATE video_purchase SET status = 'paid', video_id = $2::uuid, paid_at = $3::timestamptz, payment_intent_id = $4 WHERE id = $1::uuid AND status = 'pending'", [purchaseId, videoId, nowIso, paymentIntentId ?? null]);
       await appendAuditPg(tx, audit);
       return true;
     }),
+    async claimRefunds(nowIso, leaseUntilIso, limit) {
+      return (await db.query(CLAIM_REFUNDS_SQL, [nowIso, leaseUntilIso, limit, MAX_REFUND_ATTEMPTS])).rows.map(toRefund);
+    },
+    markRefunded: (id, stripeRefundId, nowIso, audit) => atomic(db, async tx => {
+      const r = await tx.query("UPDATE video_refund SET status = 'succeeded', stripe_refund_id = $2, refunded_at = $3::timestamptz, attempts = attempts + 1, last_error = '' WHERE id = $1::uuid AND status <> 'succeeded' RETURNING id", [id, stripeRefundId, nowIso]);
+      if (r.rows.length > 0) await appendAuditPg(tx, audit);
+    }),
+    markRefundFailed: (id, error, nextIso, giveUp, audit) => atomic(db, async tx => {
+      const r = await tx.query("UPDATE video_refund SET status = 'failed', attempts = attempts + 1, last_error = $2, next_attempt_at = $3::timestamptz WHERE id = $1::uuid AND status <> 'succeeded' RETURNING id", [id, error.slice(0, 500), giveUp ? "9999-01-01T00:00:00Z" : nextIso]);
+      if (r.rows.length > 0) await appendAuditPg(tx, audit);
+    }),
+    async markRefundNotified(id, nowIso) { await db.query("UPDATE video_refund SET notified_at = $2::timestamptz WHERE id = $1::uuid AND notified_at IS NULL", [id, nowIso]); },
+    async refundsForListing(listingId) { return (await db.query(`${REFUND_SELECT} WHERE f.listing_id = $1::uuid ORDER BY f.created_at DESC LIMIT 100`, [listingId])).rows.map(toRefund); },
     async expirePurchase(sessionId) { await db.query("UPDATE video_purchase SET status = 'expired' WHERE checkout_session_id = $1 AND status = 'pending'", [sessionId]); },
     async appendAudit(e: AuditEvent) { await appendAuditPg(db, e); }
   };
@@ -193,7 +230,13 @@ export const getVideoRepo = () => createPgVideoRepository(getDb());
 export const getVideoProvider = (): VideoProvider => hedraVideoFromEnv();
 export const getCheckout = (): CheckoutPort => stripeCheckoutFromEnv();
 export const getVideoStorage = () => objectStorageFromEnv(process.env);
-export const runQueueNow = (limit?: number) => runVideoQueue({ repo: getVideoRepo(), provider: getVideoProvider(), storage: getVideoStorage(), ids: videoIds }, limit);
+/** Tells the buyer their money is back: in-app plus email (a required account notice). True once the notice was delivered on some channel. */
+const notifyRefund: RefundNotifier = async r => {
+  const res = await notifyUser(getDb(), r.buyerId, "system_notice", { title: REFUND_NOTICE_TITLE, text: refundNoticeText(r.amountCents) });
+  return res.inApp || res.email === "sent";
+};
+export const runQueueNow = (limit?: number) =>
+  runVideoQueue({ repo: getVideoRepo(), provider: getVideoProvider(), storage: getVideoStorage(), ids: videoIds, refunds: stripeRefundsFromEnv(), notify: notifyRefund }, limit);
 /** Best effort straight after a request, so the video starts without waiting for the scheduler. Never throws. */
 export const kickQueue = () => runQueueNow(3).catch(() => undefined);
 
@@ -209,5 +252,5 @@ export async function handleVideoStripeWebhook(repo: VideoRepository, rawBody: s
   if (e === null) return { status: 400, body: { error: "Invalid event." } };
   if (e === undefined) return { status: 200, body: { ok: true, note: "Event type ignored." } };
   if (e.kind === "expired") { await repo.expirePurchase(e.sessionId); return { status: 200, body: { ok: true } }; }
-  return { status: 200, body: { ok: true, result: await completeBuyerPurchase(repo, e.eventId, e.sessionId, ids) } };
+  return { status: 200, body: { ok: true, result: await completeBuyerPurchase(repo, e.eventId, e.sessionId, ids, e.paymentIntentId ?? null) } };
 }
