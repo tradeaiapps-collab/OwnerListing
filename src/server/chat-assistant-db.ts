@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { personaById } from "../domain/assistant-persona";
-import { CHAT_TOPICS, type AssistantTurn, type AssistantTurnRepository, type ChatAssistantDeps, type ChatOffer, type ChatPose, type ChatRole, type ChatTopic } from "../domain/chat-assistant";
+import { CHAT_TOPICS, type AssistantTurn, type AssistantTurnRepository, type ChatAssistantDeps, type ChatFacts, type ChatOffer, type ChatPose, type ChatRole, type ChatTopic } from "../domain/chat-assistant";
+import { classifyTour } from "../domain/virtual-tour";
 import { loadLivePersona } from "./assistant-persona-db";
 import { getDb } from "./context";
 import type { Queryable } from "./db";
@@ -61,6 +62,19 @@ export async function verifiedDisclosuresPg(db: Queryable, listingId: string): P
   return Number(r.rows[0]?.["n"] ?? 0);
 }
 
+/** Tour link and the captions of the visible 360 photos, from the current gallery. Undefined when the listing has neither. */
+export async function tourFactsPg(db: Queryable, listingId: string): Promise<ChatFacts["tour"]> {
+  const l = (await db.query("SELECT entries, tour_url FROM listing_photo_layout WHERE listing_id = $1::uuid ORDER BY version DESC LIMIT 1", [listingId])).rows[0];
+  if (!l) return undefined;
+  const entries = (Array.isArray(l["entries"]) ? l["entries"] : []) as { photoId?: unknown; caption?: unknown; hidden?: unknown }[];
+  const ids = entries.filter(e => e.hidden !== true && typeof e.photoId === "string").map(e => String(e.photoId));
+  const kinds = ids.length ? (await db.query("SELECT id FROM listing_photo WHERE id = ANY($1::uuid[]) AND kind = 'photo360'", [ids])).rows.map(r => String(r["id"])) : [];
+  const panos = entries.filter(e => e.hidden !== true && kinds.includes(String(e.photoId)));
+  const tour = classifyTour(l["tour_url"] ? String(l["tour_url"]) : null);
+  if (!tour && panos.length === 0) return undefined;
+  return { tour, rooms: panos.map(e => (typeof e.caption === "string" ? e.caption : "")).filter(Boolean), panoramas: panos.length };
+}
+
 export function getChatAssistantDeps(): ChatAssistantDeps {
   const db = getDb();
   const e = getEnquiryDeps();
@@ -72,6 +86,7 @@ export function getChatAssistantDeps(): ChatAssistantDeps {
     turns: createPgTurnRepository(db),
     offerFor: (listingId, buyerUserId) => chatOfferPg(db, listingId, buyerUserId),
     verifiedDisclosures: listingId => verifiedDisclosuresPg(db, listingId),
+    tourFor: listingId => tourFactsPg(db, listingId),
     persona: async () => {
       const p = personaById(await loadLivePersona(db));
       return { id: p.id, name: p.name, icon: p.icon, portrait: p.portrait, poses: p.poses };

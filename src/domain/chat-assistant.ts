@@ -7,6 +7,7 @@ import { formatAud } from "./listing-details";
 import type { Actor, Failure, Result } from "./listing-service";
 import { scanInboundMessage } from "./message-safety";
 import { withinLimit } from "./rate-limit";
+import { tourSummary, type TourInfo } from "./virtual-tour";
 
 /**
  * The assistant inside a buyer-owner enquiry thread: a third participant both sides can ask. Rule based and deterministic, so every
@@ -36,6 +37,8 @@ export interface ChatFacts {
     askingCents?: number | undefined; bedrooms?: number | undefined; bathrooms?: number | undefined; parking?: number | undefined; verifiedDisclosures: number;
   };
   offer?: ChatOffer | undefined;
+  /** The listing's virtual tour, when it has one. */
+  tour?: { tour?: TourInfo | undefined; rooms: string[]; panoramas: number } | undefined;
 }
 
 export interface ChatAnswer { topic: ChatTopic; pose: ChatPose; text: string; suggestions: string[] }
@@ -68,7 +71,7 @@ const KEYWORDS: readonly [Exclude<ChatTopic, "welcome" | "privacy" | "advice" | 
   ["settlement", /\b(settle(ment)?|settling|days\s+to\s+settle|move\s+in|keys|handover|possession)\b/g],
   ["deposit", /\b(deposit|holding\s+fee|trust\s+account|10\s*%|ten\s+per\s*cent)\b/g],
   ["conditions", /\b(conditions?|subject\s+to|finance|loan|approval|building|pest|inspect\w*|report|cooling|unconditional)\b/g],
-  ["listing", /\b(bed(room)?s?|bath(room)?s?|parking|car\s*(space|park)s?|garage|property|house|home|unit|townhouse|apartment|listing|features?|disclosures?|pool|land|size|suburb|address)\b/g],
+  ["listing", /\b(tours?|3d|360|virtual|walk[- ]?through|matterport|bed(room)?s?|bath(room)?s?|parking|car\s*(space|park)s?|garage|property|house|home|unit|townhouse|apartment|listing|features?|disclosures?|pool|land|size|suburb|address)\b/g],
   ["offer", /\b(offers?|price|terms|where\s+(are\s+we|do\s+we\s+stand|do\s+things\s+stand|things\s+stand)|stand\s+now|status|current|latest|counter(ed|s)?|summary|summar\w+)\b/g],
   ["next_steps", /\b(next|what\s+now|what\s+happens|process|how\s+does\s+(this|it)\s+work|steps?|contract|solicitor|conveyancer|exchange)\b/g]
 ];
@@ -188,6 +191,17 @@ function listingLine(f: ChatFacts): string {
   return `${what}${disclosures} I only know what's on the listing, so for anything else the owner can answer here.`;
 }
 
+const TOUR_RE = /\b(tours?|3d|360|virtual|walk[- ]?through|matterport)\b/;
+
+function tourLine(f: ChatFacts): string {
+  const l = f.listing, n = (c: number | undefined, w: string) => (c === undefined ? undefined : `${c} ${w}${c === 1 ? "" : "s"}`);
+  const highlights = [n(l.bedrooms, "bedroom"), n(l.bathrooms, "bathroom"), n(l.parking, "car space")].filter(Boolean) as string[];
+  return tourSummary({
+    title: l.title, tour: f.tour?.tour, rooms: f.tour?.rooms ?? [], panoramas: f.tour?.panoramas ?? 0,
+    highlights: highlights.length ? list(highlights) : undefined
+  });
+}
+
 function conditionsLine(f: ChatFacts): string {
   const o = f.offer;
   const parts: string[] = [];
@@ -283,7 +297,7 @@ export function chatAnswer(f: ChatFacts, role: ChatRole, question: string): Chat
     case "settlement": return done(settlementLine(f));
     case "deposit": return done(depositLine(f));
     case "conditions": return done(conditionsLine(f));
-    case "listing": return done(listingLine(f));
+    case "listing": return done(TOUR_RE.test(t) ? tourLine(f) : listingLine(f));
     case "next_steps": return done(nextLine(f, role));
     default: {
       const talk = smallTalk(question);
@@ -315,6 +329,8 @@ export interface ChatAssistantDeps extends Pick<EnquiryDeps, "enquiries" | "list
   offerFor: (listingId: string, buyerUserId: string) => Promise<ChatOffer | undefined>;
   /** Count of staff-verified disclosures for the listing. */
   verifiedDisclosures: (listingId: string) => Promise<number>;
+  /** The listing's tour link and 360 photo captions. Optional: without it she says the listing has no tour. */
+  tourFor?: (listingId: string) => Promise<ChatFacts["tour"]>;
   /** The live persona (Elena by default): name and pictures only. */
   persona: () => Promise<ChatPersona>;
   appendAudit: (e: AuditEvent) => Promise<void>;
@@ -342,13 +358,14 @@ async function context(deps: ChatAssistantDeps, actor: Actor, enquiryId: string)
   if (!rec) return fail("not_found", "Enquiry not found.");
   const l = rec.listing;
   const role: ChatRole = p.value.asAgent ? "agent" : actor.userId === e.buyerUserId ? "buyer" : "owner";
-  const [offer, verifiedDisclosures] = await Promise.all([deps.offerFor(e.listingId, e.buyerUserId), deps.verifiedDisclosures(e.listingId)]);
+  const [offer, verifiedDisclosures, tour] = await Promise.all([deps.offerFor(e.listingId, e.buyerUserId), deps.verifiedDisclosures(e.listingId), deps.tourFor ? deps.tourFor(e.listingId).catch(() => undefined) : undefined]);
   const facts: ChatFacts = {
     listing: {
       title: l.title, address: l.address, suburb: l.suburb, transactionType: l.transactionType, propertyType: l.propertyType,
       askingCents: l.priceCents, bedrooms: l.bedrooms, bathrooms: l.bathrooms, parking: l.parking, verifiedDisclosures
     },
-    offer
+    offer,
+    ...(tour ? { tour } : {})
   };
   return { ok: true, value: { enquiry: e, role, facts } };
 }

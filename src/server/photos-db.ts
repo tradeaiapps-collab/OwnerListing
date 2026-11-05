@@ -86,7 +86,7 @@ export function createPgPhotoStore(db: Queryable): PhotoStore {
       return db.transaction ? db.transaction(run) : run(db);
     },
     async coversFor(ids) {
-      const out = new Map<string, { cover: ReturnType<typeof coverOf>["cover"]; photoCount: number }>();
+      const out = new Map<string, ReturnType<typeof coverOf>>();
       if (ids.length === 0) return out;
       const layouts = await db.query(`SELECT DISTINCT ON (listing_id) listing_id, version, entries, tour_url FROM listing_photo_layout WHERE listing_id = ANY($1::uuid[]) ORDER BY listing_id, version DESC`, [ids]);
       const photos = (await db.query(`${PHOTO_SELECT} WHERE listing_id = ANY($1::uuid[])`, [ids])).rows.map(toPhoto);
