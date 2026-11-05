@@ -1,0 +1,32 @@
+/* Property valuation card and staff screens. Site tokens only, so light and dark follow the theme; mobile first. */
+.vl-card { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-3); margin: var(--space-4) 0; }
+.vl-card h2 { margin: 0; }
+.vl-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); }
+.vl-badge { display: inline-flex; align-items: center; gap: var(--space-1); padding: var(--space-1) var(--space-3); border-radius: 999px; font-weight: 700; border: 1px solid currentColor; background: var(--bg); }
+.vl-green { color: var(--ok); } .vl-yellow { color: var(--warn); } .vl-red { color: var(--danger); } .vl-blue { color: var(--link); }
+.vl-conf { color: var(--muted); }
+.vl-range { margin: 0; font-weight: 600; overflow-wrap: anywhere; }
+.vl-meter { position: relative; height: 0.5rem; border-radius: 999px; background: var(--tint); border: 1px solid var(--border); }
+.vl-meter-fair { position: absolute; top: 0; bottom: 0; background: var(--ok-tint); border-inline: 2px solid var(--ok); }
+.vl-meter-ask { position: absolute; top: -0.25rem; width: 0.75rem; height: 0.75rem; margin-left: -0.375rem; border-radius: 50%; background: currentColor; border: 2px solid var(--bg); }
+.vl-table-wrap { overflow-x: auto; }
+.vl-table-wrap table { width: 100%; }
+.vl-table-wrap th, .vl-table-wrap td { text-align: left; white-space: nowrap; }
+.vl-table-wrap .num { text-align: right; font-variant-numeric: tabular-nums; }
+.vl-detail { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-4); }
+.vl-detail h3 { margin: 0 0 var(--space-2); }
+.vl-detail ul { margin: 0; padding-left: 1.25rem; }
+.vl-note { color: var(--muted); font-size: 0.875rem; margin: 0; }
+.vl-links { display: flex; flex-wrap: wrap; gap: var(--space-3); }
+.vl-off { color: var(--muted); }
+.vl-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-3); }
+.vl-field { display: grid; gap: var(--space-1); }
+.vl-field input[type="number"], .vl-field input[type="text"], .vl-field select { max-width: 100%; }
+.vl-switch { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); padding: var(--space-3); border: 1px solid var(--border); border-radius: calc(var(--radius) - 4px); background: var(--tint); }
+.vl-switch.is-on { border-color: var(--ok); background: var(--ok-tint); }
+.vl-switch strong { overflow-wrap: anywhere; }
+.vl-hist { margin: 0; padding: 0; list-style: none; display: grid; gap: var(--space-2); }
+.vl-hist li { overflow-wrap: anywhere; }
+@media (min-width: 640px) { .vl-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 559px) { .vl-hide-narrow { display: none; } }
+.vl-grid .vl-actions { grid-column: 1 / -1; margin: 0; }

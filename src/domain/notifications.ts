@@ -126,7 +126,8 @@ export const KINDS = {
   system_notice: "account",
   marketing_news: "marketing",
   automation_message: "marketing",
-  automation_alert: "messages"
+  automation_alert: "messages",
+  lead_followup_due: "messages"
 } as const satisfies Record<string, Category>;
 export type Kind = keyof typeof KINDS;
 export const isKind = (v: unknown): v is Kind => typeof v === "string" && Object.prototype.hasOwnProperty.call(KINDS, v);
@@ -199,6 +200,7 @@ export function renderNotification(kind: Kind, p: NotificationParams = {}): Rend
     case "system_notice": return t(clip(p["title"], 80, "Notice"), clip(p["text"], 400, "There is an update about your account."));
     case "marketing_news": return t(clip(p["title"], 80, "News"), clip(p["text"], 400, "There is news from us."));
     case "automation_message": return t(clip(p["title"], 80, "A message about a property"), clip(p["text"], 600, "There is an update about a property you asked about."), false);
+    case "lead_followup_due": return t("Lead follow-up due", clip(p["text"], 300, `Follow up with ${name} about ${listing}.`), false);
     case "automation_alert": return t(clip(p["title"], 80, "Automation update"), clip(p["text"], 400, "One of your automations ran."));
   }
 }

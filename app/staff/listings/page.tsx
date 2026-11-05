@@ -123,7 +123,7 @@ export default function ListingModeration() {
             {rows.map(r => (
               <tr key={r.id} aria-selected={picked.has(r.id) || allMatching}>
                 {canBulk && <td className="bulk-check"><input type="checkbox" aria-label={`Select ${r.title}`} checked={picked.has(r.id) || allMatching} disabled={allMatching} onChange={() => toggleRow(r.id)} /></td>}
-                <td><strong>{r.title}</strong><br /><span className="muted">{r.propertyType} for {r.transactionType}, listed by {r.ownerType}, {new Date(r.createdAt).toLocaleDateString("en-AU")}</span></td>
+                <td><strong>{r.transactionType === "sale" ? <a href={`/staff/listings/${r.id}`}>{r.title}</a> : r.title}</strong><br /><span className="muted">{r.propertyType} for {r.transactionType}, listed by {r.ownerType}, {new Date(r.createdAt).toLocaleDateString("en-AU")}</span></td>
                 <td>{r.suburb ?? "No suburb"}, {r.jurisdiction}</td>
                 <td>{r.priceCents === null ? "Not set" : `${formatKpi(r.priceCents, "cents")}${r.transactionType === "rent" ? " pw" : ""}`}</td>
                 <td>{r.offers}</td>

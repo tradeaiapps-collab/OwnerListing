@@ -11,6 +11,7 @@ import { LocationMap } from "../location-map";
 import { JSON_HEADERS } from "../ui";
 import { SaveAsTemplate } from "../save-as-template";
 import { MarketSnapshot } from "./market-snapshot";
+import { ValuationCard } from "../valuation-card";
 import "../../styles/cards.css";
 import "../../styles/detail.css";
 
@@ -315,6 +316,8 @@ export default function ListingDetail() {
               {listing.description.split(/\n{2,}/).map((p, i) => <p key={i} className="detail-description">{p}</p>)}
             </section>
           )}
+
+          {tx === "sale" && userType !== null && <ValuationCard listingId={listing.id} />}
 
           <h2>Property details</h2>
           <dl className="details detail-facts">
