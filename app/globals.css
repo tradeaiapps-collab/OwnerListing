@@ -65,6 +65,9 @@
   }
 }
 
+/* Visitor-chosen dark (header toggle): the Site appearance theme CSS already sets the dark colour tokens for data-theme-mode="dark"; the rules below mirror the device-dark ones. */
+:root[data-theme-mode="dark"] { --shadow-1: 0 1px 2px rgb(0 0 0 / 0.4); --shadow-2: 0 18px 40px -18px rgb(0 0 0 / 0.8); --shadow-3: 0 40px 80px -32px rgb(0 0 0 / 0.9); }
+
 /* Tints derived from the live theme colours (resolved on the element, so they follow the theme and the mode). */
 :root, :root:root {
   --tint: color-mix(in srgb, var(--brand) 6%, var(--bg));
@@ -79,6 +82,7 @@
   --elevated: color-mix(in srgb, var(--bg) 70%, #fff);
 }
 @media (prefers-color-scheme: dark) { :root:root:where(:not([data-theme-mode="light"])) { --elevated: color-mix(in srgb, var(--surface) 80%, var(--bg)); } }
+:root:root[data-theme-mode="dark"] { --elevated: color-mix(in srgb, var(--surface) 80%, var(--bg)); }
 
 *, *::before, *::after { box-sizing: border-box; }
 
@@ -183,6 +187,9 @@ body > .page { flex: 1 0 auto; width: 100%; }
 .site-nav .icon { flex: none; opacity: 0.7; }
 .site-nav-links { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1); }
 .site-nav .nav-toggle { display: none; }
+.theme-toggle { flex: none; align-self: center; display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; padding: 0; border: 1px solid var(--border); border-radius: 999px; background: none; color: var(--header-text, var(--text)); cursor: pointer; box-shadow: none; transition: background-color var(--dur-1) var(--ease); }
+.theme-toggle:hover { background: var(--tint-2); }
+.site-nav .theme-toggle { margin-inline-start: var(--space-1); }
 @media (max-width: 719px) {
   .site-nav { flex: 1 0 100%; gap: 0 var(--space-1); }
   .site-nav a, .site-nav .nav-signout { padding-inline: var(--space-2); font-size: 0.875rem; }
@@ -232,6 +239,7 @@ body > .page { flex: 1 0 auto; width: 100%; }
   --footer-muted: color-mix(in srgb, var(--bg) 72%, var(--heading, var(--text)));
 }
 @media (prefers-color-scheme: dark) { :where(html:not([data-theme-mode="light"])) .site-footer { background: #070b16; color: #e7e2d8; --footer-ink: #e7e2d8; --footer-muted: #a6abb8; border-top: 1px solid var(--border); } }
+html[data-theme-mode="dark"] .site-footer { background: #070b16; color: #e7e2d8; --footer-ink: #e7e2d8; --footer-muted: #a6abb8; border-top: 1px solid var(--border); }
 .site-footer::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 2px; background: linear-gradient(90deg, transparent, var(--gold), transparent); opacity: 0.8; }
 .site-footer-inner { max-width: var(--container); margin: 0 auto; padding: var(--space-12) var(--space-4) var(--space-6); display: grid; gap: var(--space-6) var(--space-8); grid-template-columns: 1fr; }
 @media (min-width: 760px) { .site-footer-inner { grid-template-columns: minmax(14rem, 1fr) 2fr; } }

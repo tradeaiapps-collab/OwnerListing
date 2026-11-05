@@ -15,6 +15,7 @@ import { CardMedia } from "./listings/card-media";
 import HomeSearch from "./home-search";
 import SavingsCalc from "./savings-calc";
 import MortgageCalc from "./mortgage-calc";
+import HomeInvestor from "./home-investor";
 import "./styles/cards.css";
 import "./styles/home.css";
 import "./styles/assistant.css";
@@ -214,6 +215,7 @@ export default async function Home() {
           <MortgageCalc />
         </div>
       </section>
+      <HomeInvestor />
 
       <section className="home-sec" aria-labelledby="home-states" data-mode="buy" data-crumb="Browse by state">
         <div className="home-wrap">
