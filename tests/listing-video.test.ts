@@ -11,7 +11,8 @@ import {
 import { handleVideoStripeWebhook } from "../src/server/listing-video-db";
 import { parseCheckoutEvent, stripeCheckoutFromEnv, videoPaymentsEnabled } from "../src/server/stripe-checkout";
 
-const LISTING = randomUUID(), OWNER = randomUUID(), AGENT = randomUUID(), OTHER_AGENT = randomUUID(), BUYER = randomUUID(), TEAM = randomUUID(), MANAGER = randomUUID();
+const LISTING = randomUUID(), OWNER = randomUUID(), AGENT = randomUUID(), OTHER_AGENT = randomUUID(), BUYER = randomUUID(), TEAM = randomUUID(), MANAGER = randomUUID(), RIVAL = randomUUID(), RIVAL_TEAM = randomUUID();
+const rival: Actor = { userId: RIVAL, userType: "agent" };
 const agent: Actor = { userId: AGENT, userType: "agent" };
 const manager: Actor = { userId: MANAGER, userType: "agent" };
 const buyer: Actor = { userId: BUYER, userType: "buyer" };
@@ -35,9 +36,9 @@ function fakeRepo(opts: { budgetCents?: number; photos?: number; listingStatus?:
   const live = (listingId: string, model: string) => videos.find(v => v.listingId === listingId && v.model === model && !v.archivedAt && v.status !== "failed");
   const repo: VideoRepository = {
     listing: async id => (id === LISTING ? { id, ownerUserId: OWNER, status: state.status, title: "12 Palm St", description: "Light-filled family home.", propertyType: "house", suburb: "Paddington" } : undefined),
-    isAppointedAgent: async (l, u) => l === LISTING && (u === AGENT || u === MANAGER),
-    membership: async u => (u === AGENT ? { teamId: TEAM, role: "agent" } : u === MANAGER ? { teamId: TEAM, role: "manager" } : undefined),
-    isTeamMember: async (t, u) => t === TEAM && (u === AGENT || u === MANAGER),
+    isAppointedAgent: async (l, u) => l === LISTING && (u === AGENT || u === MANAGER || u === RIVAL),
+    membership: async u => (u === RIVAL ? { teamId: RIVAL_TEAM, role: "agent" } : u === AGENT ? { teamId: TEAM, role: "agent" } : u === MANAGER ? { teamId: TEAM, role: "manager" } : undefined),
+    isTeamMember: async (t, u) => (t === TEAM && (u === AGENT || u === MANAGER)) || (t === RIVAL_TEAM && u === RIVAL),
     budget: async (t, m) => (t === TEAM && state.budget !== undefined ? { teamId: t, monthlyBudgetCents: state.budget, spentCents: spent(m), remainingCents: Math.max(0, state.budget - spent(m)), monthStart: m } : undefined),
     setBudget: async (_t, c, _b, a) => { state.budget = c; audits.push(a.eventType); },
     queueTeamVideo: async (v, m, a) => {
@@ -167,6 +168,31 @@ describe("team pays per video (model 1)", () => {
     videos[0]!.status = "ready";
     expect((await archiveVideo(repo, agent, first.value.id, ids)).ok).toBe(true);
     expect((await requestTeamVideo(repo, agent, LISTING, pricing, p, ids)).ok).toBe(true);
+  });
+
+  it("only the team that made a video can publish or delete it; staff with listing.moderate can too", async () => {
+    const { repo, videos } = fakeRepo({ budgetCents: 5000 });
+    const { ids } = clock();
+    const r = await requestTeamVideo(repo, agent, LISTING, pricing, fakeProvider().p, ids);
+    if (!r.ok) throw new Error("r");
+    Object.assign(videos[0]!, { status: "ready", storageKey: "k", contentType: "video/mp4" });
+    const admin = { id: randomUUID(), role: "support" };
+    const noPerm = { id: randomUUID(), role: "reporting" };
+    // another team's agent, appointed to the same listing, is refused (403)
+    expect(await archiveVideo(repo, rival, r.value.id, ids)).toMatchObject({ ok: false, code: "forbidden" });
+    expect(await publishVideo(repo, rival, r.value.id, ids)).toMatchObject({ ok: false, code: "forbidden" });
+    expect(videos[0]!.archivedAt).toBeNull();
+    expect(videos[0]!.visibility).toBe("private");
+    // staff without the moderate permission is not an admin
+    expect(await archiveVideo(repo, null, r.value.id, ids, noPerm)).toMatchObject({ ok: false, code: "not_found" });
+    // a teammate may publish; the admin may delete
+    expect((await publishVideo(repo, manager, r.value.id, ids)).ok).toBe(true);
+    expect((await archiveVideo(repo, null, r.value.id, ids, admin)).ok).toBe(true);
+    // own team delete is allowed
+    const second = await requestTeamVideo(repo, agent, LISTING, pricing, fakeProvider().p, ids);
+    if (!second.ok) throw new Error("second");
+    Object.assign(videos[1]!, { status: "ready" });
+    expect((await archiveVideo(repo, agent, second.value.id, ids)).ok).toBe(true);
   });
 
   it("preview before publishing: private to the team until published, then public with the listing", async () => {

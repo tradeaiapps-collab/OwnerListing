@@ -1,6 +1,7 @@
 import type { ObjectStoragePort } from "../adapters/object-storage";
 import type { AuditEvent } from "./audit";
 import type { Actor, Failure, Result } from "./listing-service";
+import { staffCan, type StaffActor } from "./staff-access";
 
 // AI tour videos made by Hedra. Pure rules and the queue live here; Hedra, Stripe, Postgres and file storage are ports.
 // Model "team": an agency team spends its monthly video budget (managers set it; agents appointed to the listing generate).
@@ -278,26 +279,46 @@ export async function videoForListing(repo: VideoRepository, actor: Actor | null
   return { ok: true, value: { video: null, priceCents: null, canBuy: listing.status === "published" } };
 }
 
-export async function publishVideo(repo: VideoRepository, actor: Actor, id: unknown, ids: VideoIds): Promise<Result<{ id: string }>> {
+/** Staff who may moderate listings can act on any team's video. */
+const isVideoAdmin = (staff?: StaffActor | null): boolean => !!staff && staffCan(staff, "listing.moderate");
+
+/** A team video belongs to the team that paid for it: only its members (or an admin) may publish or delete it, even if another team's agent is appointed to the same listing. */
+async function ownsVideo(repo: VideoRepository, actor: Actor, v: ListingVideo): Promise<boolean> {
+  return !!v.teamId && (await repo.isTeamMember(v.teamId, actor.userId));
+}
+
+export async function publishVideo(repo: VideoRepository, actor: Actor | null, id: unknown, ids: VideoIds, staff?: StaffActor | null): Promise<Result<{ id: string }>> {
   const v = isId(id) ? await repo.video(id) : undefined;
   const listing = v ? await repo.listing(v.listingId) : undefined;
-  if (!v || !listing || v.archivedAt || !(await canManageVideos(repo, actor, listing))) return fail("not_found", "Video not found.");
+  const admin = isVideoAdmin(staff);
+  if (!v || !listing || v.archivedAt) return fail("not_found", "Video not found.");
+  if (!admin) {
+    if (!actor || !(await canManageVideos(repo, actor, listing))) return fail("not_found", "Video not found.");
+    if (v.model === "team" && !(await ownsVideo(repo, actor, v))) return fail("forbidden", "Only the team that made this video can publish it.");
+  }
+  const by = admin && staff ? staff.id : actor!.userId;
   if (v.model !== "team") return fail("invalid", "Only a team video can be published to everyone.");
   if (v.status !== "ready") return fail("conflict", "The video is not ready to publish yet.");
   await repo.setVisibility(v.id, "public", ids.now());
-  await repo.appendAudit(audit(ids, actor.userId, "video.published", v.id, { listingId: v.listingId }));
+  await repo.appendAudit(audit(ids, by, "video.published", v.id, { listingId: v.listingId }));
   return { ok: true, value: { id: v.id } };
 }
 
 /** Delete or replace: the video leaves the listing, the file stays in storage (published files are never deleted here). */
-export async function archiveVideo(repo: VideoRepository, actor: Actor, id: unknown, ids: VideoIds): Promise<Result<{ id: string }>> {
+export async function archiveVideo(repo: VideoRepository, actor: Actor | null, id: unknown, ids: VideoIds, staff?: StaffActor | null): Promise<Result<{ id: string }>> {
   const v = isId(id) ? await repo.video(id) : undefined;
   const listing = v ? await repo.listing(v.listingId) : undefined;
-  if (!v || !listing || v.archivedAt || !(await canManageVideos(repo, actor, listing))) return fail("not_found", "Video not found.");
+  const admin = isVideoAdmin(staff);
+  if (!v || !listing || v.archivedAt) return fail("not_found", "Video not found.");
+  if (!admin) {
+    if (!actor || !(await canManageVideos(repo, actor, listing))) return fail("not_found", "Video not found.");
+    if (v.model === "team" && !(await ownsVideo(repo, actor, v))) return fail("forbidden", "Only the team that made this video can delete it.");
+  }
+  const by = admin && staff ? staff.id : actor!.userId;
   if (v.model !== "team") return fail("forbidden", "A buyer's video belongs to the buyer who paid for it.");
   if (v.status === "processing" || v.status === "queued") return fail("conflict", "Wait for the video to finish or fail before deleting it.");
   await repo.archive(v.id, ids.now());
-  await repo.appendAudit(audit(ids, actor.userId, "video.archived", v.id, { listingId: v.listingId }));
+  await repo.appendAudit(audit(ids, by, "video.archived", v.id, { listingId: v.listingId }));
   return { ok: true, value: { id: v.id } };
 }
 
