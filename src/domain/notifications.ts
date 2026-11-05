@@ -100,6 +100,11 @@ export const KINDS = {
   consultation_cancelled: "appointments",
   review_received: "messages",
   booking_received: "appointments",
+  open_inspection_confirmed: "appointments",
+  open_inspection_new: "appointments",
+  open_inspection_reminder_24h: "appointments",
+  open_inspection_reminder_1h: "appointments",
+  open_inspection_cancelled: "appointments",
   booking_conflict: "appointments",
   offer_received: "offers",
   offer_accepted: "offers",
@@ -123,7 +128,8 @@ export const KINDS = {
   automation_message: "marketing",
   automation_alert: "messages",
   scheduling_message: "messages",
-  scheduling_suggestion: "messages"
+  scheduling_suggestion: "messages",
+  lead_followup_due: "messages"
 } as const satisfies Record<string, Category>;
 export type Kind = keyof typeof KINDS;
 export const isKind = (v: unknown): v is Kind => typeof v === "string" && Object.prototype.hasOwnProperty.call(KINDS, v);
@@ -165,6 +171,11 @@ export function renderNotification(kind: Kind, p: NotificationParams = {}): Rend
     case "consultation_confirmed": return t("Consultation confirmed", `Your consultation with ${name} is confirmed for ${when}.`);
     case "consultation_cancelled": return t("Consultation cancelled", `${name} cancelled the consultation planned for ${when}.`);
     case "review_received": return t("New review", `${name} left you a review.`);
+    case "open_inspection_confirmed": return t("Inspection booked", `You are booked to inspect ${listing} on ${when}. Contact: ${clip(p["contact"], 120, "the listing agent")}. Bring photo ID, and message the agent from the listing if your plans change.`);
+    case "open_inspection_new": return t("New inspection booked", `${name} booked to inspect ${listing} on ${when}.`);
+    case "open_inspection_reminder_24h": return t("Inspection tomorrow", `Your inspection of ${listing} is tomorrow: ${when}. Contact: ${clip(p["contact"], 120, "the listing agent")}.`);
+    case "open_inspection_reminder_1h": return t("Inspection in 1 hour", `Your inspection of ${listing} starts in about an hour: ${when}. Contact: ${clip(p["contact"], 120, "the listing agent")}.`);
+    case "open_inspection_cancelled": return t("Inspection cancelled", `The inspection of ${listing} on ${when} was cancelled. ${clip(p["next"], 200, "Open the listing to book another time.")}`);
     case "booking_received": return t("New booking from a portal", `${name} booked ${listing} through a listing portal. The dates are now blocked on your calendar.`);
     case "booking_conflict": return t("Booking clashes with another", `A booking from ${name} for ${listing} overlaps dates that are already booked. Contact the portal or the guest to sort it out.`);
     case "offer_received": return t("New offer received", `A new offer was made on ${listing}. Review it in your offers.`);
@@ -193,6 +204,7 @@ export function renderNotification(kind: Kind, p: NotificationParams = {}): Rend
     case "automation_message": return t(clip(p["title"], 80, "A message about a property"), clip(p["text"], 600, "There is an update about a property you asked about."), false);
     case "scheduling_message": return t(clip(p["title"], 80, "A message about your inspection"), clip(p["text"], 1500, "There is an update about your inspection."));
     case "scheduling_suggestion": return t(clip(p["title"], 80, "Elena drafted a message"), clip(p["text"], 400, "Review the draft and send, edit or skip it."));
+    case "lead_followup_due": return t("Lead follow-up due", clip(p["text"], 300, `Follow up with ${name} about ${listing}.`), false);
     case "automation_alert": return t(clip(p["title"], 80, "Automation update"), clip(p["text"], 400, "One of your automations ran."));
   }
 }

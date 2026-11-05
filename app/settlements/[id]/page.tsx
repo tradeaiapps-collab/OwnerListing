@@ -42,7 +42,7 @@ export default function SettlementPage({ params }: { params: Promise<{ id: strin
   if (!v) return <main><p className="muted" role="status">Loading…</p></main>;
   return (
     <main>
-      <p><a href="/settlements">Back to settlements</a></p>
+      <p><a href="/settlements">Back to settlements</a> · <a href={`/messages/${v.id}`}>Messages for this sale</a></p>
       <h1>{v.listingTitle}</h1>
       <p className="muted">{v.fellThrough ? "This sale fell through, so the timeline is closed." : v.completed ? "Settled." : v.canUpdate ? "You can complete stages and tick the owner, agent and solicitor items." : "You can tick your own items. The owner or agent completes each stage."}</p>
       {v.stuck.stuck ? <p role="status" className="ai-note"><strong>{v.stuck.blocked ? "This stage is blocked." : `This stage has been open ${v.stuck.days} days.`}</strong> Check what is holding it up.</p> : null}

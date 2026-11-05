@@ -37,7 +37,7 @@ const step = (c: number) => roundStep("sale", c);
 const round = (c: number) => roundTo(c, step(c));
 
 /** Sales in the subject's area and property group, no older than `maxMonths`, and of similar size when both sizes are known. */
-function pool(s: SellerSubject, all: readonly Comparable[], now: string, maxMonths: number, sized: boolean): Comparable[] {
+export function pool(s: SellerSubject, all: readonly Comparable[], now: string, maxMonths: number, sized: boolean): Comparable[] {
   return all.filter(c =>
     c.transactionType === "sale" && c.priceCents > 0 && groupOf(c.propertyType) === groupOf(s.propertyType) && near(s, c) &&
     monthsBetween(c.date, now) >= 0 && monthsBetween(c.date, now) <= maxMonths &&
@@ -249,3 +249,7 @@ export function sellerBundle(s: SellerSubject, all: readonly Comparable[], now: 
     pricingGuide: model.state === "ready" ? { ...model, curve: priceCurve(model) } : model, note: SELLER_NOTE
   };
 }
+
+/** The price-to-days model out of a bundle's `pricingGuide` (which carries the model's fields plus a curve), or its unavailable answer. */
+export const pricingGuideModel = (g: ReturnType<typeof sellerBundle>["pricingGuide"] | undefined): PriceDaysModel | Unavailable | undefined =>
+  g === undefined ? undefined : g.state === "ready" ? (g as PriceDaysModel) : g;
