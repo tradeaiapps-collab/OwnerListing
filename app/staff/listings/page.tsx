@@ -6,6 +6,7 @@ import { BULK_ACTIONS, BULK_LABELS, BULK_MAX, type BulkAction } from "../../../s
 import { ReasonAction } from "../reason-action";
 import { loadError } from "../staff-api";
 import { BulkDialog, type Selection } from "./bulk-dialog";
+import { VideoRefunds } from "./video-refunds";
 import { StaffListingsMap } from "./listings-map";
 import "../../styles/admin.css";
 
@@ -132,6 +133,7 @@ export default function ListingModeration() {
                     {r.status === "published" && <a href={`/listings/${r.id}`} target="_blank" rel="noreferrer">View</a>}
                     {r.actions.map(a => <ReasonAction key={a.action} label={a.label} action={a.action} danger={a.action === "suspend"} url={`/api/staff/listings/${r.id}/action`} onDone={() => void load()} />)}
                   </div>
+                  <VideoRefunds listingId={r.id} />
                 </td>
               </tr>
             ))}
