@@ -39,6 +39,7 @@ const META: Record<string, { group: string; icon: AdminIcon; blurb: string }> = 
   "/staff/analytics": { group: "insights", icon: "chart", blurb: "Trends across listings, offers and fees" },
   "/staff/report-builder": { group: "insights", icon: "builder", blurb: "Build and export custom reports" },
   "/staff/reports": { group: "insights", icon: "report", blurb: "Sales and operations reports" },
+  "/staff/finance": { group: "insights", icon: "price", blurb: "Revenue, invoices, bank transfers and payment issues" },
   "/staff/pricing": { group: "settings", icon: "price", blurb: "Listing packages and fees" },
   "/staff/messaging": { group: "settings", icon: "message", blurb: "Email and SMS delivery settings" },
   "/staff/site": { group: "settings", icon: "palette", blurb: "Brand, colours, fonts and home page" },
