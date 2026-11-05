@@ -77,6 +77,7 @@ export default function InspectorPortal() {
       )}
 
       {profile?.status === "approved" && (<>
+        <p><a className="button" href="/inspector/messages">Elena&apos;s message drafts</a></p>
         <h2>Open requests</h2>
         {reqs.length === 0 && <p className="empty">No open requests in {profile.jurisdictions.join(", ")} right now.</p>}
         <ul className="card-list insp-list">

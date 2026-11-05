@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { runDueAutomations } from "../../../../../src/server/automation-db";
+import { runDueSchedulingMessages } from "../../../../../src/server/elena-scheduling-db";
 import { authorizeCron } from "../../../../../src/server/cron-secret-db";
 import { getDb } from "../../../../../src/server/context";
 import { withApi } from "../../../../../src/server/api/with-api";
@@ -11,7 +12,11 @@ import { withApi } from "../../../../../src/server/api/with-api";
 async function handlePost(req: Request) {
   const auth = await authorizeCron(getDb(), "automations", req.headers.get("x-cron-secret"));
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
-  return NextResponse.json(await runDueAutomations(getDb(), new Date().toISOString()));
+  const now = new Date().toISOString();
+  const automations = await runDueAutomations(getDb(), now);
+  // Elena's scheduling drafts ride on the same tick: due reminders become suggestions, stale drafts expire. Never fails the automation run.
+  const scheduling = await runDueSchedulingMessages(getDb(), now).catch(() => ({ expired: 0, suggested: 0 }));
+  return NextResponse.json({ ...automations, scheduling });
 }
 
 export const POST = withApi(handlePost);

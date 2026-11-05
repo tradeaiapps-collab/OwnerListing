@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 const state = vi.hoisted(() => ({ calls: 0 }));
 vi.mock("../src/server/context", () => ({ getDb: () => ({}) }));
 vi.mock("../src/server/automation-db", () => ({ runDueAutomations: async () => { state.calls++; return { processed: 3 }; } }));
+vi.mock("../src/server/elena-scheduling-db", () => ({ runDueSchedulingMessages: async () => ({ expired: 1, suggested: 2 }) }));
 import { POST } from "../app/api/internal/automations/run/route";
 
 const SECRET = "a".repeat(40);
@@ -25,7 +26,7 @@ describe("automation run route", () => {
     expect(state.calls).toBe(0);
     const ok = await call(SECRET);
     expect(ok.status).toBe(200);
-    expect(await ok.json()).toEqual({ processed: 3 });
+    expect(await ok.json()).toEqual({ processed: 3, scheduling: { expired: 1, suggested: 2 } });
   });
   it("has a scheduled workflow that calls the route with the shared secret", () => {
     const wf = readFileSync(path.join(__dirname, "..", ".github", "workflows", "automation-runs.yml"), "utf8");
