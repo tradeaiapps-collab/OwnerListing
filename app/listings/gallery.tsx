@@ -1,6 +1,6 @@
 "use client";
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
-import { altFor, PHOTO_BASE, photoUrl, srcSetFor, type PhotoView } from "../../src/domain/listing-photos";
+import { altFor, categoriesIn, PHOTO_BASE, photoUrl, srcSetFor, type PhotoView } from "../../src/domain/listing-photos";
 import "../styles/gallery.css";
 
 type Tab = "photo" | "floorplan";
@@ -105,6 +105,7 @@ function Lightbox({ items, index, title, onIndex, onClose, info }: {
         <figure key={v.id} className={dir.current ? `gl-figure gl-from-${dir.current}` : "gl-figure"}>
           <Img key={v.id} v={v} sizes="100vw" alt={alt} eager className={v.kind === "floorplan" ? "gl-img gl-plan" : "gl-img"} />
           {v.caption && <figcaption>{v.caption}</figcaption>}
+          {v.features.length > 0 && <ul className="gl-feats" aria-label="Features">{v.features.map(f => <li key={f} className="gl-feat">{f}</li>)}</ul>}
         </figure>
         {total > 1 && <button type="button" className="gl-nav gl-next" onClick={() => go(1)} aria-label="Next photo">›</button>}
         {/* Preload the neighbours so arrows feel instant. */}
@@ -196,6 +197,7 @@ export function ListingGallery({ listingId, title }: { listingId: string; title:
   const [videos, setVideos] = useState<Media[]>([]);
   const [tab, setTab] = useState<Tab>("photo");
   const [open, setOpen] = useState<number | null>(null);
+  const [room, setRoom] = useState<string>("");
   const narrow = useNarrow();
 
   useEffect(() => {
@@ -213,8 +215,11 @@ export function ListingGallery({ listingId, title }: { listingId: string; title:
 
   if (photos === null) return <div className="gl-empty gl-loading" aria-hidden="true" />;
   const byKind = { photo: photos.filter(p => p.kind === "photo"), floorplan: photos.filter(p => p.kind === "floorplan") };
-  const items = byKind[tab].length ? byKind[tab] : byKind.photo.length ? byKind.photo : byKind.floorplan;
-  const current: Tab = items === byKind.floorplan && byKind.floorplan.length ? "floorplan" : "photo";
+  const all = byKind[tab].length ? byKind[tab] : byKind.photo.length ? byKind.photo : byKind.floorplan;
+  const current: Tab = all === byKind.floorplan && byKind.floorplan.length ? "floorplan" : "photo";
+  const rooms = current === "photo" ? categoriesIn(all) : [];
+  const activeRoom = rooms.some(r => r.key === room) ? room : "";
+  const items = activeRoom ? all.filter(p => p.category === activeRoom) : all;
   const tabs = ([["photo", "Photos"], ["floorplan", "Floor plan"]] as const).filter(([k]) => byKind[k].length > 0);
   const label = current === "floorplan" ? (items.length === 1 ? "floor plan" : "floor plans") : items.length === 1 ? "photo" : "photos";
 
@@ -223,8 +228,8 @@ export function ListingGallery({ listingId, title }: { listingId: string; title:
       {items.length === 0
         ? <div className="gl-empty" role="img" aria-label="No photos added yet"><span>No photos yet</span></div>
         : narrow
-          ? <Carousel key={current} items={items} title={title} onOpen={setOpen} />
-          : <HeroGrid key={current} items={items} title={title} onOpen={setOpen} label={label} />}
+          ? <Carousel key={current + activeRoom} items={items} title={title} onOpen={setOpen} />
+          : <HeroGrid key={current + activeRoom} items={items} title={title} onOpen={setOpen} label={label} />}
       {(tabs.length > 1 || tourUrl || videos.length > 0) && (
         <div className="gl-tabs">
           {tabs.length > 1 && (
@@ -238,6 +243,14 @@ export function ListingGallery({ listingId, title }: { listingId: string; title:
           )}
           {tourUrl && <a className="gl-tab gl-link" href={tourUrl} target="_blank" rel="noopener noreferrer nofollow">Video / virtual tour<span className="sr-only"> (opens a new tab)</span></a>}
           {videos.map((m, i) => <a key={m.id} className="gl-tab gl-link" href={`/api/documents/${m.id}/file`}>{m.label} {videos.length > 1 ? i + 1 : ""} (download)</a>)}
+        </div>
+      )}
+      {rooms.length > 1 && (
+        <div className="gl-tabs" role="group" aria-label="Filter photos by room">
+          <button type="button" className="gl-tab" aria-pressed={activeRoom === ""} onClick={() => setRoom("")}>All <span className="gl-tab-n">{all.length}</span></button>
+          {rooms.map(r => (
+            <button key={r.key} type="button" className="gl-tab" aria-pressed={activeRoom === r.key} onClick={() => setRoom(r.key)}>{r.label} <span className="gl-tab-n">{r.count}</span></button>
+          ))}
         </div>
       )}
       {open !== null && items[open] && <Lightbox items={items} index={open} title={title} onIndex={setOpen} onClose={() => setOpen(null)} />}
