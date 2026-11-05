@@ -31,3 +31,6 @@
 }
 .syn-form fieldset { margin: 0; min-width: 0; padding: var(--space-3) var(--space-4); border: 1px solid var(--line); border-radius: var(--radius-sm, 8px); gap: var(--space-1); }
 .syn-form legend { padding: 0 var(--space-2); font-weight: 600; font-size: 0.9375rem; }
+.syn-connect { display: grid; gap: var(--space-2); padding: var(--space-3); border: 1px solid var(--line); border-radius: var(--radius-sm, 8px); background: var(--elevated); }
+.syn-connect p { margin: 0; }
+.syn-frame { display: block; width: 100%; height: min(78vh, 760px); min-height: 480px; border: 1px solid var(--line); border-radius: var(--radius-sm, 8px); background: var(--bg); }

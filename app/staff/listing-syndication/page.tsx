@@ -5,7 +5,7 @@ import "../../styles/syndication.css";
 import { loadError, postStaff } from "../staff-api";
 
 type Portal = "airbnb" | "vrbo" | "booking_com";
-interface PortalRow { portal: Portal; enabled: boolean; mode: "api" | "manual"; baseUrl: string | null; hasKey: boolean; hasWebhookSecret: boolean; allowedTransactionTypes: string[]; maxPerMinute: number; ready: boolean }
+interface PortalRow { portal: Portal; enabled: boolean; mode: "api" | "manual" | "channex"; baseUrl: string | null; hasKey: boolean; hasWebhookSecret: boolean; allowedTransactionTypes: string[]; maxPerMinute: number; ready: boolean }
 interface Failure { listingId: string; title: string; portal: Portal; error: string | null; attempts: number; updatedAt: string }
 interface View { portals: PortalRow[]; counts: Record<string, Record<string, number>>; failures: Failure[] }
 
@@ -47,8 +47,9 @@ function PortalCard({ p, counts, onSaved, onSecret, onError }: { p: PortalRow; c
       <form className="syn-form" onSubmit={save}>
         <div className="syn-fields">
           <label>How listings reach the portal
-            <select value={mode} onChange={e => setMode(e.target.value as "api" | "manual")}>
+            <select value={mode} onChange={e => setMode(e.target.value as "api" | "manual" | "channex")}>
               <option value="manual">Manual link (owner lists on the portal and pastes the link)</option>
+              <option value="channex">Channex (owner connects own account)</option>
               <option value="api">Automatic (we push through the portal's partner API)</option>
             </select>
           </label>
@@ -75,9 +76,10 @@ function PortalCard({ p, counts, onSaved, onSecret, onError }: { p: PortalRow; c
         <div className="syn-actions">
           <button type="submit" disabled={busy || types.length === 0}>{busy ? "Working…" : "Save"}</button>
           {mode === "api" && <button type="button" disabled={busy} onClick={() => void put({ generateWebhookSecret: true })}>{p.hasWebhookSecret ? "Make a new webhook secret" : "Make webhook secret"}</button>}
-          <button type="button" disabled={busy || (!p.enabled && !(mode === "manual" || (p.hasKey && p.hasWebhookSecret && !!p.baseUrl)))} onClick={() => void put({ enabled: !p.enabled })}>{p.enabled ? "Switch off" : "Switch on"}</button>
+          <button type="button" disabled={busy || (!p.enabled && !(mode === "manual" || mode === "channex" || (p.hasKey && p.hasWebhookSecret && !!p.baseUrl)))} onClick={() => void put({ enabled: !p.enabled })}>{p.enabled ? "Switch off" : "Switch on"}</button>
         </div>
       </form>
+      {mode === "channex" && <p className="syn-note">Uses the site's Channex account (CHANNEX_API_KEY). Booking webhook in Channex: <code>/api/webhooks/channex</code>; bookings are also pulled on every worker run.</p>}
       {mode === "api" && <p className="syn-note">Webhook address for this portal: <code>/api/webhooks/syndication/{p.portal}</code> [{p.hasWebhookSecret ? "secret set" : "no secret yet"}]</p>}
     </section>
   );

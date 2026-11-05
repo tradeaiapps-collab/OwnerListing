@@ -4,8 +4,8 @@ import { useParams } from "next/navigation";
 import "../../../styles/syndication.css";
 
 type Portal = "airbnb" | "vrbo" | "booking_com";
-interface Custom { houseRules?: string; cancellationPolicy?: string; minNights?: number; maxGuests?: number }
-interface PortalView { portal: Portal; label: string; mode: "api" | "manual"; eligibleReason: string | null; enabled: boolean; custom: Custom; manualUrl: string | null; state: string | null; externalUrl: string | null; lastError: string | null; lastSyncedAt: string | null }
+interface Custom { houseRules?: string; cancellationPolicy?: string; minNights?: number; maxGuests?: number; nightlyRateCents?: number }
+interface PortalView { portal: Portal; label: string; mode: "api" | "manual" | "channex"; eligibleReason: string | null; enabled: boolean; custom: Custom; manualUrl: string | null; state: string | null; externalUrl: string | null; lastError: string | null; lastSyncedAt: string | null; connected: boolean | null }
 interface CalendarView { portal: Portal; label: string; lastStatus: "ok" | "failed" | null; lastError: string | null; lastSyncedAt: string | null; blockedCount: number }
 const IMPORT_PORTALS: { portal: Portal; label: string }[] = [{ portal: "airbnb", label: "Airbnb" }, { portal: "vrbo", label: "VRBO" }, { portal: "booking_com", label: "Booking.com" }];
 interface Booking { id: string; portal: Portal; source: "webhook" | "ical"; guestName: string; guests: number | null; checkIn: string; checkOut: string; totalCents: number | null; status: string }
@@ -17,12 +17,13 @@ const STATE_TEXT: Record<string, [string, string]> = {
 const money = (c: number | null) => (c === null ? "" : (c / 100).toLocaleString("en-AU", { style: "currency", currency: "AUD" }));
 const date = (d: string) => new Date(`${d}T00:00:00`).toLocaleDateString("en-AU", { day: "numeric", month: "short", year: "numeric" });
 
-function PortalCard({ id, v, onChanged }: { id: string; v: PortalView; onChanged: (portals: PortalView[]) => void }) {
+function PortalCard({ id, v, onChanged, onConnect }: { id: string; v: PortalView; onChanged: (portals: PortalView[]) => void; onConnect: () => void }) {
   const [enabled, setEnabled] = useState(v.enabled);
   const [rules, setRules] = useState(v.custom.houseRules ?? "");
   const [policy, setPolicy] = useState(v.custom.cancellationPolicy ?? "");
   const [minNights, setMinNights] = useState(v.custom.minNights ? String(v.custom.minNights) : "");
   const [maxGuests, setMaxGuests] = useState(v.custom.maxGuests ? String(v.custom.maxGuests) : "");
+  const [nightly, setNightly] = useState(v.custom.nightlyRateCents ? String(v.custom.nightlyRateCents / 100) : "");
   const [manualUrl, setManualUrl] = useState(v.manualUrl ?? "");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
@@ -37,6 +38,7 @@ function PortalCard({ id, v, onChanged }: { id: string; v: PortalView; onChanged
     if (policy) custom.cancellationPolicy = policy;
     if (minNights) custom.minNights = Number(minNights);
     if (maxGuests) custom.maxGuests = Number(maxGuests);
+    if (nightly) custom.nightlyRateCents = Math.round(Number(nightly) * 100);
     try {
       const r = await fetch(`/api/listings/${id}/syndication`, {
         method: "PUT", headers: { "content-type": "application/json" },
@@ -56,6 +58,12 @@ function PortalCard({ id, v, onChanged }: { id: string; v: PortalView; onChanged
       {v.eligibleReason && <p className="syn-note">{v.eligibleReason}</p>}
       {v.state === "manual_removal" && <p role="alert">This listing is no longer live here. Please remove your {v.label} listing yourself.</p>}
       {v.lastError && v.state === "failed" && <p role="alert">Last problem: {v.lastError}</p>}
+      {v.mode === "channex" && v.state === "live" && (
+        <div className="syn-connect">
+          <p className="syn-note">{v.connected ? `Your ${v.label} account is connected. Prices, dates and bookings stay in step.` : `Ready. Connect your ${v.label} account to start taking bookings there.`}</p>
+          <div className="syn-actions"><button type="button" onClick={onConnect}>{v.connected ? "Manage connection" : `Connect ${v.label}`}</button></div>
+        </div>
+      )}
       {v.externalUrl && <p><a href={v.externalUrl} rel="noopener noreferrer" target="_blank">View on {v.label}</a></p>}
       <form className="syn-form" onSubmit={save}>
         <label className="syn-check"><input type="checkbox" checked={enabled} onChange={e => setEnabled(e.target.checked)} />Share this listing on {v.label}</label>
@@ -74,6 +82,11 @@ function PortalCard({ id, v, onChanged }: { id: string; v: PortalView; onChanged
           <label>Maximum guests
             <input inputMode="numeric" value={maxGuests} onChange={e => setMaxGuests(e.target.value)} />
           </label>
+          {v.mode === "channex" && (
+            <label>Price per night (AUD)
+              <input inputMode="decimal" value={nightly} onChange={e => setNightly(e.target.value)} placeholder="Weekly rent ÷ 7" />
+            </label>
+          )}
           {v.mode === "manual" && (
             <label className="is-wide">Link to your listing on {v.label}
               <input type="url" value={manualUrl} onChange={e => setManualUrl(e.target.value)} placeholder="https://…" />
@@ -136,6 +149,9 @@ export default function ListingSyndication() {
   const [loadError, setLoadError] = useState("");
   const [feed, setFeed] = useState("");
   const [feedError, setFeedError] = useState("");
+  const [connectUrl, setConnectUrl] = useState("");
+  const [connectError, setConnectError] = useState("");
+  const [connecting, setConnecting] = useState(false);
 
   const load = useCallback(async () => {
     setLoadError("");
@@ -147,6 +163,16 @@ export default function ListingSyndication() {
     } catch { setLoadError("Could not load."); }
   }, [id]);
   useEffect(() => { void load(); }, [load]);
+
+  async function openConnect() {
+    setConnectError(""); setConnecting(true);
+    try {
+      const r = await fetch(`/api/listings/${id}/syndication/connect`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
+      const d = await r.json().catch(() => ({}));
+      if (r.ok && typeof d.url === "string") setConnectUrl(d.url); else setConnectError(d.error ?? "Could not open the connection screen.");
+    } catch { setConnectError("Could not open the connection screen."); } finally { setConnecting(false); }
+  }
+  function closeConnect() { setConnectUrl(""); void load(); }
 
   async function makeFeed() {
     setFeedError(""); setFeed("");
@@ -165,7 +191,23 @@ export default function ListingSyndication() {
       {loadError && <p role="alert">{loadError}</p>}
       {!loadError && portals === null && <p className="syn-note" role="status">Loading…</p>}
       {portals && portals.length === 0 && <p className="empty">No portals are switched on yet. We will list them here as soon as they are.</p>}
-      <div className="syn-grid">{portals?.map(p => <PortalCard key={p.portal} id={id} v={p} onChanged={setPortals} />)}</div>
+      <div className="syn-grid">{portals?.map(p => <PortalCard key={p.portal} id={id} v={p} onChanged={setPortals} onConnect={() => void openConnect()} />)}</div>
+      {(connecting || connectError || connectUrl) && (
+        <section className="syn-panel" aria-labelledby="syn-connect-h">
+          <div className="syn-head">
+            <h2 id="syn-connect-h">Connect your portal accounts</h2>
+            {connectUrl && <button type="button" onClick={closeConnect}>Done</button>}
+          </div>
+          {connecting && <p className="syn-note" role="status">Opening…</p>}
+          {connectError && <p role="alert">{connectError}</p>}
+          {connectUrl && (
+            <>
+              <p className="syn-note">Sign in to Airbnb, Booking.com or VRBO below and pick this listing. Our partner Channex keeps your prices, dates and bookings in step. Press Done when you have finished.</p>
+              <iframe className="syn-frame" src={connectUrl} title="Connect portal accounts" referrerPolicy="no-referrer" />
+            </>
+          )}
+        </section>
+      )}
       {portals && (
         <section className="syn-panel" aria-labelledby="syn-import-h">
           <h2 id="syn-import-h">Import booked dates</h2>
