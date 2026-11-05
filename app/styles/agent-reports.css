@@ -1,0 +1,44 @@
+/* Agent reports: template picker, builder form, result table, trend bars. Theme tokens only; mobile first. Builds on agent-workspace.css. */
+.ar-main { grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 1024px) { .ar-main { grid-template-columns: 380px minmax(0, 1fr); } }
+.ar-col { display: grid; gap: var(--space-6); min-width: 0; align-content: start; }
+.ar-tpls { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-2); grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.ar-tpls button { width: 100%; height: 100%; display: grid; gap: var(--space-1); text-align: left; padding: var(--space-3); min-height: 44px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); color: inherit; font: inherit; cursor: pointer; }
+.ar-tpls button[aria-pressed="true"] { border-color: var(--gold); background: var(--gold-tint); }
+.ar-tpls button, .ar-tpls button:hover:not(:disabled) { align-content: start; justify-items: start; color: var(--text); background: var(--surface); box-shadow: none; }
+.ar-tpls button[aria-pressed="true"], .ar-tpls button[aria-pressed="true"]:hover:not(:disabled) { background: var(--gold-tint); }
+.ar-tpls strong { color: var(--heading); }
+.ar-tpls small { color: var(--muted); font-weight: 400; }
+.ar-form { display: grid; gap: var(--space-3); }
+.ar-form fieldset { margin: 0; padding: 0; border: 0; min-width: 0; }
+.ar-form legend { font-weight: 600; margin-bottom: var(--space-2); padding: 0; }
+.ar-metrics { display: grid; gap: var(--space-1); grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); }
+.ar-metrics label { display: flex; align-items: center; gap: var(--space-2); min-height: 44px; }
+.ar-row { display: grid; gap: var(--space-3); grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+.ar-row label { display: grid; gap: 2px; font-size: 0.875rem; color: var(--muted); min-width: 0; }
+.ar-row :is(input, select) { min-height: 44px; padding: 0 var(--space-2); font: inherit; max-width: 100%; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); }
+.ar-form hr { width: 100%; border: 0; border-top: 1px solid var(--border); margin: 0; }
+.ar-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin: 0; }
+.ar-actions :is(button, .button) { min-height: 44px; }
+.ar-actions :is(a.button) { display: inline-flex; align-items: center; text-decoration: none; }
+.ar-form :is(input, select, button):focus-visible, .ar-actions :is(button, a):focus-visible, .ar-tpls button:focus-visible, .ar-scroll:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.ar-saved { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-3); }
+.ar-saved li { display: grid; gap: var(--space-2); padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius); }
+.ar-saved li.is-open { border-color: var(--gold); background: var(--gold-tint); }
+.ar-elena { margin-bottom: var(--space-3); padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+.ar-elena ul { margin: 0; padding-left: 1.25rem; display: grid; gap: var(--space-1); }
+.ar-kpis { margin: var(--space-3) 0; }
+@media (min-width: 768px) { .ar-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.ar-scroll { overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius); margin: var(--space-3) 0; }
+.ar-scroll table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+.ar-scroll :is(th, td) { padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--border); text-align: left; vertical-align: top; }
+.ar-scroll thead th { background: var(--surface); vertical-align: bottom; min-width: 5.5rem; }
+.ar-scroll tbody th, .ar-scroll tfoot th { font-weight: 600; min-width: 9rem; position: sticky; left: 0; background: var(--bg); }
+.ar-scroll tfoot :is(th, td) { font-weight: 700; border-top: 2px solid var(--border); border-bottom: 0; }
+.ar-scroll .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ar-scroll thead th.num { text-align: right; }
+.ar-bars { margin: var(--space-3) 0; display: grid; gap: var(--space-1); }
+.ar-bars figcaption { color: var(--muted); font-size: 0.875rem; margin-bottom: var(--space-1); }
+.ar-bar { display: grid; grid-template-columns: 5.5rem minmax(0, 1fr) 4.5rem; align-items: center; gap: var(--space-2); font-size: 0.8125rem; }
+.ar-bar i { display: block; height: 10px; min-width: 2px; border-radius: 999px; background: var(--gold); }
+.ar-bar b { text-align: right; font-variant-numeric: tabular-nums; }

@@ -159,7 +159,7 @@ export interface WorkspaceDeps {
 export interface Workspace { performance: Performance; forecast: Forecast; leads: Lead[] }
 
 const deny = (code: Failure["code"], message: string): Failure => ({ ok: false, code, message });
-async function gate(d: WorkspaceDeps, a: Actor): Promise<Failure | undefined> {
+export async function gate(d: Pick<WorkspaceDeps, "licences" | "today">, a: Actor): Promise<Failure | undefined> {
   if (a.userType !== "agent") return deny("forbidden", "Only agents can use the agent workspace.");
   const ls = await d.licences(), today = d.today();
   if (!ls.some(l => hasVerifiedLicence(ls, a.userId, l.jurisdiction, today))) return deny("forbidden", "A verified licence is required to use the agent workspace.");

@@ -1,6 +1,6 @@
 import { inflateRawSync } from "node:zlib";
 import { describe, expect, it } from "vitest";
-import { exportReport, reportToCsv, reportToPdf, reportToXlsx, tableOf, zipStore } from "../src/domain/report-export";
+import { exportReport, reportToCsv, reportToPdf, reportToXlsx, tableOf, zipStore } from "../src/domain/saved-report-export";
 import { reportInsights } from "../src/domain/report-insights";
 import type { RawReportRow } from "../src/domain/admin-report-builder";
 import {

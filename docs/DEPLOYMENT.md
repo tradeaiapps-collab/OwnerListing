@@ -48,6 +48,11 @@ Do not turn this on for real users until counsel has approved the retention peri
 - `.github/workflows/agent-invite-reminders.yml` calls `POST $APP_URL/api/internal/appointments/reminders` with header `x-cron-secret` at 15 past every hour. Set repository secrets `APP_URL` and `APPOINTMENT_REMINDER_CRON_SECRET` (same value as the app, 32+ chars). Until both are set the run is skipped with a warning.
 - Each invitation unanswered for 48 hours gets one reminder to the agent. Safe to repeat; answers `{reminded}`.
 
+## 4d. Scheduled agent reports (hourly)
+- `.github/workflows/agent-reports.yml` calls `POST $APP_URL/api/internal/agent-reports/run` with header `x-cron-secret` at 5 minutes past every hour. Set repository secrets `APP_URL` and `AGENT_REPORT_CRON_SECRET` (same value as the app, 32+ chars). Until both are set the run is skipped; the route answers 503 while the secret is unset.
+- Reports are emailed to the agent's own account email at 8am Brisbane time (daily, Mondays, or the 1st) through the normal email settings; the delivery log on /staff/messaging shows each one (template `agent_report`). With email not configured the schedule still advances and the run is marked "not sent".
+- Answers `{counts:{due,sent,notSent,skipped}}`. Safe to repeat: each report is claimed before it is sent, so overlapping runs never send twice. Reports hold counts, money and listing titles only, never buyer names.
+
 ## 5. Smoke test after deploy
 Home loads; Google sign-in works; `/plans` loads; an upload answers 503 (storage off, expected); checkout answers "not available yet" (expected); `/api/webhooks/payway` rejects unsigned posts.
 
