@@ -8,6 +8,8 @@ import type { Actor, Failure, Result } from "./listing-service";
 import { scanInboundMessage } from "./message-safety";
 import { withinLimit } from "./rate-limit";
 import { tourSummary, type TourInfo } from "./virtual-tour";
+import type { ChatLang } from "./language-detect";
+import { localizeAnswer, localizeThread, prepareQuestion, type Localized, type MultilingualDeps, type ThreadLocalization } from "./multilingual-service";
 
 /**
  * The assistant inside a buyer-owner enquiry thread: a third participant both sides can ask. Rule based and deterministic, so every
@@ -55,6 +57,10 @@ export interface ChatAnswer { topic: ChatTopic; pose: ChatPose; text: string; su
 export interface AssistantTurn {
   id: string; enquiryId: string; askedByUserId: string; askedByRole: ChatRole;
   question: string; topic: ChatTopic; pose: ChatPose; answer: string; createdAt: string;
+  /** The language the question was written in (detected). The question and the English answer stay as the record. */
+  language?: ChatLang | undefined;
+  /** Her answer in the asker's language, when it differs from English. Not stored on the turn: translations are separate rows. */
+  localized?: Localized | undefined;
 }
 
 export const MAX_QUESTION_LENGTH = 500;
@@ -362,11 +368,15 @@ export interface ChatAssistantDeps extends Pick<EnquiryDeps, "enquiries" | "list
   /** The live persona (Elena by default): name and pictures only. */
   persona: () => Promise<ChatPersona>;
   appendAudit: (e: AuditEvent) => Promise<void>;
+  /** Language support. Without it she works in English only. */
+  multilingual?: MultilingualDeps;
 }
 
 export type ChatPersona = Pick<Persona, "id" | "name" | "icon" | "portrait" | "poses">;
 /** `viewerId` is the reader's own id, so the page can mark their messages and questions as theirs. */
-export interface AssistantThread { persona: ChatPersona; viewerId: string; role: ChatRole; welcome: ChatAnswer; turns: AssistantTurn[]; facts: ChatFacts }
+export interface AssistantThread { persona: ChatPersona; viewerId: string; role: ChatRole; welcome: ChatAnswer; turns: AssistantTurn[]; facts: ChatFacts;
+  /** The reader's language: her welcome and translations of the thread. Absent when the reader reads English. */
+  localization?: ThreadLocalization | undefined }
 
 const fail = (code: Failure["code"], message: string): Failure => ({ ok: false, code, message });
 
@@ -404,9 +414,12 @@ export async function getAssistantThread(deps: ChatAssistantDeps, actor: Actor, 
   const c = await context(deps, actor, enquiryId);
   if (!c.ok) return c;
   const persona = await deps.persona();
+  const turns = await deps.turns.list(enquiryId);
+  const f = c.value.facts.listing;
+  const loc = deps.multilingual ? await localizeThread(deps.multilingual, actor.userId, persona.name, turns, { title: f.title, address: f.address, suburb: f.suburb }, deps.now(), deps.newId).catch(() => undefined) : undefined;
   return {
     ok: true,
-    value: { persona, viewerId: actor.userId, role: c.value.role, welcome: chatWelcome(c.value.facts, persona.name), turns: await deps.turns.list(enquiryId), facts: c.value.facts }
+    value: { persona, viewerId: actor.userId, role: c.value.role, welcome: chatWelcome(c.value.facts, persona.name), turns, facts: c.value.facts, ...(loc && loc.locale !== "en" ? { localization: loc } : {}) }
   };
 }
 
@@ -421,22 +434,29 @@ export async function askAssistant(deps: ChatAssistantDeps, actor: Actor, enquir
   let hits: number | undefined;
   try { hits = await deps.countHit(`enq-assistant:${actor.userId}`, ASSISTANT_RATE.windowMs); } catch { hits = undefined; }
   if (!withinLimit(hits, ASSISTANT_RATE.perUser)) return fail("rate_limited", "You've asked a lot of questions this hour. Try again later.");
-  const wording = messageWordingError(question);
+  // A question in another language is matched on its English meaning; the answer is built in English from the facts, then translated.
+  const lang = deps.multilingual ? await prepareQuestion(deps.multilingual, actor.userId, question) : undefined;
+  const wording = messageWordingError(question) ?? (lang?.matchAs ? messageWordingError(lang.matchAs) : undefined);
   if (wording) return fail("invalid", wording);
   if (CONTACT_RE.test(question)) return fail("invalid", "Please leave phone numbers, emails and links out. Both of you see questions to the assistant, and they can't be deleted.");
 
-  const a = chatAnswer(c.value.facts, c.value.role, question);
+  const a = chatAnswer(c.value.facts, c.value.role, lang?.matchAs ?? question);
   const turn: AssistantTurn = {
     id: deps.newId(), enquiryId, askedByUserId: actor.userId, askedByRole: c.value.role,
-    question, topic: a.topic, pose: a.pose, answer: a.text, createdAt: deps.now()
+    question, topic: a.topic, pose: a.pose, answer: a.text, createdAt: deps.now(),
+    ...(lang ? { language: lang.detected.confidence >= 0.6 ? lang.detected.lang : lang.reply } : {})
   };
   await deps.turns.add(turn);
+  if (deps.multilingual && lang) {
+    const f = c.value.facts.listing;
+    turn.localized = await localizeAnswer(deps.multilingual, turn, lang.reply, { title: f.title, address: f.address, suburb: f.suburb }, turn.createdAt, deps.newId).catch(() => undefined);
+  }
   // The safety categories are recorded (not the text) so staff can see probing patterns, e.g. a buyer fishing for the floor.
   const flags = scanInboundMessage(question).flags.map(f => f.category);
   await deps.appendAudit({
     id: deps.newId(), occurredAt: turn.createdAt, actorType: "user", actorId: actor.userId,
     aggregateType: "enquiry", aggregateId: enquiryId, eventType: "enquiry.assistant_asked", correlationId: deps.newId(),
-    payload: { turnId: turn.id, topic: turn.topic, role: turn.askedByRole, safetyFlags: flags }
+    payload: { turnId: turn.id, topic: turn.topic, role: turn.askedByRole, safetyFlags: flags, ...(turn.language ? { language: turn.language } : {}) }
   });
   return { ok: true, value: turn };
 }
