@@ -111,4 +111,39 @@ describe.skipIf(!DATABASE_URL)("settlement risk on Postgres", () => {
     await t.db.query("UPDATE settlement_timeline SET completed_at = now() WHERE id = $1", [s.id]);
     expect((await refreshRisks(t.db)).has(s.id)).toBe(false);
   });
+
+  it("owner and agent only see inspection findings shared with them, and never the buyer's cancelled bookings", async () => {
+    const s = await setup(80_000_000);
+    const inspector = await addUser(t.db, "agent");
+    const insp = await one("INSERT INTO inspection (listing_id, requested_by, inspector_user_id, inspection_type, scheduled_at, status) VALUES ($1,$2,$3,'building', now() - interval '8 days','accepted') RETURNING id", [s.listingId, s.buyer, inspector]);
+    await t.db.query("INSERT INTO inspection_finding (inspection_id, area, title, severity, followup_status, created_by) VALUES ($1,'Foundation','Cracked slab','major','open',$2)", [insp, inspector]);
+    await t.db.query("UPDATE inspection SET status = 'completed', completed_at = now() WHERE id = $1", [insp]);
+    await t.db.query("INSERT INTO inspection_booking (listing_id, buyer_id, slots, status, cancelled_at) VALUES ($1,$2,'[\"2026-12-01T09:00:00Z\"]','cancelled', now())", [s.listingId, s.buyer]);
+    const keys = (r: { ok: boolean; value?: { factors: { key: string }[] } }) => (r.value?.factors ?? []).map(f => f.key);
+
+    const staff = await staffRiskDetail(t.db, s.id);
+    expect(keys(staff)).toEqual(expect.arrayContaining(["inspection_defects", "inspection_reschedules"]));
+    for (const who of [s.owner, s.agent]) {
+      const party = await partyRiskDetail(t.db, who, s.id);
+      expect(party.ok).toBe(true);
+      expect(keys(party)).not.toContain("inspection_defects");
+      expect(keys(party)).not.toContain("inspection_reschedules");
+      expect(JSON.stringify(party)).not.toMatch(/Cracked slab|major or critical|cancelled or rescheduled/);
+      if (party.ok) { expect(party.value.previousScore).toBeNull(); expect(party.value.trend).toBe("same"); expect(party.value.flaggedAt).toBeNull(); }
+    }
+    // Once the buyer shares the report with the owner, the owner sees the defect factor.
+    await t.db.query("INSERT INTO inspection_share (inspection_id, shared_with_user_id, shared_by) VALUES ($1,$2,$3)", [insp, s.owner, s.buyer]);
+    expect(keys(await partyRiskDetail(t.db, s.owner, s.id))).toContain("inspection_defects");
+  });
+
+  it("refresh leaves unchanged rows alone and concurrent refreshes do not deadlock or queue", async () => {
+    const s = await setup();
+    await refreshRisks(t.db);
+    const first = (await t.db.query("SELECT scored_at FROM settlement_risks WHERE settlement_id = $1", [s.id])).rows[0]!["scored_at"];
+    await refreshRisks(t.db, new Date(Date.now() + 60_000));
+    expect((await t.db.query("SELECT scored_at FROM settlement_risks WHERE settlement_id = $1", [s.id])).rows[0]!["scored_at"]).toEqual(first);
+    const runs = await Promise.all(Array.from({ length: 12 }, () => riskDashboard(t.db)));
+    expect(runs.every(r => r.rows.some(x => x.id === s.id))).toBe(true);
+    expect(Number((await t.db.query("SELECT count(*) AS n FROM settlement_risks WHERE settlement_id = $1", [s.id])).rows[0]!["n"])).toBe(1);
+  });
 });
