@@ -55,9 +55,9 @@ beforeEach(() => { state.staff = null; state.case = caseRow(); state.trust = tru
 
 describe("dashboard sections follow permissions", () => {
   it("shows each role only what it may use", () => {
-    expect(sectionsFor(comp).map(s => s.href)).toEqual(["/staff/dashboard", "/staff/sale-events", "/staff/listings", "/staff/users", "/staff/cases", "/staff/safety", "/staff/trust-accounts", "/staff/escrow", "/staff/id-review", "/staff/public-holidays", "/staff/wording-flags", "/staff/disclosures", "/staff/doc-templates", "/staff/disclosures/reviews", "/staff/audit", "/staff/investments"]);
+    expect(sectionsFor(comp).map(s => s.href)).toEqual(["/staff/dashboard", "/staff/sale-events", "/staff/listings", "/staff/users", "/staff/inspections", "/staff/cases", "/staff/safety", "/staff/trust-accounts", "/staff/escrow", "/staff/id-review", "/staff/public-holidays", "/staff/wording-flags", "/staff/disclosures", "/staff/doc-templates", "/staff/disclosures/reviews", "/staff/audit", "/staff/investments"]);
     expect(sectionsFor(support).map(s => s.href)).toEqual(["/staff/dashboard", "/staff/listings", "/staff/cases", "/staff/safety"]);
-    expect(sectionsFor(tech).map(s => s.href)).toEqual(["/staff/dashboard", "/staff/cron-secrets"]);
+    expect(sectionsFor(tech).map(s => s.href)).toEqual(["/staff/dashboard", "/staff/settlements", "/staff/cron-secrets"]);
   });
 });
 

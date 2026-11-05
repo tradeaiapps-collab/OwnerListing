@@ -1,0 +1,27 @@
+.settle-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-3); }
+.settle-list > li { display: grid; gap: var(--space-2); padding: var(--space-4); border: 1px solid var(--line); border-radius: var(--radius); background: var(--elevated); box-shadow: var(--shadow-1); min-width: 0; }
+.settle-list strong { overflow-wrap: anywhere; }
+.settle-meter { display: flex; align-items: center; gap: var(--space-2); font-size: 0.875rem; color: var(--muted); }
+.settle-meter progress { flex: 1 1 auto; min-width: 0; height: 0.5rem; accent-color: var(--brand); }
+.badge-stuck { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 50%, var(--bg)); }
+.badge-done { color: var(--ok); }
+
+.settle-steps { list-style: none; margin: 0 0 var(--space-6); padding: 0; display: grid; gap: var(--space-3); }
+.settle-step { display: grid; gap: var(--space-2); padding: var(--space-4); border: 1px solid var(--line); border-left-width: 4px; border-radius: var(--radius); background: var(--elevated); min-width: 0; }
+.settle-step.is-completed { border-left-color: var(--ok); }
+.settle-step.is-current { border-left-color: var(--gold); }
+.settle-step.is-blocked { border-left-color: var(--warn); }
+.settle-step h3 { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); font-size: 1.0625rem; }
+.settle-dates { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-4); margin: 0; color: var(--muted); font-size: 0.875rem; font-variant-numeric: tabular-nums; }
+.settle-dates dt { display: inline; }
+.settle-dates dd { display: inline; margin: 0 0 0 var(--space-1); }
+.settle-check { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-1); }
+.settle-check label { display: flex; gap: var(--space-2); align-items: flex-start; min-height: 2.75rem; align-items: center; }
+.settle-check .role { color: var(--muted); font-size: 0.8125rem; text-transform: capitalize; margin-left: auto; }
+.settle-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: end; }
+.settle-actions label { display: grid; gap: var(--space-1); font-weight: 600; font-size: 0.875rem; }
+.settle-table { min-width: 44rem; }
+.settle-table th, .settle-table td { vertical-align: top; text-align: left; }
+.settle-table .num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.settle-check-group { border: 0; margin: 0; padding: 0; min-width: 0; }
+.settle-check-group legend { padding: 0; font-weight: 600; font-size: 0.875rem; color: var(--muted); }
