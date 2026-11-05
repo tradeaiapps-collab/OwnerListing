@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { staffCan } from "../../../../src/domain/staff-access";
 import { listingActionsFor } from "../../../../src/domain/admin-moderation";
 import { getDb } from "../../../../src/server/context";
 import { searchListings } from "../../../../src/server/admin-moderation-db";
@@ -17,7 +18,7 @@ async function handleGet(req: Request) {
     ...(transactionType ? { transactionType } : {}), ...(cursor ? { cursor } : {})
   });
   return NextResponse.json(
-    { listings: page.rows.map(r => ({ ...r, actions: listingActionsFor(r.status) })), nextCursor: page.nextCursor },
+    { listings: page.rows.map(r => ({ ...r, actions: listingActionsFor(r.status) })), nextCursor: page.nextCursor, canBulk: staffCan(staff, "listing.bulk") },
     { headers: { "cache-control": "no-store" } }
   );
 }
