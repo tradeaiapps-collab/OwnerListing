@@ -457,3 +457,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 
 /* Figures in the display face use lining numerals (Playfair defaults to old-style, which reads oddly in prices). */
 :is(.lcard-price, .detail-price, .pd-facts strong, .kpi-value, .sr-stat-n, .sc-out strong, .offer-summary, .od-vs strong, .pcard-figs dd, .inv-big) { font-variant-numeric: lining-nums tabular-nums; font-feature-settings: "lnum" 1; }
+
+/* Unread count on the Notifications nav link (the rest of the notification styles load with that page). */
+.nt-badge { display: inline-block; min-width: 1.5em; margin-left: var(--space-1); padding: 0 var(--space-2); border-radius: 999px; background: var(--brand); color: var(--brand-text); font-size: 0.8125rem; line-height: 1.5; text-align: center; }
+.nt-bell-badge { margin-left: var(--space-1); }

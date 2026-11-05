@@ -1,0 +1,54 @@
+/* Notification centre: tabs, list, preferences grid and the Elena panel. Tokens only; mobile first. */
+.nt-tabs { display: flex; gap: var(--space-1); flex-wrap: wrap; margin: 0 0 var(--space-4); border-bottom: 1px solid var(--border); }
+.nt-tabs button { min-height: 44px; padding: 0 var(--space-4); background: none; border: 0; border-bottom: 3px solid transparent; color: var(--muted); font: inherit; font-weight: 600; cursor: pointer; }
+.nt-tabs button[aria-selected="true"] { color: var(--heading, var(--text)); border-bottom-color: var(--accent); }
+
+.nt-layout { display: grid; gap: var(--space-6); }
+@media (min-width: 900px) { .nt-layout { grid-template-columns: minmax(0, 1fr) 20rem; align-items: start; } }
+
+.nt-toolbar { display: flex; flex-wrap: wrap; gap: var(--space-2); margin: 0 0 var(--space-3); }
+.nt-toolbar button, .nt-more, .nt-prefs button[type="submit"], .nt-elena button { min-height: 44px; }
+
+.nt-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-2); }
+.nt-item { display: grid; grid-template-columns: auto 1fr auto; gap: var(--space-3); align-items: start; padding: var(--space-3) var(--space-4); background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }
+.nt-item[data-unread="true"] { border-left: 4px solid var(--accent); background: var(--gold-tint); }
+.nt-dot { width: 10px; height: 10px; margin-top: 0.55em; border-radius: 50%; background: transparent; }
+.nt-item[data-unread="true"] .nt-dot { background: var(--accent); }
+.nt-item h3 { margin: 0; font-size: 1rem; overflow-wrap: anywhere; }
+.nt-item p { margin: var(--space-1) 0 0; overflow-wrap: anywhere; }
+.nt-meta { color: var(--muted); font-size: 0.875rem; white-space: nowrap; }
+.nt-tag { color: var(--muted); font-size: 0.8125rem; text-transform: uppercase; letter-spacing: 0.04em; }
+.nt-actions { display: flex; flex-wrap: wrap; gap: var(--space-3); margin-top: var(--space-2); }
+.nt-actions a, .nt-actions button { min-height: 44px; display: inline-flex; align-items: center; background: none; border: 0; padding: 0; color: var(--link); font: inherit; text-decoration: underline; cursor: pointer; }
+.nt-empty { padding: var(--space-8) var(--space-4); text-align: center; color: var(--muted); border: 1px dashed var(--border); border-radius: var(--radius); }
+
+.nt-prefs { display: grid; gap: var(--space-4); }
+.nt-prefs table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.nt-prefs th, .nt-prefs td { padding: var(--space-3) var(--space-2); border-bottom: 1px solid var(--border); vertical-align: middle; }
+.nt-prefs thead th { text-align: center; font-size: 0.875rem; color: var(--muted); width: 5rem; }
+.nt-prefs thead th:first-child, .nt-prefs tbody th { text-align: left; width: auto; }
+.nt-prefs tbody th { font-weight: 600; }
+.nt-prefs tbody th span { display: block; font-weight: 400; color: var(--muted); font-size: 0.875rem; }
+.nt-prefs td { text-align: center; }
+.nt-prefs input[type="checkbox"] { width: 24px; height: 24px; }
+.nt-prefs .nt-sms-note { margin: 0; color: var(--muted); }
+@media (max-width: 599px) {
+  .nt-prefs thead th { width: 3.5rem; font-size: 0.75rem; }
+  .nt-prefs th, .nt-prefs td { padding-inline: var(--space-1); }
+}
+
+.nt-elena { display: grid; gap: var(--space-3); padding: var(--space-4); background: var(--surface); border: 1px solid var(--border); border-radius: calc(var(--radius) + 4px); box-shadow: var(--shadow-1); }
+.nt-elena header { display: flex; gap: var(--space-3); align-items: center; }
+.nt-elena img { width: 64px; height: 64px; border-radius: 50%; object-fit: cover; object-position: top; flex: none; }
+.nt-elena h2 { margin: 0; font-size: 1.125rem; }
+.nt-elena-chips { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.nt-elena form { display: grid; gap: var(--space-2); }
+.nt-elena-answer { margin: 0; padding: var(--space-3); background: var(--elevated); border-radius: var(--radius); overflow-wrap: anywhere; }
+.nt-elena-note { margin: 0; color: var(--muted); font-size: 0.8125rem; }
+@media (max-width: 599px) {
+  .nt-item { grid-template-columns: auto minmax(0, 1fr); }
+  .nt-item > .nt-dot { grid-row: 1 / span 2; }
+  .nt-item > time { grid-column: 2; grid-row: 1; white-space: normal; }
+  .nt-item > div { grid-column: 2; grid-row: 2; }
+  .nt-toolbar button { flex: 1 1 14rem; }
+}
