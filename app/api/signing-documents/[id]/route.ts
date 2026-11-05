@@ -6,7 +6,6 @@ import { SIGN_ATTEMPT_RATE } from "../../../../src/domain/rate-limit";
 import { getActor, getDb } from "../../../../src/server/context";
 import { withinRates } from "../../../../src/server/rate-guard";
 import { failure, unauthenticated } from "../../../../src/server/http";
-import { getDb } from "../../../../src/server/context";
 import { sendSigningRequests } from "../../../../src/server/notifier";
 import { getEsignDeps, signingMode } from "../../../../src/server/esign";
 import { getSigningRepo, requestContext, signingIds, signingPersona } from "../../../../src/server/signing-db";
