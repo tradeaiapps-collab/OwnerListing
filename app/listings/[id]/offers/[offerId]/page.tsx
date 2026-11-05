@@ -11,6 +11,7 @@ import { offerStatusLabel } from "../../../../../src/domain/offer-display";
 import { describeEvent, type TimelineEvent } from "../../../../../src/domain/offer-timeline";
 import { CounterForm, type Counter, type Terms } from "../../../../offers/negotiation";
 import { JSON_HEADERS } from "../../../ui";
+import FallThroughPanel from "../../../../offers/fall-through-panel";
 import "../../../../styles/cards.css";
 import "../../../../styles/offers.css";
 
@@ -139,6 +140,10 @@ export default function OfferDetailPage() {
               </dl>
               {n.openCounter && <p className="notice">Your counter of {formatPrice(n.openCounter.priceCents, tx)} is waiting for the buyer until {when(n.openCounter.expiresAt)}. If they do not answer by then, the offer expires.</p>}
             </section>
+          )}
+
+          {(o.status === "accepted" || o.status === "fallen_through") && (
+            <FallThroughPanel url={`/api/listings/${d.listing.id}/offers/${o.id}/fall-through`} viewer="owner" offerStatus={o.status} onChange={load} />
           )}
 
           <section aria-labelledby="od-timeline">

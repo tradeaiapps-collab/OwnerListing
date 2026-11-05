@@ -1,16 +1,20 @@
 "use client";
 import { useEffect, useState } from "react";
 import { balanceOf, displayStatus, STATUS_LABEL, type DepositHolding, type DepositMovement, type DepositRelease } from "../../../src/domain/deposit-escrow";
+import { isFrozen, nextPayout, REASON_LABEL, STATUS_LABEL as CASE_LABEL } from "../../../src/domain/sale-fall-through";
+import type { FallThroughCase } from "../../../src/server/sale-fall-through-db";
 import { dateLabel, money, toCents } from "../../commissions-ui";
 import type { Act } from "./page";
 
-interface Detail { holding: DepositHolding; movements: DepositMovement[]; releases: DepositRelease[]; audit: { at: string; event: string; actor: string; payload: Record<string, unknown> }[] }
+interface Detail { holding: DepositHolding; movements: DepositMovement[]; releases: DepositRelease[]; audit: { at: string; event: string; actor: string; payload: Record<string, unknown> }[]; cases: FallThroughCase[] }
 
 const ENTRY: Record<DepositMovement["kind"], string> = { receipt: "Received into trust", release: "Released to seller", refund: "Refunded to buyer" };
 const EVENT: Record<string, string> = {
   "escrow.holding_opened": "Record opened", "escrow.receipt_recorded": "Deposit received recorded", "escrow.release_requested": "Release to seller requested",
   "escrow.refund_requested": "Refund to buyer requested", "escrow.release_approved": "Release approved", "escrow.release_rejected": "Release rejected",
-  "escrow.refund_approved": "Refund approved", "escrow.refund_rejected": "Refund rejected", "escrow.holding_cancelled": "Record cancelled", "escrow.reconciled": "Matched to bank statement"
+  "escrow.refund_approved": "Refund approved", "escrow.refund_rejected": "Refund rejected", "escrow.holding_cancelled": "Record cancelled", "escrow.reconciled": "Matched to bank statement",
+  "escrow.fall_through_raised": "Sale fell through: outcome proposed", "escrow.fall_through_agreed": "Sale fell through: outcome agreed", "escrow.fall_through_disputed": "Sale fell through: outcome disputed, deposit frozen",
+  "escrow.fall_through_withdrawn": "Sale fell through: request withdrawn", "escrow.fall_through_resolved": "Sale fell through: dispute recorded by staff", "escrow.fall_through_finished": "Sale fell through: all payments approved"
 };
 const todayStr = () => new Date().toISOString().slice(0, 10);
 const when = (iso: string) => new Date(iso).toLocaleString("en-AU", { day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit" });
@@ -44,6 +48,7 @@ export default function HoldingDetail({ holding, canManage, act }: { holding: De
   if (err) return <p role="alert" className="staff-notice">{err}</p>;
   if (!d) return <p className="muted" aria-busy="true">Loading the record…</p>;
   const h = d.holding, b = balanceOf(h.requiredCents, d.movements), status = displayStatus(h, d.movements, d.releases);
+  const cases = d.cases ?? [], frozen = isFrozen(cases);
   const open = h.status === "open", pending = d.releases.some(r => r.status === "pending");
 
   return (
@@ -61,7 +66,9 @@ export default function HoldingDetail({ holding, canManage, act }: { holding: De
       </dl>
       {h.closedReason && <p className="cm-note">Closed: {h.closedReason}</p>}
 
-      {canManage && open && (
+      {cases.length > 0 && <FallThroughCases cases={cases} releases={d.releases} canManage={canManage && open} url={url} act={act} />}
+
+      {canManage && open && !frozen && (
         <div className="es-actions-grid">
           {b.outstandingCents > 0 && b.paidOutCents === 0 && (
             <form className="es-form" onSubmit={async e => { e.preventDefault(); await act(url, { action: "receipt", amountCents: toCents(amount), receivedOn: on, bankReference: ref || null }, "Receipt recorded."); }}>
@@ -143,5 +150,74 @@ export default function HoldingDetail({ holding, canManage, act }: { holding: De
         {d.audit.map((a, i) => <li key={i}><time dateTime={a.at}>{when(a.at)}</time> · {EVENT[a.event] ?? a.event} · <span className="muted">{a.actor}</span></li>)}
       </ol>
     </section>
+  );
+}
+
+const SOURCE: Record<string, string> = { agreement: "Agreement between the parties", court_order: "Court order", sale_continues: "Sale goes ahead after all" };
+
+/** Sale-fell-through cases on this deposit. A disputed one is settled by staff recording the agreement or order; an agreed one is paid out in the two-person flow. */
+function FallThroughCases({ cases, releases, canManage, url, act }: { cases: FallThroughCase[]; releases: DepositRelease[]; canManage: boolean; url: string; act: Act }) {
+  return (
+    <>
+      <h3>Sale fell through</h3>
+      <p className="cm-note">While a case is open the deposit is frozen: no receipts, ordinary requests, approvals or cancelling. Only the payments an agreed case asks for can be approved.</p>
+      <ul className="es-list">
+        {cases.map(c => <li key={c.id}><CaseRow c={c} releases={releases.filter(r => r.fallThroughId === c.id)} canManage={canManage} url={url} act={act} /></li>)}
+      </ul>
+    </>
+  );
+}
+
+function CaseRow({ c, releases, canManage, url, act }: { c: FallThroughCase; releases: DepositRelease[]; canManage: boolean; url: string; act: Act }) {
+  const [source, setSource] = useState<"agreement" | "court_order" | "sale_continues">("agreement");
+  const [reference, setReference] = useState("");
+  const [refund, setRefund] = useState((c.refundCents / 100).toFixed(2));
+  const [release, setRelease] = useState((c.releaseCents / 100).toFixed(2));
+  const [why, setWhy] = useState("");
+  const next = c.status === "agreed" ? nextPayout(c, releases) : null;
+  const pending = releases.some(r => r.status === "pending");
+  const goesAhead = source === "sale_continues";
+  const bad = why.trim().length < 10 || (source === "court_order" && !reference.trim()) || (!goesAhead && (Number.isNaN(toCents(refund)) || Number.isNaN(toCents(release))));
+  return (
+    <>
+      <strong>{REASON_LABEL[c.reason]}</strong> · raised by the {c.raisedByParty} · <span className={`es-status ${c.status === "disputed" ? "overdue" : c.status === "resolved" ? "held" : c.status === "withdrawn" ? "cancelled" : "part_received"}`}>{CASE_LABEL[c.status]}</span>
+      <br /><span className="muted">{c.state} · held {money(c.heldCents)} · refund {money(c.refundCents)} · to seller {money(c.releaseCents)}{c.penaltyCents > 0 ? ` (penalty ${money(c.penaltyCents)})` : ""} · rules {c.rulesVersion}, not yet confirmed by counsel</span>
+      <br /><span className="muted">{c.basis}</span>
+      {c.note && <><br /><span className="muted">Note: {c.note}</span></>}
+      {c.disputeReason && <><br /><span className="muted">Disputed: {c.disputeReason}</span></>}
+      {c.resolutionSource && <><br /><span className="muted">Settled by: {c.resolutionSource === "parties" ? "both sides agreed" : SOURCE[c.resolutionSource]}{c.resolutionReference ? ` (${c.resolutionReference})` : ""}</span></>}
+      {c.status === "proposed" && <><br /><span className="muted">Waiting for the {c.raisedByParty === "buyer" ? "owner" : "buyer"} to agree or dispute.</span></>}
+
+      {canManage && c.status === "disputed" && (
+        <form className="es-form" onSubmit={async e => {
+          e.preventDefault();
+          await act(url, { action: "case_resolve", caseId: c.id, source, reference: reference || null, refundCents: goesAhead ? 0 : toCents(refund), releaseCents: goesAhead ? 0 : toCents(release), reason: why }, "Recorded.");
+        }}>
+          <h3>Record how the dispute ended</h3>
+          <div className="cm-row">
+            <label>How<select value={source} onChange={e => setSource(e.target.value as typeof source)}>{Object.entries(SOURCE).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></label>
+            <label>Reference{source === "court_order" ? "" : " (optional)"}<input value={reference} maxLength={200} onChange={e => setReference(e.target.value)} /></label>
+          </div>
+          {!goesAhead && (
+            <div className="cm-row">
+              <label>Refund to buyer (AUD)<input inputMode="decimal" value={refund} onChange={e => setRefund(e.target.value)} required /></label>
+              <label>Release to seller (AUD)<input inputMode="decimal" value={release} onChange={e => setRelease(e.target.value)} required /></label>
+            </div>
+          )}
+          <label className="es-wide">Reason (10+ characters)<textarea className="staff-reason" value={why} onChange={e => setWhy(e.target.value)} required minLength={10} /></label>
+          <div className="cm-actions"><button type="submit" disabled={bad}>{goesAhead ? "Record: sale goes ahead" : "Record outcome"}</button></div>
+        </form>
+      )}
+      {canManage && c.status === "agreed" && (
+        next ? (
+          <div className="cm-actions">
+            <button type="button" disabled={pending} onClick={() => void act(url, { action: "case_payout", caseId: c.id }, "Request sent. A second person must approve it.")}>
+              Request {next.kind === "refund" ? "refund to buyer" : "release to seller"} {money(next.amountCents)}
+            </button>
+            {pending && <span className="muted"> A payment is already waiting for approval.</span>}
+          </div>
+        ) : <p className="muted">Every payment for this outcome has been requested.</p>
+      )}
+    </>
   );
 }

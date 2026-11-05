@@ -21,6 +21,8 @@ export interface DepositMovement {
 export interface DepositRelease {
   id: string; holdingId: string; kind: ReleaseKind; amountCents: number; reason: string; settlementConfirmed: boolean;
   requestedBy: string; requestedAt: string; status: ReleaseStatus; decidedBy: string | null; decidedAt: string | null; decisionReason: string | null;
+  /** Set when the request was made from an agreed sale-fell-through case (sale-fall-through.ts). */
+  fallThroughId?: string | null;
 }
 export interface StatementLine {
   id: string; trustAccountId: string; lineDate: string; amountCents: number; description: string; reference: string;

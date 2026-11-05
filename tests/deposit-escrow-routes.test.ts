@@ -14,6 +14,11 @@ vi.mock("../src/server/deposit-escrow-db", () => {
   };
 });
 
+vi.mock("../src/server/sale-fall-through-db", () => {
+  const rec = (name: string) => async (...a: unknown[]) => { state.calls.push([name, ...a.slice(2)]); return state.out; };
+  return { requestCasePayout: rec("casePayout"), resolveDispute: rec("caseResolve") };
+});
+
 import * as list from "../app/api/staff/escrow/route";
 import * as one from "../app/api/staff/escrow/[id]/route";
 import * as decide from "../app/api/staff/escrow/releases/[id]/route";
@@ -83,6 +88,21 @@ describe("deposit escrow routes", () => {
     expect((await post(decide, { outcome: "approve", reason: "Checked with the solicitor" })).status).toBe(200);
     expect(state.calls.map(c => c[0])).toEqual(["create", "receipt", "request", "lineReceipt", "import", "decide"]);
     expect(state.calls[0]).toEqual(["create", { offerId: U(5), requiredCents: 5_000_000, dueDate: "2026-11-20" }]);
+  });
+
+  it("sale-fell-through steps: staff manage only, validated, pre-filled payouts take no amount from the request", async () => {
+    const C = U(9);
+    state.staff = support;
+    expect((await post(one, { action: "case_payout", caseId: C })).status).toBe(403);
+    state.staff = accountant;
+    expect((await post(one, { action: "case_payout", caseId: "nope" })).status).toBe(400);
+    expect((await post(one, { action: "case_resolve", caseId: C, source: "court_order", refundCents: 1, releaseCents: 0, reason: "Order made on 4 Nov" })).status).toBe(400); // no reference
+    expect((await post(one, { action: "case_resolve", caseId: C, source: "whim", reason: "Order made on 4 Nov" })).status).toBe(400);
+    expect(state.calls).toEqual([]);
+    expect((await post(one, { action: "case_payout", caseId: C, amountCents: 99 })).status).toBe(200);
+    expect((await post(one, { action: "case_resolve", caseId: C, source: "sale_continues", reason: "Parties confirmed the sale goes ahead" })).status).toBe(200);
+    expect(state.calls.map(c => c[0])).toEqual(["casePayout", "caseResolve"]);
+    expect(state.calls[0]).toEqual(["casePayout", C]);
   });
 
   it("returns the database refusal as is", async () => {

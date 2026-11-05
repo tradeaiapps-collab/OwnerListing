@@ -1,6 +1,6 @@
 /** One offer, seen by the listing's owner or appointed agent. Pure shaping; the database read is in src/server/offers-db.ts. */
 
-export type OfferEventType = "submitted" | "viewed" | "countered" | "owner_countered" | "buyer_countered" | "buyer_agreed" | "accepted" | "rejected" | "withdrawn" | "expired" | "superseded" | "handoff";
+export type OfferEventType = "submitted" | "viewed" | "countered" | "owner_countered" | "buyer_countered" | "buyer_agreed" | "accepted" | "rejected" | "withdrawn" | "expired" | "superseded" | "handoff" | "fallen_through";
 export type ActorKind = "buyer" | "owner" | "agent" | "ai" | "system";
 
 export interface OfferEvent { type: OfferEventType; actor: ActorKind; at: string; priceCents?: number; settlementDays?: number }
@@ -61,7 +61,7 @@ const EVENT_TEXT: Record<OfferEventType, string> = {
   submitted: "Offer submitted", viewed: "Offer viewed", countered: "Counter requested from the buyer", owner_countered: "Owner sent a counter-offer", buyer_countered: "Buyer sent a counter-offer",
   buyer_agreed: "Buyer agreed to the owner's counter-offer",
   accepted: "Offer accepted", rejected: "Offer rejected", withdrawn: "Buyer withdrew the offer", expired: "Offer expired",
-  superseded: "Replaced by a newer offer", handoff: "Handed to the owner for a decision"
+  superseded: "Replaced by a newer offer", handoff: "Handed to the owner for a decision", fallen_through: "Sale fell through"
 };
 const ACTOR_TEXT: Record<ActorKind, string> = { buyer: "Buyer", owner: "Owner", agent: "Agent", ai: "AI assistant (draft only)", system: "System" };
 export const eventText = (t: OfferEventType) => EVENT_TEXT[t];
