@@ -1,0 +1,49 @@
+/* Inspection workflows. Mobile first: the inspector uses this on site, one-handed. Tokens only. */
+.insp-page { display: grid; gap: var(--space-4); }
+.insp-head { display: grid; gap: var(--space-1); }
+.insp-head h1 { margin: 0; overflow-wrap: anywhere; }
+.insp-meta { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-4); color: var(--muted); font-size: 0.9375rem; margin: 0; }
+.insp-panel { border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); padding: var(--space-4); display: grid; gap: var(--space-3); }
+.insp-panel > h2 { margin: 0; font-size: 1.125rem; }
+.insp-panel p { margin: 0; overflow-wrap: anywhere; }
+.insp-critical { border-color: color-mix(in srgb, var(--danger) 55%, var(--bg)); background: var(--danger-tint); }
+.insp-critical ul { margin: 0; padding-left: var(--space-5); display: grid; gap: var(--space-1); }
+.insp-summary-text { white-space: pre-wrap; }
+.insp-findings > li { max-width: none; }
+.insp-findings { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-3); }
+.insp-finding { max-width: none; justify-self: stretch; border: 1px solid var(--line); border-radius: var(--radius); background: var(--bg); padding: var(--space-4); display: grid; gap: var(--space-2); }
+.insp-finding > .insp-sev { justify-self: start; }
+.insp-finding h3 { margin: 0; font-size: 1rem; overflow-wrap: anywhere; }
+.insp-finding .area { color: var(--muted); font-size: 0.875rem; }
+.insp-photos { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.insp-photos a { display: block; line-height: 0; }
+.insp-photos img { width: 88px; height: 88px; object-fit: cover; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); }
+.insp-sev { display: inline-flex; align-items: center; min-height: 26px; padding: 0 var(--space-3); border-radius: 999px; border: 1px solid var(--border); font-size: 0.75rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; white-space: nowrap; }
+.insp-sev.sev-info { color: var(--muted); background: var(--elevated); }
+.insp-sev.sev-minor { color: var(--link); border-color: color-mix(in srgb, var(--gold) 45%, var(--bg)); background: var(--gold-tint); }
+.insp-sev.sev-moderate { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 45%, var(--bg)); background: var(--warn-tint); }
+.insp-sev.sev-major { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 55%, var(--bg)); background: var(--danger-tint); }
+.insp-sev.sev-critical { color: var(--bg); border-color: var(--danger); background: var(--danger); }
+.insp-counts { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.insp-followup { display: grid; gap: var(--space-2); border-top: 1px solid var(--line); padding-top: var(--space-3); }
+.insp-followup .row { display: grid; gap: var(--space-2); }
+.insp-form { display: grid; gap: var(--space-3); }
+.insp-form label { display: grid; gap: var(--space-1); font-weight: 600; font-size: 0.9375rem; }
+.insp-form :is(input, select, textarea) { font-size: 1rem; min-height: 44px; width: 100%; max-width: 100%; }
+.insp-form textarea { min-height: 96px; }
+.insp-form button, .insp-page .actions button, .insp-page .actions .button { min-height: 44px; }
+.insp-share-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-2); }
+.insp-share-list li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2); }
+.insp-list li { display: grid; gap: var(--space-1); }
+.insp-list .top { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.insp-list .top strong { overflow-wrap: anywhere; }
+@media (min-width: 640px) {
+  .insp-followup .row { grid-template-columns: 200px 1fr auto; align-items: end; }
+  .insp-form.two { grid-template-columns: 1fr 1fr; }
+  .insp-form.two > .wide { grid-column: 1 / -1; }
+}
+@media (max-width: 639px) {
+  .insp-page .actions { display: grid; grid-template-columns: 1fr; }
+  .insp-page .actions > * { width: 100%; text-align: center; }
+  .insp-form > button { width: 100%; }
+}
