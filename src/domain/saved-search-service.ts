@@ -1,5 +1,7 @@
 import type { AlertPreference, SavedSearch } from "./buyer";
 import { AU_JURISDICTIONS } from "./jurisdiction";
+import { AMENITIES, AU_BOUNDS } from "./listing-details";
+import { MAX_RADIUS_KM } from "./listing-search";
 import { PROPERTY_TYPES, TRANSACTION_TYPES, USE_CLASSES, type Failure, type Result } from "./listing-service";
 
 export const MAX_SEARCHES_PER_BUYER = 20;
@@ -28,7 +30,7 @@ const oneOf = <T extends string>(v: unknown, allowed: readonly T[]): T | undefin
 /** A saved search holds property facts only. Any other key is rejected, so demographic or personal fields cannot be stored. */
 const SEARCH_KEYS = [
   "transactionType", "useClass", "jurisdictions", "suburbs", "propertyTypes",
-  "minPriceCents", "maxPriceCents", "minBedrooms"
+  "minPriceCents", "maxPriceCents", "minBedrooms", "minBathrooms", "minParking", "amenities", "near"
 ] as const;
 
 function stringList<T extends string>(v: unknown, allowed: readonly T[], label: string): Result<T[]> {
@@ -85,6 +87,15 @@ export function parseSavedSearchInput(body: unknown): Result<SavedSearchInput> {
   const beds = intField(body, "minBedrooms", MAX_BEDROOMS, "bedrooms");
   if (!beds.ok) return beds;
 
+  const baths = intField(body, "minBathrooms", MAX_BEDROOMS, "bathrooms");
+  if (!baths.ok) return baths;
+  const parking = intField(body, "minParking", MAX_BEDROOMS, "parking");
+  if (!parking.ok) return parking;
+  const amenities = stringList(body["amenities"], AMENITIES, "feature");
+  if (!amenities.ok) return amenities;
+  const near = parseNearInput(body["near"]);
+  if (!near.ok) return near;
+
   return {
     ok: true,
     value: {
@@ -92,9 +103,25 @@ export function parseSavedSearchInput(body: unknown): Result<SavedSearchInput> {
       jurisdictions: jurisdictions.value, suburbs, propertyTypes: propertyTypes.value,
       ...(min.value !== undefined ? { minPriceCents: min.value } : {}),
       ...(max.value !== undefined ? { maxPriceCents: max.value } : {}),
-      ...(beds.value !== undefined ? { minBedrooms: beds.value } : {})
+      ...(beds.value !== undefined ? { minBedrooms: beds.value } : {}),
+      ...(baths.value !== undefined ? { minBathrooms: baths.value } : {}),
+      ...(parking.value !== undefined ? { minParking: parking.value } : {}),
+      ...(amenities.value.length > 0 ? { amenities: amenities.value } : {}),
+      ...(near.value !== undefined ? { near: near.value } : {})
     }
   };
+}
+
+/** { latitude, longitude, radiusKm } inside Australia with a radius of 1 to 100 km, or absent. */
+function parseNearInput(v: unknown): Result<SavedSearchInput["near"]> {
+  if (v === undefined) return { ok: true, value: undefined };
+  const bad = fail("invalid", "Choose a point in Australia and a distance of 1 to 100 km.");
+  if (!isObject(v) || Object.keys(v).some(k => k !== "latitude" && k !== "longitude" && k !== "radiusKm")) return bad;
+  const { latitude, longitude, radiusKm } = v;
+  if (typeof latitude !== "number" || typeof longitude !== "number" || typeof radiusKm !== "number") return bad;
+  if (!(latitude >= AU_BOUNDS.south && latitude <= AU_BOUNDS.north && longitude >= AU_BOUNDS.west && longitude <= AU_BOUNDS.east)) return bad;
+  if (!(radiusKm >= 1 && radiusKm <= MAX_RADIUS_KM)) return bad;
+  return { ok: true, value: { latitude, longitude, radiusKm } };
 }
 
 /** consent must be an explicit boolean: true opts in to the channel, false unsubscribes. */

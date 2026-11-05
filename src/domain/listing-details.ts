@@ -16,8 +16,19 @@ export interface ListingDetails {
   /** Map pin, WGS84 decimal degrees. Always set or cleared as a pair, and only inside Australia's bounds. */
   latitude?: number;
   longitude?: number;
+  /** Features the owner ticks from the fixed list (AMENITIES). Absent means none stated. */
+  amenities?: Amenity[];
 }
-export const DETAIL_KEYS = ["suburb", "postcode", "priceCents", "bedrooms", "bathrooms", "parking", "latitude", "longitude"] as const;
+export const DETAIL_KEYS = ["suburb", "postcode", "priceCents", "bedrooms", "bathrooms", "parking", "latitude", "longitude", "amenities"] as const;
+
+/** Fixed amenity vocabulary: filterable facts, never free text. The database CHECK lists the same keys. */
+export const AMENITIES = ["pool", "air_conditioning", "garage", "balcony", "garden", "solar", "pet_friendly", "furnished", "ensuite", "study", "lift", "security"] as const;
+export type Amenity = (typeof AMENITIES)[number];
+export const AMENITY_LABELS: Record<Amenity, string> = {
+  pool: "Pool", air_conditioning: "Air conditioning", garage: "Garage", balcony: "Balcony", garden: "Garden", solar: "Solar panels",
+  pet_friendly: "Pet friendly", furnished: "Furnished", ensuite: "Ensuite", study: "Study", lift: "Lift", security: "Security"
+};
+export const isAmenity = (v: unknown): v is Amenity => typeof v === "string" && (AMENITIES as readonly string[]).includes(v);
 
 /** Australia including Tasmania and the external territories' mainland approaches. A pin outside is a typo. */
 export const AU_BOUNDS = { south: -44, west: 112, north: -9, east: 154 } as const;
@@ -96,6 +107,12 @@ export function parseDetails(b: Record<string, unknown>, tx: "sale" | "rent"): {
     if (lat === null && lng === null) { out.latitude = null; out.longitude = null; }
     else if (coordOk(lat, AU_BOUNDS.south, AU_BOUNDS.north) && coordOk(lng, AU_BOUNDS.west, AU_BOUNDS.east)) { out.latitude = lat; out.longitude = lng; }
     else return { ok: false, message: "Map location must be a latitude and longitude pair inside Australia (up to 6 decimal places)." };
+  }
+  if ("amenities" in b) {
+    const v = b["amenities"];
+    if (v === null || (Array.isArray(v) && v.length === 0)) out.amenities = null;
+    else if (Array.isArray(v) && v.length <= AMENITIES.length && v.every(isAmenity)) out.amenities = AMENITIES.filter(a => v.includes(a));
+    else return { ok: false, message: "Amenities must come from the list on the form." };
   }
   return { ok: true, value: out };
 }

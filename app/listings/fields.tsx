@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { AMENITIES, AMENITY_LABELS } from "../../src/domain/listing-details";
 import { BOND_PATHWAY_LABELS, centsToInput } from "./ui";
 import { AddressField } from "./address-field";
 import { WordingHint } from "./wording-hint";
@@ -19,6 +20,7 @@ export interface ListingDefaults {
   bedrooms?: number;
   bathrooms?: number;
   parking?: number;
+  amenities?: string[];
 }
 
 /** The draft fields, shared by the create and edit pages. Read the values with listingFormBody(FormData). */
@@ -100,6 +102,14 @@ export function ListingFields({ defaults = {} }: { defaults?: ListingDefaults })
           {num("bathrooms", "Bathrooms", defaults.bathrooms)}
           {num("parking", "Parking spaces", defaults.parking)}
         </div>
+        <fieldset className="mf-group">
+          <legend>Extras buyers can filter by</legend>
+          <div className="amenity-checks">
+            {AMENITIES.map(a => (
+              <label key={a} className="check"><input type="checkbox" name="amenities" value={a} defaultChecked={defaults.amenities?.includes(a) ?? false} /><span>{AMENITY_LABELS[a]}</span></label>
+            ))}
+          </div>
+        </fieldset>
       </fieldset>
     </>
   );
