@@ -28,6 +28,7 @@ const META: Record<string, { group: string; icon: AdminIcon; blurb: string }> = 
   "/staff/users/deleted-accounts": { group: "marketplace", icon: "users", blurb: "Delete accounts and restore them within the recovery window" },
   "/staff/investments": { group: "marketplace", icon: "building", blurb: "Check investor projects before they go live" },
   "/staff/investments/settings": { group: "marketplace", icon: "toggle", blurb: "Turn the investor module on or off" },
+  "/staff/commissions": { group: "marketplace", icon: "bank", blurb: "Agent commission deals, overrides and payouts" },
   "/staff/cases": { group: "compliance", icon: "case", blurb: "Claim and resolve admin cases" },
   "/staff/safety": { group: "compliance", icon: "safety", blurb: "Messages held by the safety filter" },
   "/staff/trust-accounts": { group: "compliance", icon: "bank", blurb: "Two-person trust account approvals" },

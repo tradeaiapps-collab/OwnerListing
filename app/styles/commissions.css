@@ -1,0 +1,24 @@
+.cm-tiles { display: grid; gap: var(--space-3); grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); margin: 0 0 var(--space-6); padding: 0; list-style: none; }
+.cm-tile { padding: var(--space-4); border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); box-shadow: var(--shadow-1); }
+.cm-tile dt { color: var(--muted); font-size: 0.75rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; }
+.cm-tile dd { margin: var(--space-1) 0 0; font-size: 1.375rem; font-weight: 700; color: var(--heading, var(--text)); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.cm-tile.warn dd { color: var(--warn); }
+.cm-elena { display: grid; gap: var(--space-3); padding: var(--space-4); margin-bottom: var(--space-6); border: 1px solid var(--border); border-left: 4px solid var(--accent); border-radius: var(--radius); background: var(--surface); }
+.cm-elena h2 { margin: 0; }
+.cm-elena ul { margin: 0; padding-left: var(--space-6); display: grid; gap: var(--space-1); }
+.cm-elena p { margin: 0; }
+.cm-bar { display: block; height: 0.5rem; min-width: 0.25rem; border-radius: 999px; background: var(--accent); }
+.cm-bar.pipeline { background: color-mix(in srgb, var(--accent) 40%, transparent); }
+.cm-bars { display: grid; gap: var(--space-1); min-width: 8rem; }
+.cm-status { display: inline-block; padding: 2px var(--space-2); border-radius: 999px; border: 1px solid var(--border); font-size: 0.8125rem; text-transform: capitalize; white-space: nowrap; }
+.cm-status.earned, .cm-status.paid { color: var(--ok); border-color: currentColor; }
+.cm-status.cancelled { color: var(--muted); }
+.cm-status.overdue { color: var(--danger); border-color: currentColor; }
+.cm-row { display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: end; margin-bottom: var(--space-4); }
+.cm-row > label { display: grid; gap: var(--space-1); font-weight: 600; font-size: 0.9375rem; min-width: min(100%, 11rem); flex: 1 1 11rem; }
+.cm-tier { display: grid; grid-template-columns: 1fr 1fr auto; gap: var(--space-2); align-items: end; }
+.cm-detail { margin-bottom: var(--space-6); }
+.cm-detail .table-wrap > table { min-width: 28rem; }
+.cm-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.cm-note { color: var(--muted); font-size: 0.875rem; }
+@media (max-width: 479px) { .cm-tier { grid-template-columns: 1fr 1fr; } .cm-tier > button { grid-column: 1 / -1; } }
