@@ -279,7 +279,11 @@ export default function ListingDetail() {
       </nav>
       <div className="detail-layout">
         <div className="detail-main">
-          <ListingGallery listingId={listing.id} title={listing.title} />
+          <ListingGallery listingId={listing.id} title={listing.title} highlights={[
+            listing.bedrooms !== undefined && `${listing.bedrooms} bedroom${listing.bedrooms === 1 ? "" : "s"}`,
+            listing.bathrooms !== undefined && `${listing.bathrooms} bathroom${listing.bathrooms === 1 ? "" : "s"}`,
+            listing.parking !== undefined && `${listing.parking} car space${listing.parking === 1 ? "" : "s"}`
+          ].filter(Boolean).join(", ")} />
           <div className="pd-head">
             <p className="pd-tags">
               <span className="lcard-tag detail-tag">{tx === "sale" ? "For sale" : "For rent"}</span>

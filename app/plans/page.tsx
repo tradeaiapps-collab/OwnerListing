@@ -39,6 +39,7 @@ export default function Plans() {
           ))}
         </div>
       )}
+      <p>Already paying for listings or a plan? See your invoices on <a href="/billing">Billing</a>.</p>
       <p>To buy a plan, go to <a href="/listings/mine">My listings</a> and choose Pay and publish. Payment is made on the bank's secure page.</p>
     </main>
   );

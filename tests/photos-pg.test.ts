@@ -6,6 +6,7 @@ import { listPhotos, readPhoto, updateLayout, uploadPhoto } from "../src/domain/
 import type { Actor, ListingServiceDeps } from "../src/domain/listing-service";
 import { appendAuditPg, createPgListingRepository } from "../src/server/db";
 import { createPgPhotoStore } from "../src/server/photos-db";
+import { tourFactsPg } from "../src/server/chat-assistant-db";
 import { jpeg, png } from "./helpers/image-fixtures";
 import { addListing, addUser, createTestDb, DATABASE_URL, type TestDb } from "./helpers/pg-db";
 
@@ -60,6 +61,21 @@ describe.skipIf(!DATABASE_URL)("listing photos on Postgres", () => {
     const cur = await store.currentLayout(lid);
     expect(cur.version).toBe(6);
     expect(cur.entries).toHaveLength(6);
+  });
+
+  it("stores 360 photos (2:1 only), keeps them off the cover and counts, and feeds card badge and Elena", async () => {
+    const lid = await addListing(t.db, owner.userId);
+    const store = createPgPhotoStore(t.db);
+    const flat = await uploadPhoto(deps, store, ports, owner, lid, { kind: "photo360", declaredMime: "image/jpeg", bytes: jpeg({ width: 1200, height: 900 }) });
+    expect(flat).toMatchObject({ ok: false });
+    const pano = await uploadPhoto(deps, store, ports, owner, lid, { kind: "photo360", declaredMime: "image/jpeg", bytes: jpeg({ width: 2400, height: 1200 }) });
+    expect(pano.ok).toBe(true);
+    const layout = await store.currentLayout(lid);
+    await updateLayout(deps, store, owner, lid, { version: layout.version, entries: layout.entries.map(e => ({ ...e, caption: "Kitchen" })), tourUrl: "https://my.matterport.com/show/?m=abcd1234" });
+    const c = (await store.coversFor([lid])).get(lid);
+    expect(c).toMatchObject({ cover: null, photoCount: 0, tour: "3d" });
+    expect(await tourFactsPg(t.db, lid)).toMatchObject({ rooms: ["Kitchen"], panoramas: 1, tour: { provider: "matterport" } });
+    expect(await tourFactsPg(t.db, randomUUID())).toBeUndefined();
   });
 
   it("photo rows and layout history are append-only in the database", async () => {

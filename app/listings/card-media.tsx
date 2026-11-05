@@ -12,6 +12,7 @@ export function CardMedia({ photo, transactionType }: { photo: CardPhoto | undef
           width={cover.width} height={cover.height} loading="lazy" decoding="async" alt="" />
       )}
       <span className="lcard-tag">{transactionType === "sale" ? "For sale" : "For rent"}</span>
+      {photo?.tour && <span className="lcard-tour">{photo.tour === "3d" ? "3D tour" : photo.tour === "360" ? "360" : photo.tour === "video" ? "Video" : "Tour"}</span>}
       {count > 0 && <span className="lcard-count"><span className="sr-only">Photos: </span>{count}</span>}
     </div>
   );

@@ -12,6 +12,8 @@ export interface PlanDef {
   features: readonly Feature[];
   /** Set by an admin, in cents excluding GST. null means not priced yet, so it cannot be bought. */
   priceCents: number | null;
+  /** Subscription plans only: most published listings at once (null = no limit). */
+  maxActiveListings?: number | null;
 }
 
 /** Starting entitlements only. Prices are deliberately unset: an admin allocates them. */
@@ -23,6 +25,34 @@ export const DEFAULT_PLANS: readonly PlanDef[] = [
     features: ["video", "photo_360", "video_360", "ai_description", "ai_auto_reply", "ai_applicant_report", "contract_drafting"],
     priceCents: null }
 ];
+
+/**
+ * Recurring plans for owners and agents, billed monthly or yearly. Same rule as the listing packages: no price until an admin sets one
+ * (monthly, excl. GST), and an unpriced plan cannot be bought. Yearly = YEARLY_MONTHS_CHARGED months of the monthly price.
+ */
+export const SUBSCRIPTION_PLANS: readonly (PlanDef & { audience: "owner" | "agent" })[] = [
+  { id: "owner_plus", name: "Owner Plus", audience: "owner", maxPhotos: 100, storageGb: 50, maxActiveListings: 3,
+    features: ["video", "photo_360", "ai_description", "ai_auto_reply", "ai_applicant_report"], priceCents: null },
+  { id: "agent_pro", name: "Agent Pro", audience: "agent", maxPhotos: 100, storageGb: 100, maxActiveListings: 25,
+    features: ["video", "photo_360", "video_360", "ai_description", "ai_auto_reply", "ai_applicant_report"], priceCents: null },
+  { id: "agent_team", name: "Agent Team", audience: "agent", maxPhotos: 100, storageGb: 500, maxActiveListings: null,
+    features: ["video", "photo_360", "video_360", "ai_description", "ai_auto_reply", "ai_applicant_report", "contract_drafting"], priceCents: null }
+];
+
+export const YEARLY_MONTHS_CHARGED = 10;
+export type BillingInterval = "monthly" | "yearly";
+export const isBillingInterval = (v: unknown): v is BillingInterval => v === "monthly" || v === "yearly";
+
+/** Every plan an admin can price: the per-listing packages and the subscription plans. */
+export const ALL_PLAN_IDS: readonly string[] = [...DEFAULT_PLANS.map(p => p.id), ...SUBSCRIPTION_PLANS.map(p => p.id)];
+
+/** Price in cents (excl. GST) for one billing period of a subscription plan, from its monthly price. */
+export const periodPriceCents = (monthlyCents: number, interval: BillingInterval): number =>
+  interval === "yearly" ? monthlyCents * YEARLY_MONTHS_CHARGED : monthlyCents;
+
+/** True when the account may publish one more listing under this plan. */
+export const withinListingLimit = (plan: Pick<PlanDef, "maxActiveListings">, activeListings: number): boolean =>
+  plan.maxActiveListings == null || activeListings < plan.maxActiveListings;
 
 export interface Subscription {
   ownerUserId: string;

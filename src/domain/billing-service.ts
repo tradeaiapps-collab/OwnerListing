@@ -1,5 +1,5 @@
 import { createInvoice, type Invoice, type PaymentEvent } from "./billing";
-import { DEFAULT_PLANS, quote, withPrices, type PlanDef } from "./plans";
+import { ALL_PLAN_IDS, DEFAULT_PLANS, quote, withPrices, type PlanDef } from "./plans";
 
 export interface PriceRow { id: string; planId: string; priceCents: number; reason: string; setBy: string; effectiveFrom: string }
 
@@ -33,7 +33,7 @@ export type PriceInput = { planId: string; priceCents: number; reason: string };
 export function parsePriceInput(body: unknown): { ok: true; value: PriceInput } | { ok: false; error: string } {
   const b = (body && typeof body === "object" ? body : {}) as Record<string, unknown>;
   const planId = typeof b["planId"] === "string" ? b["planId"] : "";
-  if (!DEFAULT_PLANS.some(p => p.id === planId)) return { ok: false, error: "Choose a plan." };
+  if (!ALL_PLAN_IDS.includes(planId)) return { ok: false, error: "Choose a plan." };
   const cents = b["priceCents"];
   if (typeof cents !== "number" || !Number.isSafeInteger(cents) || cents < 1 || cents > PRICE_MAX_CENTS) {
     return { ok: false, error: "Price must be a whole number of cents, at least 1 and at most 100,000,000." };

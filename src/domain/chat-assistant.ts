@@ -7,6 +7,7 @@ import { formatAud } from "./listing-details";
 import type { Actor, Failure, Result } from "./listing-service";
 import { scanInboundMessage } from "./message-safety";
 import { withinLimit } from "./rate-limit";
+import { tourSummary, type TourInfo } from "./virtual-tour";
 
 /**
  * The assistant inside a buyer-owner enquiry thread: a third participant both sides can ask. Rule based and deterministic, so every
@@ -20,7 +21,7 @@ export type ChatRole = "buyer" | "owner" | "agent";
 /** Pose shown with an answer. "listening" is the client's state while someone types or waits; answers never carry it. */
 export type ChatPose = "wave" | "tablet" | "front" | "three-quarter";
 export const CHAT_TOPICS = [
-  "welcome", "offer", "compromise", "settlement", "deposit", "conditions", "listing", "next_steps", "privacy", "advice", "chitchat", "unknown"
+  "welcome", "offer", "compromise", "settlement", "deposit", "conditions", "listing", "market", "next_steps", "privacy", "advice", "chitchat", "unknown"
 ] as const;
 export type ChatTopic = (typeof CHAT_TOPICS)[number];
 
@@ -36,6 +37,16 @@ export interface ChatFacts {
     askingCents?: number | undefined; bedrooms?: number | undefined; bathrooms?: number | undefined; parking?: number | undefined; verifiedDisclosures: number;
   };
   offer?: ChatOffer | undefined;
+  /** The listing's virtual tour, when it has one. */
+  tour?: { tour?: TourInfo | undefined; rooms: string[]; panoramas: number } | undefined;
+  /** Suburb-level figures anyone may see (no listing valuation: price guidance is never shown to buyers). Undefined when there is no data. */
+  market?: ChatMarket | undefined;
+}
+
+/** A short brief of the suburb market, from the same figures as the property intelligence pages. */
+export interface ChatMarket {
+  area: string; medianCents: number; sampleSize: number; change12mPercent?: number | undefined; change6mPercent?: number | undefined;
+  velocity?: "heating" | "steady" | "cooling" | undefined; medianDaysOnMarket?: number | undefined;
 }
 
 export interface ChatAnswer { topic: ChatTopic; pose: ChatPose; text: string; suggestions: string[] }
@@ -51,7 +62,7 @@ export const MAX_QUESTION_LENGTH = 500;
 export const ASSISTANT_RATE = { windowMs: 60 * 60 * 1000, perUser: 30 } as const;
 
 const POSE: Record<ChatTopic, ChatPose> = {
-  welcome: "wave", offer: "tablet", compromise: "tablet", listing: "tablet",
+  welcome: "wave", offer: "tablet", compromise: "tablet", listing: "tablet", market: "tablet",
   settlement: "front", deposit: "front", conditions: "front", next_steps: "front", unknown: "front",
   privacy: "three-quarter", advice: "three-quarter", chitchat: "wave"
 };
@@ -64,11 +75,12 @@ const ADVICE_RE = /\b(should\s+(i|we)\s+(buy|sell|accept|reject|decline|counter|
 const FLOOR_RE = /\b(lowest|minimum|bottom|floor|reserve|walk[- ]?away|least)\b.*\b(price|accept|take|go)\b|\b(what|how\s+low)\s+will\s+(they|the\s+owner|the\s+seller)\s+(take|accept|go)\b/;
 
 const KEYWORDS: readonly [Exclude<ChatTopic, "welcome" | "privacy" | "advice" | "unknown">, RegExp][] = [
+  ["market", /\b(market|trends?|growth|growing|demand|days\s+on\s+market|comparables?|comps|recent\s+sales?|sold\s+(nearby|recently)|neighbou?rhood|area\s+prices?|median)\b/g],
   ["compromise", /\b(compromise|middle|meet|halfway|half\s+way|split|gap|apart|close\s+the\s+deal|stuck|deadlock|agree|bridge|suggest\w*|options?|counter\s+at|work\s+something\s+out|find\s+a\s+way)\b/g],
   ["settlement", /\b(settle(ment)?|settling|days\s+to\s+settle|move\s+in|keys|handover|possession)\b/g],
   ["deposit", /\b(deposit|holding\s+fee|trust\s+account|10\s*%|ten\s+per\s*cent)\b/g],
   ["conditions", /\b(conditions?|subject\s+to|finance|loan|approval|building|pest|inspect\w*|report|cooling|unconditional)\b/g],
-  ["listing", /\b(bed(room)?s?|bath(room)?s?|parking|car\s*(space|park)s?|garage|property|house|home|unit|townhouse|apartment|listing|features?|disclosures?|pool|land|size|suburb|address)\b/g],
+  ["listing", /\b(tours?|3d|360|virtual|walk[- ]?through|matterport|bed(room)?s?|bath(room)?s?|parking|car\s*(space|park)s?|garage|property|house|home|unit|townhouse|apartment|listing|features?|disclosures?|pool|land|size|suburb|address)\b/g],
   ["offer", /\b(offers?|price|terms|where\s+(are\s+we|do\s+we\s+stand|do\s+things\s+stand|things\s+stand)|stand\s+now|status|current|latest|counter(ed|s)?|summary|summar\w+)\b/g],
   ["next_steps", /\b(next|what\s+now|what\s+happens|process|how\s+does\s+(this|it)\s+work|steps?|contract|solicitor|conveyancer|exchange)\b/g]
 ];
@@ -188,6 +200,32 @@ function listingLine(f: ChatFacts): string {
   return `${what}${disclosures} I only know what's on the listing, so for anything else the owner can answer here.`;
 }
 
+const TOUR_RE = /\b(tours?|3d|360|virtual|walk[- ]?through|matterport)\b/;
+
+function tourLine(f: ChatFacts): string {
+  const l = f.listing, n = (c: number | undefined, w: string) => (c === undefined ? undefined : `${c} ${w}${c === 1 ? "" : "s"}`);
+  const highlights = [n(l.bedrooms, "bedroom"), n(l.bathrooms, "bathroom"), n(l.parking, "car space")].filter(Boolean) as string[];
+  return tourSummary({
+    title: l.title, tour: f.tour?.tour, rooms: f.tour?.rooms ?? [], panoramas: f.tour?.panoramas ?? 0,
+    highlights: highlights.length ? list(highlights) : undefined
+  });
+}
+
+const MARKET_NONE = "I don't have enough recent sales data for this area yet to say anything useful about the market. Check back as more results come in.";
+function marketLine(f: ChatFacts): string {
+  const m = f.market;
+  if (!m) return MARKET_NONE;
+  const tx = f.listing.transactionType;
+  const move = (n: number) => `${n > 0 ? "up" : n < 0 ? "down" : "flat"} ${Math.abs(n)}%`;
+  const parts = [`In ${m.area} the median ${tx === "rent" ? "weekly rent" : "sale price"} over the last 12 months is ${money(m.medianCents, tx)}, from ${m.sampleSize} results.`];
+  if (m.change12mPercent !== undefined) parts.push(`That is ${move(m.change12mPercent)} on the year before.`);
+  else if (m.change6mPercent !== undefined) parts.push(`That is ${move(m.change6mPercent)} on the previous 6 months.`);
+  if (m.velocity) parts.push(`Activity looks ${m.velocity}.`);
+  if (m.medianDaysOnMarket !== undefined) parts.push(`The median time to ${tx === "rent" ? "lease" : "sell"} is ${days(m.medianDaysOnMarket)}.`);
+  parts.push("These are suburb figures, not a valuation of this home, and past results don't predict the future. " + ASK_PROFESSIONAL);
+  return parts.join(" ");
+}
+
 function conditionsLine(f: ChatFacts): string {
   const o = f.offer;
   const parts: string[] = [];
@@ -228,6 +266,7 @@ const SUGGEST: Record<ChatTopic, string[]> = {
   deposit: ["What happens next?", "Where do things stand?"],
   conditions: ["What does settlement mean?", "How could we close the gap?"],
   listing: ["Where do things stand?", "What do the conditions mean?"],
+  market: ["Tell me about the home", "Where do things stand?", "How could we close the gap?"],
   next_steps: ["Where do things stand?", "What does the deposit cover?"],
   privacy: ["Where do things stand?", "How could we close the gap?"],
   advice: ["Where do things stand?", "How could we close the gap?"],
@@ -283,7 +322,8 @@ export function chatAnswer(f: ChatFacts, role: ChatRole, question: string): Chat
     case "settlement": return done(settlementLine(f));
     case "deposit": return done(depositLine(f));
     case "conditions": return done(conditionsLine(f));
-    case "listing": return done(listingLine(f));
+    case "listing": return done(TOUR_RE.test(t) ? tourLine(f) : listingLine(f));
+    case "market": return done(marketLine(f));
     case "next_steps": return done(nextLine(f, role));
     default: {
       const talk = smallTalk(question);
@@ -313,8 +353,12 @@ export interface ChatAssistantDeps extends Pick<EnquiryDeps, "enquiries" | "list
   turns: AssistantTurnRepository;
   /** The buyer's newest formal offer on the listing, with its newest counter. Undefined when there is none. */
   offerFor: (listingId: string, buyerUserId: string) => Promise<ChatOffer | undefined>;
+  /** Suburb market brief for the listing, if there is enough data. Must not throw. */
+  marketFor?: (listing: { suburb?: string | undefined; postcode?: string | undefined; transactionType: "sale" | "rent"; propertyType: string }) => Promise<ChatMarket | undefined>;
   /** Count of staff-verified disclosures for the listing. */
   verifiedDisclosures: (listingId: string) => Promise<number>;
+  /** The listing's tour link and 360 photo captions. Optional: without it she says the listing has no tour. */
+  tourFor?: (listingId: string) => Promise<ChatFacts["tour"]>;
   /** The live persona (Elena by default): name and pictures only. */
   persona: () => Promise<ChatPersona>;
   appendAudit: (e: AuditEvent) => Promise<void>;
@@ -342,13 +386,15 @@ async function context(deps: ChatAssistantDeps, actor: Actor, enquiryId: string)
   if (!rec) return fail("not_found", "Enquiry not found.");
   const l = rec.listing;
   const role: ChatRole = p.value.asAgent ? "agent" : actor.userId === e.buyerUserId ? "buyer" : "owner";
-  const [offer, verifiedDisclosures] = await Promise.all([deps.offerFor(e.listingId, e.buyerUserId), deps.verifiedDisclosures(e.listingId)]);
+  const [offer, verifiedDisclosures, tour] = await Promise.all([deps.offerFor(e.listingId, e.buyerUserId), deps.verifiedDisclosures(e.listingId), deps.tourFor ? deps.tourFor(e.listingId).catch(() => undefined) : undefined]);
+  const market = deps.marketFor ? await deps.marketFor({ suburb: l.suburb, postcode: l.postcode, transactionType: l.transactionType, propertyType: l.propertyType }).catch(() => undefined) : undefined;
   const facts: ChatFacts = {
     listing: {
       title: l.title, address: l.address, suburb: l.suburb, transactionType: l.transactionType, propertyType: l.propertyType,
       askingCents: l.priceCents, bedrooms: l.bedrooms, bathrooms: l.bathrooms, parking: l.parking, verifiedDisclosures
     },
-    offer
+    offer, market,
+    ...(tour ? { tour } : {})
   };
   return { ok: true, value: { enquiry: e, role, facts } };
 }
