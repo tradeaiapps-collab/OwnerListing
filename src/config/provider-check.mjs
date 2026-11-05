@@ -161,10 +161,10 @@ const PROVIDERS = [
     }
   },
   {
-    // Mirrors metaConfig in src/adapters/lead-providers.ts: all three or the Meta lead webhook stays off (503).
+    // Mirrors metaConfig in src/adapters/ad-lead-providers.ts: all three or the Meta lead webhook stays off (503).
     id: "meta_leads", label: "Facebook / Instagram Lead Ads", required: false,
-    unlocks: "Leads from Facebook and Instagram lead ads arriving in the staff lead inbox at /staff/leads.",
-    whenOff: "The Meta lead webhook answers 503; Google lead forms (keyed per source in /staff/leads) still work.",
+    unlocks: "Leads from Facebook and Instagram lead ads arriving in the staff lead inbox at /staff/ad-leads.",
+    whenOff: "The Meta lead webhook answers 503; Google lead forms (keyed per source in /staff/ad-leads) still work.",
     keys: ["META_APP_SECRET", "META_WEBHOOK_VERIFY_TOKEN", "META_PAGE_ACCESS_TOKEN"],
     check(get) {
       const p = [];
