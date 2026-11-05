@@ -1,6 +1,9 @@
+import { createHash } from "node:crypto";
 import { errorCodeOf, isStopKeyword, mapProviderStatus, twilioSignatureValid } from "../domain/sms";
 import { isE164 } from "../domain/messaging-settings";
 import type { Queryable } from "./db";
+import { converse, optOutLead } from "../domain/lead-service";
+import { getLeadDeps } from "./lead-db";
 import { loadResolved } from "./messaging-settings-db";
 import { applySmsStatus, applySmsStop } from "./sms-log";
 
@@ -9,6 +12,7 @@ export interface WebhookReply { status: number; body: string; contentType: "appl
 
 export const MAX_WEBHOOK_BYTES = 16 * 1024;
 const json = (status: number, body: Record<string, unknown>): WebhookReply => ({ status, body: JSON.stringify(body), contentType: "application/json" });
+const xmlEscape = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 const TWIML_EMPTY = '<?xml version="1.0" encoding="UTF-8"?><Response></Response>';
 
 /** The public URL Twilio calls. Built from APP_URL, never from the request: behind a proxy the request URL is not what Twilio signed. */
@@ -58,6 +62,18 @@ export async function handleSmsInboundWebhook(db: Queryable, env: Env, rawBody: 
   const p = await verified(db, env, "inbound", rawBody, signature);
   if (!(p instanceof URLSearchParams)) return p;
   const from = p.get("From");
-  if (isStopKeyword(p.get("Body")) && isE164(from)) await applySmsStop(db, from);
+  if (isStopKeyword(p.get("Body")) && isE164(from)) {
+    await applySmsStop(db, from);
+    if (env["LEAD_QUALIFIER"] === "on") await optOutLead(await getLeadDeps(db), "sms", from).catch(() => false);
+    return { status: 200, body: TWIML_EMPTY, contentType: "text/xml" };
+  }
+  // Elena qualifies new enquirers who text the number. Off until LEAD_QUALIFIER=on, and she never replies to a number that opted out.
+  const body = p.get("Body");
+  if (env["LEAD_QUALIFIER"] === "on" && isE164(from) && typeof body === "string" && body.trim().length > 0) {
+    try {
+      const r = await converse(await getLeadDeps(db), { channel: "sms", externalId: from, text: body.slice(0, 2000), originHash: createHash("sha256").update(`sms:${from}`).digest("hex").slice(0, 32) });
+      if (r.ok && r.value.reply) return { status: 200, body: `<?xml version="1.0" encoding="UTF-8"?><Response><Message>${xmlEscape(r.value.reply)}</Message></Response>`, contentType: "text/xml" };
+    } catch { /* a failure here must not make Twilio retry or hide the STOP handling above */ }
+  }
   return { status: 200, body: TWIML_EMPTY, contentType: "text/xml" };
 }
