@@ -21,6 +21,7 @@ export const STAFF_SECTIONS: readonly StaffSection[] = [
   { href: "/staff/doc-templates", label: "Document templates", permissions: ["doc_template.edit", "doc_template.publish"] },
   { href: "/staff/disclosures/reviews", label: "Disclosure evidence review", permissions: ["disclosure.verify"] },
   { href: "/staff/analytics", label: "Platform analytics", permissions: ["report.sales"] },
+  { href: "/staff/elena-insights", label: "Elena insights", permissions: ["report.sales"] },
   { href: "/staff/report-builder", label: "Report builder", permissions: ["report.sales"] },
   { href: "/staff/reports", label: "Reports", permissions: ["report.sales"] },
   { href: "/staff/audit", label: "Audit log", permissions: ["report.audit"] },
