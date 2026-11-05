@@ -191,7 +191,7 @@ export default function StaffLeads() {
         <>
           <section aria-labelledby="src-h">
             <h2 id="src-h">Sources</h2>
-            <ul className="feeds-setup" aria-label="Setup"><li><span className={`status-pill ${data?.metaConfigured ? "good" : "warn"}`}>{data?.metaConfigured ? "On" : "Off"}</span> Facebook / Instagram connection <small className="muted">META_APP_SECRET, META_WEBHOOK_VERIFY_TOKEN, META_PAGE_ACCESS_TOKEN</small></li></ul>
+            <ul className="feeds-setup" aria-label="Setup"><li><span className={`status-pill ${data?.metaConfigured ? "good" : "warn"}`}>{data?.metaConfigured ? "On" : "Off"}</span> Facebook / Instagram connection <a href="/staff/meta-leads">Manage keys</a></li></ul>
             {data?.sources.length === 0 && <p className="empty">No ad accounts connected yet. Add a Facebook Page or a Google Ads account below.</p>}
             {data && data.sources.length > 0 && (
               <>

@@ -29,3 +29,32 @@ export async function fetchMetaLead(fetchFn: FetchFn, ref: MetaLeadRef, cfg: Met
   const mapped = mapMetaLead(body, ref);
   return mapped.ok ? { lead: mapped.value } : { error: mapped.error };
 }
+
+export interface MetaTestOutcome { ok: boolean; message: string; pageId: string | null; pageName: string | null; appChecked: boolean }
+
+/**
+ * "Test connection": reads the Page the token belongs to (/me) and, when the App ID is known, asks Meta to accept the app ID with the app secret.
+ * Credentials go in the Authorization header, never in a URL. Messages are short and key-free; Meta's response body is never passed on.
+ */
+export async function testMetaConnection(fetchFn: FetchFn, cfg: MetaConfig & { appId?: string }): Promise<MetaTestOutcome> {
+  const get = async (path: string, bearer: string): Promise<{ status: number; body: Record<string, unknown> | null } | { error: string }> => {
+    try {
+      const res = await fetchFn(`https://graph.facebook.com/${META_GRAPH_VERSION}/${path}`, { headers: { authorization: `Bearer ${bearer}` }, redirect: "error", signal: AbortSignal.timeout(15_000) });
+      const body = (await res.json().catch(() => null)) as Record<string, unknown> | null;
+      return { status: res.status, body: body && typeof body === "object" ? body : null };
+    } catch (e) {
+      return { error: (e as Error)?.name === "TimeoutError" ? "Meta did not answer in time." : "Could not reach Meta." };
+    }
+  };
+  const fail = (message: string): MetaTestOutcome => ({ ok: false, message, pageId: null, pageName: null, appChecked: false });
+  const page = await get("me?fields=id,name", cfg.pageToken);
+  if ("error" in page) return fail(page.error);
+  if (page.status === 400 || page.status === 401 || page.status === 403) return fail("Meta refused the Page access token. It may be wrong, expired or revoked.");
+  if (page.status !== 200 || typeof page.body?.["id"] !== "string") return fail(`Meta answered ${page.status}.`);
+  const pageId = String(page.body["id"]).slice(0, 64), pageName = typeof page.body["name"] === "string" ? String(page.body["name"]).slice(0, 200) : null;
+  if (!cfg.appId) return { ok: true, message: "The Page access token works. Add the App ID to also check the app secret.", pageId, pageName, appChecked: false };
+  const app = await get(`${encodeURIComponent(cfg.appId)}?fields=id`, `${cfg.appId}|${cfg.appSecret}`);
+  if ("error" in app) return { ok: false, message: app.error, pageId, pageName, appChecked: false };
+  if (app.status !== 200 || String(app.body?.["id"]) !== cfg.appId) return { ok: false, message: "Meta did not accept the App ID and app secret together.", pageId, pageName, appChecked: false };
+  return { ok: true, message: "The Page access token and the app secret both work.", pageId, pageName, appChecked: true };
+}

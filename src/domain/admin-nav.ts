@@ -55,6 +55,7 @@ const META: Record<string, { group: string; icon: AdminIcon; blurb: string }> = 
   "/staff/assistant": { group: "settings", icon: "assistant", blurb: "Pick the AI assistant (Elena and others), answers and chips" },
   "/staff/ai": { group: "settings", icon: "ai", blurb: "Self-hosted AI engine and limits" },
   "/staff/ad-leads/rules": { group: "settings", icon: "toggle", blurb: "Send ad leads to agents by postcode, suburb, property type or interest" },
+  "/staff/meta-leads": { group: "settings", icon: "key", blurb: "Enter, test and disconnect the Facebook and Instagram lead ads keys" },
   "/staff/ad-leads": { group: "insights", icon: "team", blurb: "Leads from Facebook, Instagram and Google ads, assignment, cost per lead" },
   "/staff/automation": { group: "settings", icon: "toggle", blurb: "Workflow rules and scheduled tasks" },
   "/staff/campaigns": { group: "marketplace", icon: "message", blurb: "Email and SMS campaigns with open and click rates" },
