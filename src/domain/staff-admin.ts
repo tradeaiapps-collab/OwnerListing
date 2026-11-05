@@ -10,6 +10,8 @@ export interface StaffSection { href: string; label: string; permissions: readon
 export const STAFF_SECTIONS: readonly StaffSection[] = [
   { href: "/staff/dashboard", label: "Admin dashboard", permissions: ["report.sales", "report.operations", "listing.moderate", "user.manage"] },
   { href: "/staff/settlements", label: "Settlements", permissions: ["report.sales", "report.operations"] },
+  { href: "/staff/disputes", label: "Disputes", permissions: ["case.manage"] },
+  { href: "/staff/negotiation-coaching", label: "Negotiation coaching", permissions: ["report.sales", "report.operations"] },
   { href: "/staff/sale-events", label: "Sold and rented events", permissions: ["sale_event.manage", "report.sales"] },
   { href: "/staff/listings", label: "Listing moderation", permissions: ["listing.moderate"] },
   { href: "/staff/users", label: "User accounts", permissions: ["user.manage"] },
@@ -29,6 +31,7 @@ export const STAFF_SECTIONS: readonly StaffSection[] = [
   { href: "/staff/doc-templates", label: "Document templates", permissions: ["doc_template.edit", "doc_template.publish"] },
   { href: "/staff/disclosures/reviews", label: "Disclosure evidence review", permissions: ["disclosure.verify"] },
   { href: "/staff/analytics", label: "Analytics", permissions: ["report.sales"] },
+  { href: "/staff/listing-performance-analytics", label: "Listing performance", permissions: ["report.sales"] },
   { href: "/staff/elena-insights", label: "Elena insights", permissions: ["report.sales"] },
   { href: "/staff/feasibility", label: "Project feasibility", permissions: ["report.operations", "report.sales"] },
   { href: "/staff/alerts", label: "Alert thresholds", permissions: ["report.sales"] },
@@ -52,10 +55,12 @@ export const STAFF_SECTIONS: readonly StaffSection[] = [
   { href: "/staff/ad-leads/rules", label: "Lead routing rules", permissions: ["ad_leads.manage"] },
   { href: "/staff/automation", label: "Automation", permissions: ["automation.manage"] },
   { href: "/staff/valuation-settings", label: "Property valuations", permissions: ["valuation.manage"] },
+  { href: "/staff/listing-optimization-settings", label: "Listing optimization", permissions: ["listing_optimization.manage"] },
   { href: "/staff/cron-secrets", label: "Scheduler secrets", permissions: ["config.edit"] },
   { href: "/staff/campaigns", label: "Campaigns", permissions: ["campaign.manage"] },
   { href: "/staff/feeds", label: "Property data feeds", permissions: ["feeds.manage"] },
   { href: "/staff/lead-scoring", label: "Lead scoring", permissions: ["feeds.manage"] },
+  { href: "/staff/projects", label: "Internal projects", permissions: ["project.manage", "project.review", "project.tech_lead"] },
   { href: "/staff/investments", label: "Investor projects review", permissions: ["investment.review"] },
   { href: "/staff/investments/settings", label: "Investor module switch", permissions: ["investment.manage"] }
 ];

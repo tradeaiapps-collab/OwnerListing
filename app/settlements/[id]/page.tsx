@@ -3,6 +3,7 @@ import { use, useCallback, useEffect, useState } from "react";
 import { dateLabel, STAGE_LABEL, STAGES, type Stage } from "../../../src/domain/settlement";
 import "../../styles/offers.css";
 import "../../styles/settlement.css";
+import CoachingPanel from "./coaching-panel";
 
 interface Item { id: string; label: string; done: boolean; canTick: boolean }
 interface View {
@@ -42,11 +43,12 @@ export default function SettlementPage({ params }: { params: Promise<{ id: strin
   if (!v) return <main><p className="muted" role="status">Loading…</p></main>;
   return (
     <main>
-      <p><a href="/settlements">Back to settlements</a> · <a href={`/messages/${v.id}`}>Messages for this sale</a></p>
+      <p><a href="/settlements">Back to settlements</a> · <a href={`/messages/${v.id}`}>Messages for this sale</a> · <a href={`/settlements/${v.id}/disputes`}>Disputes</a></p>
       <h1>{v.listingTitle}</h1>
       <p className="muted">{v.fellThrough ? "This sale fell through, so the timeline is closed." : v.completed ? "Settled." : v.canUpdate ? "You can complete stages and tick the owner, agent and solicitor items." : "You can tick your own items. The owner or agent completes each stage."}</p>
       {v.stuck.stuck ? <p role="status" className="ai-note"><strong>{v.stuck.blocked ? "This stage is blocked." : `This stage has been open ${v.stuck.days} days.`}</strong> Check what is holding it up.</p> : null}
       {error ? <p role="alert">{error}</p> : null}
+      {!v.fellThrough && !v.completed ? <CoachingPanel settlementId={v.id} /> : null}
       <ol className="settle-steps">
         {STAGES.map(stage => {
           const m = v.milestones.find(x => x.stage === stage)!;

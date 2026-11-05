@@ -4,7 +4,8 @@ import type { Queryable } from "./db";
 /** Scheduled jobs that call an internal endpoint with header x-cron-secret. */
 export const CRON_JOBS = {
   automations: { label: "Automation runs", envVar: "AUTOMATION_CRON_SECRET", schedule: "Every 10 minutes", workflow: "automation-runs.yml", repoSecret: "AUTOMATION_CRON_SECRET" },
-  staff_automation: { label: "Staff automation and campaigns", envVar: "STAFF_AUTOMATION_CRON_SECRET", schedule: "Every 15 minutes", workflow: "staff-automation.yml", repoSecret: "STAFF_AUTOMATION_CRON_SECRET" }
+  staff_automation: { label: "Staff automation and campaigns", envVar: "STAFF_AUTOMATION_CRON_SECRET", schedule: "Every 15 minutes", workflow: "staff-automation.yml", repoSecret: "STAFF_AUTOMATION_CRON_SECRET" },
+  disputes: { label: "Dispute escalation", envVar: "DISPUTES_CRON_SECRET", schedule: "Hourly", workflow: "dispute-escalation.yml", repoSecret: "DISPUTES_CRON_SECRET" }
 } as const;
 export type CronJob = keyof typeof CRON_JOBS;
 export const CRON_JOB_KEYS = Object.keys(CRON_JOBS) as CronJob[];

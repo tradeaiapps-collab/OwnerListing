@@ -113,6 +113,8 @@ export const KINDS = {
   fall_through_proposed: "offers",
   fall_through_update: "offers",
   offer_fallen_through: "offers",
+  dispute_opened: "offers",
+  dispute_update: "offers",
   deposit_held: "offers",
   deposit_payout_pending: "offers",
   deposit_released: "offers",
@@ -184,6 +186,8 @@ export function renderNotification(kind: Kind, p: NotificationParams = {}): Rend
     case "offer_countered": return t("Counter-offer", `There is a counter-offer on ${listing}.`);
     case "fall_through_proposed": return t("Sale of your property may have fallen through", `The other side says the contract on ${listing} will not go ahead (${clip(p["reason"], 80, "reason given")}). Open it to see the proposed outcome for the deposit and agree or dispute it.`);
     case "fall_through_update": return t(clip(p["title"], 80, "Update on a sale that fell through"), clip(p["text"], 300, `There is an update on the deposit for ${listing}.`), false);
+    case "dispute_opened": return t("A dispute was raised on your sale", `A dispute about ${listing} was raised (${clip(p["title"], 80, "see the settlement")}). Elena will suggest a fair middle ground. Open it to add your side.`, false);
+    case "dispute_update": return t(clip(p["title"], 80, "Update on a dispute"), clip(p["text"], 300, `There is an update on the dispute about ${listing}.`), false);
     case "offer_fallen_through": return t("Sale marked as fallen through", `The contract on ${listing} is now marked as fallen through. The deposit is returned or released by the solicitor's trust account once staff approve it. Nothing moves until then.`);
     case "deposit_held": {
       const due = clip(p["due"], 20, "");
