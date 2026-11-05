@@ -287,3 +287,39 @@ describe("listing routes for an appointed agent", () => {
     expect(dbCalls.some(c => /formal_offer/.test(c.text))).toBe(false);
   });
 });
+
+describe("agent permissions narrowed by the owner", () => {
+  it("an agent without enquiries.handle cannot read or reply to threads", async () => {
+    appointments = [appt(L, agent.userId, { permissions: ["offers.view"] })];
+    expect(await getThread(deps, agent, enquiryId)).toMatchObject({ ok: false, code: "not_found" });
+    expect(await reply(deps, agent, enquiryId, "hello")).toMatchObject({ ok: false, code: "not_found" });
+  });
+  it("an agent with enquiries but without offer_links.issue can read the thread but not issue or decline a link", async () => {
+    appointments = [appt(L, agent.userId, { permissions: ["enquiries.handle"] })];
+    await requestOfferLink(deps, buyer, enquiryId);
+    expect(await getThread(deps, agent, enquiryId)).toMatchObject({ ok: true });
+    expect(await issueOfferLinkFromThread(deps, agent, enquiryId)).toMatchObject({ ok: false, code: "not_found" });
+    expect(await declineOfferLinkFromThread(deps, agent, enquiryId)).toMatchObject({ ok: false, code: "not_found" });
+    expect(audit.some(e => e.eventType === "offer_link.issued")).toBe(false);
+  });
+  it("GET offers and offer-analysis need offers.view; POST offer-links needs offer_links.issue", async () => {
+    state.actor = agent;
+    appointments = [appt(L, agent.userId, { permissions: ["enquiries.handle", "offer_links.issue"] })];
+    dbCalls = [];
+    expect((await offersGet(new Request(`http://test/api/listings/${L}/offers`), ctx(L))).status).toBe(404);
+    expect((await analysisGet(new Request(`http://test/api/listings/${L}/offer-analysis`), ctx(L))).status).toBe(404);
+    expect(dbCalls).toEqual([]);
+    appointments = [appt(L, agent.userId, { permissions: ["offers.view"] })];
+    expect((await offersGet(new Request(`http://test/api/listings/${L}/offers`), ctx(L))).status).toBe(200);
+    expect((await issuePost(jsonReq(`/api/listings/${L}/offer-links`, { buyerUserId: buyer.userId }), ctx(L))).status).toBe(404);
+  });
+  it("a permission outside the scope is ignored: publish is never granted by an enquiries_and_offers appointment", async () => {
+    const l = listing(L);
+    appointments = [appt(L, agent.userId, { permissions: ["listing.publish"] })];
+    expect(await isAppointedAgent(lookups(), agent, l, "listing.publish")).toBe(false);
+    expect(await isAppointedAgent(lookups(), agent, l, "enquiries.handle")).toBe(false);
+    appointments = [appt(L, agent.userId, { scope: "full", permissions: ["listing.publish"] })];
+    expect(await isAppointedAgent(lookups(), agent, l, "listing.publish")).toBe(true);
+    expect(await isAppointedAgent(lookups(), agent, l, "offers.view")).toBe(false);
+  });
+});

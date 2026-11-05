@@ -5,7 +5,7 @@ import { DEFAULT_AUTO_REPLY, queueReplyDraft, type DraftRepository, type ReplyDr
 import type { Actor, Failure, ListingRepository, Result } from "./listing-service";
 import { AUTOMATED_SENDER_ID, buildOfferPrompt, shouldSendOfferPrompt } from "./offer-intake";
 import { ENQUIRY_RATE, windowStart, withinLimit } from "./rate-limit";
-import type { AgentAppointment } from "./access";
+import type { AgentAppointment, AgentPermission } from "./access";
 import { isAppointedAgent } from "./appointed-agent";
 import type { AgentLicence } from "./licence";
 import { messageWordingError } from "./discrimination-filter";
@@ -150,14 +150,16 @@ export async function startEnquiry(
 }
 
 /** Non-parties get the same not_found as a missing thread, so existence is never revealed. */
-export async function participantEnquiry(deps: EnquiryDeps, actor: Actor, id: string): Promise<Result<{ enquiry: Enquiry; ownerUserId: string; asAgent: boolean }>> {
+export async function participantEnquiry(
+  deps: EnquiryDeps, actor: Actor, id: string, permission: AgentPermission = "enquiries.handle"
+): Promise<Result<{ enquiry: Enquiry; ownerUserId: string; asAgent: boolean }>> {
   const e = await deps.enquiries.get(id);
   const rec = e ? await deps.listings.get(e.listingId) : undefined;
   if (!e || !rec) return fail("not_found", "Enquiry not found.");
   const ownerUserId = rec.listing.ownerUserId;
   // The owner and the buyer are parties. So is the listing's appointed agent while the appointment and licence are valid.
   const isParty = e.buyerUserId === actor.userId || ownerUserId === actor.userId;
-  const asAgent = !isParty && (await isAppointedAgent(deps, actor, rec.listing));
+  const asAgent = !isParty && (await isAppointedAgent(deps, actor, rec.listing, permission));
   if (!isParty && !asAgent) return fail("not_found", "Enquiry not found.");
   return { ok: true, value: { enquiry: e, ownerUserId, asAgent } };
 }
