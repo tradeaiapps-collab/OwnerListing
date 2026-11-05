@@ -1,0 +1,38 @@
+/* Report builder: templates, saved list, editor, Elena's summary and results. Mobile first; two columns from 960px. Colours and spacing are tokens only. */
+.rb { display: grid; gap: var(--space-6); grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 960px) { .rb { grid-template-columns: minmax(16rem, 20rem) minmax(0, 1fr); align-items: start; } }
+.rb-side, .rb-main { display: grid; gap: var(--space-4); min-width: 0; align-content: start; }
+.rb h2 { margin: 0; font-size: 1.0625rem; }
+.rb-panel { display: grid; gap: var(--space-3); padding: var(--space-4); border: 1px solid var(--line, var(--border)); border-radius: var(--admin-radius, var(--radius)); background: var(--elevated, var(--surface)); box-shadow: var(--shadow-1); min-width: 0; }
+.rb-templates { display: grid; gap: var(--space-2); grid-template-columns: repeat(auto-fit, minmax(min(100%, 9.5rem), 1fr)); }
+.rb-template { display: grid; gap: var(--space-1); text-align: left; padding: var(--space-3); min-height: 44px; height: auto; white-space: normal; }
+.rb-template small { font-weight: 400; color: var(--muted); font-size: 0.8125rem; }
+.rb-saved { display: grid; gap: var(--space-2); margin: 0; padding: 0; list-style: none; }
+.rb-saved button { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2); width: 100%; min-height: 44px; height: auto; text-align: left; white-space: normal; }
+.rb-saved button[aria-current="true"] { border-color: var(--brand); box-shadow: inset 0 0 0 1px var(--brand); }
+.rb-tags { display: flex; flex-wrap: wrap; gap: var(--space-1); }
+.rb-form { display: grid; gap: var(--space-4); grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr)); align-items: end; }
+.rb-form label, .rb-sched label { display: grid; gap: var(--space-1); font-size: 0.875rem; min-width: 0; }
+.rb-form input[type="text"], .rb-form input[type="date"], .rb-form select, .rb-sched select { width: 100%; min-width: 0; box-sizing: border-box; }
+.rb-wide { grid-column: 1 / -1; }
+.rb-measures { display: grid; gap: var(--space-2); grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr)); border: 0; padding: 0; margin: 0; min-width: 0; }
+.rb-measures legend { padding: 0; margin-bottom: var(--space-2); font-size: 0.875rem; font-weight: 600; }
+.rb-check { display: flex !important; align-items: center; gap: var(--space-2) !important; min-height: 44px; }
+.rb-check input { width: 1.25rem; height: 1.25rem; flex: none; }
+.rb-sched { display: grid; gap: var(--space-3); grid-template-columns: repeat(auto-fit, minmax(min(100%, 10rem), 1fr)); align-items: end; padding: var(--space-3); border: 1px dashed var(--line, var(--border)); border-radius: var(--admin-radius, var(--radius)); }
+.rb-actions { display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: center; }
+.rb-actions > * { min-height: 44px; }
+.rb-actions a.button, .rb-actions button { justify-content: center; }
+.rb-elena { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: var(--space-4); align-items: start; }
+.rb-elena img { width: 56px; height: 56px; border-radius: 50%; object-fit: cover; border: 2px solid var(--gold); }
+.rb-elena p { margin: 0; max-width: none; }
+.rb-elena ul { margin: var(--space-2) 0 0; padding-left: 1.25rem; display: grid; gap: var(--space-1); }
+.rb-elena-name { font-size: 0.75rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+.rb-table th, .rb-table td { white-space: nowrap; }
+.rb-table th:first-child, .rb-table td:first-child { white-space: normal; min-width: 8rem; }
+.rb-table td.num, .rb-table th.num { text-align: right; font-variant-numeric: tabular-nums; }
+.rb-delta { display: block; font-size: 0.75rem; color: var(--muted); }
+.rb-delta.up { color: var(--ok); }
+.rb-delta.down { color: var(--danger); }
+.rb-history { display: grid; gap: var(--space-2); margin: 0; padding: 0; list-style: none; }
+.rb-history li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2); max-width: none; }

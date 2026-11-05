@@ -16,7 +16,7 @@ const GROUP: Record<Dimension, string> = {
 
 /**
  * One row per group for listings created in the period. Offers and accepted offers count offers submitted in the period on any listing
- * in the group; revenue sums listing invoices paid in the period. "Live now" is the listing's current status.
+ * in the group; enquiries count buyer enquiries started in the period; revenue sums listing invoices paid in the period. "Live now" is the listing's current status.
  */
 export async function loadReport(db: Queryable, q: ReportQuery): Promise<RawReportRow[]> {
   const g = GROUP[q.dimension];
@@ -33,6 +33,10 @@ export async function loadReport(db: Queryable, q: ReportQuery): Promise<RawRepo
        SELECT b.key, count(*)::int AS offers, count(*) FILTER (WHERE f.status = 'accepted')::int AS accepted
          FROM formal_offer f JOIN base b ON b.id = f.listing_id WHERE ${within("f.submitted_at")} GROUP BY b.key
      ),
+     enq AS (
+       SELECT b.key, count(*)::int AS enquiries
+         FROM enquiry e JOIN base b ON b.id = e.listing_id WHERE ${within("e.created_at")} GROUP BY b.key
+     ),
      revenue AS (
        SELECT b.key, COALESCE(sum(i.total_cents), 0)::bigint AS cents
          FROM invoice i JOIN base b ON b.id = i.listing_id WHERE i.status = 'paid' AND ${within("i.paid_at")} GROUP BY b.key
@@ -41,17 +45,17 @@ export async function loadReport(db: Queryable, q: ReportQuery): Promise<RawRepo
        SELECT key, count(*) FILTER (WHERE ${within("created_at")})::int AS created, count(*) FILTER (WHERE status = 'published')::int AS live
          FROM base GROUP BY key
      )
-     SELECT l.key, l.created, l.live, COALESCE(o.offers, 0) AS offers, COALESCE(o.accepted, 0) AS accepted, COALESCE(r.cents, 0)::text AS cents
+     SELECT l.key, l.created, l.live, COALESCE(q.enquiries, 0) AS enquiries, COALESCE(o.offers, 0) AS offers, COALESCE(o.accepted, 0) AS accepted, COALESCE(r.cents, 0)::text AS cents
             ${q.dimension === "agent" ? ", (SELECT display_name FROM app_user u WHERE u.id::text = l.key) AS agent_name" : ""}
-       FROM listings l LEFT JOIN offers o ON o.key = l.key LEFT JOIN revenue r ON r.key = l.key
-      WHERE l.created > 0 OR COALESCE(o.offers, 0) > 0 OR COALESCE(r.cents, 0) > 0
+       FROM listings l LEFT JOIN offers o ON o.key = l.key LEFT JOIN enq q ON q.key = l.key LEFT JOIN revenue r ON r.key = l.key
+      WHERE l.created > 0 OR COALESCE(o.offers, 0) > 0 OR COALESCE(q.enquiries, 0) > 0 OR COALESCE(r.cents, 0) > 0
       ORDER BY l.key LIMIT 500`,
     [q.range.from, q.range.to, ANALYTICS_TIME_ZONE]
   );
   return res.rows.map(r => ({
     key: String(r["key"] ?? ""),
     ...(q.dimension === "agent" ? { agentName: typeof r["agent_name"] === "string" ? r["agent_name"] : null } : {}),
-    listingsCreated: Number(r["created"] ?? 0), liveNow: Number(r["live"] ?? 0), offers: Number(r["offers"] ?? 0),
+    listingsCreated: Number(r["created"] ?? 0), liveNow: Number(r["live"] ?? 0), enquiries: Number(r["enquiries"] ?? 0), offers: Number(r["offers"] ?? 0),
     accepted: Number(r["accepted"] ?? 0), revenueCents: Number(r["cents"] ?? 0)
   }));
 }

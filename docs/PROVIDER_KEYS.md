@@ -36,8 +36,15 @@ Add its keys to `.env.example` (the test fails otherwise) and an entry in `src/c
 
 ## Email: templates, log and local testing
 
-- Templates live in `src/domain/email-templates.ts`: each email is plain text plus a branded HTML version (variables escaped). Older notices that only have text get the same HTML layout automatically.
-- Sent today: sign-up confirmation, "you already have an account", password reset, account deleted / restored, offers cancelled by a closed account, MFA reset, saved-search alerts, new offer (to owner), offer accepted / not accepted / new offer requested / counter-offer (to buyer), staff invite (to invitee), admin alerts to super admins (new staff invite, an address going over the failed sign-in limit, at most one per 10 minutes).
+- Templates: `src/domain/email-templates.ts` (notification centre layout) and `src/domain/account-emails.ts` (sign-up, reset, staff invite, admin alerts). Every email is plain text plus a branded HTML version (variables escaped); older notices that only have text get the same HTML layout automatically.
+- Sent today: sign-up confirmation, "you already have an account", password reset, account deleted / restored, offers cancelled by a closed account, MFA reset, saved-search alerts, offer and message notices (notification centre, per-user preferences), staff invite (to invitee), admin alerts to super admins (new staff invite, an address going over the failed sign-in limit, at most one per 10 minutes).
 - Every attempt is written to `messaging_outbox` (template, result, error code, time; never the address or body) and shown under "Delivery log" on `/staff/messaging`.
 - Local testing without a provider: set `EMAIL_DELIVERY=dev_file` and emails are written to `.dev-mail/` instead of sent. On staging, set the SMTP keys and use "Send test email to me" on `/staff/messaging`.
 - Before production: verify the sending domain at the provider (SPF, DKIM, DMARC) or emails land in spam.
+
+## Team payouts (Stripe Connect)
+
+Pays approved team commissions to members' bank accounts. Keys: `PAYOUTS_ENABLED=1`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` (endpoint `/api/webhooks/stripe`, events `account.updated`, `transfer.created`, `transfer.reversed`). Not part of `check:providers` yet.
+- Off by default; every payout route answers "not switched on yet" until set. `sk_live_` keys are refused unless `PAYOUTS_ALLOW_LIVE=1` (needs pen test and counsel sign-off).
+- Members onboard on Stripe's hosted page (`POST /api/me/payout-account`): Stripe does the identity check (KYC) and holds bank details, so no card or bank numbers reach this server (PCI scope stays with Stripe). A payout needs `kyc_status = verified`.
+- Funds come from the platform's Stripe balance; how an agency funds it (top-up) is a decision for john and counsel, as is whether this counts as the platform holding money.
