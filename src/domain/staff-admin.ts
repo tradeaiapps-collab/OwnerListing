@@ -9,6 +9,7 @@ export interface StaffSection { href: string; label: string; permissions: readon
 
 export const STAFF_SECTIONS: readonly StaffSection[] = [
   { href: "/staff/dashboard", label: "Admin dashboard", permissions: ["report.sales", "report.operations", "listing.moderate", "user.manage"] },
+  { href: "/staff/sale-events", label: "Sold and rented events", permissions: ["sale_event.manage", "report.sales"] },
   { href: "/staff/listings", label: "Listing moderation", permissions: ["listing.moderate"] },
   { href: "/staff/users", label: "User accounts", permissions: ["user.manage"] },
   { href: "/staff/users/deleted-accounts", label: "Deleted accounts", permissions: ["user.delete"] },

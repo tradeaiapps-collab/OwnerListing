@@ -13,7 +13,7 @@ const NO_STORE = { "cache-control": "no-store" } as const;
 const LOOKBACK_MONTHS = 26;
 
 /**
- * Sales and leases the platform itself recorded (property_event 'sold' / 'rented'), by suburb or postcode, last 26 months.
+ * Sales and leases recorded on the property history (property_event 'sold' / 'rented', not voided), by suburb or postcode, last 26 months.
  * Platform and public-record rows, plus licensed third-party rows from a feed connection whose recorded licence allows comparables
  * (feed_connection.comparables_licensed). Owner-supplied figures are unverified and other third-party rows may not be reusable.
  * Days on the market runs from the property's first 'listed' event in the year before the sale. Parameterised SQL only.
@@ -32,7 +32,7 @@ export function createPlatformComparablesSource(db: Queryable): ComparablesSourc
                             SELECT 1 FROM feed_connection lf WHERE lf.id = l.feed_connection_id AND lf.comparables_licensed)))
                       AND l.occurred_at > e.occurred_at - interval '365 days') AS listed_at
              FROM property_event e JOIN property p ON p.id = e.property_id
-            WHERE e.event_type IN ('sold','rented') AND e.amount_cents > 0 AND e.occurred_at >= $1::timestamptz AND e.occurred_at <= $2::timestamptz
+            WHERE e.event_type IN ('sold','rented') AND e.voided_at IS NULL AND e.amount_cents > 0 AND e.occurred_at >= $1::timestamptz AND e.occurred_at <= $2::timestamptz
               AND (e.source IN ('platform','public_record') OR (e.source = 'licensed_third_party' AND EXISTS (
                     SELECT 1 FROM feed_connection f WHERE f.id = e.feed_connection_id AND f.comparables_licensed)))
               AND p.property_type IS NOT NULL AND p.suburb IS NOT NULL
