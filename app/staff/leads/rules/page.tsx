@@ -84,9 +84,9 @@ export default function LeadRules() {
           <label>Postcodes <input value={form.postcodes} onChange={e => setForm({ ...form, postcodes: e.target.value })} placeholder="4064, 4066" inputMode="numeric" /></label>
           <label>Suburbs <input value={form.suburbs} onChange={e => setForm({ ...form, suburbs: e.target.value })} placeholder="Paddington, Red Hill" /></label>
         </div>
-        <fieldset className="feeds-check"><legend>Property types</legend>{TYPES.map(t => <label key={t}><input type="checkbox" checked={form.propertyTypes.includes(t)} onChange={() => toggle("propertyTypes", t)} /> {t}</label>)}</fieldset>
-        <fieldset className="feeds-check"><legend>Interest</legend>{INTERESTS.map(t => <label key={t}><input type="checkbox" checked={form.interests.includes(t)} onChange={() => toggle("interests", t)} /> {t}</label>)}</fieldset>
-        <fieldset className="feeds-check"><legend>Send to (choose one or more agents)</legend>
+        <fieldset className="leads-checks"><legend>Property types</legend>{TYPES.map(t => <label key={t}><input type="checkbox" checked={form.propertyTypes.includes(t)} onChange={() => toggle("propertyTypes", t)} /> {t}</label>)}</fieldset>
+        <fieldset className="leads-checks"><legend>Interest</legend>{INTERESTS.map(t => <label key={t}><input type="checkbox" checked={form.interests.includes(t)} onChange={() => toggle("interests", t)} /> {t}</label>)}</fieldset>
+        <fieldset className="leads-checks"><legend>Send to (choose one or more agents)</legend>
           {agents.length === 0 ? <span className="muted">No active agents yet.</span> : agents.map(a => <label key={a.id}><input type="checkbox" checked={form.agentUserIds.includes(a.id)} onChange={() => toggle("agentUserIds", a.id)} /> {a.name}</label>)}
         </fieldset>
         <div><button type="submit" disabled={busy === "create" || form.agentUserIds.length === 0}>{busy === "create" ? "Adding…" : "Add rule"}</button></div>
