@@ -3,6 +3,7 @@ import type { ImageVariantPort } from "../adapters/image-variants";
 import type { MalwareScanPort } from "../adapters/malware-scan";
 import type { ObjectStoragePort } from "../adapters/object-storage";
 import { sniffMime } from "./file-sniff";
+import { looks360, type TourKind } from "./virtual-tour";
 import { stripImageMetadata, type PhotoMime } from "./image-meta";
 import type { JobAssignment } from "./job-chat";
 import {
@@ -34,7 +35,7 @@ export interface PhotoStore {
    */
   updateGallery(listingId: string, actorId: string, plan: (current: Layout, photos: ReadonlyMap<string, PhotoRecord>) => GalleryPlan): Promise<Result<{ version: number }>>;
   /** Cover and visible photo count per published listing (browse cards). */
-  coversFor(listingIds: readonly string[]): Promise<Map<string, { cover: PhotoView | null; photoCount: number }>>;
+  coversFor(listingIds: readonly string[]): Promise<Map<string, { cover: PhotoView | null; photoCount: number; tour?: TourKind }>>;
 }
 
 export interface GalleryAccess { staffCanView?: boolean }
@@ -102,7 +103,7 @@ export async function uploadPhoto(
   if (early) return early;
   const rec = (await deps.repo.get(listingId))!;
   const owner = rec.listing.ownerUserId;
-  if (!(PHOTO_KINDS as readonly string[]).includes(input.kind)) return fail("invalid", "Choose photo or floor plan.");
+  if (!(PHOTO_KINDS as readonly string[]).includes(input.kind)) return fail("invalid", "Choose photo, floor plan or 360 photo.");
   const kind = input.kind as PhotoKind;
   if (!(PHOTO_MIMES as readonly string[]).includes(input.declaredMime)) return fail("invalid", "Only JPEG, PNG and WebP images can be added.");
   if (input.bytes.length > PHOTO_LIMITS.maxBytes) return fail("invalid", "Each photo must be 10 MB or smaller.");
@@ -112,6 +113,7 @@ export async function uploadPhoto(
   if (!stripped.ok) return fail("invalid", stripped.reason);
   const problem = checkImage(stripped.info, stripped.bytes.length);
   if (problem) return fail("invalid", problem);
+  if (kind === "photo360" && !looks360(stripped.info.width, stripped.info.height)) return fail("invalid", "A 360 photo must be a full panorama twice as wide as it is tall (2:1).");
 
   const [layout, existing] = await Promise.all([store.currentLayout(listingId), store.photosForListing(listingId)]);
   const photos = byId(existing);
@@ -120,7 +122,7 @@ export async function uploadPhoto(
     const old = map.get(input.replacesId);
     const entry = current.entries.find(e => e.photoId === input.replacesId);
     if (!old || !entry) return notFound("Photo not found.");
-    if (old.kind !== kind) return fail("invalid", "A replacement must be the same kind (photo or floor plan).");
+    if (old.kind !== kind) return fail("invalid", "A replacement must be the same kind (photo, floor plan or 360 photo).");
     if (entry.hidden) return fail("conflict", "Only a photo that is showing can be replaced.");
     if (actor.userId !== owner && old.uploadedBy !== actor.userId) return fail("forbidden", "You can only replace photos you added.");
     return null;
@@ -285,7 +287,7 @@ export function createInMemoryPhotoStore(seed: { assignments?: JobAssignment[] }
       return { ok: true, value: { version: cur.version + 1 } };
     },
     async coversFor(ids) {
-      const out = new Map<string, { cover: PhotoView | null; photoCount: number }>();
+      const out = new Map<string, { cover: PhotoView | null; photoCount: number; tour?: TourKind }>();
       for (const id of ids) out.set(id, coverOf(current(id), byId(photos.filter(p => p.listingId === id).map(strip))));
       return out;
     }

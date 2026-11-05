@@ -83,6 +83,47 @@ const PROVIDERS = [
     }
   },
   {
+    id: "webpush", label: "Browser push (Web Push, VAPID)", required: false,
+    unlocks: "Push notifications to Chrome, Edge, Firefox and Safari (including Home Screen apps).",
+    whenOff: "Browsers cannot subscribe and no browser push is sent; in-app, email and SMS are unaffected.",
+    keys: ["VAPID_PUBLIC_KEY", "VAPID_PRIVATE_KEY", "VAPID_SUBJECT"],
+    check(get) {
+      const p = [];
+      if (get("VAPID_PUBLIC_KEY") && !/^[A-Za-z0-9_-]{87}$/.test(get("VAPID_PUBLIC_KEY"))) p.push("VAPID_PUBLIC_KEY must be the 87-character base64url public key (npx web-push generate-vapid-keys).");
+      if (get("VAPID_PRIVATE_KEY") && !/^[A-Za-z0-9_-]{43}$/.test(get("VAPID_PRIVATE_KEY"))) p.push("VAPID_PRIVATE_KEY must be the 43-character base64url private key from the same pair.");
+      if (get("VAPID_SUBJECT") && !/^(mailto:[^\s@]+@[^\s@]+|https:\/\/[^\s]+)$/.test(get("VAPID_SUBJECT"))) p.push("VAPID_SUBJECT must be mailto:you@example.com.au or an https URL.");
+      return p;
+    }
+  },
+  {
+    id: "fcm", label: "Android push (Firebase Cloud Messaging)", required: false,
+    unlocks: "Push notifications to the Android app.",
+    whenOff: "Android devices are not pushed to; the app still shows the in-app inbox.",
+    keys: ["FCM_PROJECT_ID", "FCM_CLIENT_EMAIL", "FCM_PRIVATE_KEY"],
+    check(get) {
+      const p = [];
+      if (get("FCM_PROJECT_ID") && !/^[a-z][a-z0-9-]{4,29}$/.test(get("FCM_PROJECT_ID"))) p.push("FCM_PROJECT_ID is the Firebase project id (lower case letters, digits and dashes).");
+      if (get("FCM_CLIENT_EMAIL") && !/^[^\s@]+@[^\s@]+\.iam\.gserviceaccount\.com$/.test(get("FCM_CLIENT_EMAIL"))) p.push("FCM_CLIENT_EMAIL must be the service account email ending .iam.gserviceaccount.com.");
+      if (get("FCM_PRIVATE_KEY") && !get("FCM_PRIVATE_KEY").replace(/\\n/g, "\n").trim().startsWith("-----BEGIN")) p.push("FCM_PRIVATE_KEY must be the service account private key (-----BEGIN PRIVATE KEY-----).");
+      return p;
+    }
+  },
+  {
+    id: "apns", label: "iPhone push (Apple APNs)", required: false,
+    unlocks: "Push notifications to the iPhone app.",
+    whenOff: "iPhones are not pushed to; the app still shows the in-app inbox.",
+    keys: ["APNS_KEY_ID", "APNS_TEAM_ID", "APNS_BUNDLE_ID", "APNS_PRIVATE_KEY"], optionalKeys: ["APNS_PRODUCTION"],
+    check(get) {
+      const p = [];
+      if (get("APNS_KEY_ID") && !/^[A-Z0-9]{10}$/.test(get("APNS_KEY_ID"))) p.push("APNS_KEY_ID is the 10-character key id from Apple Developer.");
+      if (get("APNS_TEAM_ID") && !/^[A-Z0-9]{10}$/.test(get("APNS_TEAM_ID"))) p.push("APNS_TEAM_ID is the 10-character Apple team id.");
+      if (get("APNS_BUNDLE_ID") && !/^[A-Za-z0-9.-]+$/.test(get("APNS_BUNDLE_ID"))) p.push("APNS_BUNDLE_ID is the app's bundle id, like au.com.example.ownerlisting.");
+      if (get("APNS_PRIVATE_KEY") && !get("APNS_PRIVATE_KEY").replace(/\\n/g, "\n").trim().startsWith("-----BEGIN")) p.push("APNS_PRIVATE_KEY must be the .p8 key contents (-----BEGIN PRIVATE KEY-----).");
+      if (get("APNS_PRODUCTION") && !["0", "1"].includes(get("APNS_PRODUCTION"))) p.push("APNS_PRODUCTION is 1 for the live APNs service, or 0/unset for the sandbox.");
+      return p;
+    }
+  },
+  {
     id: "abn", label: "ABN Lookup (ABR)", required: false,
     unlocks: "Confirming agent and business ABNs with the Australian Business Register.",
     whenOff: "ABNs are only checksum-checked and recorded as \"not confirmed\"; staff review them.",
@@ -102,14 +143,28 @@ const PROVIDERS = [
     }
   },
   {
+    // Mirrors src/domain/map-tiles.ts: openstreetmap needs no key; custom needs a tile URL and attribution; a URL without a provider is custom.
     id: "maptiles", label: "Map tiles", required: true,
-    unlocks: "The search map and the listing location picker.",
-    whenOff: "The map falls back to OpenStreetMap's public tiles, which their usage policy forbids for production traffic.",
-    keys: ["NEXT_PUBLIC_MAP_TILE_URL", "NEXT_PUBLIC_MAP_ATTRIBUTION"],
+    unlocks: "The listing page map, the search map, the staff listings map and the location picker.",
+    whenOff: "The maps fall back to OpenStreetMap's public tiles. Set NEXT_PUBLIC_MAP_PROVIDER=openstreetmap to choose them on purpose.",
+    keys: ["NEXT_PUBLIC_MAP_PROVIDER"], optionalKeys: ["NEXT_PUBLIC_MAP_TILE_URL", "NEXT_PUBLIC_MAP_ATTRIBUTION"],
+    keysFor(get) {
+      const provider = get("NEXT_PUBLIC_MAP_PROVIDER")?.toLowerCase() ?? (get("NEXT_PUBLIC_MAP_TILE_URL") ? "custom" : undefined);
+      return provider === "custom" ? ["NEXT_PUBLIC_MAP_TILE_URL", "NEXT_PUBLIC_MAP_ATTRIBUTION"] : ["NEXT_PUBLIC_MAP_PROVIDER"];
+    },
+    note(get) {
+      const provider = get("NEXT_PUBLIC_MAP_PROVIDER")?.toLowerCase();
+      return provider === "openstreetmap"
+        ? "Using OpenStreetMap's public tiles (free, no key). Their tile policy allows light use with attribution only; switch to NEXT_PUBLIC_MAP_PROVIDER=custom (paid or self-hosted tiles) if traffic grows."
+        : null;
+    },
     check(get) {
-      const url = get("NEXT_PUBLIC_MAP_TILE_URL");
-      if (!url) return [];
       const p = [];
+      const provider = get("NEXT_PUBLIC_MAP_PROVIDER")?.toLowerCase();
+      if (provider && provider !== "openstreetmap" && provider !== "custom") p.push("NEXT_PUBLIC_MAP_PROVIDER must be openstreetmap or custom.");
+      if (provider === "openstreetmap" && get("NEXT_PUBLIC_MAP_TILE_URL")) p.push("NEXT_PUBLIC_MAP_TILE_URL is ignored with NEXT_PUBLIC_MAP_PROVIDER=openstreetmap: remove it, or set the provider to custom.");
+      const url = get("NEXT_PUBLIC_MAP_TILE_URL");
+      if (!url || provider === "openstreetmap") return p;
       if (!url.startsWith("https://")) p.push("NEXT_PUBLIC_MAP_TILE_URL must start with https://.");
       if (!["{z}", "{x}", "{y}"].every(t => url.includes(t))) p.push("NEXT_PUBLIC_MAP_TILE_URL must contain {z}, {x} and {y}.");
       return p;
@@ -125,8 +180,9 @@ export function checkProviders(env, opts = {}) {
   const prod = opts.production ?? env.NODE_ENV === "production";
   const get = k => { const v = env[k]; return typeof v === "string" && v.trim() !== "" ? v.trim() : undefined; };
   return PROVIDERS.map(p => {
-    const keys = p.urlKey ? [...p.keys, get("APP_MODE") === "admin" ? "ADMIN_APP_URL" : "APP_URL"] : p.keys;
-    const all = [...keys, ...(p.optionalKeys ?? [])];
+    const base = p.keysFor ? p.keysFor(get) : p.keys;
+    const keys = p.urlKey ? [...base, get("APP_MODE") === "admin" ? "ADMIN_APP_URL" : "APP_URL"] : base;
+    const all = [...new Set([...p.keys, ...keys, ...(p.optionalKeys ?? [])])];
     const missing = keys.filter(k => !get(k));
     const placeholders = all.filter(k => get(k) && isPlaceholder(get(k)));
     const problems = [...placeholders.map(k => `${k} looks like a placeholder, not a real value.`), ...p.check(get, prod)];
@@ -135,7 +191,8 @@ export function checkProviders(env, opts = {}) {
     // Blocks a production deploy: wrong values always; a half-set provider (unless the rest can come from the admin screen);
     // a required provider that is not ready.
     const blocking = prod && (status === "invalid" || (status === "incomplete" && !p.alsoIn) || (p.required && status !== "ready"));
-    return { id: p.id, label: p.label, required: p.required, unlocks: p.unlocks, whenOff: p.whenOff, alsoIn: p.alsoIn ?? null, keys: all, status, missing, problems, blocking };
+    return { id: p.id, label: p.label, required: p.required, unlocks: p.unlocks, whenOff: p.whenOff, alsoIn: p.alsoIn ?? null, keys: all, status, missing, problems, blocking,
+      note: status === "ready" && p.note ? p.note(get) : null };
   });
 }
 
@@ -145,6 +202,7 @@ export function formatReport(results) {
   const lines = [];
   for (const r of results) {
     lines.push(`[${mark[r.status]}] ${r.label}${r.required ? " (required)" : ""}${r.blocking ? "  <- blocks deploy" : ""}`);
+    if (r.note) lines.push(`       note: ${r.note}`);
     if (r.status !== "ready") {
       if (r.missing.length) lines.push(`       missing: ${r.missing.join(", ")}`);
       for (const p of r.problems) lines.push(`       ${p}`);

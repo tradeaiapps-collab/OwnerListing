@@ -1,0 +1,35 @@
+/* Floating Elena: perched on a page heading, walks to the middle while the guide chat is open. Theme variables only. */
+.ew-anchor { position: relative; display: flex; align-items: flex-end; }
+.ew-anchor h1 { flex: 0 0 auto; margin-bottom: 0; }
+.ew-anchor .ew-slot { order: 1; margin: 0 0 0 calc(var(--space-2) * -1); }
+.ew-perched .ew-body { transform: rotate(-6deg); }
+.ew-perched.is-walk-clip .ew-body { transform: none; }
+.ew-slot { display: block; position: relative; width: 180px; height: 180px; margin: 0; }
+.ew { box-shadow: none; border-radius: 0; min-height: 0; position: absolute; left: 0; bottom: 0; width: 180px; height: 180px; padding: 0; background: none; border: 0; cursor: pointer; z-index: 39; }
+.ew:hover:not(:disabled), .ew:active:not(:disabled) { background: none; box-shadow: none; }
+.ew-down, .ew-stopped, .ew-up { position: fixed; left: 0; top: 0; bottom: auto; }
+.ew-body { display: block; width: 100%; height: 100%; transform-origin: 50% 100%; }
+.ew-media { width: 100%; height: 100%; display: block; object-fit: cover; object-position: 50% 50%; background: none; }
+.ew:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+@media (max-width: 599px) {
+  .ew-slot, .ew { width: 132px; height: 132px; }
+  body.ew-active .ga-panel { inset: auto 0 0 0; width: 100%; height: 58dvh; border-radius: calc(var(--radius) + 4px) calc(var(--radius) + 4px) 0 0; border: 1px solid var(--border); }
+}
+@media (prefers-reduced-motion: no-preference) {
+  /* Transparent walk loop runs silently on page load; subtle shifts keep Elena present without demanding attention. */
+  .ew-perched.is-walk-clip .ew-body { animation: ew-idle-presence 5.8s ease-in-out infinite; }
+  .ew-perched.is-walk-clip.is-talking .ew-body { animation: ew-listen-presence 2.2s ease-in-out infinite; }
+  .ew-down:not(.is-walk-clip) .ew-body, .ew-up:not(.is-walk-clip) .ew-body { animation: ew-step 0.45s ease-in-out infinite; }
+  .ew-stopped.is-talking .ew-body { animation: ew-talk 1.6s ease-in-out infinite; }
+  @keyframes ew-idle-presence { 0%, 100% { transform: translate3d(0,0,0) rotate(-1deg); } 25% { transform: translate3d(1px,-2px,0) rotate(1deg); } 52% { transform: translate3d(0,1px,0) rotate(0deg); } 78% { transform: translate3d(-1px,-1px,0) rotate(-1.5deg); } }
+  @keyframes ew-listen-presence { 0%, 100% { transform: translateY(0) rotate(-1deg); } 35% { transform: translateY(-3px) rotate(1.5deg); } 70% { transform: translateY(0) rotate(0deg); } }
+  @keyframes ew-step { 0%, 100% { transform: translateY(0) rotate(-3deg); } 50% { transform: translateY(-6px) rotate(3deg); } }
+  @keyframes ew-talk { 0%, 100% { transform: rotate(-1deg); } 50% { transform: rotate(1deg) scale(1.02); } }
+}
+video.ew-media { pointer-events: none; }
+video.ew-media::-webkit-media-controls, video.ew-media::-webkit-media-controls-enclosure, video.ew-media::-webkit-media-controls-overlay-play-button, video.ew-media::-webkit-media-controls-panel { display: none !important; -webkit-appearance: none; }
+.ew-perched img.ew-media { object-position: 50% 100%; }
+.ew.is-walk-clip { width: 101px; height: 180px; background: none; }
+.ew.is-walk-clip .ew-media { object-fit: contain; object-position: 50% 100%; background: none; }
+@media (max-width: 599px) { .ew.is-walk-clip { width: 74px; height: 132px; } }
+@media (prefers-reduced-motion: reduce) { .ew-perched.is-walk-clip .ew-body, .ew-perched.is-walk-clip.is-talking .ew-body { animation: none; } }

@@ -12,6 +12,7 @@ type Who = "loading" | "out" | "staff" | "owner" | "buyer";
 export default function SiteNav({ items, iconStyle, signInHref }: { items?: NavItem[]; iconStyle?: IconStyle; signInHref?: "/dev-login" }) {
   const [who, setWho] = useState<Who>("loading");
   const [invest, setInvest] = useState(false);
+  const [unread, setUnread] = useState(0);
   // Phone menu. `ready` flips on after hydration, so without JavaScript every link stays visible (CSS only collapses when data-js is set).
   const [ready, setReady] = useState(false);
   const [open, setOpen] = useState(false);
@@ -44,7 +45,10 @@ export default function SiteNav({ items, iconStyle, signInHref }: { items?: NavI
       else if (me?.mfaPending && window.location.pathname !== "/mfa") {
         // Signed in with Google but the second step is still to do: every API treats the session as signed out until then.
         window.location.assign(`/mfa?next=${encodeURIComponent(window.location.pathname + window.location.search)}`);
-      } else if (me?.user) setWho(me.user.userType === "buyer" ? "buyer" : "owner");
+      } else if (me?.user) {
+        setWho(me.user.userType === "buyer" ? "buyer" : "owner");
+        void get("/api/notifications?limit=1").then(n => setUnread(typeof n?.unread === "number" ? n.unread : 0));
+      }
       else setWho("out");
     });
   }, []);
@@ -80,6 +84,9 @@ export default function SiteNav({ items, iconStyle, signInHref }: { items?: NavI
       {invest && (who === "owner" || who === "buyer") && <a href="/investments">Investor projects</a>}
       {/* Not in the admin nav catalogue: adding an id there would invalidate every saved theme's navigation list. */}
       {who === "buyer" && <a href="/offers">My offers</a>}
+      {(who === "owner" || who === "buyer") && <a href="/notifications">Notifications{unread > 0 ? <span className="nt-badge nt-bell-badge" aria-label={`${unread} unread`}>{unread}</span> : null}</a>}
+      {(who === "owner" || who === "buyer") && <a href="/market">Market insights</a>}
+      {(who === "owner" || who === "buyer") && <a href="/inspections">Inspections</a>}
       {(who === "owner" || who === "buyer" || who === "staff") && <button type="button" className="nav-signout" onClick={signOut}>Sign out</button>}
       </div>
     </nav>

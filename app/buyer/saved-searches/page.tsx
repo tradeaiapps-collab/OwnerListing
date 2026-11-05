@@ -2,16 +2,26 @@
 import { useEffect, useState } from "react";
 import type { AlertPreference, SavedSearch } from "../../../src/domain/buyer";
 import { AU_JURISDICTIONS } from "../../../src/domain/jurisdiction";
+import { AMENITIES, AMENITY_LABELS, formatAud } from "../../../src/domain/listing-details";
 import { PROPERTY_TYPES } from "../../../src/domain/listing-service";
+import { savedSearchHref } from "../../../src/domain/saved-search-link";
 import { JSON_HEADERS } from "../../listings/ui";
 import { savedSearchFormBody } from "./form";
+import "../../styles/search.css";
 
 const summarise = (s: SavedSearch) => [
   s.transactionType === "sale" ? "Buy" : "Rent",
   s.useClass,
   s.propertyTypes.length ? s.propertyTypes.join(", ") : "any type",
   s.jurisdictions.length ? s.jurisdictions.join(", ") : "any state",
-  s.suburbs.length ? s.suburbs.join(", ") : "any suburb"
+  s.suburbs.length ? s.suburbs.join(", ") : "any suburb",
+  ...(s.minPriceCents !== undefined || s.maxPriceCents !== undefined
+    ? [`${s.minPriceCents !== undefined ? formatAud(s.minPriceCents) : "any"} to ${s.maxPriceCents !== undefined ? formatAud(s.maxPriceCents) : "any"}`] : []),
+  ...(s.minBedrooms !== undefined ? [`${s.minBedrooms}+ bed`] : []),
+  ...(s.minBathrooms !== undefined ? [`${s.minBathrooms}+ bath`] : []),
+  ...(s.minParking !== undefined ? [`${s.minParking}+ parking`] : []),
+  ...(s.amenities?.length ? [s.amenities.map(a => AMENITY_LABELS[a]).join(", ")] : []),
+  ...(s.near ? [`within ${s.near.radiusKm} km of a saved point`] : [])
 ].join(" · ");
 
 const consented = (prefs: AlertPreference[], channel: "email" | "sms") => {
@@ -119,6 +129,18 @@ export default function SavedSearches() {
             <label className="field">Minimum bedrooms
               <input name="minBedrooms" inputMode="numeric" />
             </label>
+            <label className="field">Minimum bathrooms
+              <input name="minBathrooms" inputMode="numeric" />
+            </label>
+            <label className="field">Minimum parking
+              <input name="minParking" inputMode="numeric" />
+            </label>
+            <fieldset className="field span-all mf-group">
+              <legend>Must have</legend>
+              <div className="amenity-checks">
+                {AMENITIES.map(a => <label key={a} className="check"><input type="checkbox" name="amenities" value={a} /><span>{AMENITY_LABELS[a]}</span></label>)}
+              </div>
+            </fieldset>
           </div>
         </fieldset>
         <div className="form-bar"><button type="submit" disabled={busy}>Save search</button></div>
@@ -127,7 +149,7 @@ export default function SavedSearches() {
 
       <section>
         <h2>Your searches</h2>
-        {searches.length === 0 ? <p className="empty">No saved searches yet.</p> : <ul className="card-list">{searches.map(s => <li key={s.id}>{summarise(s)}</li>)}</ul>}
+        {searches.length === 0 ? <p className="empty">No saved searches yet.</p> : <ul className="card-list">{searches.map(s => <li key={s.id}>{summarise(s)} <a href={savedSearchHref(s)}>View matches</a></li>)}</ul>}
       </section>
 
       <section>

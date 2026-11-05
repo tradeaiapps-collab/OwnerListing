@@ -4,10 +4,9 @@ import { isPublicAddress } from "../domain/net-guard";
 import { isEmailAddress, resolveMessaging, type SmtpConfig } from "../domain/messaging-settings";
 import { failed, type SendErrorCode, type SendResult } from "./messaging";
 
-/** `text` is always sent; `html` (optional) is sent alongside it as the rich alternative. */
-export interface EmailMessage { to: string; subject: string; text: string; html?: string }
+export interface EmailMessage { to: string; subject: string; text: string; /** Optional HTML alternative; the plain text is always sent too. */ html?: string }
 
-/** Sends one email (plain text, plus HTML when given). Provider-agnostic: a transactional HTTP API adapter can implement the same port. */
+/** Sends one plain-text email. Provider-agnostic: a transactional HTTP API adapter can implement the same port. */
 export interface EmailPort {
   readonly configured: boolean;
   /** Never throws for delivery problems: reports them as a result with a fixed error code. */
@@ -88,7 +87,7 @@ export function createSmtpEmail(cfg: SmtpConfig, deps: { createTransport?: Trans
         disableFileAccess: true, disableUrlAccess: true, logger: false, debug: false
       });
       try {
-        const info = await transport.sendMail({ from: cfg.from, to: msg.to, subject: msg.subject, text: msg.text, ...(msg.html !== undefined ? { html: msg.html } : {}) });
+        const info = await transport.sendMail({ from: cfg.from, to: msg.to, subject: msg.subject, text: msg.text, ...(msg.html ? { html: msg.html } : {}) });
         const ref = typeof info.messageId === "string" && info.messageId.length <= 200 ? info.messageId : undefined;
         return ref ? { status: "sent", providerRef: ref } : { status: "sent" };
       } catch (e) {

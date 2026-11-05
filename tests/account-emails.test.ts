@@ -4,13 +4,14 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { createDevFileEmail, devFileEmailWanted } from "../src/adapters/email-dev";
 import {
-  adminAlertEmail, escapeHtml, htmlFromText, offerOutcomeEmail, offerReceivedEmail, passwordResetEmail, renderEmail,
+  adminAlertEmail, htmlFromText, passwordResetEmail, renderBrandedEmail,
   signupExistingEmail, signupVerifyEmail, staffInviteEmail
-} from "../src/domain/email-templates";
+} from "../src/domain/account-emails";
+import { escapeHtml } from "../src/domain/email-templates";
 
 const LINK = "https://app.example.com/signup/verify?token=abc123";
 
-describe("email templates", () => {
+describe("account email templates", () => {
   it("renders text and HTML with the link in both, as a button in HTML", () => {
     const m = signupVerifyEmail("OwnerListing", LINK, 24);
     expect(m.subject).toBe("Confirm your email for OwnerListing");
@@ -23,23 +24,21 @@ describe("email templates", () => {
 
   it("escapes every variable in the HTML", () => {
     const evil = `<script>alert("x")</script> & 'Home'`;
-    const m = offerReceivedEmail("Brand<b>", evil, 85_000_000, "https://app.example.com/listings/1/offers");
+    const m = adminAlertEmail("Brand<b>", "sign_in_lockout", evil, "https://app.example.com");
     expect(m.html).not.toContain("<script>");
     expect(m.html).toContain(escapeHtml(evil));
     expect(m.html).toContain("Brand&lt;b&gt;");
-    expect(m.text).toContain("$850,000");
   });
 
   it("never makes a non-http link clickable", () => {
-    const m = renderEmail("B", { subject: "S", heading: "H", paragraphs: ["p"], action: { label: "Go", url: "javascript:alert(1)" } });
+    const m = renderBrandedEmail("B", { subject: "S", heading: "H", paragraphs: ["p"], action: { label: "Go", url: "javascript:alert(1)" } });
     expect(m.html).not.toContain("javascript:alert(1)\"");
     expect(m.html).not.toContain("Go</a>");
   });
 
-  it("covers each account, offer, staff and admin message", () => {
+  it("covers each account, staff and admin message", () => {
     const all = [
       signupExistingEmail("B", "https://a.test"), passwordResetEmail("B", LINK, 30),
-      ...(["accepted", "rejected", "counter_requested", "countered"] as const).map(o => offerOutcomeEmail("B", o, "12 Rose St", "https://a.test/offers/1")),
       staffInviteEmail("B", "super_admin", "https://a.test"),
       adminAlertEmail("B", "sign_in_lockout", "detail", "https://a.test"), adminAlertEmail("B", "staff_invite_created", "detail", "https://a.test")
     ];
@@ -51,7 +50,6 @@ describe("email templates", () => {
     }
     expect(passwordResetEmail("B", LINK, 30).text).toContain("expires in 30 minutes");
     expect(staffInviteEmail("B", "super_admin", "https://a.test").text).toContain("as super admin");
-    expect(offerOutcomeEmail("B", "accepted", "12 Rose St", "x").text).toContain("trust account");
   });
 
   it("wraps a plain-text notice in the same layout, keeping paragraphs and links", () => {

@@ -1,9 +1,10 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import { formatPrice } from "../../../src/domain/listing-details";
+import { AMENITY_LABELS, formatPrice, isAmenity } from "../../../src/domain/listing-details";
 import { actionHref } from "../../../src/domain/listing-actions";
 import { ListingGallery } from "../gallery";
+import { LocationMap } from "../location-map";
 import { JSON_HEADERS } from "../ui";
 import "../../styles/cards.css";
 import "../../styles/detail.css";
@@ -22,6 +23,9 @@ interface Listing {
   bedrooms?: number;
   bathrooms?: number;
   parking?: number;
+  amenities?: string[];
+  latitude?: number;
+  longitude?: number;
   description?: string;
   status: string;
   disclosures: { key: string; satisfied: boolean }[];
@@ -275,7 +279,11 @@ export default function ListingDetail() {
       </nav>
       <div className="detail-layout">
         <div className="detail-main">
-          <ListingGallery listingId={listing.id} title={listing.title} />
+          <ListingGallery listingId={listing.id} title={listing.title} highlights={[
+            listing.bedrooms !== undefined && `${listing.bedrooms} bedroom${listing.bedrooms === 1 ? "" : "s"}`,
+            listing.bathrooms !== undefined && `${listing.bathrooms} bathroom${listing.bathrooms === 1 ? "" : "s"}`,
+            listing.parking !== undefined && `${listing.parking} car space${listing.parking === 1 ? "" : "s"}`
+          ].filter(Boolean).join(", ")} />
           <div className="pd-head">
             <p className="pd-tags">
               <span className="lcard-tag detail-tag">{tx === "sale" ? "For sale" : "For rent"}</span>
@@ -305,10 +313,15 @@ export default function ListingDetail() {
             {listing.bedrooms !== undefined && <><dt>Bedrooms</dt><dd>{listing.bedrooms}</dd></>}
             {listing.bathrooms !== undefined && <><dt>Bathrooms</dt><dd>{listing.bathrooms}</dd></>}
             {listing.parking !== undefined && <><dt>Parking</dt><dd>{listing.parking}</dd></>}
+            {listing.amenities && listing.amenities.filter(isAmenity).length > 0 && <><dt>Features</dt><dd>{listing.amenities.filter(isAmenity).map(a => AMENITY_LABELS[a]).join(", ")}</dd></>}
             {compliance && <><dt>Listed</dt><dd>{day(compliance.listedAt)}</dd></>}
             <dt>Updated</dt><dd>{day(listing.updatedAt)}</dd>
             {compliance && <><dt>Reference</dt><dd className="pd-ref">{compliance.reference}</dd></>}
           </dl>
+
+          {listing.latitude !== undefined && listing.longitude !== undefined && (
+            <LocationMap latitude={listing.latitude} longitude={listing.longitude} title={listing.title} address={listing.address} transactionType={tx} />
+          )}
 
           {compliance
             ? <><Disclosures c={compliance} state={listing.jurisdiction} tx={tx} /><Documents docs={docs} /><Safety c={compliance} tx={tx} /></>

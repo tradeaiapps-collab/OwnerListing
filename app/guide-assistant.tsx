@@ -1,7 +1,8 @@
 "use client";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { personaLabel, personaPose, type Persona } from "../src/domain/assistant-persona";
-import { GUIDE_LIMITS, suggestedChips, type GuideChip, type GuideIntent, type GuideLink } from "../src/domain/guide-assistant";
+import { GUIDE_LIMITS, type GuideChip, type GuideIntent, type GuideLink } from "../src/domain/guide-assistant";
+import { PRESENTER_SPEAK_EVENT } from "./presenter/presenter-core";
 import "./styles/assistant.css";
 
 interface Msg { id: number; from: "guide" | "you"; text: string; links?: GuideLink[] }
@@ -13,13 +14,14 @@ interface Msg { id: number; from: "guide" | "you"; text: string; links?: GuideLi
  * by dispatching OPEN_GUIDE_EVENT on window (the home page greeter does).
  */
 export const OPEN_GUIDE_EVENT = "ol:open-guide";
+/** Fired on window whenever the chat opens/closes or starts/stops answering; detail is { open, busy, typing }. The walking Elena listens to it. */
+export const GUIDE_STATE_EVENT = "ol:guide-state";
 
-export default function GuideAssistant({ greeting, chips, disclaimer, persona }: {
-  greeting: string; chips: GuideChip[]; disclaimer: string; persona: Pick<Persona, "name" | "icon" | "portrait" | "poses">;
+export default function GuideAssistant({ greeting, disclaimer, persona }: {
+  greeting: string; chips?: GuideChip[]; disclaimer: string; persona: Pick<Persona, "name" | "icon" | "portrait" | "poses">;
 }) {
   const [open, setOpen] = useState(false);
   const [msgs, setMsgs] = useState<Msg[]>([{ id: 0, from: "guide", text: greeting }]);
-  const [quick, setQuick] = useState<GuideChip[]>(chips);
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const panel = useRef<HTMLDivElement>(null);
@@ -30,8 +32,6 @@ export default function GuideAssistant({ greeting, chips, disclaimer, persona }:
   const titleId = useId(), descId = useId();
   const welcome = personaPose(persona, "wave");
   const listening = persona.poses.listening ?? persona.icon;
-
-  useEffect(() => { setQuick(suggestedChips({ chips }, window.location.pathname)); }, [chips]);
 
   const close = useCallback(() => { setOpen(false); launcher.current?.focus(); }, []);
 
@@ -58,6 +58,8 @@ export default function GuideAssistant({ greeting, chips, disclaimer, persona }:
     return () => { document.removeEventListener("keydown", onKey); document.body.classList.remove("ga-open"); };
   }, [open, close]);
 
+  useEffect(() => { window.dispatchEvent(new CustomEvent(GUIDE_STATE_EVENT, { detail: { open, busy, typing: text.trim() !== "" } })); }, [open, busy, text]);
+
   useEffect(() => { log.current?.lastElementChild?.scrollIntoView({ block: "nearest" }); }, [msgs]);
 
   async function ask(q: { intent: GuideIntent; label: string } | { text: string }) {
@@ -70,8 +72,8 @@ export default function GuideAssistant({ greeting, chips, disclaimer, persona }:
     const r = await fetch("/api/assistant", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }).catch(() => null);
     const d = r ? await r.json().catch(() => null) : null;
     if (r?.ok && d && typeof d.text === "string") {
+      window.dispatchEvent(new CustomEvent(PRESENTER_SPEAK_EVENT, { detail: { text: d.text } }));
       setMsgs(m => [...m, { id: seq.current++, from: "guide", text: d.text, links: Array.isArray(d.links) ? d.links : [] }]);
-      if (Array.isArray(d.chips) && d.chips.length > 0) setQuick(d.chips);
     } else {
       setMsgs(m => [...m, { id: seq.current++, from: "guide", text: d?.error ?? "Sorry, the guide is unavailable right now. Try again shortly." }]);
     }
@@ -120,9 +122,6 @@ export default function GuideAssistant({ greeting, chips, disclaimer, persona }:
               </li>
             )}
           </ol>
-          <div className="ga-chips" role="group" aria-label="Suggested questions">
-            {quick.map(c => <button key={c.intent} type="button" onClick={() => void ask({ intent: c.intent, label: c.label })} disabled={busy}>{c.label}</button>)}
-          </div>
           <form className="ga-form" onSubmit={e => { e.preventDefault(); const t = text; setText(""); void ask({ text: t }); }}>
             <label className="ga-sr" htmlFor={`${titleId}-q`}>Ask a question</label>
             <input ref={input} id={`${titleId}-q`} value={text} maxLength={GUIDE_LIMITS.message} onChange={e => setText(e.target.value)} placeholder="Ask about listing, offers, fees…" autoComplete="off" />

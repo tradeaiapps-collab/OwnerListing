@@ -24,7 +24,7 @@ const WRITE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
  * No idempotency handling: sign-in and logout (cookie flows), provider webhooks (they carry their own event ids and need the raw
  * body untouched) and internal cron calls (secret-guarded, already safe to repeat).
  */
-const IDEMPOTENCY_EXEMPT = [/^\/api\/auth\//, /^\/api\/webhooks\//, /^\/api\/internal\//, /^\/api\/dev\//];
+const IDEMPOTENCY_EXEMPT = [/^\/api\/auth\//, /^\/api\/oauth\//, /^\/api\/webhooks\//, /^\/api\/internal\//, /^\/api\/dev\//];
 
 export interface ApiLayerDeps {
   store: () => IdempotencyStore;

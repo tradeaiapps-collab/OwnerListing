@@ -6,6 +6,7 @@ import AdminShell from "./admin-shell";
 import SiteNav from "./site-nav";
 import ThemePreviewBridge from "./theme-preview-bridge";
 import "./styles/a11y.css";
+import "./styles/inspections.css";
 import { appOriginFor, readAppMode } from "../src/config/app-mode";
 import { personaById } from "../src/domain/assistant-persona";
 import { GUIDE_DISCLAIMER } from "../src/domain/guide-assistant";

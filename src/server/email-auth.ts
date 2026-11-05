@@ -1,6 +1,7 @@
 import { createHmac, randomUUID } from "node:crypto";
 import type { EmailPort } from "../adapters/email";
-import { passwordResetEmail, signupExistingEmail, signupVerifyEmail, type RenderedEmail } from "../domain/email-templates";
+import { passwordResetEmail, signupExistingEmail, signupVerifyEmail } from "../domain/account-emails";
+import type { RenderedEmail } from "../domain/email-templates";
 import { EMAIL_AUTH_RATE, RESET_LINK_MINUTES, SIGNUP_LINK_HOURS, normaliseEmail, passwordProblem, readSignup } from "../domain/email-auth";
 import { windowStart, withinLimit } from "../domain/rate-limit";
 import { hashPassword, verifyPassword } from "./auth/password";

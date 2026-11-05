@@ -1,51 +1,14 @@
 import { readBrand } from "../config/brand";
-import { adminAlertEmail, offerOutcomeEmail, offerReceivedEmail, staffInviteEmail, type AdminAlertKind, type OfferOutcome, type RenderedEmail } from "../domain/email-templates";
+import { adminAlertEmail, staffInviteEmail, type AdminAlertKind } from "../domain/account-emails";
 import type { Queryable } from "./db";
 import { sendNotice } from "./messaging";
 
 /**
- * Notification emails for things that happen in the app. Each one is a notice: it never blocks or fails the action that caused it,
+ * Staff emails: the invite and the admin alerts. Offer, message and appointment notices live in notifier.ts (preferences-aware). Each one is a notice: it never blocks or fails the action that caused it,
  * and every attempt (sent, failed or not configured) is in the email log (messaging_outbox). Callers fire these without awaiting.
  */
 type Env = Readonly<Record<string, string | undefined>>;
 const appUrl = (env: Env) => (env["APP_URL"] ?? "").replace(/\/+$/, "");
-
-/** The address of a live account, or undefined (closed, deleted or unknown accounts get nothing). */
-async function liveEmail(db: Queryable, userId: string): Promise<string | undefined> {
-  const r = await db.query("SELECT email FROM app_user WHERE id = $1::uuid AND status = 'active' AND deleted_at IS NULL", [userId]);
-  const e = r.rows[0]?.["email"];
-  return typeof e === "string" && e !== "" ? e : undefined;
-}
-
-async function toUser(db: Queryable, userId: string, template: string, msg: RenderedEmail, env: Env): Promise<boolean> {
-  try {
-    const to = await liveEmail(db, userId);
-    return to ? await sendNotice(db, template, to, msg, env) : false;
-  } catch {
-    return false;
-  }
-}
-
-/** The owner hears about a new offer. */
-export function notifyOfferReceived(db: Queryable, ownerUserId: string, listingId: string, listingTitle: string, priceCents: number, env: Env = process.env): Promise<boolean> {
-  const link = `${appUrl(env)}/listings/${encodeURIComponent(listingId)}/offers`;
-  return toUser(db, ownerUserId, "offer_received", offerReceivedEmail(readBrand(env).name, listingTitle, priceCents, link), env);
-}
-
-/** The buyer hears the owner's decision or counter-offer. The buyer and listing are read from the offer itself. */
-export async function notifyOfferOutcome(db: Queryable, offerId: string, outcome: OfferOutcome, env: Env = process.env): Promise<boolean> {
-  try {
-    const r = await db.query(
-      `SELECT o.buyer_user_id, o.listing_id, l.title FROM formal_offer o JOIN property_listing l ON l.id = o.listing_id WHERE o.id = $1::uuid`, [offerId]);
-    const row = r.rows[0];
-    if (!row) return false;
-    const base = appUrl(env);
-    const link = outcome === "rejected" ? `${base}/listings/${encodeURIComponent(String(row["listing_id"]))}` : `${base}/offers/${encodeURIComponent(offerId)}`;
-    return await toUser(db, String(row["buyer_user_id"]), `offer_${outcome}`, offerOutcomeEmail(readBrand(env).name, outcome, String(row["title"]), link), env);
-  } catch {
-    return false;
-  }
-}
 
 /** The invited person is told to sign in. */
 export function notifyStaffInvite(db: Queryable, email: string, role: string, env: Env = process.env): Promise<boolean> {

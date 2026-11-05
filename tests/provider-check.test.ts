@@ -3,6 +3,7 @@ import { checkProviders, formatReport, isPlaceholder, type ProviderId, type Prov
 import { readAuthEnv } from "../src/server/auth/config";
 import { mfaKeyUsable } from "../src/domain/mfa";
 import { resolveMessaging } from "../src/domain/messaging-settings";
+import { mapTileSource } from "../src/domain/map-tiles";
 
 const FULL: Record<string, string> = {
   APP_URL: "https://www.example.com.au",
@@ -23,6 +24,16 @@ const FULL: Record<string, string> = {
   SMS_AUTH_TOKEN: "t".repeat(32),
   SMS_SENDER: "+61400000000",
   SMS_CODE_SECRET: "c".repeat(40),
+  VAPID_PUBLIC_KEY: "B".repeat(87),
+  VAPID_PRIVATE_KEY: "C".repeat(43),
+  VAPID_SUBJECT: "mailto:support@example.com.au",
+  FCM_PROJECT_ID: "ownerlisting-prod",
+  FCM_CLIENT_EMAIL: "push@ownerlisting-prod.iam.gserviceaccount.com",
+  FCM_PRIVATE_KEY: "-----BEGIN PRIVATE KEY-----\\nMIIB\\n-----END PRIVATE KEY-----\\n",
+  APNS_KEY_ID: "ABC123DEFG",
+  APNS_TEAM_ID: "TEAM123456",
+  APNS_BUNDLE_ID: "au.com.example.ownerlisting",
+  APNS_PRIVATE_KEY: "-----BEGIN PRIVATE KEY-----\\nMIIB\\n-----END PRIVATE KEY-----\\n",
   ABN_LOOKUP_GUID: "12345678-90ab-cdef-1234-567890abcdef",
   GOOGLE_PLACES_API_KEY: "AIza" + "b".repeat(35),
   NEXT_PUBLIC_MAP_TILE_URL: "https://tiles.example.com/{z}/{x}/{y}.png",
@@ -34,7 +45,7 @@ const by = (env: Record<string, string | undefined>, production = true) =>
 describe("provider readiness check", () => {
   it("reports every provider ready with a full set of real-looking keys", () => {
     const r = checkProviders(FULL, { production: true });
-    expect(r.map(x => x.id)).toEqual(["google", "mfa", "payway", "smtp", "sms", "abn", "address", "maptiles"]);
+    expect(r.map(x => x.id)).toEqual(["google", "mfa", "payway", "smtp", "sms", "webpush", "fcm", "apns", "abn", "address", "maptiles"]);
     expect(r.filter(x => x.status !== "ready")).toEqual([]);
     expect(r.some(x => x.blocking)).toBe(false);
   });
@@ -95,6 +106,41 @@ describe("provider readiness check", () => {
       if (r.sms.status === "ready") expect(m.sms).not.toBeNull();
       if (m.sms === null) expect(r.sms.status).not.toBe("ready");
       expect(r.smtp.status === "ready").toBe(m.email !== null);
+    }
+  });
+
+  it("map tiles: openstreetmap needs no key and is ready in production, with a tile-policy note", () => {
+    const { NEXT_PUBLIC_MAP_TILE_URL: _u, NEXT_PUBLIC_MAP_ATTRIBUTION: _a, ...rest } = FULL;
+    const r = by({ ...rest, NEXT_PUBLIC_MAP_PROVIDER: "openstreetmap" });
+    expect(r.maptiles.status).toBe("ready");
+    expect(r.maptiles.blocking).toBe(false);
+    expect(r.maptiles.note).toContain("OpenStreetMap");
+    expect(formatReport(Object.values(r))).toContain("note: Using OpenStreetMap");
+    expect(by(rest).maptiles.blocking).toBe(true);
+    expect(by(FULL).maptiles.note).toBeNull();
+  });
+
+  it("map tiles: custom needs URL and attribution; bad provider or a stray URL is refused", () => {
+    const { NEXT_PUBLIC_MAP_TILE_URL: _u, NEXT_PUBLIC_MAP_ATTRIBUTION: _a, ...rest } = FULL;
+    const custom = by({ ...rest, NEXT_PUBLIC_MAP_PROVIDER: "custom" }).maptiles;
+    expect(custom.status).toBe("incomplete");
+    expect(custom.missing).toEqual(["NEXT_PUBLIC_MAP_TILE_URL", "NEXT_PUBLIC_MAP_ATTRIBUTION"]);
+    expect(by({ ...FULL, NEXT_PUBLIC_MAP_PROVIDER: "custom" }).maptiles.status).toBe("ready");
+    expect(by({ ...rest, NEXT_PUBLIC_MAP_PROVIDER: "mapbox" }).maptiles.status).toBe("invalid");
+    expect(by({ ...FULL, NEXT_PUBLIC_MAP_PROVIDER: "openstreetmap" }).maptiles.problems.join()).toContain("ignored");
+  });
+
+  it("map tiles: the check agrees with the tiles the browser draws", () => {
+    const envs: Record<string, string | undefined>[] = [
+      {}, { NEXT_PUBLIC_MAP_PROVIDER: "openstreetmap" },
+      { NEXT_PUBLIC_MAP_TILE_URL: FULL.NEXT_PUBLIC_MAP_TILE_URL, NEXT_PUBLIC_MAP_ATTRIBUTION: "© Example" },
+      { NEXT_PUBLIC_MAP_PROVIDER: "custom", NEXT_PUBLIC_MAP_TILE_URL: FULL.NEXT_PUBLIC_MAP_TILE_URL, NEXT_PUBLIC_MAP_ATTRIBUTION: "© Example" }
+    ];
+    for (const env of envs) {
+      const ready = by(env, false).maptiles.status === "ready";
+      const src = mapTileSource(env.NEXT_PUBLIC_MAP_PROVIDER, env.NEXT_PUBLIC_MAP_TILE_URL, env.NEXT_PUBLIC_MAP_ATTRIBUTION);
+      if (ready && env.NEXT_PUBLIC_MAP_PROVIDER !== "openstreetmap") expect(src.provider).toBe("custom");
+      if (env.NEXT_PUBLIC_MAP_PROVIDER === "openstreetmap" || !env.NEXT_PUBLIC_MAP_TILE_URL) expect(src.provider).toBe("openstreetmap");
     }
   });
 });

@@ -7,8 +7,8 @@ import { csrfGuard } from "../../../../../../../src/server/csrf";
 import { failure, unauthenticated } from "../../../../../../../src/server/http";
 import { expireCountersPg, ownerCounterPg } from "../../../../../../../src/server/offer-counter-db";
 import { offersForOwnerPg } from "../../../../../../../src/server/offers-db";
+import { notifyOfferBuyer } from "../../../../../../../src/server/notifier";
 import { withApi } from "../../../../../../../src/server/api/with-api";
-import { notifyOfferOutcome } from "../../../../../../../src/server/notify";
 
 type Ctx = { params: Promise<{ id: string; offerId: string }> };
 
@@ -53,7 +53,7 @@ async function handlePost(req: Request, { params }: Ctx) {
     aggregateType: "formal_offer", aggregateId: offerId, eventType: "offer.countered",
     correlationId: deps.newId(), payload: { listingId: id, counterId: saved.id, round: saved.round, from: offer.status }
   });
-  void notifyOfferOutcome(db, offerId, "countered");
+  await notifyOfferBuyer(db, offerId, "offer_countered");
   return NextResponse.json({ offer: { id: offerId, status: "countered" }, counter: { id: saved.id, round: saved.round } }, { status: 201 });
 }
 

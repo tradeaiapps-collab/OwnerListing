@@ -10,7 +10,7 @@ import { withApi } from "../../../../../src/server/api/with-api";
 type Ctx = { params: Promise<{ id: string }> };
 
 async function report(req: Request, id: string, withAi: boolean) {
-  const owner = await requireListingHandler(req, id);
+  const owner = await requireListingHandler(req, id, "offers.view");
   if (owner instanceof NextResponse) return owner;
   const rows = compareOffers(await offersForOwnerPg(getDb(), id, owner.rec.listing.ownerUserId));
   // The AI is asked only on POST, through the AI port. It can summarise; it has no way to decide anything.

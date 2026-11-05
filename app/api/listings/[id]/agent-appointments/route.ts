@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { inviteAgent, ownerAgentView } from "../../../../../src/domain/agent-appointment-service";
 import { appointmentIds, getAgentAppointmentRepo } from "../../../../../src/server/agent-appointment-db";
-import { getActor } from "../../../../../src/server/context";
+import { getActor, getDb } from "../../../../../src/server/context";
+import { notifyAgentInvited } from "../../../../../src/server/notifier";
 import { failure, unauthenticated } from "../../../../../src/server/http";
 import { csrfGuard } from "../../../../../src/server/csrf";
 import { withApi } from "../../../../../src/server/api/with-api";
@@ -29,7 +30,9 @@ async function handlePost(req: Request, { params }: Ctx) {
   if (!actor) return unauthenticated();
   const { id } = await params;
   const r = await inviteAgent(getAgentAppointmentRepo(), actor, id, await req.json().catch(() => null), appointmentIds);
-  return r.ok ? NextResponse.json({ invite: r.value }, { status: 201 }) : failure(r);
+  if (!r.ok) return failure(r);
+  await notifyAgentInvited(getDb(), r.value.id);
+  return NextResponse.json({ invite: r.value }, { status: 201 });
 }
 
 export const GET = withApi(handleGet);

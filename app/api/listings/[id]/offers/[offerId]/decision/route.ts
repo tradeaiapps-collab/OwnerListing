@@ -7,9 +7,9 @@ import { decideOfferPg, ownerOfferStatusPg } from "../../../../../../../src/serv
 import { csrfGuard } from "../../../../../../../src/server/csrf";
 import { CAN_EXPIRE } from "../../../../../../../src/domain/offer-counter";
 import { expireCountersPg } from "../../../../../../../src/server/offer-counter-db";
+import { notifyOfferBuyer } from "../../../../../../../src/server/notifier";
 import { withApi } from "../../../../../../../src/server/api/with-api";
 import { requireRecentMfa } from "../../../../../../../src/server/mfa-context";
-import { notifyOfferOutcome } from "../../../../../../../src/server/notify";
 
 type Ctx = { params: Promise<{ id: string; offerId: string }> };
 
@@ -55,7 +55,7 @@ async function handlePost(req: Request, { params }: Ctx) {
     aggregateType: "formal_offer", aggregateId: offerId, eventType: `offer.${to}`,
     correlationId: deps.newId(), payload: { listingId: id, decision, from: current, to }
   });
-  void notifyOfferOutcome(db, offerId, decision === "accept" ? "accepted" : decision === "reject" ? "rejected" : "counter_requested");
+  await notifyOfferBuyer(db, offerId, to === "accepted" ? "offer_accepted" : to === "rejected" ? "offer_rejected" : "offer_countered");
   return NextResponse.json({ offer: { id: offerId, status: to } });
 }
 

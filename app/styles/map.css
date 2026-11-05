@@ -21,6 +21,8 @@
 .map-canvas .leaflet-control-zoom a { width: 36px; height: 36px; line-height: 34px; background: var(--bg); color: var(--text); border-color: var(--border); }
 .map-canvas .leaflet-control-zoom a:hover { background: var(--tint); }
 .map-canvas .leaflet-bar { border: 1px solid var(--border); box-shadow: var(--shadow-1); }
+/* The site styles role="button" links inline; Leaflet stacks its zoom buttons as blocks. */
+.map-canvas .leaflet-bar a { display: block; }
 .map-canvas .leaflet-control-attribution { background: color-mix(in srgb, var(--bg) 85%, transparent); color: var(--muted); font-size: 0.6875rem; }
 .map-canvas .leaflet-control-attribution a { color: inherit; }
 .map-canvas .leaflet-marker-icon:focus-visible { outline: none; }
@@ -65,7 +67,7 @@
 /* Selected listing card over the map. On a phone it is a bottom sheet across the map. */
 .map-card.lcard { position: absolute; z-index: 600; left: var(--space-3); bottom: var(--space-3); width: min(340px, calc(100% - 24px)); flex-direction: row; }
 .map-card .lcard-media { flex: 0 0 120px; aspect-ratio: auto; min-height: 120px; }
-.map-card .lcard-media .lcard-tag, .map-card .lcard-media .lcard-count { display: none; }
+.map-card .lcard-media .lcard-tag, .map-card .lcard-media .lcard-count, .map-card .lcard-media .lcard-tour { display: none; }
 .map-card .lcard-body { padding: var(--space-3) var(--space-6) var(--space-3) var(--space-3); gap: 2px; }
 .map-card .lcard-price { font-size: 1.125rem; }
 .map-card .chips { margin-top: var(--space-1); gap: var(--space-1); }
@@ -90,7 +92,7 @@ main .map-side-head { margin: 0 0 var(--space-3); font-size: 1rem; }
 .map-item:hover, .map-item:focus-within { border-color: color-mix(in srgb, var(--brand) 40%, var(--border)); }
 .map-item.is-selected { border-color: var(--brand); box-shadow: 0 0 0 3px var(--tint-2); }
 .map-item-thumb .lcard-media { aspect-ratio: 4 / 3; border-radius: 6px; }
-.map-item-thumb .lcard-tag, .map-item-thumb .lcard-count { display: none; }
+.map-item-thumb .lcard-tag, .map-item-thumb .lcard-count, .map-item-thumb .lcard-tour { display: none; }
 .map-item-body { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 main .map-item-price { margin: 0; font-weight: 800; font-size: 1rem; }
 main .map-item-title { margin: 0; font-size: 0.9375rem; font-weight: 600; line-height: 1.3; }
@@ -108,3 +110,44 @@ main .map-item-meta { margin: 0; color: var(--muted); font-size: 0.8125rem; }
 .loc-picker .map-canvas { height: 320px; min-height: 0; border-radius: var(--radius-sm, 8px); border: 1px solid var(--border); cursor: crosshair; }
 .loc-dot { width: 0 !important; height: 0 !important; }
 .loc-dot > span { position: absolute; width: 22px; height: 22px; transform: translate(-50%, -50%); border-radius: 50%; background: var(--brand); border: 3px solid var(--bg); box-shadow: 0 0 0 2px var(--brand), var(--shadow-2); }
+
+/* Listing page location map (app/listings/location-map.tsx) */
+.loc-map .map-canvas { height: 360px; min-height: 0; }
+@media (max-width: 599px) { .loc-map .map-canvas { height: 260px; } }
+main .loc-map-addr { margin: 0 0 var(--space-3); color: var(--muted); }
+main .loc-map-link { margin: var(--space-2) 0 0; font-size: 0.875rem; }
+.loc-map .map-status { left: var(--space-3); right: auto; transform: none; max-width: calc(100% - 80px); }
+
+/* A teardrop pin anchored at its tip; brand for sale, green for rent, status colours on the staff map. */
+.loc-pin { width: 0 !important; height: 0 !important; background: none; border: 0; --pin: var(--brand); }
+.loc-pin.is-rent { --pin: var(--ok); }
+.loc-pin > span {
+  position: absolute; left: 0; top: 0; width: 30px; height: 30px; transform: translate(-50%, -100%) translateY(-4px) rotate(-45deg); transform-origin: center;
+  border-radius: 50% 50% 50% 0; background: var(--pin); border: 3px solid var(--bg); box-shadow: var(--shadow-2); cursor: pointer;
+}
+.loc-pin > span::after { content: ""; position: absolute; inset: 0; margin: auto; width: 9px; height: 9px; border-radius: 50%; background: var(--bg); }
+.loc-pin:focus-visible > span { outline: 3px solid var(--focus); outline-offset: 2px; }
+
+/* Leaflet popups in the site's look */
+.map-canvas .leaflet-popup-content-wrapper, .map-canvas .leaflet-popup-tip { background: var(--bg); color: var(--text); box-shadow: var(--shadow-2); }
+.map-canvas .leaflet-popup-content-wrapper { border: 1px solid var(--border); border-radius: var(--radius-sm, 8px); }
+.map-canvas .leaflet-popup-content { margin: var(--space-3) var(--space-6) var(--space-3) var(--space-3); font-size: 0.875rem; line-height: 1.4; }
+.map-canvas .leaflet-popup-content strong { color: var(--heading, var(--text)); }
+.map-canvas .leaflet-popup-content a { color: var(--link, var(--brand)); font-weight: 600; }
+.map-canvas a.leaflet-popup-close-button { color: var(--muted); width: 28px; height: 28px; font-size: 20px; line-height: 26px; }
+.map-canvas a.leaflet-popup-close-button:hover { color: var(--text); }
+
+/* Staff listing moderation map (app/staff/listings/listings-map.tsx) */
+.loc-pin.is-good { --pin: var(--ok); }
+.loc-pin.is-warn { --pin: var(--warn); }
+.loc-pin.is-bad { --pin: var(--danger); }
+.loc-pin.is-muted { --pin: var(--muted); }
+.staff-map { margin-bottom: var(--space-4); }
+.staff-map .map-canvas { height: min(62vh, 560px); min-height: 340px; }
+.staff-map-key { list-style: none; margin: var(--space-2) 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-4); color: var(--muted); font-size: 0.8125rem; }
+.staff-map-key li { display: inline-flex; align-items: center; gap: var(--space-2); }
+.key-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--pin); --pin: var(--muted); }
+.key-dot.is-good { --pin: var(--ok); }
+.key-dot.is-warn { --pin: var(--warn); }
+.key-dot.is-bad { --pin: var(--danger); }
+.admin-page .view-toggle { margin-bottom: var(--space-3); }

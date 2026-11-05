@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import type * as Leaflet from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { AU_BOUNDS } from "../../src/domain/listing-details";
-import { AUSTRALIA, createMap, loadLeaflet } from "./leaflet";
+import { AUSTRALIA, createMap, loadLeaflet, whenVisible } from "./leaflet";
 import { JSON_HEADERS } from "./ui";
 import "../styles/map.css";
 
@@ -28,7 +28,7 @@ export function LocationPicker({ listingId, latitude, longitude, onSaved }: {
 
   useEffect(() => {
     let cancelled = false;
-    loadLeaflet().then(lib => {
+    const stop = el.current ? whenVisible(el.current, () => void loadLeaflet().then(lib => {
       if (cancelled || !el.current || map.current) return;
       L.current = lib;
       const m = createMap(lib, el.current, { scrollWheelZoom: false });
@@ -36,8 +36,8 @@ export function LocationPicker({ listingId, latitude, longitude, onSaved }: {
       m.on("click", (e: Leaflet.LeafletMouseEvent) => place(e.latlng.lat, e.latlng.lng));
       map.current = m;
       if (pos) drawPin(pos.lat, pos.lng);
-    }).catch(() => setMessage("The map could not be loaded."));
-    return () => { cancelled = true; map.current?.remove(); map.current = null; marker.current = null; };
+    }).catch(() => setMessage("The map could not be loaded."))) : () => undefined;
+    return () => { cancelled = true; stop(); map.current?.remove(); map.current = null; marker.current = null; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

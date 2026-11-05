@@ -1,0 +1,10 @@
+/* Walking presenter: two stacked transparent videos inside her button, and a small control pill shown only while she speaks. Theme variables only. */
+.ew-body { position: relative; }
+.pr-walk, .pr-talk { position: absolute; inset: 0; }
+.pr-walk.is-hidden { visibility: hidden; }
+.ew .ew-body .pr-walk, .ew .ew-body .pr-talk { object-fit: contain; object-position: 50% 100%; }
+.pr-controls { position: fixed; z-index: 60; left: 50%; transform: translateX(-50%); bottom: var(--space-3); display: flex; gap: var(--space-2); padding: var(--space-1); background: var(--surface); border: 1px solid var(--border); border-radius: 999px; box-shadow: var(--shadow-1); }
+.pr-btn { display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; min-height: 0; padding: 0; border-radius: 50%; border: 0; background: transparent; color: var(--text); cursor: pointer; box-shadow: none; }
+.pr-btn:hover:not(:disabled) { background: var(--border); box-shadow: none; transform: none; }
+.pr-btn:focus-visible { outline: 3px solid var(--focus); outline-offset: 1px; }
+body.ga-open .pr-controls { bottom: auto; top: 80px; left: auto; right: var(--space-3); transform: none; }

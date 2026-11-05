@@ -59,9 +59,6 @@
 .ga-pose.is-full img { width: 200%; max-width: none; height: auto; margin-left: -50%; }
 .ga-links { list-style: none; margin: var(--space-2) 0 0; padding: 0; display: grid; gap: var(--space-1); }
 .ga-links a { display: inline-flex; align-items: center; gap: var(--space-1); min-height: 36px; font-weight: 700; }
-.ga-chips { display: flex; flex-wrap: wrap; gap: var(--space-1); padding: var(--space-2) var(--space-4); border-top: 1px solid var(--line); flex: 0 1 auto; min-height: 52px; overflow-y: auto; }
-.ga-chips button { min-height: 36px; padding: 0 var(--space-3); border-radius: 999px; background: var(--bg); color: var(--brand-strong); border: 1px solid color-mix(in srgb, var(--brand) 45%, var(--border)); font-size: 0.875rem; font-weight: 600; }
-.ga-chips button:hover:not(:disabled) { background: var(--tint); }
 .ga-form { display: flex; gap: var(--space-2); padding: var(--space-2) var(--space-4); }
 .ga-form input { flex: 1; min-width: 0; min-height: 44px; }
 .ga-form button { min-height: 44px; }

@@ -6,7 +6,7 @@ import { emailFromConfig, type EmailMessage, type EmailPort, type HostResolver, 
 import { failed, type SendResult } from "../adapters/messaging";
 import { SmsSendError, smsFromConfig, verificationCodeText, type SmsTextPort } from "../adapters/sms";
 import type { AlertDeliveryPort, AlertMessage } from "../domain/alerts";
-import { htmlFromText } from "../domain/email-templates";
+import { htmlFromText } from "../domain/account-emails";
 import type { Queryable } from "./db";
 import { loadResolved } from "./messaging-settings-db";
 

@@ -1,3 +1,4 @@
+import { readBrand } from "../../src/config/brand";
 import { personaById, personaPose } from "../../src/domain/assistant-persona";
 import { readAppMode } from "../../src/config/app-mode";
 import { getLivePersona } from "../../src/server/assistant-persona-db";
@@ -10,7 +11,7 @@ export default async function Page() {
   if (readAppMode() !== "admin") {
     const [guide, personaId] = await Promise.all([getLiveGuide(), getLivePersona()]);
     const persona = personaById(personaId);
-    if (guide.enabled) assistant = { name: persona.name, pose: personaPose(persona, "seated") };
+    if (guide.enabled) assistant = { name: persona.name, pose: personaPose(persona, "seated"), video: persona.id === "elena", brand: readBrand().name };
   }
   return <Dashboard assistant={assistant} />;
 }
