@@ -1,0 +1,32 @@
+/* Seller listing optimization and its staff screen. Site tokens only, so light and dark follow the theme; mobile first. */
+.lo-panel { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-3); margin: var(--space-4) 0; }
+.lo-panel h2, .lo-panel h3 { margin: 0; }
+.lo-list { margin: 0; padding: 0; list-style: none; display: grid; gap: var(--space-3); }
+.lo-item { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-2); padding: var(--space-3); border: 1px solid var(--border); border-radius: calc(var(--radius) - 4px); background: var(--bg); }
+.lo-item.is-done { border-color: var(--ok); background: var(--ok-tint); }
+.lo-item.is-dismissed { color: var(--muted); background: var(--tint); }
+.lo-item h3 { font-size: 1rem; overflow-wrap: anywhere; }
+.lo-item p { margin: 0; overflow-wrap: anywhere; }
+.lo-impact { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-3); margin: 0; padding: 0; list-style: none; font-variant-numeric: tabular-nums; }
+.lo-impact li { padding: var(--space-1) var(--space-2); border-radius: 999px; border: 1px solid var(--border); background: var(--tint); }
+.lo-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.lo-actions button { min-height: 2.75rem; }
+.lo-tag { display: inline-block; font-weight: 700; color: var(--ok); }
+.lo-note { color: var(--muted); font-size: 0.875rem; margin: 0; }
+.lo-table-wrap { overflow-x: auto; }
+.lo-table-wrap table { width: 100%; }
+.lo-table-wrap th, .lo-table-wrap td { text-align: left; white-space: nowrap; }
+.lo-table-wrap .num { text-align: right; font-variant-numeric: tabular-nums; }
+.lo-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-3); }
+.lo-field { display: grid; gap: var(--space-1); }
+.lo-field input[type="number"] { max-width: 100%; }
+.lo-switch { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); padding: var(--space-3); border: 1px solid var(--border); border-radius: calc(var(--radius) - 4px); background: var(--tint); }
+.lo-switch.is-on { border-color: var(--ok); background: var(--ok-tint); }
+.lo-switch strong { overflow-wrap: anywhere; }
+.lo-types { border: 0; padding: 0; margin: 0; display: grid; gap: var(--space-2); }
+.lo-types legend { font-weight: 600; padding: 0; margin-bottom: var(--space-2); }
+.lo-types label { display: flex; gap: var(--space-2); align-items: center; }
+.lo-hist { margin: 0; padding: 0; list-style: none; display: grid; gap: var(--space-2); }
+.lo-hist li { overflow-wrap: anywhere; }
+.lo-grid .lo-actions-row { grid-column: 1 / -1; margin: 0; }
+@media (min-width: 640px) { .lo-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
