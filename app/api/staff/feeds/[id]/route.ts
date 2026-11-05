@@ -4,6 +4,7 @@ import { staffCan } from "../../../../../src/domain/staff-access";
 import { getDb, getStaff } from "../../../../../src/server/context";
 import { csrfGuard } from "../../../../../src/server/csrf";
 import { appendAuditPg } from "../../../../../src/server/db";
+import { disableOutbound, enableOutbound, getOutbound, recentDeliveries } from "../../../../../src/server/crm-sync-db";
 import { getConnection, recentRuns, rotatePushToken, runConnection, setConnectionEnabled } from "../../../../../src/server/property-feed-db";
 import { withApi } from "../../../../../src/server/api/with-api";
 
@@ -21,10 +22,10 @@ async function handleGet(req: Request, ctx: Ctx) {
   const { id } = await ctx.params;
   const conn = await getConnection(getDb(), id);
   if (!conn) return NOT_FOUND();
-  return NextResponse.json({ connection: conn, runs: await recentRuns(getDb(), id) }, { headers: NO_STORE });
+  return NextResponse.json({ connection: conn, runs: await recentRuns(getDb(), id), outbound: await getOutbound(getDb(), id), deliveries: await recentDeliveries(getDb(), id) }, { headers: NO_STORE });
 }
 
-/** Actions: {action:"run"} runs it now, {action:"pause"|"resume"}, {action:"rotate_token"} issues a new CRM push token (shown once). */
+/** Actions: {action:"run"} runs it now, {action:"pause"|"resume"}, {action:"enable_outbound",url}|{action:"disable_outbound"} control status sync to the CRM, {action:"rotate_token"} issues a new CRM push token (shown once). */
 async function handlePost(req: Request, ctx: Ctx) {
   const blocked = csrfGuard(req);
   if (blocked) return blocked;
@@ -35,7 +36,7 @@ async function handlePost(req: Request, ctx: Ctx) {
   const db = getDb();
   const conn = await getConnection(db, id);
   if (!conn) return NOT_FOUND();
-  const body = (await req.json().catch(() => ({}))) as { action?: unknown };
+  const body = (await req.json().catch(() => ({}))) as { action?: unknown; url?: unknown };
   const now = new Date().toISOString();
   switch (body.action) {
     case "run": {
@@ -53,6 +54,14 @@ async function handlePost(req: Request, ctx: Ctx) {
       const token = await rotatePushToken(db, staff.id, id, now);
       return token ? NextResponse.json({ pushToken: token }, { headers: NO_STORE }) : NextResponse.json({ error: "Only CRM feeds have a push token." }, { status: 400 });
     }
+    // {action:"enable_outbound", url} turns on status sync to the CRM's webhook (also used to change the address or get a new secret, shown once).
+    case "enable_outbound": {
+      const r = await enableOutbound(db, staff.id, id, body.url, now);
+      return r.ok ? NextResponse.json({ secret: r.secret }, { headers: NO_STORE }) : NextResponse.json({ error: r.message }, { status: 400 });
+    }
+    case "disable_outbound":
+      await disableOutbound(db, staff.id, id, now);
+      return NextResponse.json({ ok: true });
     default:
       return NextResponse.json({ error: "Unknown action." }, { status: 400 });
   }

@@ -6,6 +6,7 @@ import "../../styles/agent-workspace.css";
 type Lead = {
   enquiryId: string; buyerId: string; buyerName: string; listingTitle: string; score: number; band: "hot" | "warm" | "cold";
   reasons: string[]; nextAction: string; stage: string; followUpAt?: string; overdue: boolean; offerStatus?: string; notes: number;
+  autoScore?: number; fitPercent?: number; overridden?: boolean;
 };
 type Perf = {
   listings: number; enquiries: number; hot: number; unanswered: number; overdue: number; openOffers: number; pipelineCents: number;
@@ -70,6 +71,20 @@ export default function AgentWorkspace() {
     const r = await call(`/api/agent/workspace/leads/${l.enquiryId}`, json("PUT", { stage, followUpAt: followUpAt || null }));
     if (!r.ok) setError(r.body.error ?? "Could not update the lead."); else await load();
   }
+  async function saveOverride(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (!open) return;
+    const f = new FormData(e.currentTarget);
+    const r = await call(`/api/agent/workspace/leads/${open.enquiryId}/override`, json("PUT", { score: Number(f.get("score")), reason: String(f.get("reason") ?? "") }));
+    if (!r.ok) return setError(r.body.error ?? "Could not save your score.");
+    setError(""); await load();
+  }
+  async function clearOverride() {
+    if (!open) return;
+    const r = await call(`/api/agent/workspace/leads/${open.enquiryId}/override`, { method: "DELETE" });
+    if (!r.ok) return setError(r.body.error ?? "Could not remove your score.");
+    setError(""); await load();
+  }
   async function addNote(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!open) return;
@@ -83,7 +98,7 @@ export default function AgentWorkspace() {
   return (
     <main className="aw">
       <h1>Agent workspace</h1>
-      <p><a href="/agent/listings">Appointed listings</a> · <a href="/agent/appointments">Invitations</a> · <a href="/agent/team">Team</a> · <a href="/agent/reports">Reports</a> · <a href="/agent/rates">Loan rates</a> · <a href="/agent/videos">Videos</a></p>
+      <p><a href="/agent/listings">Appointed listings</a> · <a href="/agent/appointments">Invitations</a> · <a href="/agent/team">Team</a> · <a href="/agent/reports">Reports</a> · <a href="/agent/marketplace">Marketplace profile</a> · <a href="/agent/rates">Loan rates</a> · <a href="/agent/videos">Videos</a></p>
       {error && <p role="alert">{error}</p>}
       {!data && !error && <p className="muted" role="status">Loading…</p>}
       {p && f && (
@@ -122,7 +137,7 @@ export default function AgentWorkspace() {
                   <li key={l.enquiryId} className={`aw-lead${open?.enquiryId === l.enquiryId ? " is-open" : ""}`}>
                     <div className="aw-lead-head">
                       <button type="button" onClick={() => void openClient(l)} aria-expanded={open?.enquiryId === l.enquiryId}>{l.buyerName}</button>
-                      <span className={`aw-score ${l.band}`} title={l.reasons.join(", ")}>{l.score} {l.band}</span>
+                      <span className={`aw-score ${l.band}`} title={l.reasons.join(", ")}>{l.score} {l.band}{l.overridden ? " (yours)" : ""}</span>
                     </div>
                     <p className="aw-meta">{l.listingTitle}{l.offerStatus ? ` · offer ${l.offerStatus.replace("_", " ")}` : ""}</p>
                     <p className="aw-meta">{l.nextAction}</p>
@@ -142,6 +157,20 @@ export default function AgentWorkspace() {
                 <section aria-labelledby="client-h">
                   <h2 id="client-h">{open.buyerName}: private log</h2>
                   <p className="aw-meta">Only you can see this. {open.reasons.join(", ")}.</p>
+                  {(() => {
+                    const cur = data.leads.find(x => x.enquiryId === open.enquiryId) ?? open;
+                    return (
+                      <form className="aw-form" onSubmit={e => void saveOverride(e)} key={`${cur.enquiryId}:${cur.score}:${cur.overridden}`}>
+                        <p className="aw-meta">Automatic score {cur.autoScore ?? cur.score}{cur.fitPercent !== undefined ? ` · ${cur.fitPercent}% match to the buyer's saved searches` : ""}. Set your own if you know better; it replaces the automatic score until you remove it.</p>
+                        <label>Your score (0-100) <input name="score" type="number" min={0} max={100} step={1} defaultValue={cur.score} required /></label>
+                        <label>Why <input name="reason" maxLength={300} minLength={3} required placeholder="e.g. pre-approved, ready to offer" /></label>
+                        <div className="aw-controls">
+                          <button type="submit">Save my score</button>
+                          {cur.overridden && <button type="button" className="aw-chips-btn" onClick={() => void clearOverride()}>Use automatic score</button>}
+                        </div>
+                      </form>
+                    );
+                  })()}
                   <button type="button" className="aw-chips-btn" onClick={() => void ask("Summarise this client", open.buyerId)}>Ask {answer?.name ?? "the assistant"} to summarise</button>
                   <form className="aw-form" onSubmit={e => void addNote(e)}>
                     <label>Type <select name="kind">{KINDS.map(k => <option key={k}>{k}</option>)}</select></label>
