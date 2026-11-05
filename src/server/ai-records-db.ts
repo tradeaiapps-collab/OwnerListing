@@ -1,6 +1,7 @@
 import type { AiDraftRecord, AiDraftRepository, StoredSafetyFlag } from "../domain/ai-draft-record";
 import type { SafetyResult } from "../domain/message-safety";
 import type { Queryable } from "./db";
+import { captureDraftCreated, captureDraftFinished } from "./elena-learning-db";
 
 // Constant SQL text only; every value is a bound parameter. ai_draft and message_safety_flag have db triggers that refuse
 // content changes and deletes, so these functions only ever insert or move a status once.
@@ -31,6 +32,7 @@ export function createPgAiDraftRepository(db: Queryable): AiDraftRepository {
           JSON.stringify(d.policyDecision), JSON.stringify(d.guardResult), d.engineId, d.modelVersion, d.promptVersion, d.inputHash,
           d.status, d.createdBy, d.createdAt]
       );
+      await captureDraftCreated(db, d.id, d.createdAt);
     },
     async get(id) {
       const r = await db.query("SELECT * FROM ai_draft WHERE id = $1::uuid", [id]);
@@ -42,6 +44,7 @@ export function createPgAiDraftRepository(db: Queryable): AiDraftRepository {
          WHERE id = $1::uuid AND status IN ('pending','held') RETURNING id`,
         [id, to, by, at, sentMessageId ?? null]
       );
+      if (r.rows.length === 1) await captureDraftFinished(db, id);
       return r.rows.length === 1;
     }
   };

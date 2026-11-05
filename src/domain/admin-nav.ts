@@ -52,6 +52,7 @@ const META: Record<string, { group: string; icon: AdminIcon; blurb: string }> = 
   "/staff/analytics": { group: "insights", icon: "chart", blurb: "Platform trends, market forecasts, agent benchmarks and team trends" },
   "/staff/listing-performance-analytics": { group: "insights", icon: "chart", blurb: "Views, enquiries and offers across live listings, and the ones that need attention" },
   "/staff/elena-insights": { group: "insights", icon: "assistant", blurb: "Elena's read on agents, areas, alerts and next steps" },
+  "/staff/elena-training": { group: "insights", icon: "assistant", blurb: "How well Elena's suggestions work, what she has learned and A/B tests" },
   "/staff/feasibility": { group: "insights", icon: "assistant", blurb: "Elena scores a project proposal for complexity, risk and chance of success" },
   "/staff/alerts": { group: "insights", icon: "assistant", blurb: "Set when Elena flags slow replies, weak conversion and quiet areas" },
   "/staff/report-builder": { group: "insights", icon: "builder", blurb: "Build and export custom reports" },
