@@ -26,8 +26,11 @@ export const isFrozen = (cases: readonly { status: string }[]) => cases.some(c =
 // ---------- state rules ----------
 
 /** Values written from memory of the statutes. NOT confirmed by counsel: shown to people as an estimate and listed in docs/COUNSEL_QUESTIONS.md section 4. */
-export const RULES_VERSION = "2026-11-05-draft";
+export const RULES_VERSION = "2026-11-05-owner-accepted";
+/** True only when counsel has confirmed the figures in writing. Do not set it for any other reason: screens use it to say whether a lawyer reviewed the rules. */
 export const RULES_CONFIRMED = false;
+/** The owner (john) chose on 2026-11-05 to run these figures without counsel review. Lets cooling-off splits be paid out; screens still say a lawyer has not reviewed them. */
+export const RULES_OWNER_ACCEPTED = true;
 
 export interface StateRule {
   /** Business days after the contract in which the buyer may withdraw; null where the state has no cooling-off right. */
@@ -183,11 +186,11 @@ export interface CaseLike {
  * Figures taken from the draft state rules (cooling-off split) are not paid out until counsel confirms them. A case staff resolved from an
  * agreement or court order carries its own amounts and is not affected. Full refunds or full releases do not depend on the state figures.
  */
-export function payoutBlockedByRules(c: CaseLike, rulesConfirmed: boolean = RULES_CONFIRMED, currentVersion: string = RULES_VERSION): string | null {
+export function payoutBlockedByRules(c: CaseLike, rulesConfirmed: boolean = RULES_CONFIRMED, currentVersion: string = RULES_VERSION, ownerAccepted: boolean = RULES_OWNER_ACCEPTED): string | null {
   if (c.resolutionSource === "agreement" || c.resolutionSource === "court_order") return null;
   if (c.reason !== "cooling_off") return null;
-  if (rulesConfirmed && c.rulesVersion === currentVersion && !c.penaltyUnconfirmed) return null;
-  return "This split uses state cooling-off figures that counsel has not confirmed yet. It cannot be paid out until they are, or staff record the agreed amounts from a written agreement or court order.";
+  if ((rulesConfirmed || ownerAccepted) && c.rulesVersion === currentVersion && !c.penaltyUnconfirmed) return null;
+  return "This split uses state cooling-off figures that have not been approved yet. It cannot be paid out until they are, or staff record the agreed amounts from a written agreement or court order.";
 }
 
 export function planRespond(c: Pick<CaseLike, "status" | "raisedByParty">, party: Party): Plan {
