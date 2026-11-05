@@ -1,5 +1,6 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { renderEmail, type RenderedEmail } from "./email-templates";
+import { cleanPropertyType } from "./lead-routing";
 
 /**
  * Lead ads: Facebook/Instagram Lead Ads and Google lead form extensions. Pure functions, no I/O.
@@ -11,13 +12,14 @@ export type LeadInterest = "buying" | "selling" | "renting";
 export type LeadStatus = "new" | "contacted" | "qualified" | "lost";
 export type FollowupMode = "off" | "contact" | "matches";
 export const LEAD_STATUSES: readonly LeadStatus[] = ["new", "contacted", "qualified", "lost"];
+export const isLeadStatus = (v: unknown): v is LeadStatus => typeof v === "string" && (LEAD_STATUSES as readonly string[]).includes(v);
 export const FOLLOWUP_MODES: readonly FollowupMode[] = ["off", "contact", "matches"];
 
 export const LEAD_LIMITS = { maxWebhookBytes: 256 * 1024, maxSpendDays: 366 } as const;
 
 export interface LeadInput {
   externalId: string; name: string | null; email: string | null; phone: string | null; interest: LeadInterest | null;
-  suburb: string | null; postcode: string | null; campaignRef: string | null; adRef: string | null; isTest: boolean;
+  suburb: string | null; postcode: string | null; propertyType?: string | null; campaignRef: string | null; adRef: string | null; isTest: boolean;
 }
 type Parsed<T> = { ok: true; value: T } | { ok: false; error: string };
 const fail = (error: string): { ok: false; error: string } => ({ ok: false, error });
@@ -57,14 +59,14 @@ export function normaliseInterest(v: unknown): LeadInterest | null {
 const postcodeOf = (v: unknown): string | null => { const t = str(v, 12); return t && /^\d{4}$/.test(t) ? t : null; };
 
 /** Reads form answers by a loose name match so the field names an advertiser picked in the ad form do not matter. */
-function fromAnswers(answers: { key: string; value: string }[]): Pick<LeadInput, "name" | "email" | "phone" | "interest" | "suburb" | "postcode"> {
+function fromAnswers(answers: { key: string; value: string }[]): Pick<LeadInput, "name" | "email" | "phone" | "interest" | "suburb" | "postcode" | "propertyType"> {
   const find = (re: RegExp) => answers.find(a => re.test(a.key.toLowerCase().replace(/[\s_-]+/g, "")))?.value ?? null;
   const first = find(/^(first|given)name$/), last = find(/^(last|sur|family)name$/);
   const full = find(/^(full)?name$/) ?? find(/fullname/) ?? (first || last ? [first, last].filter(Boolean).join(" ") : null);
   return {
     name: str(full, 120), email: normaliseEmail(find(/email/)), phone: normalisePhone(find(/phone|mobile/)),
     interest: normaliseInterest(find(/interest|looking|want|intent|buyingselling|areyou/)),
-    suburb: str(find(/suburb|city|town/), 80), postcode: postcodeOf(find(/post(al)?code|zip/))
+    suburb: str(find(/suburb|city|town/), 80), postcode: postcodeOf(find(/post(al)?code|zip/)), propertyType: cleanPropertyType(find(/propertytype|typeofproperty|propertykind/))
   };
 }
 function finish(externalId: unknown, answers: { key: string; value: string }[], extra: { campaignRef: unknown; adRef: unknown; isTest: boolean }): Parsed<LeadInput> {
