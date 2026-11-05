@@ -31,6 +31,7 @@ const META: Record<string, { group: string; icon: AdminIcon; blurb: string }> = 
   "/staff/users": { group: "marketplace", icon: "users", blurb: "Find, review and suspend accounts" },
   "/staff/inspections": { group: "marketplace", icon: "listing", blurb: "Approve inspectors and watch every inspection request" },
   "/staff/users/deleted-accounts": { group: "marketplace", icon: "users", blurb: "Delete accounts and restore them within the recovery window" },
+  "/staff/projects": { group: "overview", icon: "case", blurb: "Propose, approve and track internal projects and the PRs that deliver them" },
   "/staff/investments": { group: "marketplace", icon: "building", blurb: "Check investor projects before they go live" },
   "/staff/investments/settings": { group: "marketplace", icon: "toggle", blurb: "Turn the investor module on or off" },
   "/staff/commissions": { group: "marketplace", icon: "bank", blurb: "Agent commission deals, overrides and payouts" },
