@@ -3,7 +3,10 @@ import { renderEmail } from "../domain/email-templates";
 import { planChannels, renderNotification, type Kind, type NotificationParams } from "../domain/notifications";
 import type { Queryable } from "./db";
 import { getEmailPort, getSmsPort } from "./messaging";
+import { formatNotificationSms, estimateMicros, segmentMicros } from "../domain/sms";
 import { pushToUser } from "./push";
+import { recordSmsMessage, smsWithinRate } from "./sms-log";
+import { webhookUrl } from "./sms-webhook";
 import { createNotificationPg, getPreferencesPg, makeNotificationUnsubscribeToken, recipientPg } from "./notifications-db";
 
 type Env = Readonly<Record<string, string | undefined>>;
@@ -21,6 +24,7 @@ export async function notifyUser(db: Queryable, userId: string, kind: Kind, para
     const [prefs, to] = await Promise.all([getPreferencesPg(db, userId), recipientPg(db, userId)]);
     const plan = planChannels(kind, prefs, to.phone !== null);
     const base = env["APP_URL"]?.replace(/\/+$/, "");
+    const statusUrl = webhookUrl(env, "status");
     let notificationId: string | null = null;
     if (plan.inApp) { notificationId = await createNotificationPg(db, userId, n); result.inApp = true; }
     // Push goes out alongside, on the user's own topic setting; Elena personalises it. A failure here never affects the other channels.
@@ -42,8 +46,14 @@ export async function notifyUser(db: Queryable, userId: string, kind: Kind, para
     }
     if (plan.sms && to.phone && n.smsText) {
       const port = await getSmsPort(db, env, `notif_${kind}`);
-      const text = `${readBrand().name}: ${n.smsText}`.slice(0, 300) + " Turn texts off: Settings > Notifications.";
-      result.sms = port.configured && (await port.sendText(to.phone, text)).status === "sent" ? "sent" : "failed";
+      if (!port.configured) result.sms = "failed";
+      else if (!(await smsWithinRate(db, userId))) result.sms = "skipped"; // per-user limit: in-app and email still went
+      else {
+        const sms = formatNotificationSms(readBrand().name, n.smsText);
+        const res = await port.sendText(to.phone, sms.text, { ...(statusUrl ? { statusCallback: statusUrl } : {}) });
+        await recordSmsMessage(db, { userId, template: `notif_${kind}`, result: res, segments: Math.max(sms.segments, 1), estMicros: estimateMicros(sms.segments, segmentMicros(env)) });
+        result.sms = res.status === "sent" ? "sent" : "failed";
+      }
     }
   } catch {
     // Nothing identifying is logged; the caller carries on.

@@ -2,7 +2,7 @@ export type StaffRole = "super_admin" | "compliance" | "accountant" | "support" 
 
 export type PermissionArea =
   | "cases" | "trust_accounts" | "identity" | "reports" | "personal_data" | "pricing" | "messaging"
-  | "staff" | "website" | "platform" | "overrides" | "investments" | "disclosures" | "documents" | "marketplace";
+  | "staff" | "website" | "platform" | "overrides" | "investments" | "disclosures" | "documents" | "marketplace" | "commissions";
 
 /** Groups shown in the role builder, in display order. */
 export const PERMISSION_AREAS: readonly { key: PermissionArea; label: string }[] = [
@@ -20,7 +20,8 @@ export const PERMISSION_AREAS: readonly { key: PermissionArea; label: string }[]
   { key: "investments", label: "Investor projects" },
   { key: "disclosures", label: "Property disclosures" },
   { key: "documents", label: "Document templates" },
-  { key: "marketplace", label: "Listings and accounts" }
+  { key: "marketplace", label: "Listings and accounts" },
+  { key: "commissions", label: "Agent commissions" }
 ];
 
 export interface PermissionInfo { key: string; area: PermissionArea; label: string; description: string; sensitive: boolean }
@@ -68,9 +69,11 @@ export const PERMISSION_CATALOGUE = [
   { key: "doc_template.edit", area: "documents", label: "Draft document templates", description: "Create document templates and save new draft versions at /staff/doc-templates. A draft does nothing until someone else publishes it.", sensitive: false },
   { key: "doc_template.publish", area: "documents", label: "Publish document templates", description: "Make a template version live so owners can generate and send it for signature. Never a version you wrote yourself, and only after counsel has reviewed the wording.", sensitive: true },
   { key: "listing.moderate", area: "marketplace", label: "Moderate listings", description: "Search every listing, suspend a published listing, lift a suspension (the owner must publish again) and send a listing under review back to draft. Always with a reason; every action is logged.", sensitive: false },
+  { key: "listing.bulk", area: "marketplace", label: "Bulk listing operations", description: "Act on up to 500 listings at once at /staff/listings: publish (through the publish checks), archive, delete (soft), mark sold or rented, add a tag, change property type, adjust price, reassign the agent and export CSV. Always with a reason; every listing is logged. Never on your own listings for agent changes.", sensitive: false },
   { key: "user.manage", area: "marketplace", label: "Manage user accounts", description: "See user accounts with their verification and compliance status, and suspend or reinstate an account with a reason. Staff accounts are managed in Staff access.", sensitive: true },
   { key: "user.mfa_reset", area: "marketplace", label: "Reset two-step sign-in", description: "Reset an owner's or agent's two-step sign-in when they lose their phone, at /staff/security/mfa-reset (super admin only). Every reset is logged and the user is emailed.", sensitive: true },
-  { key: "user.delete", area: "marketplace", label: "Delete and restore accounts", description: "Delete an owner's, agent's or buyer's account (listings archived, open offers cancelled, records kept 7 years) and restore it within the recovery window, at /staff/users/deleted-accounts (super admin only). Every step is logged and the people affected are emailed.", sensitive: true }
+  { key: "user.delete", area: "marketplace", label: "Delete and restore accounts", description: "Delete an owner's, agent's or buyer's account (listings archived, open offers cancelled, records kept 7 years) and restore it within the recovery window, at /staff/users/deleted-accounts (super admin only). Every step is logged and the people affected are emailed.", sensitive: true },
+  { key: "commission.manage", area: "commissions", label: "Manage agent commissions", description: "Record agent commission deals, override amounts with a reason, set payout dates, mark deals earned or cancelled, and confirm a payment was made to the agent, at /staff/commissions. The platform holds no money; this is a record. Every step is logged.", sensitive: true }
 ] as const satisfies readonly PermissionInfo[];
 
 export type StaffPermission = (typeof PERMISSION_CATALOGUE)[number]["key"];
@@ -87,8 +90,8 @@ const ROLE_PERMISSIONS: Record<StaffRole, readonly StaffPermission[]> = {
   super_admin: ALL,
   compliance: ["report.audit", "report.solicitor", "report.broker", "pii.view_full", "case.manage",
     "trust_account.approve", "licence.verify", "dispute.read_chat", "override.request", "identity.review", "investment.review",
-    "wording.review", "disclosure.config_edit", "disclosure.config_approve", "disclosure.verify", "doc_template.edit", "doc_template.publish", "listing.moderate", "user.manage"],
-  accountant: ["report.financial", "report.sales", "pii.view_masked", "billing.manage"],
+    "wording.review", "disclosure.config_edit", "disclosure.config_approve", "disclosure.verify", "doc_template.edit", "doc_template.publish", "listing.moderate", "listing.bulk", "user.manage"],
+  accountant: ["report.financial", "report.sales", "pii.view_masked", "billing.manage", "commission.manage"],
   support: ["report.buyer", "report.seller", "pii.view_masked", "case.manage", "override.request", "listing.moderate"],
   technical: ["logs.technical", "report.operations", "config.edit"],
   reporting: ["report.sales", "report.suburb", "report.operations"],

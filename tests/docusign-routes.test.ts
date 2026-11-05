@@ -6,11 +6,15 @@ import { validateTemplateContent } from "../src/domain/doc-templates";
 import type { Actor } from "../src/domain/listing-service";
 import { createInMemorySigningRepository, type SigningRepository } from "../src/domain/signing-service";
 
-const state = vi.hoisted(() => ({ actor: null as Actor | null, repo: null as SigningRepository | null, files: new Map<string, Uint8Array>() }));
+const state = vi.hoisted(() => ({ actor: null as Actor | null, repo: null as SigningRepository | null, files: new Map<string, Uint8Array>(), mfaAt: undefined as number | undefined }));
 vi.mock("../src/server/context", () => ({
   getActor: () => state.actor, getDb: () => ({}), getStaff: () => null,
   getUploadPorts: () => ({ storage: { configured: true, put: async (k: string, b: Uint8Array) => { state.files.set(k, b); }, get: async (k: string) => { const b = state.files.get(k); if (!b) throw new Error("gone"); return b; } } })
 }));
+vi.mock("../src/server/mfa-context", async () => {
+  const real = await vi.importActual<typeof import("../src/server/mfa-context")>("../src/server/mfa-context");
+  return { ...real, recentMfaAt: async () => state.mfaAt };
+});
 vi.mock("../src/server/signing-db", () => {
   let n = 0;
   return {
@@ -50,6 +54,7 @@ describe("DocuSign routes", () => {
     process.env["SIGNING_PROVIDER"] = "docusign";
     process.env["DOCUSIGN_CONNECT_HMAC_KEY"] = KEY;
     state.files.clear();
+    state.mfaAt = Math.floor(Date.now() / 1000);
     state.repo = createInMemorySigningRepository({
       listings: [{ id: LISTING, ownerUserId: owner.userId, ownerName: "Olive Owner", title: "House", address: "1 Test St", jurisdiction: "QLD" }],
       accounts: [{ id: agent.userId, email: "amy@agency.test", displayName: "Amy Agent", status: "active" }, { id: other.userId, email: "x@x.test", displayName: "Xavier", status: "active" }],
@@ -83,6 +88,11 @@ describe("DocuSign routes", () => {
     const envelopeId = [...fake.envelopes.keys()][0]!;
 
     state.actor = agent;
+    state.mfaAt = undefined;
+    const stale = await docRoute.POST(post({ action: "docusign_link" }), ctx(d.id));
+    expect(stale.status).toBe(403);
+    expect(((await stale.json()) as { code: string }).code).toBe("mfa_required");
+    state.mfaAt = Math.floor(Date.now() / 1000);
     const link = await docRoute.POST(post({ action: "docusign_link" }), ctx(d.id));
     expect(link.status).toBe(200);
     expect(((await link.json()) as { url: string }).url).toContain("docusign.net");

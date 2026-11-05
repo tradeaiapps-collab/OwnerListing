@@ -14,7 +14,7 @@ type Clause = { id: string; heading: string; text: string };
 type Doc = { id: string; listingId: string; listingTitle: string; title: string; status: string; bodySha256: string; provider: "builtin" | "docusign"; clauses: Clause[]; signers: Signer[]; createdAt: string };
 type Artifact = { id: string; kind: "signed_pdf" | "certificate"; sha256: string; sizeBytes: number; createdAt: string };
 type Ev = { id: number; actorName: string; eventType: string; ip?: string; detail: Record<string, unknown>; occurredAt: string };
-type View = { document: Doc; viewer: { role: "owner" | "signer"; canSign: boolean }; events: Ev[]; artifacts?: Artifact[]; persona: ChatPersona };
+type View = { mfaFresh?: boolean; document: Doc; viewer: { role: "owner" | "signer"; canSign: boolean }; events: Ev[]; artifacts?: Artifact[]; persona: ChatPersona };
 type Explained = { heading: string; explanation: string; disclaimer: string };
 
 /**
@@ -75,7 +75,9 @@ export default function SigningPage() {
     setBusy(true); setError("");
     try {
       const r = await post(body);
-      if (r.ok) { setConsent(false); setReason(""); await load(); } else setError((r.data["error"] as string) ?? failMessage);
+      if (r.ok) { setConsent(false); setReason(""); await load(); }
+      else if (r.data["code"] === "mfa_required") window.location.assign(`/mfa?next=${encodeURIComponent(`/signing/${id}`)}`);
+      else setError((r.data["error"] as string) ?? failMessage);
     } catch { setError(failMessage); } finally { setBusy(false); }
   }
   async function openDocusign() {
@@ -83,6 +85,7 @@ export default function SigningPage() {
     try {
       const r = await post({ action: "docusign_link" });
       if (r.ok && typeof r.data["url"] === "string") { window.location.assign(r.data["url"]); return; }
+      if (r.data["code"] === "mfa_required") { window.location.assign(`/mfa?next=${encodeURIComponent(`/signing/${id}`)}`); return; }
       setError((r.data["error"] as string) ?? "Could not open DocuSign.");
     } catch { setError("Could not open DocuSign."); }
     setBusy(false);
@@ -154,6 +157,7 @@ export default function SigningPage() {
           {viewer.canSign && viaDocusign && (
             <section className="sg-sign stack" aria-label="Sign with DocuSign">
               <h2>Sign this document</h2>
+              {view.mfaFresh === false && <p role="status">Signing is binding, so we ask you to confirm it's you with your second sign-in step first. <a href={`/mfa?next=${encodeURIComponent(`/signing/${id}`)}`}>Confirm now</a></p>}
               <p>This document is signed through DocuSign. You will go to DocuSign to review and sign, then come straight back here. Your signature, the time and your device details are recorded in the audit trail below.</p>
               <div className="sg-actions">
                 <button type="button" disabled={busy} onClick={() => void openDocusign()}>{busy ? "Opening…" : "Sign with DocuSign"}</button>
@@ -165,6 +169,7 @@ export default function SigningPage() {
           {viewer.canSign && !viaDocusign && (
             <form className="sg-sign stack" onSubmit={e => { e.preventDefault(); void act({ action: "sign", typedName, consent }, "Could not sign the document."); }}>
               <h2>Sign this document</h2>
+              {view.mfaFresh === false && <p role="status">Signing is binding, so we ask you to confirm it's you with your second sign-in step first. <a href={`/mfa?next=${encodeURIComponent(`/signing/${id}`)}`}>Confirm it's you</a></p>}
               <label>Type your full name, exactly as it appears on your account
                 <input value={typedName} onChange={e => setTypedName(e.target.value)} autoComplete="name" required maxLength={120} />
               </label>

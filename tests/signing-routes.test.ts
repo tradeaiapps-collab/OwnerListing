@@ -4,8 +4,12 @@ import { validateTemplateContent } from "../src/domain/doc-templates";
 import type { Actor } from "../src/domain/listing-service";
 import { createInMemorySigningRepository, type SigningRepository } from "../src/domain/signing-service";
 
-const state = vi.hoisted(() => ({ actor: null as Actor | null, repo: null as SigningRepository | null }));
+const state = vi.hoisted(() => ({ actor: null as Actor | null, repo: null as SigningRepository | null, mfaAt: undefined as number | undefined }));
 vi.mock("../src/server/context", () => ({ getActor: () => state.actor, getDb: () => ({}), getStaff: () => null }));
+vi.mock("../src/server/mfa-context", async () => {
+  const real = await vi.importActual<typeof import("../src/server/mfa-context")>("../src/server/mfa-context");
+  return { ...real, recentMfaAt: async () => state.mfaAt };
+});
 vi.mock("../src/server/signing-db", () => {
   let n = 0;
   return {
@@ -40,6 +44,7 @@ describe("signing routes", () => {
       templates: [{ templateId: "t", key: tpl.key, title: tpl.title, category: "agreement", versionId: "v", version: 1, content: content.value }]
     });
     state.actor = owner;
+    state.mfaAt = Math.floor(Date.now() / 1000);
   });
 
   it("returns 401 for every route when signed out and 403 or 404 for staff without a session", async () => {
@@ -79,10 +84,18 @@ describe("signing routes", () => {
     expect(body.viewer.canSign).toBe(true);
     expect((await docRoute.POST(post({ action: "explain", clauseId: "risk" }), ctx(document.id))).status).toBe(200);
     expect((await docRoute.POST(post({ action: "sign", typedName: "Wrong Name", consent: true }), ctx(document.id))).status).toBe(400);
+    state.mfaAt = undefined; // hijacked or stale session: no recent second step
+    const refused = await docRoute.POST(post({ action: "sign", typedName: "Amy Agent", consent: true }), ctx(document.id));
+    expect(refused.status).toBe(403);
+    expect(((await refused.json()) as { code: string }).code).toBe("mfa_required");
+    expect(((await (await docRoute.GET(new Request("http://test/x"), ctx(document.id))).json()) as { mfaFresh: boolean }).mfaFresh).toBe(false);
+    state.mfaAt = Math.floor(Date.now() / 1000) - 30;
     const signed = await docRoute.POST(post({ action: "sign", typedName: "Amy Agent", consent: true }), ctx(document.id));
     expect(signed.status).toBe(200);
     expect(((await signed.json()) as { document: { status: string } }).document.status).toBe("completed");
     expect((await docRoute.POST(post({ action: "sign", typedName: "Amy Agent", consent: true }), ctx(document.id))).status).toBe(409);
+    const trail = (await (await docRoute.GET(new Request("http://test/x"), ctx(document.id))).json()) as { events: { eventType: string; detail: { mfaVerifiedAt?: string } }[] };
+    expect(trail.events.find(e => e.eventType === "signed")?.detail.mfaVerifiedAt).toMatch(/^2026|^20\d\d-/);
     expect(((await (await mineRoute.GET(new Request("http://test/x"))).json()) as { documents: unknown[] }).documents).toHaveLength(1);
   });
 });
