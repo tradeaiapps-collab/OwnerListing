@@ -83,7 +83,7 @@ describe("resolving a role to access (fail closed)", () => {
     expect(sectionsFor({ id: "s", role: "custom_empty", permissions: [] })).toEqual([]);
   });
   it("dashboard sections follow the resolved permissions", () => {
-    expect(sectionsFor(manager).map(s => s.href)).toEqual(["/staff/dashboard", "/staff/cases", "/staff/safety", "/staff/analytics", "/staff/elena-insights", "/staff/report-builder", "/staff/reports", "/staff/invites", "/staff/roles", "/staff/site"]);
+    expect(sectionsFor(manager).map(s => s.href)).toEqual(["/staff/dashboard", "/staff/cases", "/staff/safety", "/staff/analytics", "/staff/elena-insights", "/staff/alerts", "/staff/report-builder", "/staff/reports", "/staff/invites", "/staff/roles", "/staff/site"]);
     expect(sectionsFor(admin).map(s => s.href)).toContain("/staff/messaging");
     expect(sectionsFor({ id: "d", role: "designer" }).map(s => s.href)).toEqual(["/staff/site"]);
     expect(sectionsFor({ id: "s", role: "custom_web", permissions: ["theme.edit"] }).map(s => s.href)).toEqual(["/staff/site"]);

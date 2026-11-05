@@ -38,7 +38,7 @@ export default function ElenaInsights() {
   return (
     <main className="admin-page">
       <h1>{data ? `${data.persona}'s insights` : "Elena's insights"}</h1>
-      <p><a href="/staff/analytics">Back to platform analytics</a></p>
+      <p><a href="/staff/analytics">Back to platform analytics</a> · <a href="/staff/alerts">Alert thresholds</a></p>
       <form className="filters" onSubmit={e => { e.preventDefault(); void load(f); }}>
         <label>From <input type="date" value={f.from} onChange={e => setF({ ...f, from: e.target.value })} /></label>
         <label>To <input type="date" value={f.to} onChange={e => setF({ ...f, to: e.target.value })} /></label>
