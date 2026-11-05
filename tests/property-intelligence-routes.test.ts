@@ -31,7 +31,7 @@ describe("intelligence routes", () => {
     state.actor = { userId: "u1", userType: "buyer" };
     expect((await valuation.GET(url("x", "bedrooms=3"))).status).toBe(400);
     expect((await valuation.GET(url("x", "suburb=X&condition=ruined"))).status).toBe(400);
-    state.hits = 61;
+    state.hits = 241;
     expect((await valuation.GET(url("x"))).status).toBe(429);
     state.hits = undefined;
     expect((await valuation.GET(url("x"))).status).toBe(429);

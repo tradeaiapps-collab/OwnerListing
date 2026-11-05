@@ -94,6 +94,8 @@ export default function MarketPage() {
       const [v, m, t, c] = await Promise.all(["valuation", "market", "trends", "comparables"].map(n => fetch(`/api/intelligence/${n}?${q}`)));
       if (v!.status === 401) { setSignedOut(true); setRes(null); return; }
       if (!v!.ok) { setError((await v!.json().catch(() => ({}))).error ?? "Could not load property intelligence."); setRes(null); return; }
+      const bad = [m!, t!, c!].find(r => !r.ok);
+      if (bad) { setError(bad.status === 429 ? "You've looked up a lot of properties this hour. Try again later." : "Could not load property intelligence."); setRes(null); return; }
       const [vj, mj, tj, cj] = await Promise.all([v!.json(), m!.json(), t!.json(), c!.json()]);
       setRes({ tx: f.transactionType, valuation: vj.valuation, market: mj.market, trend: tj.trend, comparables: cj.comparables, note: vj.note });
       setAsked(f);

@@ -14,7 +14,7 @@ import {
 export const AVM_MODEL_VERSION = "avm-v1";
 export const INTEL_NOTE =
   "A rough guide worked out from recent comparable results. It is not a valuation, appraisal or advice, it may be wrong, and it does not replace a licensed valuer.";
-export const INTEL_RATE = { windowMs: 60 * 60 * 1000, perUser: 60 } as const;
+export const INTEL_RATE = { windowMs: 60 * 60 * 1000, perUser: 240 } as const;
 
 /** Share of comparable results the low to high range is meant to cover (the 20th to 80th percentile). */
 export const INTERVAL_PERCENT = 60;
