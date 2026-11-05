@@ -48,6 +48,11 @@ export const mfaRequiredResponse = () =>
  * Returns the 403 to send, or null to proceed. Call after the route's own sign-in check.
  */
 export async function requireRecentMfa(req: Request): Promise<NextResponse | null> {
+  return (await recentMfaAt(req)) === undefined ? mfaRequiredResponse() : null;
+}
+
+/** When this session last passed MFA (epoch seconds) if that is within the step-up window and still valid, else undefined. */
+export async function recentMfaAt(req: Request): Promise<number | undefined> {
   const s = await getSessionState(req);
-  return s && s.mfa.satisfied && stepUpSatisfied(s.payload.mfa, Math.floor(Date.now() / 1000)) ? null : mfaRequiredResponse();
+  return s && s.mfa.satisfied && stepUpSatisfied(s.payload.mfa, Math.floor(Date.now() / 1000)) ? s.payload.mfa : undefined;
 }

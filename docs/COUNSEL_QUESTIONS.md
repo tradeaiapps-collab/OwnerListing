@@ -59,3 +59,10 @@ Please advise in writing on each point. Most apply in every state where the plat
 27. Owner reports about buyers: what process and wording keeps a buyer flag fair and defensible?
 28. Interim in-house ID review: confirm we may hold ID images and selfies briefly for review, the retention periods (7 days after approval, 30 after rejection), reviewer access controls, and any notice or consent wording needed.
 
+
+## 12. E-signing and DocuSign
+See `docs/COUNSEL_ESIGN_BRIEF.md`.
+29. Is our built-in click-to-sign (logged-in account, typed name matching the account, consent tick, hashed text, insert-only audit trail with IP and time) a valid electronic signature under the Electronic Transactions Act and state equivalents for the document types we offer? Which types, if any, must use a hosted provider such as DocuSign instead?
+30. Which documents need a witness, deed execution or notary, and is remote witnessing allowed in each state? Is a witness role on a template enough, or must it be excluded?
+31. Retention and deletion of signed documents and audit trails: how long must we keep them, and may we refuse account deletion for them? What must we tell the user, and what does DocuSign's retention and data residency mean for our privacy notice?
+32. Signer verification: is account login plus email enough, or must we add phone code or ID check per document type? What wording is needed for consent, decline, expiry and non-signing?

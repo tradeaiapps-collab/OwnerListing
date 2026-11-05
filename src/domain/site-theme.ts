@@ -374,7 +374,7 @@ function colourVars(c: ModeColours): string {
  * CSS custom properties for a settings object. Every value is re-checked against the same rules as validateTheme, and any
  * object that does not pass is replaced by the defaults, so even a corrupted database row cannot put text into the stylesheet.
  */
-export function buildThemeCss(settings: ThemeSettings): string {
+export function buildThemeCss(settings: ThemeSettings, opts: { followDevice?: boolean } = {}): string {
   const checked = validateTheme(settings);
   const t = checked.ok ? checked.value : DEFAULT_THEME; // the normalised copy (trimmed, lower-case hex), never the raw input
   const f = DENSITY_FACTOR[t.layout.density];
@@ -389,7 +389,7 @@ export function buildThemeCss(settings: ThemeSettings): string {
   const light = colourVars(t.colours.light), dark = colourVars(t.colours.dark);
   const css =
     `:root:root{${shared}${light}}` +
-    (t.layout.colourMode === "system" ? `@media (prefers-color-scheme: dark){:root:root{${dark}}}` : "") +
+    (t.layout.colourMode === "system" || opts.followDevice ? `@media (prefers-color-scheme: dark){:root:root{${dark}}}` : "") +
     `:root:root[data-theme-mode="light"]{color-scheme:light;${light}}` +
     `:root:root[data-theme-mode="dark"]{color-scheme:dark;${dark}}`;
   return css.replace(/</g, "");

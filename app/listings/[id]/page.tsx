@@ -6,6 +6,7 @@ import { actionHref } from "../../../src/domain/listing-actions";
 import { ListingGallery } from "../gallery";
 import { LocationMap } from "../location-map";
 import { JSON_HEADERS } from "../ui";
+import { SaveAsTemplate } from "../save-as-template";
 import "../../styles/cards.css";
 import "../../styles/detail.css";
 
@@ -333,6 +334,7 @@ export default function ListingDetail() {
             <a className="button" href={actionHref(listing.id, "enquire", userType !== null)}>Enquire</a>
             <SaveButton listingId={listing.id} userType={userType} />
           </div>
+          <SaveAsTemplate listingId={listing.id} defaultName={listing.title} userType={userType} />
           {compliance && (
             <ul className="pd-aside-checks" aria-label="At a glance">
               <li><Mark tone={compliance.seller.handledBy === "owner" || compliance.seller.agentLicenceVerified ? "ok" : "wait"} />
