@@ -1,0 +1,35 @@
+/* Buyer leads ranked by conversion chance. Theme tokens only; mobile first. Colour is never the only signal: each tier also has a text label. */
+.bl { display: grid; gap: var(--space-6); }
+.bl-summary { display: grid; gap: var(--space-3); grid-template-columns: repeat(2, minmax(0, 1fr)); margin: 0; padding: 0; list-style: none; }
+@media (min-width: 768px) { .bl-summary { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.bl-summary li { display: grid; gap: var(--space-1); padding: var(--space-3) var(--space-4); border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); min-width: 0; }
+.bl-summary span { color: var(--muted); font-size: 0.875rem; }
+.bl-summary strong { font-family: var(--font-display); font-size: 1.5rem; line-height: 1.2; }
+.bl-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-3); }
+.bl-lead { display: grid; gap: var(--space-2); padding: var(--space-3) var(--space-4); border: 1px solid var(--border); border-left-width: 6px; border-radius: var(--radius); background: var(--bg); min-width: 0; }
+.bl-lead.red { border-left-color: var(--danger); }
+.bl-lead.yellow { border-left-color: var(--warn); }
+.bl-lead.green { border-left-color: var(--ok); }
+.bl-lead.closed { opacity: 0.75; border-left-color: var(--border); }
+.bl-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2); }
+.bl-head strong { overflow-wrap: anywhere; }
+.bl-pill { display: inline-block; padding: 2px var(--space-2); border-radius: 999px; font-size: 0.875rem; font-weight: 700; white-space: nowrap; }
+.bl-pill.red { background: var(--danger-tint); color: var(--danger); }
+.bl-pill.yellow { background: var(--warn-tint); color: var(--warn); }
+.bl-pill.green { background: var(--ok-tint); color: var(--ok); }
+.bl-pill.closed { background: var(--tint); color: var(--muted); }
+.bl-meta { margin: 0; color: var(--muted); font-size: 0.875rem; overflow-wrap: anywhere; }
+.bl-next { margin: 0; font-weight: 600; overflow-wrap: anywhere; }
+.bl-chips { display: flex; flex-wrap: wrap; gap: var(--space-2); margin: 0; padding: 0; list-style: none; }
+.bl-chips li { padding: 2px var(--space-2); border: 1px solid var(--border); border-radius: 999px; font-size: 0.8125rem; color: var(--muted); }
+.bl-lead summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; color: var(--link); }
+.bl-lead summary:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.bl-signals { margin: 0; padding-left: var(--space-4); display: grid; gap: var(--space-1); font-size: 0.875rem; }
+.bl-signals .neg { color: var(--danger); }
+.bl-acc { display: grid; gap: var(--space-2); padding: var(--space-4); border: 1px solid var(--border); border-radius: var(--radius); }
+.bl-acc table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+.bl-acc th, .bl-acc td { padding: var(--space-2); border-bottom: 1px solid var(--border); text-align: left; }
+.bl-acc th:not(:first-child), .bl-acc td:not(:first-child) { text-align: right; font-variant-numeric: tabular-nums; }
+/* The site caps list items at 72ch; the lead cards and tiles should use the full column. */
+.bl li, .bl-meta, .bl-next { max-width: none; }
+.bl-acc h2 { margin: 0; }

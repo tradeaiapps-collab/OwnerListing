@@ -34,6 +34,7 @@ const META: Record<string, { group: string; icon: AdminIcon; blurb: string }> = 
   "/staff/commissions": { group: "marketplace", icon: "bank", blurb: "Agent commission deals, overrides and payouts" },
   "/staff/cases": { group: "compliance", icon: "case", blurb: "Claim and resolve admin cases" },
   "/staff/safety": { group: "compliance", icon: "safety", blurb: "Messages held by the safety filter" },
+  "/staff/moderation": { group: "compliance", icon: "safety", blurb: "Seller and agent messages flagged for compliance or tone" },
   "/staff/trust-accounts": { group: "compliance", icon: "bank", blurb: "Two-person trust account approvals" },
   "/staff/escrow": { group: "compliance", icon: "bank", blurb: "Buyer deposits in trust, bank reconciliation and release approvals" },
   "/staff/prequalifications": { group: "compliance", icon: "id", blurb: "Buyer mortgage pre-approvals: confirm what Elena read, verify or ask for a clearer letter" },

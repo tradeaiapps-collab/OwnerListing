@@ -17,6 +17,7 @@ export const STAFF_SECTIONS: readonly StaffSection[] = [
   { href: "/staff/users/deleted-accounts", label: "Deleted accounts", permissions: ["user.delete"] },
   { href: "/staff/cases", label: "Admin cases", permissions: ["case.manage"] },
   { href: "/staff/safety", label: "Message safety review", permissions: ["case.manage"] },
+  { href: "/staff/moderation", label: "Message moderation", permissions: ["case.manage"] },
   { href: "/staff/trust-accounts", label: "Trust account approvals", permissions: ["trust_account.approve"] },
   { href: "/staff/escrow", label: "Deposits in trust", permissions: ["escrow.manage", "escrow.approve"] },
   { href: "/staff/id-review", label: "Identity review", permissions: ["identity.review"] },

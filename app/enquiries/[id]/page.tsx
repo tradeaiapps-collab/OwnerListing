@@ -9,6 +9,7 @@ import { JSON_HEADERS } from "../../listings/ui";
 import { AiReplyPanel } from "../ai-reply-panel";
 import { ElenaStage, speak, type StageState } from "../elena-stage";
 import { showMe } from "../show-me";
+import { ModerationPanel } from "../moderation-panel";
 import { MessageWarning, SafetySummary, useSafety } from "../safety-panel";
 import "../../styles/enquiries.css";
 
@@ -404,6 +405,7 @@ export default function Thread() {
             </ol>
             <div ref={endRef} />
             {olr?.role === "owner" && <AiReplyPanel enquiryId={id} onSent={async () => { await Promise.all([load(), reloadSafety()]); }} />}
+            {olr?.role === "owner" && <ModerationPanel enquiryId={id} draft={draft} onUse={setDraft} name={ai?.persona.name} />}
             <form className="el-composer" onSubmit={onSend}>
               <label htmlFor="enq-reply" className="el-sr">Message</label>
               <textarea
