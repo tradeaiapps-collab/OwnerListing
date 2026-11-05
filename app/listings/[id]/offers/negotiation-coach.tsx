@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import { ElenaFeedback } from "../../../elena-feedback";
 import { JSON_HEADERS } from "../../ui";
 
 type Violation = { code: string; message: string };
@@ -170,6 +171,7 @@ export function NegotiationCoach({ listingId, offerId }: { listingId: string; of
               <textarea rows={7} maxLength={3800} aria-label={`${t.label} message`} value={texts[t.id] ?? ""} onChange={e => { setTexts({ ...texts, [t.id]: e.target.value }); setEdited({ ...edited, [t.id]: true }); }} />
               {res.canSendInThread && !done[t.id]?.startsWith("Sent") && <button type="submit" disabled={busy || !(texts[t.id] ?? "").trim()}>Send to buyer</button>}
               {done[t.id] && <p role="status">{done[t.id]}</p>}
+              {done[t.id] && <ElenaFeedback suggestionId={t.id} />}
             </form>
           ))}
         </>
