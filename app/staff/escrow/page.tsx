@@ -121,7 +121,7 @@ export default function StaffEscrow() {
                   </table>
                 </div>
               )}
-              {holding && <HoldingDetail key={`${holding.id}-${version}`} holding={holding} canManage={data.can.manage} act={act} />}
+              {holding && <HoldingDetail key={`${holding.id}-${version}`} holding={holding} canManage={data.can.manage} canApprove={data.can.approve} me={data.me} act={act} />}
             </section>
           )}
 

@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { Plan } from "../domain/deposit-escrow";
 import {
-  allPaid, planCasePayout, planRespond, planStaffResolve, planWithdraw, proposeOutcome, reasonsFor, REASON_LABEL, RULES_CONFIRMED, RULES_VERSION,
+  allPaid, localDay, planCasePayout, planRespond, planResolutionDecision, planStaffResolve, planWithdraw, proposeOutcome, reasonsFor, REASON_LABEL, RULES_CONFIRMED, RULES_VERSION,
   type CaseStatus, type FallThroughReason, type Outcome, type Party, type ResolutionInput, type ResolutionSource
 } from "../domain/sale-fall-through";
 import { appendAuditPg, type Queryable } from "./db";
@@ -23,11 +23,11 @@ export interface FallThroughCase {
   id: string; offerId: string; holdingId: string; state: string; reason: FallThroughReason; raisedByParty: Party; raisedOn: string; note: string | null;
   heldCents: number; refundCents: number; releaseCents: number; penaltyCents: number; penaltyUnconfirmed: boolean; basis: string; rulesVersion: string;
   status: CaseStatus; respondedAt: string | null; disputeReason: string | null; resolutionSource: ResolutionSource | null; resolutionReference: string | null;
-  resolvedAt: string | null; createdAt: string;
+  resolvedAt: string | null; createdAt: string; proposedBy: string | null; proposal: ResolutionInput | null;
 }
 const CASE_COLS =
   "c.id, c.offer_id, c.holding_id, c.state, c.reason, c.raised_by_party, c.raised_on, c.note, c.held_cents, c.refund_cents, c.release_cents, c.penalty_cents, " +
-  "c.penalty_unconfirmed, c.basis, c.rules_version, c.status, c.responded_at, c.dispute_reason, c.resolution_source, c.resolution_reference, c.resolved_at, c.created_at";
+  "c.penalty_unconfirmed, c.basis, c.rules_version, c.status, c.responded_at, c.dispute_reason, c.resolution_source, c.resolution_reference, c.resolved_at, c.created_at, c.resolution_proposed_by, c.resolution_proposal";
 const LIVE = "c.status IN ('proposed','disputed','agreed')";
 
 export const caseFromRow = (r: Record<string, unknown>): FallThroughCase => ({
@@ -37,7 +37,9 @@ export const caseFromRow = (r: Record<string, unknown>): FallThroughCase => ({
   penaltyUnconfirmed: r["penalty_unconfirmed"] === true, basis: String(r["basis"]), rulesVersion: String(r["rules_version"]), status: String(r["status"]) as CaseStatus,
   respondedAt: iso(r["responded_at"]), disputeReason: r["dispute_reason"] ? String(r["dispute_reason"]) : null,
   resolutionSource: r["resolution_source"] ? (String(r["resolution_source"]) as ResolutionSource) : null,
-  resolutionReference: r["resolution_reference"] ? String(r["resolution_reference"]) : null, resolvedAt: iso(r["resolved_at"]), createdAt: iso(r["created_at"])!
+  resolutionReference: r["resolution_reference"] ? String(r["resolution_reference"]) : null, resolvedAt: iso(r["resolved_at"]), createdAt: iso(r["created_at"])!,
+  proposedBy: r["resolution_proposed_by"] ? String(r["resolution_proposed_by"]) : null,
+  proposal: r["resolution_proposal"] && typeof r["resolution_proposal"] === "object" ? (r["resolution_proposal"] as ResolutionInput) : null
 });
 
 async function audit(tx: Queryable, actorId: string, actorRole: string, holdingId: string, eventType: string, payload: Record<string, unknown>) {
@@ -76,14 +78,19 @@ const CTX_SQL =
 async function context(q: Queryable, offerId: string, userId: string): Promise<Ctx | null> {
   const r = (await q.query(CTX_SQL, [offerId])).rows[0];
   if (!r) return null;
-  const party: Party | null = String(r["buyer_user_id"]) === userId ? "buyer" : String(r["owner_user_id"]) === userId ? "owner" : null;
+  // Someone who is both the buyer and the owner of the listing has no side: they cannot raise or answer a case against themselves.
+  const party: Party | null = String(r["buyer_user_id"]) === String(r["owner_user_id"]) ? null : String(r["buyer_user_id"]) === userId ? "buyer" : String(r["owner_user_id"]) === userId ? "owner" : null;
+  const state = String(r["jurisdiction"] ?? "").trim();
+  const acceptedAt = r["accepted_at"] ?? r["submitted_at"];
   return {
-    status: String(r["status"]), priceCents: Number(r["price_cents"]), party, state: String(r["jurisdiction"] ?? "").trim(), acceptedOn: day(r["accepted_at"] ?? r["submitted_at"]),
+    status: String(r["status"]), priceCents: Number(r["price_cents"]), party, state, acceptedOn: acceptedAt instanceof Date ? localDay(acceptedAt, state) : day(acceptedAt),
     holdingId: r["holding_id"] ? String(r["holding_id"]) : null, holdingStatus: r["holding_status"] ? String(r["holding_status"]) : null
   };
 }
 
-const today = () => new Date().toISOString().slice(0, 10);
+const today = (state: string) => localDay(new Date(), state);
+/** At most this many cases per offer in a day: stops raise / withdraw cycles from flooding the other side with messages. */
+export const MAX_RAISES_PER_DAY = 3;
 
 /** Why a new case cannot be raised now, or null when it can. */
 async function blocker(q: Queryable, ctx: Ctx, offerId: string): Promise<string | null> {
@@ -91,6 +98,7 @@ async function blocker(q: Queryable, ctx: Ctx, offerId: string): Promise<string 
   if (ctx.status !== "accepted") return "Only an accepted offer can fall through. Before that, withdraw the offer.";
   if (!ctx.holdingId || ctx.holdingStatus !== "open") return "No open deposit record exists for this offer yet. Ask us to open it, then try again.";
   if ((await q.query(`SELECT 1 FROM sale_fall_through c WHERE c.offer_id = $1::uuid AND ${LIVE} LIMIT 1`, [offerId])).rows.length > 0) return "A sale-fell-through request is already open on this offer.";
+  if (Number((await q.query("SELECT count(*) AS n FROM sale_fall_through WHERE offer_id = $1::uuid AND created_at > now() - interval '1 day'", [offerId])).rows[0]?.["n"] ?? 0) >= MAX_RAISES_PER_DAY) return "Too many requests on this offer today. Try again tomorrow or ask us for help.";
   if ((await q.query("SELECT 1 FROM deposit_release WHERE holding_id = $1::uuid AND status = 'pending' LIMIT 1", [ctx.holdingId])).rows.length > 0) return "A payment from the deposit is waiting for staff approval. Ask us to settle it first.";
   return null;
 }
@@ -116,7 +124,7 @@ export async function fallThroughView(db: Queryable, userId: string, expected: P
 
 async function compute(q: Queryable, ctx: Ctx, party: Party, reason: FallThroughReason): Promise<Out<Outcome & { heldCents: number }>> {
   const heldCents = await heldOf(q, ctx.holdingId!);
-  const r = proposeOutcome({ reason, party, state: ctx.state, priceCents: ctx.priceCents, heldCents, acceptedOn: ctx.acceptedOn, raisedOn: today() });
+  const r = proposeOutcome({ reason, party, state: ctx.state, priceCents: ctx.priceCents, heldCents, acceptedOn: ctx.acceptedOn, raisedOn: today(ctx.state) });
   return r.ok ? { ok: true, value: { ...r.value, heldCents } } : no(409, r.error);
 }
 
@@ -138,9 +146,12 @@ async function liveCase(tx: Queryable, holdingId: string, offerId: string): Prom
 
 export async function raiseFallThrough(db: Queryable, userId: string, expected: Party, offerId: string, reason: FallThroughReason, note: string | null): Promise<Out<{ id: string }>> {
   const out = await atomic<Out<{ id: string }>>(db, async tx => {
+    const first = await context(tx, offerId, userId);
+    if (!first || first.party !== expected) return no(404, "Offer not found.");
+    // Lock the deposit first, then read the offer and deposit state again: what was read before the lock can be stale.
+    if (first.holdingId) await tx.query("SELECT 1 FROM deposit_holding WHERE id = $1::uuid FOR UPDATE", [first.holdingId]);
     const ctx = await context(tx, offerId, userId);
     if (!ctx || ctx.party !== expected) return no(404, "Offer not found.");
-    if (ctx.holdingId) await tx.query("SELECT 1 FROM deposit_holding WHERE id = $1::uuid FOR UPDATE", [ctx.holdingId]);
     const why = await blocker(tx, ctx, offerId);
     if (why) return no(409, why);
     const o = await compute(tx, ctx, expected, reason);
@@ -149,7 +160,7 @@ export async function raiseFallThrough(db: Queryable, userId: string, expected: 
     await tx.query(
       "INSERT INTO sale_fall_through (id, offer_id, holding_id, state, reason, raised_by_party, raised_by, raised_on, note, held_cents, refund_cents, release_cents, penalty_cents, penalty_unconfirmed, basis, rules_version) " +
       "VALUES ($1::uuid,$2::uuid,$3::uuid,$4,$5,$6,$7::uuid,$8::date,$9,$10,$11,$12,$13,$14,$15,$16)",
-      [id, offerId, ctx.holdingId, ctx.state, reason, expected, userId, today(), note, v.heldCents, v.refundCents, v.releaseCents, v.penaltyCents, v.penaltyUnconfirmed, v.basis, v.rulesVersion]
+      [id, offerId, ctx.holdingId, ctx.state, reason, expected, userId, today(ctx.state), note, v.heldCents, v.refundCents, v.releaseCents, v.penaltyCents, v.penaltyUnconfirmed, v.basis, v.rulesVersion]
     );
     await audit(tx, userId, expected, ctx.holdingId!, "escrow.fall_through_raised", {
       caseId: id, offerId, reason, heldCents: v.heldCents, refundCents: v.refundCents, releaseCents: v.releaseCents, penaltyCents: v.penaltyCents, rulesVersion: v.rulesVersion, rulesConfirmed: v.rulesConfirmed
@@ -231,13 +242,43 @@ async function staffCase(tx: Queryable, caseId: string): Promise<FallThroughCase
   return r ? caseFromRow(r) : null;
 }
 
-/** After a dispute: staff record the agreement or court order (or that the sale goes ahead). An outcome with money moves to agreed, ready for payout requests. */
-export async function resolveDispute(db: Queryable, staff: StaffRef, caseId: string, input: ResolutionInput): Promise<Out<{ status: CaseStatus }>> {
-  const out = await atomic<Out<{ status: CaseStatus; offerId: string }>>(db, async tx => {
+const ownHolding = (c: FallThroughCase, holdingId: string) => c.holdingId === holdingId;
+
+/**
+ * After a dispute, step one: a staff member records the agreement or court order (or that the sale goes ahead) as a PROPOSAL. Nothing changes
+ * for the parties and the deposit stays frozen until a different person with approval rights decides it (decideResolution).
+ */
+export async function resolveDispute(db: Queryable, staff: StaffRef, holdingId: string, caseId: string, input: ResolutionInput): Promise<Out<{ status: CaseStatus; pendingApproval: true }>> {
+  return atomic<Out<{ status: CaseStatus; pendingApproval: true }>>(db, async tx => {
     const c = await staffCase(tx, caseId);
-    if (!c) return no(404, "Case not found.");
+    if (!c || !ownHolding(c, holdingId)) return no(404, "Case not found.");
     const stop = denied(planStaffResolve(c));
     if (stop) return stop;
+    if (input.source !== "sale_continues" && input.refundCents + input.releaseCents > (await heldOf(tx, c.holdingId))) return no(409, "More than is held in trust.");
+    await tx.query(
+      "UPDATE sale_fall_through SET resolution_proposal = $2::jsonb, resolution_proposed_by = $3::uuid, resolution_proposed_at = now(), updated_at = now() WHERE id = $1::uuid",
+      [caseId, JSON.stringify(input), staff.id]
+    );
+    await audit(tx, staff.id, staff.role, c.holdingId, "escrow.fall_through_resolution_proposed", {
+      caseId, source: input.source, reference: input.reference, reason: input.reason, refundCents: input.refundCents, releaseCents: input.releaseCents
+    });
+    return { ok: true, value: { status: c.status, pendingApproval: true as const } };
+  });
+}
+
+/** Step two: a different staff member with escrow.approve approves (the resolution takes effect) or rejects (the proposal is cleared) it. */
+export async function decideResolution(db: Queryable, staff: StaffRef, holdingId: string, caseId: string, outcome: "approve" | "reject", reason: string): Promise<Out<{ status: CaseStatus }>> {
+  const out = await atomic<Out<{ status: CaseStatus; offerId: string }>>(db, async tx => {
+    const c = await staffCase(tx, caseId);
+    if (!c || !ownHolding(c, holdingId)) return no(404, "Case not found.");
+    const stop = denied(planResolutionDecision(c, staff.id));
+    if (stop) return stop;
+    const input = c.proposal!;
+    if (outcome === "reject") {
+      await tx.query("UPDATE sale_fall_through SET resolution_proposal = NULL, resolution_proposed_by = NULL, resolution_proposed_at = NULL, updated_at = now() WHERE id = $1::uuid", [caseId]);
+      await audit(tx, staff.id, staff.role, c.holdingId, "escrow.fall_through_resolution_rejected", { caseId, reason, proposedBy: c.proposedBy });
+      return { ok: true, value: { status: c.status, offerId: c.offerId } };
+    }
     const goesAhead = input.source === "sale_continues";
     if (!goesAhead && input.refundCents + input.releaseCents > (await heldOf(tx, c.holdingId))) return no(409, "More than is held in trust.");
     const status: CaseStatus = goesAhead ? "withdrawn" : "agreed";
@@ -247,11 +288,13 @@ export async function resolveDispute(db: Queryable, staff: StaffRef, caseId: str
     );
     if (!goesAhead) await settleAgreed(tx, { ...c, refundCents: input.refundCents, releaseCents: input.releaseCents }, { kind: "system", userId: staff.id });
     await audit(tx, staff.id, staff.role, c.holdingId, "escrow.fall_through_resolved", {
-      caseId, source: input.source, reference: input.reference, reason: input.reason, refundCents: input.refundCents, releaseCents: input.releaseCents, proposedRefundCents: c.refundCents, proposedReleaseCents: c.releaseCents
+      caseId, source: input.source, reference: input.reference, reason: input.reason, decisionReason: reason, proposedBy: c.proposedBy, refundCents: input.refundCents, releaseCents: input.releaseCents,
+      proposedRefundCents: c.refundCents, proposedReleaseCents: c.releaseCents
     });
     return { ok: true, value: { status, offerId: c.offerId } };
   });
   if (!out.ok) return out;
+  if (outcome === "reject") return { ok: true, value: { status: out.value.status } };
   await notifyFallThrough(db, out.value.offerId, out.value.status === "agreed"
     ? { kind: "fallen_through", to: ["buyer", "owner"] }
     : { kind: "update", to: "buyer", title: "Dispute settled: the sale goes ahead", text: "Staff recorded that the sale goes ahead. The deposit is no longer frozen." });
@@ -260,10 +303,10 @@ export async function resolveDispute(db: Queryable, staff: StaffRef, caseId: str
 }
 
 /** Asks for the next payout of an agreed case, pre-filled from the case. A second staff member approves it in the usual way (decideRelease). */
-export async function requestCasePayout(db: Queryable, staff: StaffRef, caseId: string): Promise<Out<{ releaseId: string; kind: "refund" | "release"; amountCents: number }>> {
+export async function requestCasePayout(db: Queryable, staff: StaffRef, holdingId: string, caseId: string): Promise<Out<{ releaseId: string; kind: "refund" | "release"; amountCents: number }>> {
   return atomic(db, async tx => {
     const c = await staffCase(tx, caseId);
-    if (!c) return no(404, "Case not found.");
+    if (!c || !ownHolding(c, holdingId)) return no(404, "Case not found.");
     if ((await tx.query("SELECT status FROM deposit_holding WHERE id = $1::uuid", [c.holdingId])).rows[0]?.["status"] !== "open") return no(409, "This deposit record is closed.");
     const linked = (await tx.query("SELECT kind, status FROM deposit_release WHERE fall_through_id = $1::uuid", [caseId])).rows.map(r => ({ kind: String(r["kind"]) as "refund" | "release", status: String(r["status"]) }));
     const pending = (await tx.query("SELECT 1 FROM deposit_release WHERE holding_id = $1::uuid AND status = 'pending' LIMIT 1", [c.holdingId])).rows.length > 0;
