@@ -12,7 +12,8 @@ export const isPortal = (v: unknown): v is Portal => typeof v === "string" && (P
 export const PORTAL_LABELS: Record<Portal, string> = { airbnb: "Airbnb", vrbo: "VRBO", booking_com: "Booking.com" };
 
 /** "api": we push to the portal's partner endpoint. "manual": the owner lists on the portal and pastes the link back. */
-export type PortalMode = "api" | "manual";
+export type PortalMode = "api" | "manual" | "channex";
+export const PORTAL_MODES = ["api", "manual", "channex"] as const;
 export const TRANSACTION_TYPES = ["rent", "sale"] as const;
 export type TransactionType = (typeof TRANSACTION_TYPES)[number];
 
@@ -57,7 +58,7 @@ export function validateBaseUrl(raw: unknown): Checked<string> {
 export function parsePortalConfig(body: Record<string, unknown>): Checked<PortalConfigInput> {
   const out: PortalConfigInput = {};
   if ("enabled" in body) { if (typeof body["enabled"] !== "boolean") return { ok: false, error: "enabled must be true or false." }; out.enabled = body["enabled"]; }
-  if ("mode" in body) { if (body["mode"] !== "api" && body["mode"] !== "manual") return { ok: false, error: "mode must be api or manual." }; out.mode = body["mode"]; }
+  if ("mode" in body) { if (!(PORTAL_MODES as readonly unknown[]).includes(body["mode"])) return { ok: false, error: "mode must be api, manual or channex." }; out.mode = body["mode"] as PortalMode; }
   if ("baseUrl" in body) {
     if (body["baseUrl"] === null || body["baseUrl"] === "") out.baseUrl = null;
     else { const u = validateBaseUrl(body["baseUrl"]); if (!u.ok) return u; out.baseUrl = u.value; }
@@ -75,9 +76,12 @@ export function parsePortalConfig(body: Record<string, unknown>): Checked<Portal
   return { ok: true, value: out };
 }
 
-/** The portal can take pushes only when it is switched on and, in api mode, has an address, a key and a webhook secret. */
+/**
+ * The portal can take pushes only when it is switched on and, in api mode, has an address, a key and a webhook secret.
+ * Channex mode uses the account-wide CHANNEX_* keys, checked when staff switch it on (savePortal).
+ */
 export function portalReady(p: { enabled: boolean; mode: PortalMode; baseUrl: string | null; hasKey: boolean; hasWebhookSecret: boolean }): boolean {
-  return p.enabled && (p.mode === "manual" || (p.baseUrl !== null && p.hasKey && p.hasWebhookSecret));
+  return p.enabled && (p.mode === "manual" || p.mode === "channex" || (p.baseUrl !== null && p.hasKey && p.hasWebhookSecret));
 }
 
 // ---- Per-listing settings (owner / agent) ----------------------------------------------------------------------------------
@@ -85,7 +89,8 @@ export function portalReady(p: { enabled: boolean; mode: PortalMode; baseUrl: st
 export const CANCELLATION_POLICIES = ["flexible", "moderate", "strict"] as const;
 export type CancellationPolicy = (typeof CANCELLATION_POLICIES)[number];
 
-export interface PortalCustomFields { houseRules?: string; cancellationPolicy?: CancellationPolicy; minNights?: number; maxGuests?: number }
+/** nightlyRateCents: price per night for short stays (Channex portals); without it a seventh of the weekly rent is used. */
+export interface PortalCustomFields { houseRules?: string; cancellationPolicy?: CancellationPolicy; minNights?: number; maxGuests?: number; nightlyRateCents?: number }
 export interface ListingPortalInput { enabled: boolean; custom: PortalCustomFields; manualUrl?: string | null }
 
 const clean = (s: string) => s.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, "").trim();
@@ -99,7 +104,7 @@ export function parseListingPortalInput(raw: unknown): Checked<ListingPortalInpu
   if (c !== undefined && c !== null) {
     if (typeof c !== "object" || Array.isArray(c)) return { ok: false, error: "custom must be an object." };
     const f = c as Record<string, unknown>;
-    for (const k of Object.keys(f)) if (!["houseRules", "cancellationPolicy", "minNights", "maxGuests"].includes(k)) return { ok: false, error: `Unknown field: ${k.slice(0, 30)}.` };
+    for (const k of Object.keys(f)) if (!["houseRules", "cancellationPolicy", "minNights", "maxGuests", "nightlyRateCents"].includes(k)) return { ok: false, error: `Unknown field: ${k.slice(0, 30)}.` };
     if (f["houseRules"] !== undefined && f["houseRules"] !== "") {
       if (typeof f["houseRules"] !== "string" || f["houseRules"].length > 2000) return { ok: false, error: "House rules must be text of at most 2000 characters." };
       custom.houseRules = clean(f["houseRules"]);
@@ -117,6 +122,11 @@ export function parseListingPortalInput(raw: unknown): Checked<ListingPortalInpu
       const n = f["maxGuests"];
       if (typeof n !== "number" || !Number.isInteger(n) || n < 1 || n > 50) return { ok: false, error: "Maximum guests must be a whole number from 1 to 50." };
       custom.maxGuests = n;
+    }
+    if (f["nightlyRateCents"] !== undefined && f["nightlyRateCents"] !== null && f["nightlyRateCents"] !== "") {
+      const n = f["nightlyRateCents"];
+      if (typeof n !== "number" || !Number.isInteger(n) || n < 1000 || n > 10_000_000) return { ok: false, error: "Nightly price must be from $10 to $100,000." };
+      custom.nightlyRateCents = n;
     }
   }
   let manualUrl: string | null | undefined;
