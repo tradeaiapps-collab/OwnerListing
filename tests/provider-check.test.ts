@@ -4,6 +4,7 @@ import { readAuthEnv } from "../src/server/auth/config";
 import { mfaKeyUsable } from "../src/domain/mfa";
 import { resolveMessaging } from "../src/domain/messaging-settings";
 import { mapTileSource } from "../src/domain/map-tiles";
+import { domainConfig } from "../src/adapters/feed-providers";
 
 const FULL: Record<string, string> = {
   APP_URL: "https://www.example.com.au",
@@ -35,6 +36,8 @@ const FULL: Record<string, string> = {
   APNS_BUNDLE_ID: "au.com.example.ownerlisting",
   APNS_PRIVATE_KEY: "-----BEGIN PRIVATE KEY-----\\nMIIB\\n-----END PRIVATE KEY-----\\n",
   ABN_LOOKUP_GUID: "12345678-90ab-cdef-1234-567890abcdef",
+  DOMAIN_CLIENT_ID: "client_0123456789abcdef0123456789abcdef",
+  DOMAIN_CLIENT_SECRET: "secret_0123456789abcdef0123456789abcdef",
   GOOGLE_PLACES_API_KEY: "AIza" + "b".repeat(35),
   NEXT_PUBLIC_MAP_TILE_URL: "https://tiles.example.com/{z}/{x}/{y}.png",
   NEXT_PUBLIC_MAP_ATTRIBUTION: "© Example Maps"
@@ -45,7 +48,7 @@ const by = (env: Record<string, string | undefined>, production = true) =>
 describe("provider readiness check", () => {
   it("reports every provider ready with a full set of real-looking keys", () => {
     const r = checkProviders(FULL, { production: true });
-    expect(r.map(x => x.id)).toEqual(["google", "mfa", "payway", "smtp", "sms", "webpush", "fcm", "apns", "abn", "address", "maptiles"]);
+    expect(r.map(x => x.id)).toEqual(["google", "mfa", "payway", "smtp", "sms", "webpush", "fcm", "apns", "abn", "domain", "address", "maptiles"]);
     expect(r.filter(x => x.status !== "ready")).toEqual([]);
     expect(r.some(x => x.blocking)).toBe(false);
   });
@@ -96,7 +99,7 @@ describe("provider readiness check", () => {
     const cases: Record<string, string | undefined>[] = [FULL, {}, { ...FULL, SESSION_SECRET: "short" }, { ...FULL, GOOGLE_CLIENT_SECRET: "" },
       { ...FULL, APP_MODE: "admin" }, { ...FULL, APP_MODE: "admin", ADMIN_APP_URL: "https://admin.example.com.au" },
       { ...FULL, MFA_SECRET_KEY: "abc" }, { ...FULL, SMS_ACCOUNT_SID: "AC123" }, { ...FULL, SMS_PROVIDER: "other" },
-      { ...FULL, SMTP_PORT: "2526" }, { ...FULL, SMTP_FROM: "nobody" }, { ...FULL, SMTP_USER: "" }];
+      { ...FULL, SMTP_PORT: "2526" }, { ...FULL, SMTP_FROM: "nobody" }, { ...FULL, SMTP_USER: "" }, { ...FULL, DOMAIN_CLIENT_SECRET: "" }];
     for (const env of cases) {
       const r = by(env, false);
       expect(r.google.status === "ready", JSON.stringify(env)).toBe(readAuthEnv(env) !== null);
@@ -106,6 +109,7 @@ describe("provider readiness check", () => {
       if (r.sms.status === "ready") expect(m.sms).not.toBeNull();
       if (m.sms === null) expect(r.sms.status).not.toBe("ready");
       expect(r.smtp.status === "ready").toBe(m.email !== null);
+      expect(r.domain.status === "ready").toBe(domainConfig(env) !== null);
     }
   });
 

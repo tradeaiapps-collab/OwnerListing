@@ -1,4 +1,4 @@
-// Plain JavaScript readiness check for the outside-provider keys (Google sign-in, MFA key, PayWay, SMTP, SMS, ABN Lookup, address suggestions, map tiles).
+// Plain JavaScript readiness check for the outside-provider keys (Google sign-in, MFA key, PayWay, SMTP, SMS, ABN Lookup, Domain API, address suggestions, map tiles).
 // Shared by scripts/check-providers.mjs (plain Node, cannot import TypeScript) and instrumentation.ts. Types: provider-check.d.mts.
 // Mirrors the rules the real readers apply (src/server/auth/config.ts, src/domain/mfa.ts, src/domain/messaging-settings.ts,
 // src/adapters/*); tests/provider-check.test.ts keeps the two in step. Reports key NAMES only, never values.
@@ -129,6 +129,18 @@ const PROVIDERS = [
     whenOff: "ABNs are only checksum-checked and recorded as \"not confirmed\"; staff review them.",
     keys: ["ABN_LOOKUP_GUID"],
     check: get => (get("ABN_LOOKUP_GUID") && !ABN_GUID.test(get("ABN_LOOKUP_GUID")) ? ["ABN_LOOKUP_GUID must be the GUID the ABR emailed (8-4-4-4-12 hex)."] : [])
+  },
+  {
+    // Mirrors domainConfig in src/adapters/feed-providers.ts: both keys or the Domain feed connector stays off.
+    id: "domain", label: "Domain API (property feeds)", required: false,
+    unlocks: "Domain listings and sold results imported into property data and, where the licence allows, comparables.",
+    whenOff: "Domain feed connections fail their runs with \"not set up\"; agency CRM (REAXML) feeds still work.",
+    keys: ["DOMAIN_CLIENT_ID", "DOMAIN_CLIENT_SECRET"],
+    check(get) {
+      const p = [];
+      for (const k of ["DOMAIN_CLIENT_ID", "DOMAIN_CLIENT_SECRET"]) if (get(k) && /\s/.test(get(k))) p.push(`${k} must not contain spaces.`);
+      return p;
+    }
   },
   {
     id: "address", label: "Address suggestions (Google Places)", required: false,
