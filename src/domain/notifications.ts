@@ -92,6 +92,7 @@ export const KINDS = {
   appointment_invited: "appointments",
   appointment_accepted: "appointments",
   appointment_declined: "appointments",
+  appointment_reminder: "appointments",
   offer_received: "offers",
   offer_accepted: "offers",
   offer_rejected: "offers",
@@ -105,7 +106,7 @@ export type Kind = keyof typeof KINDS;
 export const isKind = (v: unknown): v is Kind => typeof v === "string" && Object.prototype.hasOwnProperty.call(KINDS, v);
 
 /** Kinds worth a text message when the user has opted in: they are time-critical and short. */
-const SMS_KINDS: ReadonlySet<Kind> = new Set<Kind>(["message_received", "appointment_invited", "offer_received", "offer_accepted", "offer_rejected", "offer_countered"]);
+const SMS_KINDS: ReadonlySet<Kind> = new Set<Kind>(["message_received", "appointment_invited", "appointment_reminder", "offer_received", "offer_accepted", "offer_rejected", "offer_countered"]);
 
 export interface NotificationParams { [key: string]: string | undefined }
 export interface RenderedNotification { kind: Kind; category: Category; title: string; body: string; link: string | null; smsText: string | null }
@@ -129,6 +130,7 @@ export function renderNotification(kind: Kind, p: NotificationParams = {}): Rend
     case "appointment_invited": return t("Agent appointment invitation", `${name} invited you to act as agent for ${listing}.`);
     case "appointment_accepted": return t("Appointment accepted", `${name} accepted the appointment for ${listing}.`);
     case "appointment_declined": return t("Appointment declined", `${name} declined the appointment for ${listing}.`);
+    case "appointment_reminder": return t("Reminder: invitation waiting", `${name}'s invitation to act as agent for ${listing} is still waiting for your answer.`);
     case "offer_received": return t("New offer received", `A new offer was made on ${listing}. Review it in your offers.`);
     case "offer_accepted": return t("Offer accepted", `Your offer on ${listing} was accepted by the owner.`);
     case "offer_rejected": return t("Offer not accepted", `Your offer on ${listing} was not accepted.`);
@@ -181,7 +183,24 @@ export function summarizeNotifications(items: readonly NotificationView[]): Elen
   };
 }
 
+export const APPOINTMENT_KINDS = ["appointment_invited", "appointment_accepted", "appointment_declined", "appointment_reminder"] as const;
+export type AppointmentKind = (typeof APPOINTMENT_KINDS)[number];
+export const isAppointmentKind = (v: unknown): v is AppointmentKind => typeof v === "string" && (APPOINTMENT_KINDS as readonly string[]).includes(v);
+
+/** Elena explains an appointment notification and what happens next. Uses only the kind, so it reads none of the user's data. */
+export function explainAppointment(kind: AppointmentKind): ElenaReply {
+  const agentLink = { label: "Your appointments", href: "/agent/appointments" };
+  const mine = { label: "Your listings", href: "/listings/mine" };
+  switch (kind) {
+    case "appointment_invited": return { pose: "tablet", links: [agentLink], text: "An owner has invited you to act as agent for their listing. Nothing changes until you accept: you get no access to the listing, enquiries or offers before then. Accepting needs a verified licence for the listing's state. Open your appointments to see the scope and permissions the owner chose, then accept or decline. Either way the owner is told." };
+    case "appointment_reminder": return { pose: "listening", links: [agentLink], text: "This invitation has been waiting for your answer. It stays open until you reply or the owner withdraws it. If you don't want it, declining lets the owner choose someone else quickly. If you accept, you will work within the scope and permissions shown on the invitation." };
+    case "appointment_accepted": return { pose: "wave", links: [mine], text: "Your agent accepted, so they can now act on the listing within the scope and permissions you chose. Offer decisions always stay with you. You can change their permissions or revoke the appointment at any time from your listing." };
+    case "appointment_declined": return { pose: "front", links: [mine], text: "Your agent declined, so nobody has been appointed and nothing about your listing changed. You can invite another agent, or keep managing the listing yourself." };
+  }
+}
+
 const ANSWERS: { match: RegExp; text: string; links?: { label: string; href: string }[] }[] = [
+  { match: /\b(appointments?|agent invit\w*|invitations?|appoint)\b/i, text: "Agent appointments are by agreement: an owner invites an agent, and nothing is granted until the agent accepts. Both sides are notified when it is accepted or declined, and the agent gets one reminder if an invitation sits unanswered. Choose in-app, email and text for Appointments in your settings.", links: [SETTINGS_LINK] },
   { match: /\b(sms|texts?|text messages?|txt|phone)\b/i, text: "Text messages are only for time-critical events: new messages, appointment invitations and offers. They are off until you turn them on, and you need a verified phone number. Switch SMS off in your notification settings any time.", links: [SETTINGS_LINK, { label: "Verify your phone", href: "/buyer/verification" }] },
   { match: /\b(unsubscribe|stop|opt.?out|marketing|news|promo)/i, text: "Marketing and news emails are off unless you opt in, and every one has an unsubscribe link. Turn them off in your settings or use that link: either takes effect straight away.", links: [SETTINGS_LINK] },
   { match: /\b(required|security|account|can'?t turn|cannot turn|locked)\b/i, text: "Account and security notices are required service messages (for example a sign-in or password notice), so they stay on in the app and by email. You can still choose whether you also want a text.", links: [SETTINGS_LINK] },
