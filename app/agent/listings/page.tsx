@@ -26,7 +26,7 @@ export default function AgentListings() {
   return (
     <main>
       <h1>Appointed listings</h1>
-      <p><a href="/agent/workspace">Workspace: performance, leads and clients</a> · <a href="/agent/appointments">Invitations and appointments</a> · <a href="/agent/team">Team</a> · <a href="/agent/imports">Imported from your CRM</a> · <a href="/agent/ad-leads">My leads</a></p>
+      <p><a href="/agent/workspace">Workspace: performance, leads and clients</a> · <a href="/agent/appointments">Invitations and appointments</a> · <a href="/agent/team">Team</a> · <a href="/agent/imports">Imported from your CRM</a> · <a href="/agent/leads">Buyer leads</a> · <a href="/agent/ad-leads">Ad leads</a></p>
       {error && <p role="alert">{error}</p>}
       {items === null && !error && <p className="muted" role="status">Loading…</p>}
       {items && items.length === 0 && <p className="empty">You have no active appointments.</p>}
