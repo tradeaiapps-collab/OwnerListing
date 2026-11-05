@@ -5,6 +5,7 @@ import {
   type CaseStatus, type FallThroughReason, type Outcome, type Party, type ResolutionInput, type ResolutionSource
 } from "../domain/sale-fall-through";
 import { appendAuditPg, type Queryable } from "./db";
+import { notifyDeposit } from "./deposit-notify";
 import { notifyFallThrough } from "./fall-through-notify";
 import type { StaffRef } from "./deposit-escrow-db";
 
@@ -195,6 +196,7 @@ async function settleAgreed(tx: Queryable, c: FallThroughCase, by: { kind: "buye
 }
 
 export async function respondFallThrough(db: Queryable, userId: string, expected: Party, offerId: string, decision: "agree" | "dispute", note: string | null): Promise<Out<{ status: CaseStatus }>> {
+  let agreed: { refundCents: number; releaseCents: number } | null = null;
   const out = await atomic<Out<{ status: CaseStatus }>>(db, async tx => {
     const ctx = await context(tx, offerId, userId);
     if (!ctx || ctx.party !== expected || !ctx.holdingId) return no(404, "Offer not found.");
@@ -207,11 +209,14 @@ export async function respondFallThrough(db: Queryable, userId: string, expected
       "UPDATE sale_fall_through SET status = $2, responded_by = $3::uuid, responded_at = now(), dispute_reason = $4, resolution_source = $5, updated_at = now() WHERE id = $1::uuid",
       [c.id, status, userId, decision === "dispute" ? note : null, decision === "agree" ? "parties" : null]
     );
-    if (decision === "agree") await settleAgreed(tx, c, { kind: expected, userId });
+    if (decision === "agree") { await settleAgreed(tx, c, { kind: expected, userId }); agreed = { refundCents: c.refundCents, releaseCents: c.releaseCents }; }
     await audit(tx, userId, expected, c.holdingId, `escrow.fall_through_${decision === "agree" ? "agreed" : "disputed"}`, { caseId: c.id, offerId, note });
     return { ok: true, value: { status } };
   });
-  if (out.ok && decision === "agree") await notifyFallThrough(db, offerId, { kind: "fallen_through", to: ["buyer", "owner"] });
+  if (out.ok && decision === "agree") {
+    await notifyFallThrough(db, offerId, { kind: "fallen_through", to: ["buyer", "owner"] });
+    if (agreed) await notifyDeposit(db, { offerId }, { kind: "resolved", ...(agreed as { refundCents: number; releaseCents: number }) });
+  }
   if (out.ok && decision === "dispute") await notifyFallThrough(db, offerId, { kind: "update", to: other(expected), title: "Outcome disputed: deposit frozen", text: "The other side disputed the proposed outcome. The deposit is frozen until staff record an agreement or court order." });
   return out;
 }
@@ -268,6 +273,7 @@ export async function resolveDispute(db: Queryable, staff: StaffRef, holdingId: 
 
 /** Step two: a different staff member with escrow.approve approves (the resolution takes effect) or rejects (the proposal is cleared) it. */
 export async function decideResolution(db: Queryable, staff: StaffRef, holdingId: string, caseId: string, outcome: "approve" | "reject", reason: string): Promise<Out<{ status: CaseStatus }>> {
+  let divided: { refundCents: number; releaseCents: number } | null = null;
   const out = await atomic<Out<{ status: CaseStatus; offerId: string }>>(db, async tx => {
     const c = await staffCase(tx, caseId);
     if (!c || !ownHolding(c, holdingId)) return no(404, "Case not found.");
@@ -286,7 +292,7 @@ export async function decideResolution(db: Queryable, staff: StaffRef, holdingId
       "UPDATE sale_fall_through SET status = $2, refund_cents = $3, release_cents = $4, penalty_cents = CASE WHEN $5::boolean THEN penalty_cents ELSE 0 END, resolution_source = $6, resolution_reference = $7, resolved_by = $8::uuid, resolved_at = now(), updated_at = now() WHERE id = $1::uuid",
       [caseId, status, goesAhead ? c.refundCents : input.refundCents, goesAhead ? c.releaseCents : input.releaseCents, goesAhead, input.source, input.reference, staff.id]
     );
-    if (!goesAhead) await settleAgreed(tx, { ...c, refundCents: input.refundCents, releaseCents: input.releaseCents }, { kind: "system", userId: staff.id });
+    if (!goesAhead) { await settleAgreed(tx, { ...c, refundCents: input.refundCents, releaseCents: input.releaseCents }, { kind: "system", userId: staff.id }); divided = { refundCents: input.refundCents, releaseCents: input.releaseCents }; }
     await audit(tx, staff.id, staff.role, c.holdingId, "escrow.fall_through_resolved", {
       caseId, source: input.source, reference: input.reference, reason: input.reason, decisionReason: reason, proposedBy: c.proposedBy, refundCents: input.refundCents, releaseCents: input.releaseCents,
       proposedRefundCents: c.refundCents, proposedReleaseCents: c.releaseCents
@@ -295,6 +301,8 @@ export async function decideResolution(db: Queryable, staff: StaffRef, holdingId
   });
   if (!out.ok) return out;
   if (outcome === "reject") return { ok: true, value: { status: out.value.status } };
+  const d = divided as { refundCents: number; releaseCents: number } | null;
+  if (d) await notifyDeposit(db, { offerId: out.value.offerId }, { kind: "split", ...d });
   await notifyFallThrough(db, out.value.offerId, out.value.status === "agreed"
     ? { kind: "fallen_through", to: ["buyer", "owner"] }
     : { kind: "update", to: "buyer", title: "Dispute settled: the sale goes ahead", text: "Staff recorded that the sale goes ahead. The deposit is no longer frozen." });
@@ -304,6 +312,11 @@ export async function decideResolution(db: Queryable, staff: StaffRef, holdingId
 
 /** Asks for the next payout of an agreed case, pre-filled from the case. A second staff member approves it in the usual way (decideRelease). */
 export async function requestCasePayout(db: Queryable, staff: StaffRef, holdingId: string, caseId: string): Promise<Out<{ releaseId: string; kind: "refund" | "release"; amountCents: number }>> {
+  const out = await requestCasePayoutTx(db, staff, holdingId, caseId);
+  if (out.ok) await notifyDeposit(db, { holdingId }, { kind: "payout_pending", payout: out.value.kind, amountCents: out.value.amountCents });
+  return out;
+}
+function requestCasePayoutTx(db: Queryable, staff: StaffRef, holdingId: string, caseId: string): Promise<Out<{ releaseId: string; kind: "refund" | "release"; amountCents: number }>> {
   return atomic(db, async tx => {
     const c = await staffCase(tx, caseId);
     if (!c || !ownHolding(c, holdingId)) return no(404, "Case not found.");
