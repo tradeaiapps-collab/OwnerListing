@@ -10,6 +10,9 @@ const SIZE_WIDE = 180, SIZE_NARROW = 132;
 const WALK_PX_PER_S = 115; // her pace in the clip at the wide size (about 1.3 m/s for a figure 150 px tall); scaled by frame size
 const PANEL_W = 380, GUTTER = 16, CLIP_MS = 6000, RETURN_DELAY_MS = 5000;
 
+/** Elena is static (a still image, no walking, stepping or clips). Set to true to bring the motion back. */
+const MOTION_ENABLED = false;
+
 const size = () => (window.innerWidth < 600 ? SIZE_NARROW : SIZE_WIDE);
 const reduced = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
@@ -87,16 +90,9 @@ export default function ElenaWalker({ name, still, video }: { name: string; stil
       const p = phaseRef.current;
       if (d.open) {
         document.body.classList.add("ew-active");
-        if (p !== "stopped" && p !== "down") spot.current = Math.random();
-        if (p === "perched") walk(slotPt(), target(slotPt(), spot.current), "down", "stopped");
-        else if (p === "up") walk(posRef.current, target(slotPt(), spot.current), "down", "stopped");
+        // Motion is switched off: she stays perched on the heading while the chat is open.
       } else {
-        timer.current = window.setTimeout(() => {
-          const q = phaseRef.current;
-          if (q === "perched") return;
-          walk(q === "stopped" ? target(slotPt(), spot.current) : posRef.current, slotPt(), "up", "perched");
-          document.body.classList.remove("ew-active");
-        }, RETURN_DELAY_MS);
+        document.body.classList.remove("ew-active");
       }
     };
     window.addEventListener(GUIDE_STATE_EVENT, onState);
@@ -134,7 +130,7 @@ export default function ElenaWalker({ name, still, video }: { name: string; stil
 
   const out = phase !== "perched";
   // Always an animated clip for Elena: idle on the heading, listening while someone types or she thinks, nodding then talking on an answer.
-  const clip = !video || calm ? null : phase === "down" ? "walk-to-camera" : phase === "up" ? "turn-away-left" : phase === "stopped" && reply ? "front-talk" : "idle-tall";
+  const clip: string | null = MOTION_ENABLED && video && !calm ? (phase === "down" ? "walk-to-camera" : phase === "up" ? "turn-away-left" : phase === "stopped" && reply ? "front-talk" : "idle-tall") : null;
   const style = out ? { transform: `translate(${pos.x}px, ${pos.y}px)`, transition: pos.animate ? `transform ${pos.dur ?? 3000}ms linear ${pos.delay ?? 0}ms` : "none" } : undefined;
 
   return (

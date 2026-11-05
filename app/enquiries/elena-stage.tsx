@@ -19,6 +19,9 @@ const STATUS_TEXT: Record<StageState["status"], (name: string) => string> = {
   careful: n => `${n} is keeping things private`
 };
 
+/** Elena is static: no looping body-language clips. Set to true to bring them back. */
+const STAGE_MOTION = false;
+
 const VOICE_KEY = "ol:assistant-voice";
 // Voice is on unless the person has switched it off, so she answers aloud without anyone hunting for a toggle.
 const readVoice = () => { try { return window.localStorage.getItem(VOICE_KEY) !== "off"; } catch { return true; } };
@@ -104,7 +107,7 @@ export function ElenaStage({ persona, state, speaking, voice, onVoice, turnKey, 
     q.addEventListener("change", sync);
     return () => q.removeEventListener("change", sync);
   }, []);
-  const clip = persona.id !== "elena" || still ? undefined : clipFor(state, speaking || reacting);
+  const clip = !STAGE_MOTION || persona.id !== "elena" || still ? undefined : clipFor(state, speaking || reacting);
 
   return (
     <aside className={`el-stage${collapsed ? " is-collapsed" : ""}${speaking ? " is-speaking" : ""}${state.pointing ? " is-pointing" : ""}`} aria-label={personaLabel(persona)}>
