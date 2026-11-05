@@ -10,6 +10,9 @@ type Conn = {
   id: string; provider: "reaxml" | "domain"; label: string; agentUserId: string | null; territory: Territory; schedule: string; sourceUrl: string | null;
   hasPushToken: boolean; comparablesLicensed: boolean; licenceTerms: string | null; enabled: boolean; nextRunAt: string | null; lastRun: Run | null;
 };
+type Outbound = { enabled: boolean; url: string | null; failures: number; enabledAt: string | null };
+type Delivery = { id: string; eventType: string; state: string; attempts: number; lastStatus: number | null; lastError: string | null; createdAt: string };
+const EVENT_NAMES: Record<string, string> = { "listing.sold": "Sold", "listing.rented": "Rented", "listing.delisted": "Delisted", "listing.reactivated": "Back on market" };
 const PROVIDERS = { reaxml: "Agency CRM (REAXML)", domain: "Domain API" } as const;
 /** Queensland time, matching the schedule labels (02:00 Queensland). */
 const when = (s: string | null) => (s ? new Date(s).toLocaleString("en-AU", { dateStyle: "medium", timeStyle: "short", timeZone: "Australia/Brisbane" }) : "—");
@@ -25,6 +28,8 @@ export default function StaffFeeds() {
   const [token, setToken] = useState<{ id: string; token: string } | null>(null);
   const [runs, setRuns] = useState<{ id: string; label: string; rows: Run[] } | null>(null);
   const [busy, setBusy] = useState("");
+  const [sync, setSync] = useState<{ id: string; label: string; outbound: Outbound; deliveries: Delivery[]; url: string } | null>(null);
+  const [secret, setSecret] = useState("");
   const [form, setForm] = useState({ provider: "reaxml", label: "", agentUserId: "", sourceUrl: "", states: "QLD", postcodes: "", suburbs: "", schedule: "daily", comparablesLicensed: false, licenceTerms: "" });
 
   const load = useCallback(async () => {
@@ -56,6 +61,26 @@ export default function StaffFeeds() {
     if (!r?.ok) return setError("Could not load the run log.");
     const d = await r.json();
     setRuns({ id: c.id, label: c.label, rows: d.runs });
+  }
+
+  async function showSync(c: Conn) {
+    setError(""); setSecret("");
+    const r = await fetch(`/api/staff/feeds/${c.id}`).catch(() => null);
+    if (!r || !r.ok) { setError("Could not load status sync."); return; }
+    const d = await r.json();
+    setSync({ id: c.id, label: c.label, outbound: d.outbound, deliveries: d.deliveries, url: d.outbound?.url ?? "" });
+  }
+  async function syncAction(action: "enable_outbound" | "disable_outbound") {
+    if (!sync) return;
+    setBusy("sync"); setError(""); setNotice("");
+    try {
+      const r = await fetch(`/api/staff/feeds/${sync.id}`, { method: "POST", headers: JSON_HEADERS, body: JSON.stringify({ action, url: sync.url }) });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) { setError(d.error ?? "That did not work."); return; }
+      if (d.secret) setSecret(d.secret);
+      setNotice(action === "enable_outbound" ? "Status sync is on. Only changes from now on are sent." : "Status sync is off.");
+      await showSync({ id: sync.id, label: sync.label } as Conn);
+    } finally { setBusy(""); }
   }
 
   async function onCreate(e: React.FormEvent<HTMLFormElement>) {
@@ -121,10 +146,48 @@ export default function StaffFeeds() {
                 <button type="button" className="secondary" disabled={!!busy} onClick={() => act(c, c.enabled ? "pause" : "resume")}>{c.enabled ? "Pause" : "Resume"}</button>
                 {c.provider === "reaxml" && <button type="button" className="secondary" disabled={!!busy} onClick={() => act(c, "rotate_token")}>New push token</button>}
                 <button type="button" className="secondary" onClick={() => showRuns(c)}>Run log</button>
+                {c.provider === "reaxml" && <button type="button" className="secondary" onClick={() => showSync(c)}>Status sync</button>}
               </div></td>
             </tr>
           ))}</tbody>
         </table></div>
+      )}
+
+      {sync && (
+        <section aria-labelledby="sync-h" className="feeds-sync">
+          <h2 id="sync-h">Status sync back to the CRM: {sync.label}</h2>
+          <p className="muted">When a listing is sold, rented or delisted (or comes back on the market) we send a signed JSON message to the CRM's webhook address. Retries run over about 2.5 hours; after 10 failed messages in a row sync switches itself off.</p>
+          <p><span className={`status-pill ${sync.outbound.enabled ? "good" : ""}`}>{sync.outbound.enabled ? "On" : "Off"}</span>{sync.outbound.failures > 0 && <> <small className="muted">{sync.outbound.failures} recent failure{sync.outbound.failures === 1 ? "" : "s"}</small></>}</p>
+          {secret && (
+            <div className="feeds-token" role="status">
+              <strong>Signing secret: copy it now, it is not shown again.</strong>
+              <dl><dt>Secret</dt><dd><code>{secret}</code></dd><dt>Header</dt><dd><code>ol-signature: t=&lt;unix time&gt;,v1=&lt;HMAC-SHA256 of "&lt;t&gt;.&lt;body&gt;"&gt;</code></dd></dl>
+              <button type="button" className="secondary" onClick={() => setSecret("")}>Done</button>
+            </div>
+          )}
+          <div className="stack feeds-form">
+            <label>CRM webhook address (https) <input type="url" value={sync.url} onChange={e => setSync({ ...sync, url: e.target.value })} placeholder="https://crm.example.com/hooks/listings" maxLength={500} /></label>
+            <div className="row-actions">
+              <button type="button" disabled={busy === "sync" || !sync.url} onClick={() => syncAction("enable_outbound")}>{sync.outbound.enabled ? "Save and new secret" : "Turn on"}</button>
+              {sync.outbound.enabled && <button type="button" className="secondary" disabled={busy === "sync"} onClick={() => syncAction("disable_outbound")}>Turn off</button>}
+              <button type="button" className="secondary" onClick={() => { setSync(null); setSecret(""); }}>Close</button>
+            </div>
+          </div>
+          <h3>Recent messages</h3>
+          {sync.deliveries.length === 0 ? <p className="empty">Nothing sent yet.</p> : (
+            <div className="table-wrap"><table className="feeds-table">
+              <thead><tr><th>Queued</th><th>Change</th><th>Result</th><th className="num">Tries</th></tr></thead>
+              <tbody>{sync.deliveries.map(x => (
+                <tr key={x.id}>
+                  <td data-label="Queued"><span>{when(x.createdAt)}</span></td>
+                  <td data-label="Change"><span>{EVENT_NAMES[x.eventType] ?? x.eventType}</span></td>
+                  <td data-label="Result"><span className={`status-pill ${x.state === "delivered" ? "good" : x.state === "failed" ? "bad" : "warn"}`}>{x.state === "delivered" ? "Delivered" : x.state === "failed" ? "Failed" : "Waiting"}</span>{x.lastError && <div><small>{x.lastError}</small></div>}</td>
+                  <td data-label="Tries" className="num">{x.attempts}</td>
+                </tr>
+              ))}</tbody>
+            </table></div>
+          )}
+        </section>
       )}
 
       {runs && (
