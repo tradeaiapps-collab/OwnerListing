@@ -19,6 +19,10 @@ vi.mock("../src/server/ad-lead-db", () => ({
   assignLead: async (...a: unknown[]) => { state.calls.push(["assign", a[2], a[3]]); return { ok: true }; },
   setLeadStatus: async (...a: unknown[]) => { state.calls.push(["status", a[3], a[4]]); return (a[4] === "boom" ? { ok: false, error: "x" } : { ok: true }); }
 }));
+vi.mock("../src/server/meta-lead-settings-db", async () => {
+  const { metaConfig } = await import("../src/adapters/ad-lead-providers");
+  return { loadMetaConfig: async (_d: unknown, env: Record<string, string | undefined>) => metaConfig(env) };
+});
 import { GET as metaGet, POST as metaPost } from "../app/api/webhooks/ad-leads/meta/route";
 import { POST as googlePost } from "../app/api/webhooks/ad-leads/google/[id]/route";
 import { GET as staffGet } from "../app/api/staff/ad-leads/route";

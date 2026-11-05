@@ -83,6 +83,14 @@ async function domainToken(fetchFn: FetchFn, c: DomainConfig, now: number): Prom
   return body.access_token;
 }
 
+/** Checks the keys by asking Domain for a token only; no listings are fetched. Messages never include the keys or Domain's response body. */
+export async function testDomainConnection(fetchFn: FetchFn, c: DomainConfig | null): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (!c) return { ok: false, error: "No Domain keys are set." };
+  tokenCache.delete(c.clientId);
+  try { await domainToken(fetchFn, c, Date.now()); return { ok: true }; }
+  catch (e) { return { ok: false, error: e instanceof FeedFetchError ? e.message : "Could not check the keys." }; }
+}
+
 /** Searches Sale, Rent and Sold listings for the territory, page by page, up to the per-run cap. */
 export async function fetchDomain(fetchFn: FetchFn, c: DomainConfig | null, territory: Territory, now = Date.now()): Promise<FetchResult> {
   if (!c) return { error: "The Domain API is not set up (DOMAIN_CLIENT_ID and DOMAIN_CLIENT_SECRET)." };

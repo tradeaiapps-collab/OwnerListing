@@ -6,6 +6,7 @@ import {
   type ReceiptInput, type ReleaseRequestInput, type StatementLine
 } from "../domain/deposit-escrow";
 import { appendAuditPg, type Queryable } from "./db";
+import { notifyDeposit } from "./deposit-notify";
 import { casesForHolding, finishIfPaid, FROZEN_MESSAGE, holdingFrozen, liveCases, type FallThroughCase } from "./sale-fall-through-db";
 
 // Constant SQL text; user input only travels as bound parameters. Every write and its audit_event row run in one transaction, with the
@@ -149,6 +150,7 @@ export async function createHolding(db: Queryable, staff: StaffRef, input: NewHo
         );
         await audit(tx, staff, "deposit_holding", id, "escrow.holding_opened", { offerId: input.offerId, listingId, requiredCents: required, dueDate: input.dueDate, reference });
       });
+      await notifyDeposit(db, { holdingId: id }, { kind: "held", amountCents: required, dueDate: input.dueDate });
       return { ok: true, value: { id, reference } };
     } catch (e) {
       const msg = (e as Error).message;
@@ -194,7 +196,12 @@ export function recordReceipt(db: Queryable, staff: StaffRef, holdingId: string,
 }
 
 /** First person: asks for the held deposit to be paid out. Nothing moves until a different person approves. */
-export function requestRelease(db: Queryable, staff: StaffRef, holdingId: string, input: ReleaseRequestInput) {
+export async function requestRelease(db: Queryable, staff: StaffRef, holdingId: string, input: ReleaseRequestInput): Promise<Out<{ releaseId: string }>> {
+  const out = await requestReleaseTx(db, staff, holdingId, input);
+  if (out.ok) await notifyDeposit(db, { holdingId }, { kind: "payout_pending", payout: input.kind, amountCents: input.amountCents });
+  return out;
+}
+function requestReleaseTx(db: Queryable, staff: StaffRef, holdingId: string, input: ReleaseRequestInput) {
   return withHolding<{ releaseId: string }>(db, holdingId, async (tx, h, movements, releases) => {
     if (await holdingFrozen(tx, holdingId)) return no(409, FROZEN_MESSAGE);
     const stop = denied(planReleaseRequest(h, movements, releases, input));
@@ -216,7 +223,8 @@ export function requestRelease(db: Queryable, staff: StaffRef, holdingId: string
 export async function decideRelease(db: Queryable, staff: StaffRef, releaseId: string, outcome: unknown, reason: unknown): Promise<Out<{ outcome: "approved" | "rejected"; holdingStatus: HoldingStatus }>> {
   const holdingId = (await db.query("SELECT holding_id FROM deposit_release WHERE id = $1::uuid", [releaseId])).rows[0]?.["holding_id"];
   if (!holdingId) return no(404, "Request not found.");
-  return withHolding(db, String(holdingId), async (tx, h, movements, releases) => {
+  let paid: { payout: "release" | "refund"; amountCents: number } | null = null;
+  const out = await withHolding<{ outcome: "approved" | "rejected"; holdingStatus: HoldingStatus }>(db, String(holdingId), async (tx, h, movements, releases) => {
     const r = releases.find(x => x.id === releaseId)!;
     const held = balanceOf(h.requiredCents, movements).heldCents;
     const stop = denied(planReleaseDecision(staff.id, r, outcome, reason, held, r.amountCents));
@@ -242,8 +250,12 @@ export async function decideRelease(db: Queryable, staff: StaffRef, releaseId: s
       releaseId, amountCents: r.amountCents, requestedBy: r.requestedBy, reason: text, holdingStatus: status
     });
     if (approved && r.fallThroughId) await finishIfPaid(tx, staff, r.fallThroughId);
+    if (approved) paid = { payout: r.kind, amountCents: r.amountCents };
     return { ok: true, value: { outcome: approved ? "approved" : "rejected", holdingStatus: status } };
   });
+  // Sent only after the approval is committed; a rejected request or a refused approval sends nothing.
+  if (out.ok && paid) await notifyDeposit(db, { holdingId: String(holdingId) }, { kind: "paid", ...(paid as { payout: "release" | "refund"; amountCents: number }) });
+  return out;
 }
 
 /** Cancels a record opened in error or for an offer that fell through before any money arrived. */
