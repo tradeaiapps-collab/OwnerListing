@@ -11,6 +11,7 @@ import { expireCountersPg } from "../../../../../src/server/offer-counter-db";
 import { offerLinkPg, offersForOwnerPg, submitOfferPg } from "../../../../../src/server/offers-db";
 import { csrfGuard } from "../../../../../src/server/csrf";
 import { requireListingHandler } from "../../../../../src/server/owner-listing";
+import { emitOfferReceived } from "../../../../../src/server/automation-db";
 import { notifyOfferOwner } from "../../../../../src/server/notifier";
 import { requireCurrentTerms } from "../../../../../src/server/terms-guard";
 import { withApi } from "../../../../../src/server/api/with-api";
@@ -100,6 +101,7 @@ async function handlePost(req: Request, { params }: Ctx) {
     payload: { listingId: id }
   });
   await notifyOfferOwner(db, id);
+  await emitOfferReceived(db, { offerId: saved.id, listingId: id, buyerUserId: link.buyerUserId });
   return NextResponse.json({ offer: saved }, { status: 201 });
 }
 

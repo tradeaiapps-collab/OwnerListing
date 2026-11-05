@@ -27,7 +27,7 @@ export const CATEGORY_INFO: Record<Category, CategoryInfo> = {
   offers: { label: "Offers", text: "Offers received, decisions and counter-offers.", locked: [], smsAllowed: true, defaults: { inApp: true, email: true, sms: false } },
   listings: { label: "Listings and saved searches", text: "New properties that match your saved searches.", locked: [], smsAllowed: false, defaults: { inApp: true, email: false, sms: false } },
   account: { label: "Account and security", text: "Sign-in, security and account notices. These are required.", locked: ["inApp", "email"], smsAllowed: false, defaults: { inApp: true, email: true, sms: false } },
-  marketing: { label: "News and offers", text: "Product news and promotions. Off until you opt in.", locked: [], smsAllowed: false, defaults: { inApp: false, email: false, sms: false } }
+  marketing: { label: "News and offers", text: "Product news and promotions. Off until you opt in.", locked: [], smsAllowed: true, defaults: { inApp: false, email: false, sms: false } }
 };
 
 export type ChannelPrefs = Record<Channel, boolean>;
@@ -241,7 +241,7 @@ export function suggestPreferences(stats: readonly CategoryStats[], prefs: Prefe
     const rate = s.read / s.total;
     if (rate < 0.2 && prefs[s.category].email && !info.locked.includes("email"))
       out.push({ category: s.category, channel: "email", turnOn: false, reason: `You opened ${s.read} of ${s.total} ${info.label.toLowerCase()} notifications lately. Turning off email would cut the noise; they would still appear in the app.` });
-    else if (rate >= 0.8 && info.smsAllowed && !prefs[s.category].sms && hasVerifiedPhone && s.category !== "listings")
+    else if (rate >= 0.8 && info.smsAllowed && !prefs[s.category].sms && hasVerifiedPhone && s.category !== "listings" && s.category !== "marketing")
       out.push({ category: s.category, channel: "sms", turnOn: true, reason: `You open most of your ${info.label.toLowerCase()} notifications. A text would reach you faster. It's your choice, and you can turn it off any time.` });
   }
   return out;
