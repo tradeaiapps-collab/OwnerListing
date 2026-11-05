@@ -47,6 +47,7 @@ export const STAFF_SECTIONS: readonly StaffSection[] = [
   { href: "/staff/meta-leads", label: "Facebook / Instagram keys", permissions: ["ad_leads.manage"] },
   { href: "/staff/ad-leads/rules", label: "Lead routing rules", permissions: ["ad_leads.manage"] },
   { href: "/staff/automation", label: "Automation", permissions: ["automation.manage"] },
+  { href: "/staff/valuation-settings", label: "Property valuations", permissions: ["valuation.manage"] },
   { href: "/staff/cron-secrets", label: "Scheduler secrets", permissions: ["config.edit"] },
   { href: "/staff/campaigns", label: "Campaigns", permissions: ["campaign.manage"] },
   { href: "/staff/feeds", label: "Property data feeds", permissions: ["feeds.manage"] },
