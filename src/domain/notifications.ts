@@ -95,6 +95,10 @@ export const KINDS = {
   appointment_reminder: "appointments",
   signature_requested: "account",
   signature_reminder: "account",
+  consultation_booked: "appointments",
+  consultation_confirmed: "appointments",
+  consultation_cancelled: "appointments",
+  review_received: "messages",
   booking_received: "appointments",
   booking_conflict: "appointments",
   offer_received: "offers",
@@ -102,6 +106,7 @@ export const KINDS = {
   offer_rejected: "offers",
   offer_countered: "offers",
   saved_search_match: "listings",
+  market_shift: "listings",
   security_notice: "account",
   system_notice: "account",
   marketing_news: "marketing",
@@ -112,7 +117,7 @@ export type Kind = keyof typeof KINDS;
 export const isKind = (v: unknown): v is Kind => typeof v === "string" && Object.prototype.hasOwnProperty.call(KINDS, v);
 
 /** Kinds worth a text message when the user has opted in: they are time-critical and short. */
-const SMS_KINDS: ReadonlySet<Kind> = new Set<Kind>(["message_received", "appointment_invited", "appointment_reminder", "offer_received", "offer_accepted", "offer_rejected", "offer_countered", "automation_alert"]);
+const SMS_KINDS: ReadonlySet<Kind> = new Set<Kind>(["message_received", "appointment_invited", "appointment_reminder", "consultation_booked", "consultation_cancelled", "offer_received", "offer_accepted", "offer_rejected", "offer_countered", "automation_alert"]);
 
 export interface NotificationParams { [key: string]: string | undefined }
 export interface RenderedNotification { kind: Kind; category: Category; title: string; body: string; link: string | null; smsText: string | null }
@@ -130,6 +135,7 @@ export function renderNotification(kind: Kind, p: NotificationParams = {}): Rend
   const name = clip(p["name"], 60, "Someone");
   const doc = `"${clip(p["document"], 120, "a document")}"`;
   const link = safeLink(p["link"]);
+  const when = clip(p["when"], 80, "the booked time");
   const t = (title: string, body: string, sms: boolean = SMS_KINDS.has(kind)): RenderedNotification =>
     ({ kind, category: KINDS[kind], title, body, link, smsText: sms ? `${title}. ${body}` : null });
   switch (kind) {
@@ -140,6 +146,10 @@ export function renderNotification(kind: Kind, p: NotificationParams = {}): Rend
     case "appointment_reminder": return t("Reminder: invitation waiting", `${name}'s invitation to act as agent for ${listing} is still waiting for your answer.`);
     case "signature_requested": return t("Signature requested", `${name} has asked you to sign ${doc}. Open it to read the document and sign.`, false);
     case "signature_reminder": return t("Reminder: signature waiting", `${name} is still waiting for your signature on ${doc}. Open it to read the document and sign.`, false);
+    case "consultation_booked": return t("New consultation booked", `${name} booked a consultation with you for ${when}.`);
+    case "consultation_confirmed": return t("Consultation confirmed", `Your consultation with ${name} is confirmed for ${when}.`);
+    case "consultation_cancelled": return t("Consultation cancelled", `${name} cancelled the consultation planned for ${when}.`);
+    case "review_received": return t("New review", `${name} left you a review.`);
     case "booking_received": return t("New booking from a portal", `${name} booked ${listing} through a listing portal. The dates are now blocked on your calendar.`);
     case "booking_conflict": return t("Booking clashes with another", `A booking from ${name} for ${listing} overlaps dates that are already booked. Contact the portal or the guest to sort it out.`);
     case "offer_received": return t("New offer received", `A new offer was made on ${listing}. Review it in your offers.`);
@@ -147,6 +157,7 @@ export function renderNotification(kind: Kind, p: NotificationParams = {}): Rend
     case "offer_rejected": return t("Offer not accepted", `Your offer on ${listing} was not accepted.`);
     case "offer_countered": return t("Counter-offer", `There is a counter-offer on ${listing}.`);
     case "saved_search_match": return t("New property matches your search", `${listing} matches one of your saved searches.`);
+    case "market_shift": return t(clip(p["title"], 80, "Market update"), clip(p["text"], 400, "There is a change in one of your areas."));
     case "security_notice": return t(clip(p["title"], 80, "Security notice"), clip(p["text"], 400, "Please review your account security settings."));
     case "system_notice": return t(clip(p["title"], 80, "Notice"), clip(p["text"], 400, "There is an update about your account."));
     case "marketing_news": return t(clip(p["title"], 80, "News"), clip(p["text"], 400, "There is news from us."));
