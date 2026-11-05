@@ -91,6 +91,7 @@ Required means the site does not work without it. Fail-closed-optional means lea
 | `OFFER_LINK_TOKEN_KEY` | `openssl rand -base64 32` | leave empty | Fail-closed-optional. Empty: offer links are refused. |
 | `ALERT_UNSUBSCRIBE_KEY` | `openssl rand -base64 48` | empty | Fail-closed-optional. Empty: no alerts sent. |
 | `ALERT_CRON_SECRET` | `openssl rand -base64 48` | empty | Fail-closed-optional. Empty: `/api/internal/alerts/run` answers 503. |
+| `ALERT_CRON_SECRET` (digest) | same value | empty | Daily digest worker: call `POST /api/internal/notifications/digest` with header `x-cron-secret` every hour, on the hour. Needs email delivery configured; the digest link in each email needs `ALERT_UNSUBSCRIBE_KEY`. |
 | `ALERT_DELIVERY` | leave empty | empty | Fail-closed-optional. No email/SMS provider is wired yet; nothing sends. |
 | `SMS_CODE_SECRET` | `openssl rand -base64 48` | empty | Fail-closed-optional. Empty: mobile verification "not available yet". |
 | `ID_CHECK_WEBHOOK_SECRET` | empty | empty | Fail-closed-optional. Empty: webhook rejects everything. |

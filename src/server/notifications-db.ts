@@ -6,7 +6,7 @@ import type { Queryable } from "./db";
 const iso = (v: unknown) => (v instanceof Date ? v.toISOString() : new Date(String(v)).toISOString());
 const isoOrNull = (v: unknown) => (v === null || v === undefined ? null : iso(v));
 
-const view = (x: Record<string, unknown>): NotificationView => ({
+export const view = (x: Record<string, unknown>): NotificationView => ({
   id: String(x["id"]), kind: String(x["kind"]), category: String(x["category"]) as Category, title: String(x["title"]), body: String(x["body"]),
   link: x["link"] === null ? null : String(x["link"]), createdAt: iso(x["created_at"]), readAt: isoOrNull(x["read_at"]), archivedAt: isoOrNull(x["archived_at"])
 });

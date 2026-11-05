@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
 import { CATEGORY_INFO } from "../../../../src/domain/notifications";
 import { getDb } from "../../../../src/server/context";
+import { disableDigestPg, readDigestUnsubscribeToken } from "../../../../src/server/notification-digest";
 import { getPreferencesPg, readNotificationUnsubscribeToken, savePreferencesPg } from "../../../../src/server/notifications-db";
 import { withApi } from "../../../../src/server/api/with-api";
 
 /**
- * One-click email unsubscribe for a category (marketing). The signed token is the only credential, so CSRF does not apply.
+ * One-click email unsubscribe for a category (marketing) or the daily digest. The signed token is the only credential, so CSRF does not apply.
  * GET shows a confirm button (a mail scanner opening the link changes nothing); POST switches email off for that category
  * (also the target of List-Unsubscribe-Post) and logs it as consent withdrawn.
  */
@@ -17,11 +18,18 @@ const invalid = () => page("<h1>This link is not valid</h1><p>Open Notification 
 
 async function handleGet(req: Request) {
   const t = tokenOf(req);
+  if (readDigestUnsubscribeToken(t, process.env["ALERT_UNSUBSCRIBE_KEY"]))
+    return page(`<h1>Stop the daily digest?</h1><form method="post" action="?t=${encodeURIComponent(t ?? "")}"><button type="submit">Stop the digest</button></form>`);
   if (!readNotificationUnsubscribeToken(t, process.env["ALERT_UNSUBSCRIBE_KEY"])) return invalid();
   return page(`<h1>Stop these emails?</h1><form method="post" action="?t=${encodeURIComponent(t ?? "")}"><button type="submit">Unsubscribe</button></form>`);
 }
 
 async function handlePost(req: Request) {
+  const digestWho = readDigestUnsubscribeToken(tokenOf(req), process.env["ALERT_UNSUBSCRIBE_KEY"]);
+  if (digestWho) {
+    await disableDigestPg(getDb(), digestWho.userId);
+    return page("<h1>The daily digest is off</h1><p>You will not get it again. You can turn it back on in Notification settings.</p>");
+  }
   const who = readNotificationUnsubscribeToken(tokenOf(req), process.env["ALERT_UNSUBSCRIBE_KEY"]);
   if (!who) return invalid();
   const info = CATEGORY_INFO[who.category];
