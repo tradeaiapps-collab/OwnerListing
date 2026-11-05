@@ -4,7 +4,7 @@ Rules-based, not a trained model. Code: `src/domain/settlement-risk.ts` (points 
 
 Score = 20 base + points, clamped 1 to 100, read as an uncalibrated "fallthrough probability". Bands: low under 35, medium 35 to 59, high 60+.
 - Finance past target: +15, +25 once more than 7 days late
-- Open major/critical inspection finding (buyer's or shared with buyer): +20
+- Open major/critical inspection finding (buyer's or shared with buyer): +20. The owner and agent only see this factor, and the buyer's cancelled-booking factor, for inspections shared with them; staff see all.
 - Inspection cancelled/rescheduled by buyer: +10 each, max 3
 - Another buyer's live offer on the listing: +25
 - Fall-through case proposed or disputed: +25

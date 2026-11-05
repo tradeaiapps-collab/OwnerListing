@@ -11,12 +11,18 @@ const no = (status: number, error: string): { ok: false; status: number; error: 
 const iso = (v: unknown) => (v instanceof Date ? v.toISOString() : v == null ? null : new Date(String(v)).toISOString());
 const day = (v: unknown) => (v == null ? null : v instanceof Date ? v.toISOString().slice(0, 10) : String(v).slice(0, 10));
 const wholeDays = (from: unknown, now: Date) => Math.max(0, Math.floor((now.getTime() - new Date(iso(from) ?? now.toISOString()).getTime()) / DAY));
+// Constant SQL fragments (no user input). Staff see every inspection finding that belongs to the buyer's deal. The owner and agent only see
+// findings from inspections that were shared with them (or that the owner requested): the buyer's private report and cancelled bookings stay private.
+const STAFF_INSPECTIONS = "(i.requested_by = t.buyer_id OR EXISTS (SELECT 1 FROM inspection_share s WHERE s.inspection_id = i.id AND s.shared_with_user_id = t.buyer_id AND s.revoked_at IS NULL))";
+const PARTY_INSPECTIONS = `(i.requested_by = t.seller_id OR EXISTS (SELECT 1 FROM inspection_share s WHERE s.inspection_id = i.id AND s.revoked_at IS NULL
+  AND (s.shared_with_user_id = t.seller_id OR EXISTS (SELECT 1 FROM listing_agent_appointment a WHERE a.listing_id = t.listing_id AND a.agent_user_id = s.shared_with_user_id AND a.revoked_at IS NULL))))`;
 const LIVE_OFFERS = "('submitted','under_review','countered','buyer_countered')";
 
 interface Loaded { id: string; listingTitle: string; state: string; stage: Stage; input: RiskInput }
 
 /** The facts for each settlement id (or every open settlement), as risk inputs. Closed sales are skipped. */
-async function load(db: Queryable, ids: string[] | null, now: Date): Promise<Loaded[]> {
+async function load(db: Queryable, ids: string[] | null, now: Date, view: "staff" | "party" = "staff"): Promise<Loaded[]> {
+  const scope = view === "party" ? PARTY_INSPECTIONS : STAFF_INSPECTIONS;
   const rows = (await db.query(
     `SELECT t.id, t.state, t.current_stage, t.stage_entered_at, l.title, l.price_cents AS asking_cents, o.price_cents AS offer_cents,
             (SELECT m.status FROM settlement_milestones m WHERE m.settlement_id = t.id AND m.stage = t.current_stage) AS current_status,
@@ -26,14 +32,14 @@ async function load(db: Queryable, ids: string[] | null, now: Date): Promise<Loa
                   + (SELECT count(*) FROM inspection i WHERE i.listing_id = t.listing_id AND i.requested_by = t.buyer_id AND i.status = 'cancelled')) AS reschedules,
             (SELECT count(*) FROM inspection_finding f JOIN inspection i ON i.id = f.inspection_id
               WHERE i.listing_id = t.listing_id AND i.status = 'completed' AND f.severity IN ('major','critical') AND f.followup_status NOT IN ('resolved','wont_fix')
-                AND (i.requested_by = t.buyer_id OR EXISTS (SELECT 1 FROM inspection_share s WHERE s.inspection_id = i.id AND s.shared_with_user_id = t.buyer_id AND s.revoked_at IS NULL))) AS major_open,
+                AND ${scope}) AS major_open,
             (SELECT min(f.created_at) FROM inspection_finding f JOIN inspection i ON i.id = f.inspection_id
               WHERE i.listing_id = t.listing_id AND i.status = 'completed' AND f.severity IN ('major','critical') AND f.followup_status NOT IN ('resolved','wont_fix')
-                AND (i.requested_by = t.buyer_id OR EXISTS (SELECT 1 FROM inspection_share s WHERE s.inspection_id = i.id AND s.shared_with_user_id = t.buyer_id AND s.revoked_at IS NULL))) AS major_since,
+                AND ${scope}) AS major_since,
             (SELECT c.status FROM sale_fall_through c WHERE c.offer_id = t.offer_id AND c.status IN ('proposed','disputed') ORDER BY c.created_at DESC LIMIT 1) AS open_case
        FROM settlement_timeline t JOIN property_listing l ON l.id = t.listing_id JOIN formal_offer o ON o.id = t.offer_id
       WHERE t.completed_at IS NULL AND o.status <> 'fallen_through' AND ($1::uuid[] IS NULL OR t.id = ANY($1::uuid[]))
-      ORDER BY t.stage_entered_at LIMIT 1000`, [ids])).rows;
+      ORDER BY t.stage_entered_at, t.id LIMIT 1000`, [ids])).rows;
   if (!rows.length) return [];
   const found = rows.map(r => String(r["id"]));
   const ms = (await db.query("SELECT settlement_id, stage, status, target_date, actual_date FROM settlement_milestones WHERE settlement_id = ANY($1::uuid[])", [found])).rows;
@@ -50,7 +56,7 @@ async function load(db: Queryable, ids: string[] | null, now: Date): Promise<Loa
       daysSinceAccepted: accepted ? Math.max(0, Math.floor((Date.parse(`${today}T00:00:00Z`) - Date.parse(`${accepted}T00:00:00Z`)) / DAY)) : 0,
       financeNeedsConfirmed: done("offer_accepted", "buyer"), buyerInterestConfirmed: done("cooling_off_expires", "agent"),
       openMajorFindings: Number(r["major_open"]), oldestMajorFindingDays: r["major_since"] ? wholeDays(r["major_since"], now) : 0,
-      inspectionReschedules: Number(r["reschedules"]), competingOffers: Number(r["competing"]),
+      inspectionReschedules: view === "party" ? 0 : Number(r["reschedules"]), competingOffers: Number(r["competing"]),
       soldBelowAsking: r["asking_cents"] != null && Number(r["offer_cents"]) < Number(r["asking_cents"]),
       openCase: r["open_case"] === "disputed" ? "disputed" : r["open_case"] === "proposed" ? "proposed" : "none"
     };
@@ -77,12 +83,16 @@ async function recordFallthroughs(tx: Queryable) {
 
 /** Scores every open settlement and stores the result (so the next score can show the trend). Returns the assessments by id. */
 export async function refreshRisks(db: Queryable, now: Date = new Date()): Promise<Map<string, RiskAssessment & { listingTitle: string; stage: Stage }>> {
-  const loaded = await load(db, null, now);
   const out = new Map<string, RiskAssessment & { listingTitle: string; stage: Stage }>();
   await atomic(db, async tx => {
+    // One writer at a time: a request that finds a refresh already running still returns live scores but writes nothing, so staff views never queue or deadlock on each other.
+    const writer = Boolean((await tx.query("SELECT pg_try_advisory_xact_lock(hashtext('settlement_risk_refresh')) AS ok", [])).rows[0]?.["ok"]);
+    const loaded = await load(tx, null, now);
     for (const s of loaded) {
       const a = assessRisk(s.input);
       out.set(s.id, { ...a, listingTitle: s.listingTitle, stage: s.stage });
+      if (!writer) continue;
+      // Rows whose score, band and reasons did not change are left alone (scored_at is when the score last changed).
       await tx.query(
         `INSERT INTO settlement_risks (settlement_id, risk_score, band, primary_risk_factor, secondary_risks, predicted_fallthrough_date, rules_version, scored_at, flagged_at)
          VALUES ($1::uuid, $2, $3, $4, $5::jsonb, $6, $7, $8, CASE WHEN $3 = 'high' THEN $8::timestamptz END)
@@ -91,9 +101,12 @@ export async function refreshRisks(db: Queryable, now: Date = new Date()): Promi
            risk_score = EXCLUDED.risk_score, band = EXCLUDED.band, primary_risk_factor = EXCLUDED.primary_risk_factor, secondary_risks = EXCLUDED.secondary_risks,
            predicted_fallthrough_date = EXCLUDED.predicted_fallthrough_date, rules_version = EXCLUDED.rules_version, scored_at = EXCLUDED.scored_at,
            flagged_at = CASE WHEN EXCLUDED.band = 'high' AND settlement_risks.band <> 'high' THEN EXCLUDED.scored_at ELSE settlement_risks.flagged_at END,
-           addressed_at = CASE WHEN EXCLUDED.band = 'high' THEN NULL WHEN settlement_risks.band = 'high' THEN EXCLUDED.scored_at ELSE settlement_risks.addressed_at END`,
+           addressed_at = CASE WHEN EXCLUDED.band = 'high' THEN NULL WHEN settlement_risks.band = 'high' THEN EXCLUDED.scored_at ELSE settlement_risks.addressed_at END
+         WHERE (settlement_risks.risk_score, settlement_risks.band, settlement_risks.primary_risk_factor, settlement_risks.secondary_risks, settlement_risks.predicted_fallthrough_date, settlement_risks.rules_version)
+               IS DISTINCT FROM (EXCLUDED.risk_score, EXCLUDED.band, EXCLUDED.primary_risk_factor, EXCLUDED.secondary_risks, EXCLUDED.predicted_fallthrough_date, EXCLUDED.rules_version)`,
         [s.id, a.score, a.band, a.primary?.label ?? null, JSON.stringify(a.factors.filter(f => f !== a.primary).map(f => ({ key: f.key, label: f.label, points: f.points }))), a.predictedFallthroughDate, RULES_VERSION, now.toISOString()]);
     }
+    if (!writer) return;
     // A sale that finished or fell through is no longer at risk: close any open high-risk flag.
     await tx.query(
       `UPDATE settlement_risks r SET addressed_at = $1 FROM settlement_timeline t JOIN formal_offer o ON o.id = t.offer_id
@@ -140,24 +153,26 @@ export async function riskDashboard(db: Queryable, now: Date = new Date()): Prom
 
 export interface RiskDetail extends RiskAssessment { settlementId: string; listingTitle: string; stage: Stage; previousScore: number | null; trend: "worse" | "better" | "same"; flaggedAt: string | null }
 
-async function detail(db: Queryable, id: string, now: Date): Promise<Out<RiskDetail>> {
-  const s = (await load(db, [id], now))[0];
+async function detail(db: Queryable, id: string, now: Date, view: "staff" | "party"): Promise<Out<RiskDetail>> {
+  const s = (await load(db, [id], now, view))[0];
   if (!s) return no(404, "No open settlement to score.");
   const a = assessRisk(s.input);
   const stored = (await db.query("SELECT previous_score, risk_score, flagged_at FROM settlement_risks WHERE settlement_id = $1::uuid", [id])).rows[0];
   // The stored score may be older than this live one; compare against what was last stored.
   const before = stored ? (Number(stored["risk_score"]) !== a.score ? Number(stored["risk_score"]) : stored["previous_score"] == null ? null : Number(stored["previous_score"])) : null;
+  // The stored score is the staff view (it includes buyer-private facts), so the owner and agent get no trend or history derived from it.
+  if (view === "party") return { ok: true, value: { ...a, settlementId: id, listingTitle: s.listingTitle, stage: s.stage, previousScore: null, trend: "same", flaggedAt: null } };
   return { ok: true, value: { ...a, settlementId: id, listingTitle: s.listingTitle, stage: s.stage, previousScore: before, trend: trendOf(a.score, before), flaggedAt: iso(stored?.["flagged_at"]) } };
 }
 
 /** Staff view of one settlement's risk (live score, no names). */
-export const staffRiskDetail = (db: Queryable, id: string, now: Date = new Date()) => detail(db, id, now);
+export const staffRiskDetail = (db: Queryable, id: string, now: Date = new Date()) => detail(db, id, now, "staff");
 
 /** The owner's or appointed agent's view. The buyer never sees it: it is advice about their own deal. */
 export async function partyRiskDetail(db: Queryable, userId: string, id: string, now: Date = new Date()): Promise<Out<RiskDetail>> {
   const v = await settlementView(db, userId, id, now);
   if (!v.ok) return v;
   if (v.value.side === "buyer") return no(403, "Risk advice is for the owner and their agent.");
-  return detail(db, id, now);
+  return detail(db, id, now, "party");
 }
 
