@@ -4,6 +4,7 @@ import { getActor } from "../../../../src/server/context";
 import { csrfGuard } from "../../../../src/server/csrf";
 import { failure, unauthenticated } from "../../../../src/server/http";
 import { getSigningRepo, requestContext, signingIds, signingPersona } from "../../../../src/server/signing-db";
+import { mfaRequiredResponse, recentMfaAt } from "../../../../src/server/mfa-context";
 import { withApi } from "../../../../src/server/api/with-api";
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -14,7 +15,7 @@ async function handleGet(req: Request, { params }: Ctx) {
   if (!actor) return unauthenticated();
   const { id } = await params;
   const r = await viewDocument(getSigningRepo(), actor, id, signingIds, requestContext(req));
-  return r.ok ? NextResponse.json({ ...r.value, persona: await signingPersona() }) : failure(r);
+  return r.ok ? NextResponse.json({ ...r.value, persona: await signingPersona(), mfaFresh: (await recentMfaAt(req)) !== undefined }) : failure(r);
 }
 
 /**
@@ -35,7 +36,12 @@ async function handlePost(req: Request, { params }: Ctx) {
     case "send": { const r = await sendDocument(repo, actor, id, signingIds, ctx); return r.ok ? NextResponse.json({ document: r.value }) : failure(r); }
     case "cancel": { const r = await cancelDocument(repo, actor, id, signingIds, ctx); return r.ok ? NextResponse.json({ document: r.value }) : failure(r); }
     case "explain": { const r = await explainClause(repo, actor, id, (body as Record<string, unknown>)["clauseId"], signingIds, ctx); return r.ok ? NextResponse.json(r.value) : failure(r); }
-    case "sign": { const r = await signDocument(repo, actor, id, body, signingIds, ctx); return r.ok ? NextResponse.json({ document: r.value }) : failure(r); }
+    case "sign": {
+      // Signing is binding, so the session must have passed the second sign-in step recently (a hijacked session cannot sign).
+      const verified = await recentMfaAt(req);
+      if (verified === undefined) return mfaRequiredResponse();
+      const r = await signDocument(repo, actor, id, body, signingIds, { ...ctx, mfaVerifiedAt: new Date(verified * 1000).toISOString() }); return r.ok ? NextResponse.json({ document: r.value }) : failure(r);
+    }
     case "decline": { const r = await declineDocument(repo, actor, id, body, signingIds, ctx); return r.ok ? NextResponse.json({ document: r.value }) : failure(r); }
     default: return NextResponse.json({ error: "Unknown action." }, { status: 400 });
   }
