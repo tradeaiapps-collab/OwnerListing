@@ -96,7 +96,7 @@ export default async function Home() {
         <a className="hl-cue" href="#home-find">Search homes</a>
       </section>
 
-      <section className="home-find" id="home-find" aria-labelledby="home-find-t">
+      <section className="home-find" id="home-find" aria-labelledby="home-find-t" data-mode="buy" data-crumb="Find a home">
         <div className="home-wrap home-find-in">
           <p className="eyebrow">Owner-direct property, Australia</p>
           <h2 id="home-find-t">Find a home from its owner</h2>
@@ -104,7 +104,7 @@ export default async function Home() {
         </div>
       </section>
 
-      <section className="home-owner" aria-labelledby="home-owner-t">
+      <section className="home-owner" aria-labelledby="home-owner-t" data-mode="sell" data-crumb="List your home">
         <div className="home-wrap home-owner-in">
           <div>
             <p className="eyebrow">For owners</p>
@@ -118,7 +118,7 @@ export default async function Home() {
         </div>
       </section>
 
-      <section className="home-sec" aria-labelledby="home-latest">
+      <section className="home-sec" aria-labelledby="home-latest" data-mode="buy" data-crumb="Latest listings">
         <div className="home-wrap">
           <div className="home-head">
             <div>
@@ -138,7 +138,7 @@ export default async function Home() {
         </div>
       </section>
 
-      <section className="home-sec home-alt" id="home-how" aria-labelledby="home-how-t">
+      <section className="home-sec home-alt" id="home-how" aria-labelledby="home-how-t" data-mode="sell" data-crumb="How it works">
         <div className="home-wrap">
           <p className="eyebrow">The process</p>
           <h2 id="home-how-t">How it works</h2>
@@ -157,7 +157,7 @@ export default async function Home() {
         </div>
       </section>
 
-      <section className="home-sec" aria-labelledby="home-trust">
+      <section className="home-sec" aria-labelledby="home-trust" data-mode="sell" data-crumb="Trust and safety">
         <div className="home-wrap">
           <p className="eyebrow">Peace of mind</p>
           <h2 id="home-trust">Built so nobody has to trust us with their money</h2>
@@ -191,7 +191,7 @@ export default async function Home() {
         </div>
       </section>
 
-      <section className="home-sec home-alt" aria-labelledby="home-fees">
+      <section className="home-sec home-alt" aria-labelledby="home-fees" data-mode="sell" data-crumb="Cost comparison">
         <div className="home-wrap home-calc">
           <div>
             <p className="eyebrow">Costs</p>
@@ -203,7 +203,7 @@ export default async function Home() {
         </div>
       </section>
 
-      <section className="home-sec" aria-labelledby="home-mortgage">
+      <section className="home-sec" aria-labelledby="home-mortgage" data-mode="buy" data-crumb="Mortgage calculator">
         <div className="home-wrap home-calc">
           <div>
             <p className="eyebrow">Buying</p>
@@ -215,7 +215,7 @@ export default async function Home() {
         </div>
       </section>
 
-      <section className="home-sec" aria-labelledby="home-states">
+      <section className="home-sec" aria-labelledby="home-states" data-mode="buy" data-crumb="Browse by state">
         <div className="home-wrap">
           <p className="eyebrow">Explore</p>
           <h2 id="home-states">Browse by state</h2>
