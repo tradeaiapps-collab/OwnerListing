@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildIcal, buildPortalPayload, ineligibleReason, nextAttemptAt, nights, overlaps, parseIncomingBooking, parseListingPortalInput, parsePortalConfig,
-  payloadHash, portalReady, safeError, validateBaseUrl, type SyndicationListing
+  parseIcal, payloadHash, portalReady, safeError, validateBaseUrl, validateCalendarUrl, type SyndicationListing
 } from "../src/domain/syndication";
 
 const listing: SyndicationListing = {
@@ -96,5 +96,42 @@ describe("syndication rules", () => {
     expect(ics).toContain("X-WR-CALNAME:Beach  shack");
     expect(ics).not.toMatch(/Sam|guest/i);
     expect(ics.endsWith("END:VCALENDAR\r\n")).toBe(true);
+  });
+
+  it("accepts only each portal's own https calendar host", () => {
+    expect(validateCalendarUrl("airbnb", "https://www.airbnb.com.au/calendar/ical/123.ics?s=abc#x")).toEqual({ ok: true, value: "https://www.airbnb.com.au/calendar/ical/123.ics?s=abc" });
+    expect(validateCalendarUrl("booking_com", "https://ical.booking.com/v1/export?t=abc").ok).toBe(true);
+    expect(validateCalendarUrl("vrbo", "https://www.vrbo.com/icalendar/abc.ics").ok).toBe(true);
+    for (const bad of ["http://www.airbnb.com/x.ics", "https://evil.example/airbnb.com/x.ics", "https://airbnb.com.evil.example/x.ics", "https://notairbnb.com/x.ics",
+      "https://user:pw@www.airbnb.com/x", "https://127.0.0.1/x.ics", "https://www.airbnb.com:8443/x.ics", "", 5])
+      expect(validateCalendarUrl("airbnb", bad).ok, String(bad)).toBe(false);
+    expect(validateCalendarUrl("vrbo", "https://www.airbnb.com/x.ics").ok).toBe(false);
+  });
+
+  it("reads blocked stays from iCal and ignores names, notes, cancelled and broken events", () => {
+    const ics = [
+      "BEGIN:VCALENDAR", "VERSION:2.0",
+      "BEGIN:VEVENT", "UID:a1", "DTSTART;VALUE=DATE:20261210", "DTEND;VALUE=DATE:20261214", "SUMMARY:Reserved - Sam Smith", "DESCRIPTION:Phone 0400 000 000", "END:VEVENT",
+      "BEGIN:VEVENT", "UID:a0", "DTSTART:20261201T140000Z", "DTEND:20261203T100000Z", "SUMMARY:Airbnb (Not available)", "END:VEVENT",
+      "BEGIN:VEVENT", "UID:gone", "DTSTART;VALUE=DATE:20261220", "DTEND;VALUE=DATE:20261222", "STATUS:CANCELLED", "END:VEVENT",
+      "BEGIN:VEVENT", "UID:bad", "DTSTART;VALUE=DATE:20261399", "END:VEVENT",
+      "BEGIN:VEVENT", "UID:noend", "DTSTART;VALUE=DATE:20261230", "END:VEVENT",
+      "BEGIN:VEVENT", "UID:long", "DTSTART;VALUE=DATE:20270101", "DTEND;VALUE=DATE:20280601", "END:VEVENT",
+      "BEGIN:VEVENT", "UID:a1", "DTSTART;VALUE=DATE:20261210", "DTEND;VALUE=DATE:20261214", "END:VEVENT",
+      "END:VCALENDAR"
+    ].join("\r\n");
+    expect(parseIcal(ics)).toEqual([
+      { uid: "a0", checkIn: "2026-12-01", checkOut: "2026-12-03" },
+      { uid: "a1", checkIn: "2026-12-10", checkOut: "2026-12-14" },
+      { uid: "noend", checkIn: "2026-12-30", checkOut: "2026-12-31" },
+      { uid: "long", checkIn: "2027-01-01", checkOut: "2028-01-01" }
+    ]);
+    expect(JSON.stringify(parseIcal(ics))).not.toMatch(/Sam|0400/);
+  });
+
+  it("unfolds long lines and refuses text that is not a calendar", () => {
+    expect(parseIcal("BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:very-long-\r\n id\r\nDTSTART;VALUE=DATE:20261210\r\nDTEND;VALUE=DATE:20261211\r\nEND:VEVENT\r\nEND:VCALENDAR")).toEqual([{ uid: "very-long-id", checkIn: "2026-12-10", checkOut: "2026-12-11" }]);
+    expect(parseIcal("<html>Access denied</html>")).toBeNull();
+    expect(parseIcal("BEGIN:VCALENDAR\r\nEND:VCALENDAR")).toEqual([]);
   });
 });

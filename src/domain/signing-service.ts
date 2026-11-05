@@ -11,7 +11,12 @@ export const MAX_SIGNERS = 6;
 export const EXPLAIN_DISCLAIMER = "General information to help you understand this clause. It is not legal advice and does not change the document. Ask a solicitor if you are unsure.";
 
 export type DocStatus = "draft" | "out_for_signature" | "completed" | "declined" | "cancelled";
-export type EventType = "created" | "sent" | "viewed" | "explained" | "signed" | "declined" | "completed" | "cancelled" | "voided" | "retried" | "stored";
+export type EventType = "created" | "sent" | "viewed" | "explained" | "signed" | "declined" | "completed" | "cancelled" | "voided" | "retried" | "stored" | "owner_viewed" | "sign_failed";
+/** Why a document was read or a signature refused, stored as `viewReason` in the event detail (security review 2026-10). */
+export type ViewReason = "owner-check" | "dispute-support" | "sign-attempt";
+export const VIEW_REASONS: readonly ViewReason[] = ["owner-check", "dispute-support", "sign-attempt"];
+/** The owner's own reads are logged, but at most one entry per this long, so refreshing the page does not flood the trail. */
+export const OWNER_VIEW_LOG_GAP_MS = 10 * 60 * 1000;
 export type SigningProvider = "builtin" | "docusign";
 export type ArtifactKind = "signed_pdf" | "certificate";
 export interface ArtifactRow { id: string; kind: ArtifactKind; sha256: string; sizeBytes: number; createdAt: string }
@@ -36,6 +41,8 @@ export interface SigningRepository {
   publishedTemplates(): Promise<PublishedTemplate[]>;
   listing(id: string): Promise<SigningListing | undefined>;
   accountByEmail(email: string): Promise<SignerAccount | undefined>;
+  /** Email address of each signer of the document, by signer id. For the signed PDF only; never sent in JSON. */
+  signerEmails(documentId: string): Promise<Record<string, string>>;
   /** Inserts the document, its signers and the "created" event together. */
   insertDocument(doc: NewDocument, signers: NewSigner[], event: NewEvent): Promise<void>;
   document(id: string): Promise<SigningDoc | undefined>;
@@ -78,6 +85,11 @@ export async function listTemplates(repo: SigningRepository, actor: Actor): Prom
 }
 
 /** The listing's owner generates a draft from a published template. Body: { templateKey, values, signers: [{ email, roleLabel }] }. */
+/**
+ * Draft a document. A signer address with no active account fails with SIGNER_UNAVAILABLE (and says nothing about which address), so the
+ * route can answer exactly as for a success and the endpoint does not reveal which addresses are registered (security review 2026-10).
+ */
+export const SIGNER_UNAVAILABLE = "One or more signers cannot be added.";
 export async function generateDocument(repo: SigningRepository, actor: Actor, listingId: string, body: unknown, ids: Ids, ctx: RequestContext = {}, opts: { provider?: SigningProvider } = {}): Promise<Result<SigningDoc>> {
   if (!UUID_RE.test(listingId)) return fail("not_found", "Listing not found.");
   const listing = await repo.listing(listingId);
@@ -94,18 +106,24 @@ export async function generateDocument(repo: SigningRepository, actor: Actor, li
   if (!Array.isArray(rawSigners) || rawSigners.length < 1 || rawSigners.length > MAX_SIGNERS) return fail("invalid", `Add between 1 and ${MAX_SIGNERS} signers.`);
   const signers: NewSigner[] = [];
   const seen = new Set<string>();
+  const seenEmails = new Set<string>();
+  let unresolved = false;
   for (const s of rawSigners) {
     const email = isObj(s) && typeof s["email"] === "string" ? s["email"].trim().toLowerCase() : "";
     const roleLabel = isObj(s) && typeof s["roleLabel"] === "string" ? s["roleLabel"].trim() : "";
     if (!EMAIL_RE.test(email)) return fail("invalid", "Each signer needs a valid email address.");
     if (roleLabel.length < 2 || roleLabel.length > 60) return fail("invalid", "Each signer needs a role, for example Buyer or Agent.");
+    // Duplicates are caught by address before any lookup, so the answer is the same whether or not the address has an account.
+    if (seenEmails.has(email)) return fail("invalid", "The same person is listed twice.");
+    seenEmails.add(email);
     const acct = await repo.accountByEmail(email);
-    if (!acct || acct.status !== "active") return fail("invalid", `${email} needs an active account on the platform before they can sign. Ask them to sign up first.`);
-    if (seen.has(acct.id)) return fail("invalid", `${email} is listed twice.`);
+    if (!acct || acct.status !== "active") { unresolved = true; continue; }
+    if (seen.has(acct.id)) return fail("invalid", "The same person is listed twice.");
     seen.add(acct.id);
     signers.push({ id: ids.newId(), userId: acct.id, roleLabel });
   }
 
+  if (unresolved) return fail("invalid", SIGNER_UNAVAILABLE);
   const at = ids.now();
   const builtins: Builtins = { listing_title: listing.title, listing_address: listing.address, jurisdiction: listing.jurisdiction, generated_date: formatDate(at), owner_name: listing.ownerName };
   const clauses = renderClauses(content, values.value, builtins);
@@ -160,14 +178,25 @@ export async function viewDocument(repo: SigningRepository, actor: Actor, id: st
   const who = doc && roleOf(doc, actor);
   if (!doc || !who) return NOT_FOUND;
   const signer = who.signer;
-  if (signer && signer.status === "pending" && doc.status === "out_for_signature") {
-    const seen = (await repo.events(id)).some(e => e.eventType === "viewed" && e.signerId === signer.id);
-    if (!seen) await repo.appendEvent({ documentId: id, signerId: signer.id, actorUserId: actor.userId, eventType: "viewed", bodySha256: doc.bodySha256, ip: ctx.ip, userAgent: ctx.userAgent, at: ids.now() });
+  let events = await repo.events(id);
+  let logged = false;
+  if (signer && signer.status === "pending" && doc.status === "out_for_signature" && !events.some(e => e.eventType === "viewed" && e.signerId === signer.id)) {
+    await repo.appendEvent({ documentId: id, signerId: signer.id, actorUserId: actor.userId, eventType: "viewed", bodySha256: doc.bodySha256, ip: ctx.ip, userAgent: ctx.userAgent, detail: { viewReason: "sign-attempt" satisfies ViewReason }, at: ids.now() });
+    logged = true;
   }
+  if (who.role === "owner") {
+    const now = Date.parse(ids.now());
+    const last = events.filter(e => e.eventType === "owner_viewed").map(e => Date.parse(e.occurredAt)).reduce((a, b) => Math.max(a, b), 0);
+    if (!(now - last < OWNER_VIEW_LOG_GAP_MS)) {
+      await repo.appendEvent({ documentId: id, actorUserId: actor.userId, eventType: "owner_viewed", bodySha256: doc.bodySha256, ip: ctx.ip, userAgent: ctx.userAgent, detail: { viewReason: "owner-check" satisfies ViewReason }, at: ids.now() });
+      logged = true;
+    }
+  }
+  if (logged) events = await repo.events(id);
   return { ok: true, value: {
     document: doc,
     viewer: { role: who.role, ...(signer ? { signerId: signer.id, signerStatus: signer.status } : {}), canSign: !!signer && signer.status === "pending" && doc.status === "out_for_signature" },
-    events: await repo.events(id)
+    events
   } };
 }
 
@@ -189,19 +218,24 @@ export async function signDocument(repo: SigningRepository, actor: Actor, id: st
   const pre = UUID_RE.test(id) ? await repo.document(id) : undefined;
   const signer = pre && pre.status !== "draft" ? pre.signers.find(s => s.userId === actor.userId) : undefined;
   if (!pre || !signer) return NOT_FOUND;
-  if (pre.provider === "docusign") return fail("conflict", "Sign this document in DocuSign: use the Sign with DocuSign button.");
-  if (pre.status !== "out_for_signature") return fail("conflict", "This document is no longer open for signing.");
-  if (signer.status !== "pending") return fail("conflict", "You have already responded to this document.");
-  if (!isObj(body) || body["consent"] !== true) return fail("invalid", "Tick the box to agree to sign electronically.");
+  // Every refusal from here on is written to the audit trail (who, when, from where, and which check failed). Nothing typed is stored.
+  const refuse = async (r: SigningRepository, reason: string, f: Failure): Promise<Failure> => {
+    await r.appendEvent({ documentId: id, signerId: signer.id, actorUserId: actor.userId, eventType: "sign_failed", bodySha256: pre.bodySha256, ip: ctx.ip, userAgent: ctx.userAgent, detail: { viewReason: "sign-attempt" satisfies ViewReason, reason }, at: ids.now() });
+    return f;
+  };
+  if (pre.provider === "docusign") return refuse(repo, "wrong_provider", fail("conflict", "Sign this document in DocuSign: use the Sign with DocuSign button."));
+  if (pre.status !== "out_for_signature") return refuse(repo, "closed", fail("conflict", "This document is no longer open for signing."));
+  if (signer.status !== "pending") return refuse(repo, "already_responded", fail("conflict", "You have already responded to this document."));
+  if (!isObj(body) || body["consent"] !== true) return refuse(repo, "no_consent", fail("invalid", "Tick the box to agree to sign electronically."));
   const typed = typeof body["typedName"] === "string" ? body["typedName"] : "";
-  if (!sameName(typed, signer.displayName)) return fail("invalid", "Type your full name exactly as it appears on your account.");
-  if (!(await repo.events(id)).some(e => e.eventType === "viewed" && e.signerId === signer.id)) return fail("conflict", "Open and read the document before signing.");
+  if (!sameName(typed, signer.displayName)) return refuse(repo, "name_mismatch", fail("invalid", "Type your full name exactly as it appears on your account."));
+  if (!(await repo.events(id)).some(e => e.eventType === "viewed" && e.signerId === signer.id)) return refuse(repo, "not_opened", fail("conflict", "Open and read the document before signing."));
 
   return repo.atomic(id, async tx => {
     const doc = await tx.document(id);
     const at = ids.now();
-    if (!doc || doc.status !== "out_for_signature") return fail("conflict", "This document is no longer open for signing.");
-    if (!(await tx.decide(signer.id, "signed", typed.trim().replace(/\s+/g, " "), at))) return fail("conflict", "You have already responded to this document.");
+    if (!doc || doc.status !== "out_for_signature") return refuse(tx, "closed", fail("conflict", "This document is no longer open for signing."));
+    if (!(await tx.decide(signer.id, "signed", typed.trim().replace(/\s+/g, " "), at))) return refuse(tx, "already_responded", fail("conflict", "You have already responded to this document."));
     await tx.appendEvent({ documentId: id, signerId: signer.id, actorUserId: actor.userId, eventType: "signed", bodySha256: doc.bodySha256, ip: ctx.ip, userAgent: ctx.userAgent, detail: { role: signer.roleLabel, consent: "electronic signature", ...(ctx.mfaVerifiedAt ? { mfaVerifiedAt: ctx.mfaVerifiedAt } : {}) }, at });
     const after = (await tx.document(id))!;
     if (after.signers.every(s => s.status === "signed") && (await tx.setStatus(id, ["out_for_signature"], "completed", at))) {
@@ -209,6 +243,26 @@ export async function signDocument(repo: SigningRepository, actor: Actor, id: st
     }
     return { ok: true as const, value: (await tx.document(id))! };
   });
+}
+
+/** Data for the signed PDF. Only the owner and the signers, and only once everyone has signed. Anyone else gets 404. */
+export async function signedCopyData(repo: SigningRepository, actor: Actor, id: string): Promise<Result<{ document: SigningDoc; events: SigningEvent[]; emails: Record<string, string> }>> {
+  const doc = UUID_RE.test(id) ? await repo.document(id) : undefined;
+  if (!doc || !roleOf(doc, actor)) return NOT_FOUND;
+  if (doc.status !== "completed") return fail("conflict", "A signed copy is available once everyone has signed.");
+  // DocuSign documents carry DocuSign's own signed PDF and certificate (the files route); a copy built here would have no signatures.
+  if (doc.provider === "docusign") return fail("conflict", "Download the signed copy saved from DocuSign.");
+  return { ok: true, value: { document: doc, events: await repo.events(id), emails: await repo.signerEmails(id) } };
+}
+
+/**
+ * Support staff reading a sent document (never a draft) to help with a dispute. The caller has already checked the staff permission
+ * and writes the platform audit entry; the reason must be one of VIEW_REASONS (staff may only give "dispute-support").
+ */
+export async function supportViewDocument(repo: SigningRepository, id: string): Promise<Result<{ document: SigningDoc; events: SigningEvent[] }>> {
+  const doc = UUID_RE.test(id) ? await repo.document(id) : undefined;
+  if (!doc || doc.status === "draft") return NOT_FOUND;
+  return { ok: true, value: { document: doc, events: await repo.events(id) } };
 }
 
 /** A signer declines. That closes the whole document; the owner can generate a new one. Body: { reason? }. */
@@ -253,6 +307,7 @@ export function createInMemorySigningRepository(seed: { listings: SigningListing
     publishedTemplates: async () => structuredClone(seed.templates),
     listing: async id => seed.listings.find(l => l.id === id),
     accountByEmail: async email => { const a = seed.accounts.find(x => x.email === email); return a ? { id: a.id, displayName: a.displayName, status: a.status } : undefined; },
+    signerEmails: async id => Object.fromEntries((docs.get(id)?.signers ?? []).map(s => [s.id, seed.accounts.find(a => a.id === s.userId)?.email ?? ""])),
     insertDocument: async (d, signers, event) => {
       const l = seed.listings.find(x => x.id === d.listingId)!;
       docs.set(d.id, { id: d.id, listingId: d.listingId, listingTitle: l.title, ownerUserId: l.ownerUserId, templateVersionId: d.templateVersionId, title: d.title, clauses: d.clauses, status: "draft",

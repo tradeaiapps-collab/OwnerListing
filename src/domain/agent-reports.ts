@@ -104,7 +104,7 @@ export function resolvePeriod(period: Period, today: string): { from: string; to
   return { from, to, prevTo: isoDate(toMs(from) - DAY), prevFrom: isoDate(toMs(from) - len * DAY) };
 }
 
-export interface OfferFact { listingId: string; listingTitle: string; status: string; priceCents: number; submittedAt: string }
+export interface OfferFact { listingId: string; listingTitle: string; status: string; priceCents: number; submittedAt: string; propertyType?: string }
 export interface ReportFacts { leads: readonly LeadFact[]; offers: readonly OfferFact[] }
 
 const OPEN = ["submitted", "under_review", "countered"];

@@ -5,13 +5,14 @@ import type { ObjectStoragePort } from "../src/adapters/object-storage";
 import type { Actor } from "../src/domain/listing-service";
 import {
   DEADLINE_MS, MAX_ATTEMPTS, archiveVideo, canWatch, completeBuyerPurchase, elenaVideoSuggestion, getVideo, monthStart, publishVideo, requestTeamVideo,
-  runVideoQueue, setTeamBudget, startBuyerPurchase, teamBudget, videoForListing, videoPricing, videoPrompt,
-  type CheckoutPort, type JobPoll, type ListingVideo, type Purchase, type VideoIds, type VideoProvider, type VideoRepository
+  MAX_REFUND_ATTEMPTS, RefundError, REFUND_RETRY_MS, refundNoticeText, refundTrail, runVideoQueue, setTeamBudget, startBuyerPurchase, teamBudget, videoForListing, videoPricing, videoPrompt,
+  type CheckoutPort, type JobPoll, type ListingVideo, type Purchase, type RefundPort, type VideoIds, type VideoProvider, type VideoRefund, type VideoRepository
 } from "../src/domain/listing-video";
 import { handleVideoStripeWebhook } from "../src/server/listing-video-db";
-import { parseCheckoutEvent, stripeCheckoutFromEnv, videoPaymentsEnabled } from "../src/server/stripe-checkout";
+import { parseCheckoutEvent, stripeCheckoutFromEnv, stripeRefundsFromEnv, videoPaymentsEnabled } from "../src/server/stripe-checkout";
 
-const LISTING = randomUUID(), OWNER = randomUUID(), AGENT = randomUUID(), OTHER_AGENT = randomUUID(), BUYER = randomUUID(), TEAM = randomUUID(), MANAGER = randomUUID();
+const LISTING = randomUUID(), OWNER = randomUUID(), AGENT = randomUUID(), OTHER_AGENT = randomUUID(), BUYER = randomUUID(), TEAM = randomUUID(), MANAGER = randomUUID(), RIVAL = randomUUID(), RIVAL_TEAM = randomUUID();
+const rival: Actor = { userId: RIVAL, userType: "agent" };
 const agent: Actor = { userId: AGENT, userType: "agent" };
 const manager: Actor = { userId: MANAGER, userType: "agent" };
 const buyer: Actor = { userId: BUYER, userType: "buyer" };
@@ -28,16 +29,18 @@ function fakeRepo(opts: { budgetCents?: number; photos?: number; listingStatus?:
   const videos: ListingVideo[] = [];
   const ledger: { teamId: string; videoId: string; kind: "charge" | "refund"; cents: number; at: string }[] = [];
   const purchases: Purchase[] = [];
+  const refunds: VideoRefund[] = [];
   const events = new Set<string>();
   const audits: string[] = [];
+  const notified = new Set<string>();
   const state = { budget: opts.budgetCents as number | undefined, photos: opts.photos ?? 3, status: opts.listingStatus ?? "published" };
   const spent = (since: string) => ledger.filter(l => l.at >= since).reduce((a, l) => a + l.cents, 0);
   const live = (listingId: string, model: string) => videos.find(v => v.listingId === listingId && v.model === model && !v.archivedAt && v.status !== "failed");
   const repo: VideoRepository = {
     listing: async id => (id === LISTING ? { id, ownerUserId: OWNER, status: state.status, title: "12 Palm St", description: "Light-filled family home.", propertyType: "house", suburb: "Paddington" } : undefined),
-    isAppointedAgent: async (l, u) => l === LISTING && (u === AGENT || u === MANAGER),
-    membership: async u => (u === AGENT ? { teamId: TEAM, role: "agent" } : u === MANAGER ? { teamId: TEAM, role: "manager" } : undefined),
-    isTeamMember: async (t, u) => t === TEAM && (u === AGENT || u === MANAGER),
+    isAppointedAgent: async (l, u) => l === LISTING && (u === AGENT || u === MANAGER || u === RIVAL),
+    membership: async u => (u === RIVAL ? { teamId: RIVAL_TEAM, role: "agent" } : u === AGENT ? { teamId: TEAM, role: "agent" } : u === MANAGER ? { teamId: TEAM, role: "manager" } : undefined),
+    isTeamMember: async (t, u) => (t === TEAM && (u === AGENT || u === MANAGER)) || (t === RIVAL_TEAM && u === RIVAL),
     budget: async (t, m) => (t === TEAM && state.budget !== undefined ? { teamId: t, monthlyBudgetCents: state.budget, spentCents: spent(m), remainingCents: Math.max(0, state.budget - spent(m)), monthStart: m } : undefined),
     setBudget: async (_t, c, _b, a) => { state.budget = c; audits.push(a.eventType); },
     queueTeamVideo: async (v, m, a) => {
@@ -69,21 +72,44 @@ function fakeRepo(opts: { budgetCents?: number; photos?: number; listingStatus?:
       const v = videos.find(x => x.id === id)!;
       Object.assign(v, { status: "failed", error }); audits.push(a.eventType);
       if (v.model === "team") ledger.push({ teamId: v.teamId!, videoId: id, kind: "refund", cents: -v.costCents, at: v.requestedAt });
+      if (v.model === "buyer") {
+        // Same rule as the SQL: one refund row per paid purchase of this video, never a second.
+        for (const p of purchases.filter(x => x.videoId === id && x.status === "paid")) {
+          if (refunds.some(r => r.purchaseId === p.id)) continue;
+          refunds.push({ id: randomUUID(), purchaseId: p.id, videoId: id, listingId: p.listingId, buyerId: p.buyerId, amountCents: p.amountCents, reason: `Video generation failed: ${error}`, status: "pending", stripeRefundId: null, attempts: 0, lastError: "", createdAt: _now, refundedAt: null, paymentIntentId: p.paymentIntentId ?? null, nextAt: _now } as VideoRefund & { nextAt: string });
+        }
+      }
     },
     createPurchase: async p => { if (purchases.some(x => x.listingId === p.listingId && x.buyerId === p.buyerId && x.status === "pending")) return false; purchases.push({ ...p, createdAt: "2026-11-05T01:00:00.000Z" }); return true; },
     pendingPurchase: async (l, b) => purchases.find(p => p.listingId === l && p.buyerId === b && p.status === "pending"),
     attachCheckout: async (id, s, u) => { Object.assign(purchases.find(p => p.id === id)!, { sessionId: s, checkoutUrl: u }); },
     purchaseBySession: async s => purchases.find(p => p.sessionId === s),
-    hasPaid: async (l, b) => purchases.some(p => p.listingId === l && p.buyerId === b && p.status === "paid"),
-    settlePurchase: async (event, pid, vid, now, a) => {
+    hasPaid: async (l, b) => purchases.some(p => p.listingId === l && p.buyerId === b && p.status === "paid" && !refunds.some(r => r.purchaseId === p.id)),
+    settlePurchase: async (event, pid, vid, _now, a, pi) => {
       if (events.has(event)) return false;
-      events.add(event); Object.assign(purchases.find(p => p.id === pid)!, { status: "paid", videoId: vid }); audits.push(a.eventType);
+      events.add(event); Object.assign(purchases.find(p => p.id === pid)!, { status: "paid", videoId: vid, paymentIntentId: pi ?? null }); audits.push(a.eventType);
       return true;
     },
+    claimRefunds: async (now, lease, limit) => {
+      const due = (refunds as (VideoRefund & { nextAt: string })[]).filter(r => r.status !== "succeeded" && r.attempts < MAX_REFUND_ATTEMPTS && r.nextAt <= now).slice(0, limit);
+      due.forEach(r => { r.nextAt = lease; });
+      return due.map(r => ({ ...r }));
+    },
+    markRefunded: async (id, stripeId, now, a) => {
+      const r = refunds.find(x => x.id === id)!;
+      if (r.status === "succeeded") return;
+      Object.assign(r, { status: "succeeded", stripeRefundId: stripeId, refundedAt: now, attempts: r.attempts + 1 }); audits.push(a.eventType);
+    },
+    markRefundFailed: async (id, error, next, giveUp, a) => {
+      const r = refunds.find(x => x.id === id)! as VideoRefund & { nextAt: string };
+      Object.assign(r, { status: "failed", lastError: error, attempts: r.attempts + 1, nextAt: giveUp ? "9999" : next }); audits.push(a.eventType);
+    },
+    markRefundNotified: async id => { notified.add(id); },
+    refundsForListing: async l => refunds.filter(r => r.listingId === l),
     expirePurchase: async s => { const p = purchases.find(x => x.sessionId === s); if (p) p.status = "expired"; },
     appendAudit: async e => { audits.push(e.eventType); }
   };
-  return { repo, videos, ledger, purchases, audits, state };
+  return { repo, videos, ledger, purchases, refunds, notified, audits, state };
 }
 
 function fakeStorage(): ObjectStoragePort & { objects: Map<string, Uint8Array> } {
@@ -167,6 +193,31 @@ describe("team pays per video (model 1)", () => {
     videos[0]!.status = "ready";
     expect((await archiveVideo(repo, agent, first.value.id, ids)).ok).toBe(true);
     expect((await requestTeamVideo(repo, agent, LISTING, pricing, p, ids)).ok).toBe(true);
+  });
+
+  it("only the team that made a video can publish or delete it; staff with listing.moderate can too", async () => {
+    const { repo, videos } = fakeRepo({ budgetCents: 5000 });
+    const { ids } = clock();
+    const r = await requestTeamVideo(repo, agent, LISTING, pricing, fakeProvider().p, ids);
+    if (!r.ok) throw new Error("r");
+    Object.assign(videos[0]!, { status: "ready", storageKey: "k", contentType: "video/mp4" });
+    const admin = { id: randomUUID(), role: "support" };
+    const noPerm = { id: randomUUID(), role: "reporting" };
+    // another team's agent, appointed to the same listing, is refused (403)
+    expect(await archiveVideo(repo, rival, r.value.id, ids)).toMatchObject({ ok: false, code: "forbidden" });
+    expect(await publishVideo(repo, rival, r.value.id, ids)).toMatchObject({ ok: false, code: "forbidden" });
+    expect(videos[0]!.archivedAt).toBeNull();
+    expect(videos[0]!.visibility).toBe("private");
+    // staff without the moderate permission is not an admin
+    expect(await archiveVideo(repo, null, r.value.id, ids, noPerm)).toMatchObject({ ok: false, code: "not_found" });
+    // a teammate may publish; the admin may delete
+    expect((await publishVideo(repo, manager, r.value.id, ids)).ok).toBe(true);
+    expect((await archiveVideo(repo, null, r.value.id, ids, admin)).ok).toBe(true);
+    // own team delete is allowed
+    const second = await requestTeamVideo(repo, agent, LISTING, pricing, fakeProvider().p, ids);
+    if (!second.ok) throw new Error("second");
+    Object.assign(videos[1]!, { status: "ready" });
+    expect((await archiveVideo(repo, agent, second.value.id, ids)).ok).toBe(true);
   });
 
   it("preview before publishing: private to the team until published, then public with the listing", async () => {
@@ -491,5 +542,152 @@ describe("review fixes", () => {
     expect(a.ok && b.ok && "checkoutUrl" in a.value && "checkoutUrl" in b.value && a.value.checkoutUrl === b.value.checkoutUrl).toBe(true);
     expect(f.purchases).toHaveLength(1);
     expect(checkout.made.filter(m => (m as { purchaseId: string }).purchaseId === f.purchases[0]!.id)).toHaveLength(1);
+  });
+});
+
+describe("refunds for failed buyer videos", () => {
+  /** A buyer paid for a video (payment intent recorded) and Hedra then fails it for good. */
+  async function paidThenFailed() {
+    const f = fakeRepo();
+    const c = clock();
+    await startBuyerPurchase(f.repo, checkout, { configured: true }, buyer, LISTING, pricing, urls, c.ids);
+    f.purchases[0]!.sessionId = "cs_r";
+    await completeBuyerPurchase(f.repo, "evt_r", "cs_r", c.ids, "pi_123");
+    const { p } = fakeProvider([{ state: "failed", message: "nsfw" }]);
+    return { f, c, p };
+  }
+  const refundPort = (impl: RefundPort["refund"]): RefundPort & { calls: Parameters<RefundPort["refund"]>[0][] } => {
+    const calls: Parameters<RefundPort["refund"]>[0][] = [];
+    return { enabled: true, calls, refund: async i => { calls.push(i); return impl(i); } };
+  };
+  const failVideo = async (x: Awaited<ReturnType<typeof paidThenFailed>>, refunds: RefundPort, notify?: (r: VideoRefund) => Promise<boolean>) => {
+    const deps = { repo: x.f.repo, provider: x.p, storage: fakeStorage(), ids: x.c.ids, refunds, ...(notify ? { notify } : {}) };
+    let last = await runVideoQueue(deps);
+    for (let i = 0; i < 200 && x.f.videos[0]!.status !== "failed"; i++) { x.c.advance(10 * 60_000); last = await runVideoQueue(deps); }
+    return { deps, last };
+  };
+
+  it("a failed video refunds the paid buyer through Stripe and tells them", async () => {
+    const x = await paidThenFailed();
+    const port = refundPort(async () => ({ stripeRefundId: "re_1" }));
+    const told: string[] = [];
+    const { deps } = await failVideo(x, port, async r => { told.push(refundNoticeText(r.amountCents)); return true; });
+    expect(x.f.videos[0]!.status).toBe("failed");
+    expect(x.f.refunds).toHaveLength(1);
+    expect(x.f.refunds[0]).toMatchObject({ status: "pending", amountCents: 600, reason: expect.stringContaining("Video generation failed:") });
+    const s = await runVideoQueue(deps);
+    expect(s.refunded).toBe(1);
+    expect(port.calls).toEqual([{ paymentIntentId: "pi_123", amountCents: 600, idempotencyKey: `video-refund-${x.f.refunds[0]!.id}`, refundId: x.f.refunds[0]!.id }]);
+    expect(x.f.refunds[0]).toMatchObject({ status: "succeeded", stripeRefundId: "re_1" });
+    expect(x.f.refunds[0]!.refundedAt).not.toBeNull();
+    expect(x.f.audits).toContain("video.refunded");
+    expect(told).toEqual(["Video generation failed. Your $6 has been refunded to your card. Try again anytime."]);
+    expect(x.f.notified.has(x.f.refunds[0]!.id)).toBe(true);
+    // The refunded buyer is no longer treated as having paid: trying again means paying again.
+    expect(await x.f.repo.hasPaid(LISTING, BUYER)).toBe(false);
+  });
+
+  it("a Stripe failure keeps the refund for a later try, then succeeds without telling the buyer early", async () => {
+    const x = await paidThenFailed();
+    let fail = true;
+    const port = refundPort(async () => { if (fail) throw new RefundError("Stripe 500", false); return { stripeRefundId: "re_2" }; });
+    let notices = 0;
+    const { deps } = await failVideo(x, port, async () => { notices++; return true; });
+    expect(await runVideoQueue(deps)).toMatchObject({ refunded: 0, refundFailed: 1 });
+    expect(x.f.refunds[0]).toMatchObject({ status: "failed", attempts: 1, lastError: "Stripe 500" });
+    expect(notices).toBe(0);
+    expect(x.f.audits).toContain("video.refund_failed");
+    expect(await runVideoQueue(deps)).toMatchObject({ refunded: 0, refundFailed: 0 }); // backing off, not due yet
+    fail = false;
+    x.c.advance(REFUND_RETRY_MS + 1000);
+    expect(await runVideoQueue(deps)).toMatchObject({ refunded: 1 });
+    expect(x.f.refunds[0]).toMatchObject({ status: "succeeded", stripeRefundId: "re_2", attempts: 2 });
+    expect(notices).toBe(1);
+  });
+
+  it("a permanent error or too many failures stops retrying and leaves it failed for staff", async () => {
+    const x = await paidThenFailed();
+    const port = refundPort(async () => { throw new RefundError("Stripe 400 charge_disputed", true); });
+    const { deps } = await failVideo(x, port);
+    await runVideoQueue(deps);
+    x.c.advance(24 * 3600_000);
+    await runVideoQueue(deps);
+    expect(port.calls).toHaveLength(1);
+    expect(x.f.refunds[0]).toMatchObject({ status: "failed", attempts: 1 });
+    const trail = await refundTrail(x.f.repo, LISTING);
+    expect(trail.ok && trail.value.refunds[0]).toMatchObject({ status: "failed", lastError: "Stripe 400 charge_disputed" });
+    expect(trail.ok && JSON.stringify(trail.value)).not.toContain("pi_123"); // staff never see the payment id
+  });
+
+  it("never refunds the same payment twice: a repeat failure, a re-run and a duplicate webhook add nothing", async () => {
+    const x = await paidThenFailed();
+    const port = refundPort(async () => ({ stripeRefundId: "re_3" }));
+    const { deps } = await failVideo(x, port);
+    await runVideoQueue(deps);
+    await x.f.repo.markFailed(x.f.videos[0]!.id, "again", x.c.ids.now(), { id: randomUUID(), occurredAt: x.c.ids.now(), actorType: "system", actorId: BUYER, aggregateType: "listing_video", aggregateId: "v", eventType: "video.failed", correlationId: "c", payload: {} });
+    expect(x.f.refunds).toHaveLength(1);
+    expect(await completeBuyerPurchase(x.f.repo, "evt_r", "cs_r", x.c.ids, "pi_123")).toBe("repeat");
+    for (let i = 0; i < 3; i++) { x.c.advance(REFUND_RETRY_MS); await runVideoQueue(deps); }
+    expect(port.calls).toHaveLength(1);
+    expect(x.f.refunds).toHaveLength(1);
+  });
+
+  it("a purchase without a recorded payment is parked for staff instead of calling Stripe", async () => {
+    const x = await paidThenFailed();
+    x.f.purchases[0]!.paymentIntentId = null;
+    const port = refundPort(async () => ({ stripeRefundId: "re_x" }));
+    const { deps } = await failVideo(x, port);
+    await runVideoQueue(deps);
+    expect(port.calls).toHaveLength(0);
+    expect(x.f.refunds[0]).toMatchObject({ status: "failed", lastError: expect.stringContaining("No Stripe payment") });
+  });
+
+  it("does nothing while refunds are disabled, and team videos still use the ledger", async () => {
+    const x = await paidThenFailed();
+    const port = { ...refundPort(async () => ({ stripeRefundId: "re_y" })), enabled: false };
+    const { deps } = await failVideo(x, port);
+    expect(await runVideoQueue(deps)).toMatchObject({ refunded: 0 });
+    expect(port.calls).toHaveLength(0);
+    expect(x.f.refunds[0]!.status).toBe("pending"); // waits for payments to be switched on
+    const t = fakeRepo({ budgetCents: 5000 });
+    const c = clock();
+    await requestTeamVideo(t.repo, agent, LISTING, pricing, fakeProvider().p, c.ids);
+    await t.repo.markFailed(t.videos[0]!.id, "x", c.ids.now(), { id: randomUUID(), occurredAt: c.ids.now(), actorType: "system", actorId: AGENT, aggregateType: "listing_video", aggregateId: "v", eventType: "video.failed", correlationId: "c", payload: {} });
+    expect(t.refunds).toHaveLength(0);
+    expect(t.ledger.map(l => l.kind)).toEqual(["charge", "refund"]);
+  });
+
+  it("the Stripe adapter refunds the exact amount idempotently and maps errors", async () => {
+    const env = { STRIPE_SECRET_KEY: "sk_test_abcdefgh12345678", VIDEO_PAYMENTS_ENABLED: "1" };
+    let sent: { url: string; init: RequestInit } | undefined;
+    const ok = (async (url: string, init: RequestInit) => { sent = { url, init }; return Response.json({ id: "re_ok" }); }) as unknown as typeof fetch;
+    expect(await stripeRefundsFromEnv(env, ok).refund({ paymentIntentId: "pi_1", amountCents: 600, idempotencyKey: "video-refund-r1", refundId: "r1" })).toEqual({ stripeRefundId: "re_ok" });
+    expect(sent!.url).toBe("https://api.stripe.com/v1/refunds");
+    const form = new URLSearchParams(String(sent!.init.body));
+    expect(form.get("payment_intent")).toBe("pi_1");
+    expect(form.get("amount")).toBe("600");
+    expect((sent!.init.headers as Record<string, string>)["idempotency-key"]).toBe("video-refund-r1");
+    const err = (status: number, code: string) => (async () => Response.json({ error: { code } }, { status })) as unknown as typeof fetch;
+    const call = (f: typeof fetch) => stripeRefundsFromEnv(env, f).refund({ paymentIntentId: "pi_1", amountCents: 600, idempotencyKey: "k", refundId: "r1" });
+    expect(await call(err(400, "charge_already_refunded"))).toEqual({ stripeRefundId: "already_refunded" });
+    await expect(call(err(400, "charge_disputed"))).rejects.toMatchObject({ permanent: true });
+    await expect(call(err(500, "api_error"))).rejects.toMatchObject({ permanent: false });
+    await expect(call(err(429, "rate_limit"))).rejects.toMatchObject({ permanent: false });
+    await expect(call((async () => { throw new Error("net"); }) as unknown as typeof fetch)).rejects.toMatchObject({ permanent: false });
+    expect(stripeRefundsFromEnv({ STRIPE_SECRET_KEY: env.STRIPE_SECRET_KEY }).enabled).toBe(false);
+  });
+
+  it("the payment intent travels from the webhook to the purchase", async () => {
+    const body = JSON.stringify({ id: "evt_pi", type: "checkout.session.completed", data: { object: { id: "cs_x", payment_status: "paid", payment_intent: "pi_77" } } });
+    expect(parseCheckoutEvent(body)).toEqual({ eventId: "evt_pi", kind: "paid", sessionId: "cs_x", paymentIntentId: "pi_77" });
+    const f = fakeRepo();
+    const { ids } = clock();
+    await startBuyerPurchase(f.repo, checkout, { configured: true }, buyer, LISTING, pricing, urls, ids);
+    f.purchases[0]!.sessionId = "cs_x";
+    const secret = "whsec_test_secret";
+    const t = Math.floor(Date.now() / 1000);
+    const sig = `t=${t},v1=${createHmac("sha256", secret).update(`${t}.${body}`).digest("hex")}`;
+    await handleVideoStripeWebhook(f.repo, body, sig, secret, ids);
+    expect(f.purchases[0]!.paymentIntentId).toBe("pi_77");
   });
 });

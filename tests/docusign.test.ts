@@ -144,7 +144,7 @@ describe("DocuSign signing flow", () => {
     expect(env.recipients.signers.map((s: any) => [s.name, s.email, s.roleName])).toEqual([["Amy Agent", "amy@agency.test", "Agent"], ["Bo Buyer", "bo@buyer.test", "Buyer"]]);
     expect(env.eventNotification.url).toBe("https://ol.test/api/webhooks/docusign");
     expect(JSON.stringify(env)).toContain(d.bodySha256);
-    expect((await viewDocument(repo, owner, d.id, ids) as any).value.events.map((e: any) => e.eventType)).toEqual(["created", "sent"]);
+    expect((await viewDocument(repo, owner, d.id, ids) as any).value.events.map((e: any) => e.eventType)).toEqual(["created", "sent", "owner_viewed"]);
   });
 
   it("leaves the document a draft and records nothing when DocuSign refuses", async () => {

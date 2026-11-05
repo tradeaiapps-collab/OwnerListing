@@ -4,7 +4,7 @@ import { validateTemplateContent } from "../src/domain/doc-templates";
 import type { Actor } from "../src/domain/listing-service";
 import { createInMemorySigningRepository, type SigningRepository } from "../src/domain/signing-service";
 
-const state = vi.hoisted(() => ({ actor: null as Actor | null, repo: null as SigningRepository | null, mfaAt: undefined as number | undefined }));
+const state = vi.hoisted(() => ({ actor: null as Actor | null, repo: null as SigningRepository | null, mfaAt: undefined as number | undefined, allowed: true }));
 vi.mock("../src/server/context", () => ({ getActor: () => state.actor, getDb: () => ({}), getStaff: () => null }));
 vi.mock("../src/server/mfa-context", async () => {
   const real = await vi.importActual<typeof import("../src/server/mfa-context")>("../src/server/mfa-context");
@@ -20,10 +20,12 @@ vi.mock("../src/server/signing-db", () => {
   };
 });
 
+vi.mock("../src/server/rate-guard", () => ({ withinRates: async () => state.allowed }));
 import * as templatesRoute from "../app/api/doc-templates/route";
 import * as listingRoute from "../app/api/listings/[id]/signing-documents/route";
 import * as mineRoute from "../app/api/signing-documents/route";
 import * as docRoute from "../app/api/signing-documents/[id]/route";
+import * as pdfRoute from "../app/api/signing-documents/[id]/pdf/route";
 import * as staffRoute from "../app/api/staff/doc-templates/route";
 process.env["APP_URL"] = "http://test";
 
@@ -66,8 +68,10 @@ describe("signing routes", () => {
   it("walks generate, send, view with the persona, sign and complete over HTTP", async () => {
     expect(((await (await templatesRoute.GET(new Request("http://test/x"))).json()) as { templates: unknown[] }).templates).toHaveLength(1);
     const gen = await listingRoute.POST(post({ templateKey: tpl.key, values: { inspection_date: "2026-12-02" }, signers: [{ email: "amy@agency.test", roleLabel: "Visitor" }] }), ctx(LISTING));
-    expect(gen.status).toBe(201);
-    const { document } = (await gen.json()) as { document: { id: string; status: string } };
+    expect(gen.status).toBe(200);
+    expect(await gen.json()).toMatchObject({ status: "received" });
+    const listed = (await (await listingRoute.GET(new Request("http://test/x"), ctx(LISTING))).json()) as { documents: { id: string; status: string }[] };
+    const document = listed.documents[0]!;
     expect(document.status).toBe("draft");
     expect((await listingRoute.GET(new Request("http://test/x"), ctx(LISTING))).status).toBe(200);
 
@@ -97,5 +101,39 @@ describe("signing routes", () => {
     const trail = (await (await docRoute.GET(new Request("http://test/x"), ctx(document.id))).json()) as { events: { eventType: string; detail: { mfaVerifiedAt?: string } }[] };
     expect(trail.events.find(e => e.eventType === "signed")?.detail.mfaVerifiedAt).toMatch(/^2026|^20\d\d-/);
     expect(((await (await mineRoute.GET(new Request("http://test/x"))).json()) as { documents: unknown[] }).documents).toHaveLength(1);
+
+    // The signed copy: both parties get a PDF with the seal; a stranger gets 404.
+    const pdf = await pdfRoute.GET(new Request("http://test/x"), ctx(document.id));
+    expect(pdf.status).toBe(200);
+    expect(pdf.headers.get("content-type")).toBe("application/pdf");
+    expect(pdf.headers.get("cache-control")).toBe("private, no-store");
+    const text = Buffer.from(await pdf.arrayBuffer()).toString("latin1");
+    expect(text.startsWith("%PDF-1.4")).toBe(true);
+    expect(text).toContain("amy@agency.test");
+    expect(text).toContain("Seal SHA-256");
+    state.actor = owner;
+    expect((await pdfRoute.GET(new Request("http://test/x"), ctx(document.id))).status).toBe(200);
+    state.actor = { userId: "44444444-4444-4444-8444-444444444444", userType: "owner" };
+    expect((await pdfRoute.GET(new Request("http://test/x"), ctx(document.id))).status).toBe(404);
+  });
+
+  it("gives no signed copy before everyone has signed", async () => {
+    await listingRoute.POST(post({ templateKey: tpl.key, values: { inspection_date: "2026-12-02" }, signers: [{ email: "amy@agency.test", roleLabel: "Visitor" }] }), ctx(LISTING));
+    const id = ((await (await listingRoute.GET(new Request("http://test/x"), ctx(LISTING))).json()) as { documents: { id: string }[] }).documents[0]!.id;
+    expect((await pdfRoute.GET(new Request("http://test/x"), ctx(id))).status).toBe(409);
+  });
+
+  it("answers the same whether or not a signer address has an account, and limits attempts", async () => {
+    const known = await listingRoute.POST(post({ templateKey: tpl.key, values: { inspection_date: "2026-12-02" }, signers: [{ email: "amy@agency.test", roleLabel: "Visitor" }] }), ctx(LISTING));
+    const unknown = await listingRoute.POST(post({ templateKey: tpl.key, values: { inspection_date: "2026-12-02" }, signers: [{ email: "ghost@nowhere.test", roleLabel: "Visitor" }] }), ctx(LISTING));
+    expect(known.status).toBe(200);
+    expect(unknown.status).toBe(200);
+    expect(await unknown.json()).toEqual(await known.json());
+    const listed = (await (await listingRoute.GET(new Request("http://test/x"), ctx(LISTING))).json()) as { documents: unknown[] };
+    expect(listed.documents).toHaveLength(1);
+    state.allowed = false;
+    expect((await listingRoute.POST(post({}), ctx(LISTING))).status).toBe(429);
+    expect((await docRoute.POST(post({ action: "sign", typedName: "x", consent: true }), ctx(LISTING))).status).toBe(429);
+    state.allowed = true;
   });
 });
