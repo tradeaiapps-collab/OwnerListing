@@ -93,6 +93,8 @@ export const KINDS = {
   appointment_accepted: "appointments",
   appointment_declined: "appointments",
   appointment_reminder: "appointments",
+  signature_requested: "account",
+  signature_reminder: "account",
   booking_received: "appointments",
   booking_conflict: "appointments",
   offer_received: "offers",
@@ -124,6 +126,7 @@ export const safeLink = (v: string | undefined): string | null => (typeof v === 
 export function renderNotification(kind: Kind, p: NotificationParams = {}): RenderedNotification {
   const listing = clip(p["listing"], 120, "your property");
   const name = clip(p["name"], 60, "Someone");
+  const doc = `"${clip(p["document"], 120, "a document")}"`;
   const link = safeLink(p["link"]);
   const t = (title: string, body: string, sms: boolean = SMS_KINDS.has(kind)): RenderedNotification =>
     ({ kind, category: KINDS[kind], title, body, link, smsText: sms ? `${title}. ${body}` : null });
@@ -133,6 +136,8 @@ export function renderNotification(kind: Kind, p: NotificationParams = {}): Rend
     case "appointment_accepted": return t("Appointment accepted", `${name} accepted the appointment for ${listing}.`);
     case "appointment_declined": return t("Appointment declined", `${name} declined the appointment for ${listing}.`);
     case "appointment_reminder": return t("Reminder: invitation waiting", `${name}'s invitation to act as agent for ${listing} is still waiting for your answer.`);
+    case "signature_requested": return t("Signature requested", `${name} has asked you to sign ${doc}. Open it to read the document and sign.`, false);
+    case "signature_reminder": return t("Reminder: signature waiting", `${name} is still waiting for your signature on ${doc}. Open it to read the document and sign.`, false);
     case "booking_received": return t("New booking from a portal", `${name} booked ${listing} through a listing portal. The dates are now blocked on your calendar.`);
     case "booking_conflict": return t("Booking clashes with another", `A booking from ${name} for ${listing} overlaps dates that are already booked. Contact the portal or the guest to sort it out.`);
     case "offer_received": return t("New offer received", `A new offer was made on ${listing}. Review it in your offers.`);

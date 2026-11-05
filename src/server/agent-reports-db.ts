@@ -9,7 +9,7 @@ const iso = (v: unknown) => (v instanceof Date ? v.toISOString() : new Date(Stri
 
 export async function offerFactsPg(db: Queryable, agentId: string): Promise<OfferFact[]> {
   const r = await db.query(
-    `SELECT l.id AS listing_id, l.title, o.status, o.price_cents, o.submitted_at
+    `SELECT l.id AS listing_id, l.title, l.property_type, o.status, o.price_cents, o.submitted_at
        FROM listing_agent_appointment a
        JOIN property_listing l ON l.id = a.listing_id
        JOIN formal_offer o ON o.listing_id = l.id
@@ -17,7 +17,7 @@ export async function offerFactsPg(db: Queryable, agentId: string): Promise<Offe
       ORDER BY o.submitted_at DESC, o.id LIMIT 2000`,
     [agentId]
   );
-  return r.rows.map((x): OfferFact => ({ listingId: String(x["listing_id"]), listingTitle: String(x["title"]), status: String(x["status"]), priceCents: Number(x["price_cents"]), submittedAt: iso(x["submitted_at"]) }));
+  return r.rows.map((x): OfferFact => ({ listingId: String(x["listing_id"]), listingTitle: String(x["title"]), status: String(x["status"]), priceCents: Number(x["price_cents"]), submittedAt: iso(x["submitted_at"]), ...(x["property_type"] ? { propertyType: String(x["property_type"]) } : {}) }));
 }
 
 const defOf = (v: unknown): ReportDefinition | undefined => {

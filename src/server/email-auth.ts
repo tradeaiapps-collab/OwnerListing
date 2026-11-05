@@ -38,7 +38,9 @@ async function allowed(d: EmailAuthDeps, kind: keyof typeof EMAIL_AUTH_RATE, ip:
   // Both buckets are counted every time, so a refused attempt still uses up the other limit. Bucket names are keyed hashes (64 characters).
   const byIp = await countHitPg(d.db, keyed(d.secret, `rate:${kind}:ip`, ip), start);
   const byEmail = await countHitPg(d.db, keyed(d.secret, `rate:${kind}:email`, email), start);
-  return withinLimit(byIp, r.perIp) && withinLimit(byEmail, r.perEmail);
+  // The pair bucket stops one address being hammered from one place even while both single limits still have room.
+  const byPair = await countHitPg(d.db, keyed(d.secret, `rate:${kind}:pair`, `${ip}|${email}`), start);
+  return withinLimit(byIp, r.perIp) && withinLimit(byEmail, r.perEmail) && withinLimit(byPair, r.perPair);
 }
 
 /** Sends the message, or hands the link to the local-development console. False when there is no way to deliver it. */
@@ -124,7 +126,7 @@ export async function passwordSignIn(d: EmailAuthDeps, body: unknown, ip: string
   const email = normaliseEmail(b["email"]);
   const password = typeof b["password"] === "string" && b["password"].length <= 1024 ? b["password"] : "";
   if (!email || !password) return fail("invalid", "Enter your email and password.");
-  if (!(await allowed(d, "login", ip, email))) return fail("rate_limited", "Too many attempts. Wait 10 minutes and try again, or reset your password.");
+  if (!(await allowed(d, "login", ip, email))) return fail("rate_limited", "Too many attempts. Wait 15 minutes and try again, or reset your password.");
   const row = (await d.db.query(
     `SELECT id, user_type, password_hash FROM app_user
       WHERE email = $1 AND status = 'active' AND deleted_at IS NULL AND user_type IN ('owner', 'agent', 'buyer')`,

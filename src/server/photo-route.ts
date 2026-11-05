@@ -13,3 +13,16 @@ export async function staffPhotoAccess(req: Request): Promise<GalleryAccess & { 
     return {};
   }
 }
+
+/** Headers for a stored image: never runs as a page (nosniff + sandbox CSP), never shared across origins. Private images are never cached. */
+export function imageHeaders(contentType: string, length: number, isPublic: boolean): Record<string, string> {
+  return {
+    "content-type": contentType,
+    "content-length": String(length),
+    "content-disposition": "inline",
+    "x-content-type-options": "nosniff",
+    "content-security-policy": "default-src 'none'; sandbox",
+    "cross-origin-resource-policy": "same-origin",
+    "cache-control": isPublic ? "public, max-age=600" : "private, no-store"
+  };
+}

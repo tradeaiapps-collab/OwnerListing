@@ -1,6 +1,7 @@
 import type { ObjectStoragePort } from "../adapters/object-storage";
 import type { AuditEvent } from "./audit";
 import type { Actor, Failure, Result } from "./listing-service";
+import { staffCan, type StaffActor } from "./staff-access";
 
 // AI tour videos made by Hedra. Pure rules and the queue live here; Hedra, Stripe, Postgres and file storage are ports.
 // Model "team": an agency team spends its monthly video budget (managers set it; agents appointed to the listing generate).
@@ -17,6 +18,15 @@ export const POLL_MS = 30_000;
 /** A claimed row is left alone this long, so two overlapping queue runs never work on the same video. */
 export const LEASE_MS = 2 * 60_000;
 export const RETRY_DELAYS_MS = [2 * 60_000, 10 * 60_000] as const;
+/** A Stripe refund that keeps failing is retried this many times (spaced out), then left as "failed" for staff to settle by hand. */
+export const MAX_REFUND_ATTEMPTS = 6;
+export const REFUND_RETRY_MS = 15 * 60_000;
+export const REFUND_NOTICE_TITLE = "Video refunded";
+/** Buyer notice. The amount is the real price paid ($6 at the default price). */
+export function refundNoticeText(amountCents: number): string {
+  const dollars = amountCents % 100 === 0 ? String(amountCents / 100) : (amountCents / 100).toFixed(2);
+  return `Video generation failed. Your $${dollars} has been refunded to your card. Try again anytime.`;
+}
 export const MAX_BUDGET_CENTS = 100_000_000;
 export const MIN_PHOTOS = 2;
 export const MAX_VIDEO_BYTES = 200 * 1024 * 1024;
@@ -67,7 +77,7 @@ export interface VideoRepository {
   pullForward(providerJobId: string, nowIso: string): Promise<void>;
   markReady(id: string, storageKey: string, contentType: string, nowIso: string): Promise<void>;
   scheduleRetry(id: string, attempts: number, nextAttemptIso: string, error: string): Promise<void>;
-  /** Ends the video as failed; a team video also gets its refund row, in the same write. */
+  /** Ends the video as failed; a team video also gets its refund row, and every paid buyer purchase of it gets a pending Stripe refund row, in the same write. */
   markFailed(id: string, error: string, nowIso: string, audit: AuditEvent): Promise<void>;
   // Buyer payments
   /** False when this buyer already has an open payment for the listing (the unique index); that one is reused. */
@@ -77,12 +87,25 @@ export interface VideoRepository {
   purchaseBySession(sessionId: string): Promise<Purchase | undefined>;
   hasPaid(listingId: string, buyerId: string): Promise<boolean>;
   /** Claims the Stripe event id, marks the purchase paid and links the video; false when the event was already handled. */
-  settlePurchase(eventId: string, purchaseId: string, videoId: string, nowIso: string, audit: AuditEvent): Promise<boolean>;
+  settlePurchase(eventId: string, purchaseId: string, videoId: string, nowIso: string, audit: AuditEvent, paymentIntentId?: string | null): Promise<boolean>;
+  // Refunds (buyer payments only)
+  /** Refunds due now: pending, or failed and under the attempt cap. Leased like the video queue so overlapping runs never double-call Stripe. */
+  claimRefunds(nowIso: string, leaseUntilIso: string, limit: number): Promise<VideoRefund[]>;
+  markRefunded(id: string, stripeRefundId: string, nowIso: string, audit: AuditEvent): Promise<void>;
+  /** Records a failed Stripe call; giveUp stops further retries (staff settle it by hand). */
+  markRefundFailed(id: string, error: string, nextAttemptIso: string, giveUp: boolean, audit: AuditEvent): Promise<void>;
+  markRefundNotified(id: string, nowIso: string): Promise<void>;
+  refundsForListing(listingId: string): Promise<VideoRefund[]>;
   expirePurchase(sessionId: string): Promise<void>;
   appendAudit(e: AuditEvent): Promise<void>;
 }
 
-export interface Purchase { id: string; listingId: string; buyerId: string; videoId: string | null; amountCents: number; sessionId: string | null; checkoutUrl?: string | null; createdAt?: string; status: "pending" | "paid" | "expired" }
+export interface Purchase { id: string; listingId: string; buyerId: string; videoId: string | null; amountCents: number; sessionId: string | null; checkoutUrl?: string | null; createdAt?: string; paymentIntentId?: string | null; status: "pending" | "paid" | "expired" }
+export interface VideoRefund {
+  id: string; purchaseId: string; videoId: string; listingId: string; buyerId: string; amountCents: number; reason: string;
+  status: "pending" | "succeeded" | "failed"; stripeRefundId: string | null; attempts: number; lastError: string;
+  createdAt: string; refundedAt: string | null; paymentIntentId: string | null;
+}
 export interface AgentVideoRow {
   listingId: string; title: string; suburb: string; status: string; photoCount: number;
   video: Pick<ListingVideo, "id" | "status" | "visibility" | "requestedAt" | "generatedAt" | "error" | "attempts"> | null;
@@ -100,6 +123,13 @@ export interface CheckoutPort {
   readonly enabled: boolean;
   createCheckout(input: { purchaseId: string; amountCents: number; description: string; successUrl: string; cancelUrl: string; buyerEmail?: string }): Promise<{ sessionId: string; url: string }>;
 }
+export interface RefundPort {
+  readonly enabled: boolean;
+  /** Refunds the full payment. The idempotency key makes a repeated call return the same refund instead of a second one. */
+  refund(input: { paymentIntentId: string; amountCents: number; idempotencyKey: string; refundId: string }): Promise<{ stripeRefundId: string }>;
+}
+/** Tells the buyer. Best effort: must never throw into the refund flow. */
+export type RefundNotifier = (r: VideoRefund) => Promise<boolean>;
 export interface VideoIds { newId: () => string; now: () => string }
 
 const fail = (code: Failure["code"], message: string): Failure => ({ ok: false, code, message });
@@ -221,12 +251,12 @@ export async function startBuyerPurchase(
  * Model 2, step 2: Stripe says the Checkout session is paid. The video is queued once per listing; a later buyer's payment just
  * grants them the same video. Safe to repeat: the event id is claimed in the same write.
  */
-export async function completeBuyerPurchase(repo: VideoRepository, eventId: string, sessionId: string, ids: VideoIds): Promise<"done" | "unknown" | "repeat"> {
+export async function completeBuyerPurchase(repo: VideoRepository, eventId: string, sessionId: string, ids: VideoIds, paymentIntentId?: string | null): Promise<"done" | "unknown" | "repeat"> {
   const p = await repo.purchaseBySession(sessionId);
   if (!p) return "unknown";
   const probe = newVideo(ids, p.listingId, "buyer", p.buyerId, null, 0);
   const v = await repo.queueBuyerVideo(probe, audit(ids, p.buyerId, "video.requested", probe.id, { listingId: p.listingId, model: "buyer", purchaseId: p.id }));
-  const settled = await repo.settlePurchase(eventId, p.id, v.id, ids.now(), audit(ids, p.buyerId, "video.purchase_paid", p.id, { listingId: p.listingId, videoId: v.id, amountCents: p.amountCents }, "service"));
+  const settled = await repo.settlePurchase(eventId, p.id, v.id, ids.now(), audit(ids, p.buyerId, "video.purchase_paid", p.id, { listingId: p.listingId, videoId: v.id, amountCents: p.amountCents }, "service"), paymentIntentId ?? null);
   return settled ? "done" : "repeat";
 }
 
@@ -278,26 +308,46 @@ export async function videoForListing(repo: VideoRepository, actor: Actor | null
   return { ok: true, value: { video: null, priceCents: null, canBuy: listing.status === "published" } };
 }
 
-export async function publishVideo(repo: VideoRepository, actor: Actor, id: unknown, ids: VideoIds): Promise<Result<{ id: string }>> {
+/** Staff who may moderate listings can act on any team's video. */
+const isVideoAdmin = (staff?: StaffActor | null): boolean => !!staff && staffCan(staff, "listing.moderate");
+
+/** A team video belongs to the team that paid for it: only its members (or an admin) may publish or delete it, even if another team's agent is appointed to the same listing. */
+async function ownsVideo(repo: VideoRepository, actor: Actor, v: ListingVideo): Promise<boolean> {
+  return !!v.teamId && (await repo.isTeamMember(v.teamId, actor.userId));
+}
+
+export async function publishVideo(repo: VideoRepository, actor: Actor | null, id: unknown, ids: VideoIds, staff?: StaffActor | null): Promise<Result<{ id: string }>> {
   const v = isId(id) ? await repo.video(id) : undefined;
   const listing = v ? await repo.listing(v.listingId) : undefined;
-  if (!v || !listing || v.archivedAt || !(await canManageVideos(repo, actor, listing))) return fail("not_found", "Video not found.");
+  const admin = isVideoAdmin(staff);
+  if (!v || !listing || v.archivedAt) return fail("not_found", "Video not found.");
+  if (!admin) {
+    if (!actor || !(await canManageVideos(repo, actor, listing))) return fail("not_found", "Video not found.");
+    if (v.model === "team" && !(await ownsVideo(repo, actor, v))) return fail("forbidden", "Only the team that made this video can publish it.");
+  }
+  const by = admin && staff ? staff.id : actor!.userId;
   if (v.model !== "team") return fail("invalid", "Only a team video can be published to everyone.");
   if (v.status !== "ready") return fail("conflict", "The video is not ready to publish yet.");
   await repo.setVisibility(v.id, "public", ids.now());
-  await repo.appendAudit(audit(ids, actor.userId, "video.published", v.id, { listingId: v.listingId }));
+  await repo.appendAudit(audit(ids, by, "video.published", v.id, { listingId: v.listingId }));
   return { ok: true, value: { id: v.id } };
 }
 
 /** Delete or replace: the video leaves the listing, the file stays in storage (published files are never deleted here). */
-export async function archiveVideo(repo: VideoRepository, actor: Actor, id: unknown, ids: VideoIds): Promise<Result<{ id: string }>> {
+export async function archiveVideo(repo: VideoRepository, actor: Actor | null, id: unknown, ids: VideoIds, staff?: StaffActor | null): Promise<Result<{ id: string }>> {
   const v = isId(id) ? await repo.video(id) : undefined;
   const listing = v ? await repo.listing(v.listingId) : undefined;
-  if (!v || !listing || v.archivedAt || !(await canManageVideos(repo, actor, listing))) return fail("not_found", "Video not found.");
+  const admin = isVideoAdmin(staff);
+  if (!v || !listing || v.archivedAt) return fail("not_found", "Video not found.");
+  if (!admin) {
+    if (!actor || !(await canManageVideos(repo, actor, listing))) return fail("not_found", "Video not found.");
+    if (v.model === "team" && !(await ownsVideo(repo, actor, v))) return fail("forbidden", "Only the team that made this video can delete it.");
+  }
+  const by = admin && staff ? staff.id : actor!.userId;
   if (v.model !== "team") return fail("forbidden", "A buyer's video belongs to the buyer who paid for it.");
   if (v.status === "processing" || v.status === "queued") return fail("conflict", "Wait for the video to finish or fail before deleting it.");
   await repo.archive(v.id, ids.now());
-  await repo.appendAudit(audit(ids, actor.userId, "video.archived", v.id, { listingId: v.listingId }));
+  await repo.appendAudit(audit(ids, by, "video.archived", v.id, { listingId: v.listingId }));
   return { ok: true, value: { id: v.id } };
 }
 
@@ -320,8 +370,8 @@ export function elenaVideoSuggestion(rows: readonly AgentVideoRow[]): string | n
 
 // ---- The queue ------------------------------------------------------------------------------------------------------
 
-export interface QueueSummary { submitted: number; ready: number; retried: number; failed: number; waiting: number }
-export interface QueueDeps { repo: VideoRepository; provider: VideoProvider; storage: ObjectStoragePort; ids: VideoIds }
+export interface QueueSummary { submitted: number; ready: number; retried: number; failed: number; waiting: number; refunded: number; refundFailed: number }
+export interface QueueDeps { repo: VideoRepository; provider: VideoProvider; storage: ObjectStoragePort; ids: VideoIds; refunds?: RefundPort; notify?: RefundNotifier }
 
 const msg = (e: unknown) => (e instanceof Error ? e.message : String(e)).slice(0, 300);
 
@@ -378,10 +428,54 @@ async function processOne(d: QueueDeps, v: ListingVideo, s: QueueSummary): Promi
 
 /** One pass of the queue (called by the scheduler and, best effort, right after a request). Each due video is worked on at most once per pass. */
 export async function runVideoQueue(d: QueueDeps, limit = 10): Promise<QueueSummary> {
-  const s: QueueSummary = { submitted: 0, ready: 0, retried: 0, failed: 0, waiting: 0 };
+  const s: QueueSummary = { submitted: 0, ready: 0, retried: 0, failed: 0, waiting: 0, refunded: 0, refundFailed: 0 };
+  // Refunds first and regardless of Hedra/storage config: money owed back must not wait on the video side being healthy.
+  await processRefunds(d, s, limit);
   if (!d.provider.configured || !d.storage.configured) return s;
   const now = d.ids.now();
   const due = await d.repo.claimDue(now, at(now, LEASE_MS), limit);
   for (const v of due) await processOne(d, v, s);
   return s;
+}
+
+// ---- Refunds ----------------------------------------------------------------------------------------------------------
+
+/**
+ * Pays back every failed buyer video. The refund rows are created in the same write that fails the video (one per paid purchase, unique),
+ * so this only has to send them to Stripe. The idempotency key is the refund row id: a lost reply or an overlapping run gets the same refund back.
+ * A Stripe error keeps the row for another try (up to MAX_REFUND_ATTEMPTS); the buyer is only told once the money is on its way.
+ */
+async function processRefunds(d: QueueDeps, s: QueueSummary, limit: number): Promise<void> {
+  if (!d.refunds?.enabled) return;
+  const now = d.ids.now();
+  for (const r of await d.repo.claimRefunds(now, at(now, LEASE_MS), limit)) {
+    const attempt = r.attempts + 1;
+    try {
+      if (!r.paymentIntentId) throw new RefundError("No Stripe payment is recorded for this purchase.", true);
+      const { stripeRefundId } = await d.refunds.refund({ paymentIntentId: r.paymentIntentId, amountCents: r.amountCents, idempotencyKey: `video-refund-${r.id}`, refundId: r.id });
+      await d.repo.markRefunded(r.id, stripeRefundId, d.ids.now(), audit(d.ids, r.buyerId, "video.refunded", r.videoId, { listingId: r.listingId, refundId: r.id, purchaseId: r.purchaseId, amountCents: r.amountCents, stripeRefundId, reason: r.reason }, "service"));
+      s.refunded++;
+    } catch (e) {
+      const permanent = e instanceof RefundError && e.permanent;
+      const giveUp = permanent || attempt >= MAX_REFUND_ATTEMPTS;
+      await d.repo.markRefundFailed(r.id, msg(e), at(d.ids.now(), REFUND_RETRY_MS * attempt), giveUp, audit(d.ids, r.buyerId, "video.refund_failed", r.videoId, { listingId: r.listingId, refundId: r.id, purchaseId: r.purchaseId, attempt, giveUp, error: msg(e) }, "service"));
+      s.refundFailed++;
+      continue;
+    }
+    if (d.notify) {
+      try { if (await d.notify(r)) await d.repo.markRefundNotified(r.id, d.ids.now()); } catch { /* the refund stands; the notice is best effort */ }
+    }
+  }
+}
+
+/** permanent = retrying cannot help (declined for good, missing payment id). */
+export class RefundError extends Error {
+  constructor(message: string, readonly permanent: boolean) { super(message); }
+}
+
+/** What staff see on a listing: every refund with its reason, status and timestamps. Staff only (the route checks the permission). */
+export async function refundTrail(repo: VideoRepository, listingId: unknown): Promise<Result<{ refunds: Omit<VideoRefund, "paymentIntentId" | "buyerId">[] }>> {
+  if (!isId(listingId)) return fail("invalid", "Choose a listing.");
+  const rows = await repo.refundsForListing(listingId);
+  return { ok: true, value: { refunds: rows.map(({ paymentIntentId: _p, buyerId: _b, ...rest }) => rest) } };
 }

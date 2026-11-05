@@ -82,7 +82,12 @@ describe.skipIf(!DATABASE_URL)("document templates and signing on Postgres", () 
 
     const v = await viewDocument(repo, owner, doc.id, ids);
     if (!v.ok) throw new Error("view");
-    expect(v.value.events.map(e => e.eventType)).toEqual(["created", "sent", "viewed", "explained", "signed", "viewed", "signed", "completed"]);
+    expect(v.value.events.filter(e => e.eventType !== "sign_failed" && e.eventType !== "owner_viewed").map(e => e.eventType)).toEqual(["created", "sent", "viewed", "explained", "signed", "viewed", "signed", "completed"]);
+    // New in the 2026-10 security review: refused attempts and the owner's own reads are in the trail, with their reasons, and the signed copy can name each signer's email.
+    expect(v.value.events.filter(e => e.eventType === "sign_failed").map(e => e.detail)).toContainEqual({ viewReason: "sign-attempt", reason: "already_responded" });
+    expect(v.value.events.find(e => e.eventType === "owner_viewed")?.detail).toEqual({ viewReason: "owner-check" });
+    const emails = await repo.signerEmails(doc.id);
+    expect(Object.values(emails).sort()).toEqual([await emailOf(visitorId), await emailOf(ownerId)].sort());
     const signedEvent = v.value.events.find(e => e.eventType === "signed");
     expect(signedEvent?.ip).toBe("198.51.100.1");
     const hashes = await t.db.query("SELECT DISTINCT body_sha256 FROM signing_event WHERE document_id = $1", [doc.id]);

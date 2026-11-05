@@ -88,6 +88,7 @@ export default function TeamPage() {
       <p><Link href="/teams">All teams</Link></p>
       <h1>{team.name}</h1>
       <p className="muted">{team.kind === "office" ? "Office" : "Team"} · You are {myRole === "agent" ? "an agent" : `a ${myRole}`} · Default split {pct(team.defaultMemberBps)} to the agent, the rest to the agency</p>
+      {isManager && <p><Link href={`/teams/${id}/analytics`}>Team analytics</Link> · <Link href={`/agent/reports?team=${id}`}>Team reports</Link></p>}
       <ul className="team-tabs" role="tablist" aria-label="Team sections">
         {TABS.map(([k, label]) => (
           <li key={k} role="presentation"><button type="button" role="tab" aria-selected={tab === k} onClick={() => { setTab(k); setMsg(""); }}>{label}</button></li>

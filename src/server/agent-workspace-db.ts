@@ -10,7 +10,7 @@ const opt = (v: unknown) => (v == null ? undefined : iso(v));
 
 export async function leadsPg(db: Queryable, agentId: string): Promise<LeadFact[]> {
   const r = await db.query(
-    `SELECT e.id AS enquiry_id, l.id AS listing_id, l.title, u.id AS buyer_id, u.display_name, e.created_at,
+    `SELECT e.id AS enquiry_id, l.id AS listing_id, l.title, l.property_type, u.id AS buyer_id, u.display_name, e.created_at,
             (SELECT count(*) FROM enquiry_message m WHERE m.enquiry_id = e.id AND m.sender_user_id = e.buyer_user_id) AS buyer_msgs,
             (SELECT count(*) FROM enquiry_message m WHERE m.enquiry_id = e.id AND m.sender_user_id = $1::uuid) AS agent_msgs,
             (SELECT max(m.sent_at) FROM enquiry_message m WHERE m.enquiry_id = e.id AND m.sender_user_id = e.buyer_user_id) AS last_buyer_at,
@@ -31,7 +31,7 @@ export async function leadsPg(db: Queryable, agentId: string): Promise<LeadFact[
   return r.rows.map((x): LeadFact => ({
     enquiryId: String(x["enquiry_id"]), listingId: String(x["listing_id"]), listingTitle: String(x["title"]), buyerId: String(x["buyer_id"]),
     buyerName: String(x["display_name"]), enquiredAt: iso(x["created_at"]), buyerMessages: Number(x["buyer_msgs"]), agentMessages: Number(x["agent_msgs"]),
-    notes: Number(x["notes"]),
+    notes: Number(x["notes"]), ...(x["property_type"] ? { propertyType: String(x["property_type"]) } : {}),
     ...(opt(x["last_buyer_at"]) ? { lastBuyerAt: opt(x["last_buyer_at"])! } : {}), ...(opt(x["first_agent_at"]) ? { firstAgentAt: opt(x["first_agent_at"])! } : {}),
     ...(x["offer_status"] ? { offerStatus: String(x["offer_status"]), offerPriceCents: Number(x["offer_price"]) } : {}),
     ...(x["stage"] ? { stage: String(x["stage"]) as Stage } : {}), ...(x["follow_up_at"] ? { followUpAt: String(x["follow_up_at"]) } : {})
