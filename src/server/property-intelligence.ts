@@ -13,8 +13,9 @@ const NO_STORE = { "cache-control": "no-store" } as const;
 const LOOKBACK_MONTHS = 26;
 
 /**
- * Sales and leases the platform itself recorded (property_event 'sold' / 'rented', not voided), by suburb or postcode, last 26 months.
- * Only platform and public-record rows: owner-supplied figures are unverified and licensed third-party rows may not be reusable.
+ * Sales and leases recorded on the property history (property_event 'sold' / 'rented', not voided), by suburb or postcode, last 26 months.
+ * Platform and public-record rows, plus licensed third-party rows from a feed connection whose recorded licence allows comparables
+ * (feed_connection.comparables_licensed). Owner-supplied figures are unverified and other third-party rows may not be reusable.
  * Days on the market runs from the property's first 'listed' event in the year before the sale. Parameterised SQL only.
  */
 export function createPlatformComparablesSource(db: Queryable): ComparablesSource {
@@ -27,10 +28,14 @@ export function createPlatformComparablesSource(db: Queryable): ComparablesSourc
           `SELECT e.id, e.event_type, e.amount_cents, e.occurred_at, p.suburb, p.postcode, p.property_type, p.bedrooms, p.bathrooms, p.car_spaces, p.land_area_sqm,
                   (SELECT min(l.occurred_at) FROM property_event l
                     WHERE l.property_id = e.property_id AND l.event_type = 'listed' AND l.occurred_at <= e.occurred_at
+                      AND (l.source IN ('platform','public_record') OR (l.source = 'licensed_third_party' AND EXISTS (
+                            SELECT 1 FROM feed_connection lf WHERE lf.id = l.feed_connection_id AND lf.comparables_licensed)))
                       AND l.occurred_at > e.occurred_at - interval '365 days') AS listed_at
              FROM property_event e JOIN property p ON p.id = e.property_id
             WHERE e.event_type IN ('sold','rented') AND e.voided_at IS NULL AND e.amount_cents > 0 AND e.occurred_at >= $1::timestamptz AND e.occurred_at <= $2::timestamptz
-              AND e.source IN ('platform','public_record') AND p.property_type IS NOT NULL AND p.suburb IS NOT NULL
+              AND (e.source IN ('platform','public_record') OR (e.source = 'licensed_third_party' AND EXISTS (
+                    SELECT 1 FROM feed_connection f WHERE f.id = e.feed_connection_id AND f.comparables_licensed)))
+              AND p.property_type IS NOT NULL AND p.suburb IS NOT NULL
               AND (($3::text IS NOT NULL AND lower(p.suburb) = lower($3::text)) OR ($4::text IS NOT NULL AND p.postcode = $4::text))
             ORDER BY e.occurred_at DESC LIMIT 2000`,
           [since, now, subject.suburb ?? null, subject.postcode ?? null]

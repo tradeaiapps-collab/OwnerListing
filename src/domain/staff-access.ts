@@ -59,6 +59,7 @@ export const PERMISSION_CATALOGUE = [
   { key: "site.content.publish", area: "website", label: "Publish website content", description: "Make drafted website content live, including turning the guide assistant on or off.", sensitive: false },
   { key: "ai.engine_set", area: "platform", label: "Choose the AI engine", description: "Turn the self-hosted AI on or off and test the model server at /staff/ai (super admin only).", sensitive: true },
   { key: "config.edit", area: "platform", label: "Edit platform settings", description: "Change technical platform settings.", sensitive: false },
+  { key: "feeds.manage", area: "platform", label: "Property data feeds", description: "Connect agency CRM and Domain feeds, set their territory and schedule, run them and record data licences at /staff/feeds.", sensitive: true },
   { key: "logs.technical", area: "platform", label: "Technical logs", description: "Read technical logs (no personal data).", sensitive: false },
   { key: "override.request", area: "overrides", label: "Request an override", description: "Ask for a logged override with a reason. Someone else must approve it.", sensitive: false },
   { key: "override.approve", area: "overrides", label: "Approve another person's override", description: "Be the second person on an override, never on your own.", sensitive: true },

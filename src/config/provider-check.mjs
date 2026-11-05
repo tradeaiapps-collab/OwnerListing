@@ -1,4 +1,4 @@
-// Plain JavaScript readiness check for the outside-provider keys (Google sign-in, MFA key, PayWay, SMTP, SMS, ABN Lookup, address suggestions, map tiles).
+// Plain JavaScript readiness check for the outside-provider keys (Google sign-in, MFA key, PayWay, SMTP, SMS, ABN Lookup, Domain API, address suggestions, map tiles).
 // Shared by scripts/check-providers.mjs (plain Node, cannot import TypeScript) and instrumentation.ts. Types: provider-check.d.mts.
 // Mirrors the rules the real readers apply (src/server/auth/config.ts, src/domain/mfa.ts, src/domain/messaging-settings.ts,
 // src/adapters/*); tests/provider-check.test.ts keeps the two in step. Reports key NAMES only, never values.
@@ -145,6 +145,18 @@ const PROVIDERS = [
       if (get("DOCUSIGN_OAUTH_HOST") && !/^(?:[a-z0-9-]+\.)+docusign\.(?:net|com)$/i.test(get("DOCUSIGN_OAUTH_HOST"))) p.push("DOCUSIGN_OAUTH_HOST must be a DocuSign host (demo: account-d.docusign.com, live: account.docusign.com).");
       if (get("SIGNING_PROVIDER") && !["builtin", "docusign"].includes(get("SIGNING_PROVIDER").toLowerCase())) p.push("SIGNING_PROVIDER must be builtin or docusign.");
       if (get("APP_URL") && get("DOCUSIGN_INTEGRATION_KEY") && !/^https:\/\//.test(get("APP_URL"))) p.push("APP_URL must be https so DocuSign can call the webhook.");
+      return p;
+    }
+  },
+  {
+    // Mirrors domainConfig in src/adapters/feed-providers.ts: both keys or the Domain feed connector stays off.
+    id: "domain", label: "Domain API (property feeds)", required: false,
+    unlocks: "Domain listings and sold results imported into property data and, where the licence allows, comparables.",
+    whenOff: "Domain feed connections fail their runs with \"not set up\"; agency CRM (REAXML) feeds still work.",
+    keys: ["DOMAIN_CLIENT_ID", "DOMAIN_CLIENT_SECRET"],
+    check(get) {
+      const p = [];
+      for (const k of ["DOMAIN_CLIENT_ID", "DOMAIN_CLIENT_SECRET"]) if (get(k) && /\s/.test(get(k))) p.push(`${k} must not contain spaces.`);
       return p;
     }
   },

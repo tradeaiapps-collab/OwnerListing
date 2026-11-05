@@ -37,6 +37,7 @@ export const STAFF_SECTIONS: readonly StaffSection[] = [
   { href: "/staff/assistant", label: "Guide assistant", permissions: ["site.content.edit", "site.content.publish"] },
   { href: "/staff/ai", label: "AI engine", permissions: ["ai.engine_set"] },
   { href: "/staff/commissions", label: "Agent commissions", permissions: ["commission.manage"] },
+  { href: "/staff/feeds", label: "Property data feeds", permissions: ["feeds.manage"] },
   { href: "/staff/investments", label: "Investor projects review", permissions: ["investment.review"] },
   { href: "/staff/investments/settings", label: "Investor module switch", permissions: ["investment.manage"] }
 ];
