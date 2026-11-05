@@ -14,6 +14,27 @@ const EMAIL = /^[^\s\x00-\x1f\x7f<>"',;()\\@]{1,64}@[A-Za-z0-9](?:[A-Za-z0-9.-]{
 const HOST = /^[A-Za-z0-9](?:[A-Za-z0-9.-]{0,251}[A-Za-z0-9])?$/;
 const SMTP_PORTS = ["25", "465", "587", "2525"];
 
+const API_BASE = /^https:\/\/[A-Za-z0-9](?:[A-Za-z0-9.-]{0,251}[A-Za-z0-9])?(?::\d{2,5})?(?:\/[A-Za-z0-9._~\/-]*)?$/;
+const HEADER_NAME = /^[A-Za-z0-9-]{1,60}$/;
+/** Shared rules for the providers reached over a plain HTTPS API (MLS, Zillow): key, base URL, optional header/path/rate/webhook secret. */
+function httpApiProblems(get, P) {
+  const p = [];
+  const key = get(`${P}_API_KEY`);
+  if (key && !(/^[\x21-\x7e]+$/.test(key) && key.length >= 16 && key.length <= 512)) p.push(`${P}_API_KEY must be 16 to 512 characters with no spaces.`);
+  const base = get(`${P}_API_BASE_URL`);
+  if (base && !API_BASE.test(base)) p.push(`${P}_API_BASE_URL must be an https URL with no query, like https://api.example.com/v1.`);
+  const header = get(`${P}_API_KEY_HEADER`);
+  if (header && !HEADER_NAME.test(header)) p.push(`${P}_API_KEY_HEADER must be a header name like X-Api-Key (unset = Authorization: Bearer).`);
+  const path = get(`${P}_HEALTH_PATH`);
+  if (path && !/^\/[A-Za-z0-9._~\/-]*$/.test(path)) p.push(`${P}_HEALTH_PATH must start with / (default /).`);
+  const rate = get(`${P}_RATE_PER_SECOND`);
+  if (rate && !(Number(rate) > 0 && Number(rate) <= 100)) p.push(`${P}_RATE_PER_SECOND must be a number from 0.1 to 100 (default 5).`);
+  const hook = get(`${P}_WEBHOOK_SECRET`);
+  if (hook && hook.length < 32) p.push(`${P}_WEBHOOK_SECRET must be at least 32 characters.`);
+  return p;
+}
+const pushHookProblem = get => (get("PUSH_STATUS_WEBHOOK_SECRET") && get("PUSH_STATUS_WEBHOOK_SECRET").length < 32 ? ["PUSH_STATUS_WEBHOOK_SECRET must be at least 32 characters."] : []);
+
 /**
  * One entry per provider. required: production cannot run without it. Others are switched off safely when unset.
  * check(get) returns problems (key name plus what is wrong) for keys that ARE set; missing keys are found from `keys`.
@@ -99,9 +120,9 @@ const PROVIDERS = [
     id: "fcm", label: "Android push (Firebase Cloud Messaging)", required: false,
     unlocks: "Push notifications to the Android app.",
     whenOff: "Android devices are not pushed to; the app still shows the in-app inbox.",
-    keys: ["FCM_PROJECT_ID", "FCM_CLIENT_EMAIL", "FCM_PRIVATE_KEY"],
+    keys: ["FCM_PROJECT_ID", "FCM_CLIENT_EMAIL", "FCM_PRIVATE_KEY"], optionalKeys: ["PUSH_STATUS_WEBHOOK_SECRET"],
     check(get) {
-      const p = [];
+      const p = pushHookProblem(get);
       if (get("FCM_PROJECT_ID") && !/^[a-z][a-z0-9-]{4,29}$/.test(get("FCM_PROJECT_ID"))) p.push("FCM_PROJECT_ID is the Firebase project id (lower case letters, digits and dashes).");
       if (get("FCM_CLIENT_EMAIL") && !/^[^\s@]+@[^\s@]+\.iam\.gserviceaccount\.com$/.test(get("FCM_CLIENT_EMAIL"))) p.push("FCM_CLIENT_EMAIL must be the service account email ending .iam.gserviceaccount.com.");
       if (get("FCM_PRIVATE_KEY") && !get("FCM_PRIVATE_KEY").replace(/\\n/g, "\n").trim().startsWith("-----BEGIN")) p.push("FCM_PRIVATE_KEY must be the service account private key (-----BEGIN PRIVATE KEY-----).");
@@ -112,9 +133,9 @@ const PROVIDERS = [
     id: "apns", label: "iPhone push (Apple APNs)", required: false,
     unlocks: "Push notifications to the iPhone app.",
     whenOff: "iPhones are not pushed to; the app still shows the in-app inbox.",
-    keys: ["APNS_KEY_ID", "APNS_TEAM_ID", "APNS_BUNDLE_ID", "APNS_PRIVATE_KEY"], optionalKeys: ["APNS_PRODUCTION"],
+    keys: ["APNS_KEY_ID", "APNS_TEAM_ID", "APNS_BUNDLE_ID", "APNS_PRIVATE_KEY"], optionalKeys: ["APNS_PRODUCTION", "PUSH_STATUS_WEBHOOK_SECRET"],
     check(get) {
-      const p = [];
+      const p = pushHookProblem(get);
       if (get("APNS_KEY_ID") && !/^[A-Z0-9]{10}$/.test(get("APNS_KEY_ID"))) p.push("APNS_KEY_ID is the 10-character key id from Apple Developer.");
       if (get("APNS_TEAM_ID") && !/^[A-Z0-9]{10}$/.test(get("APNS_TEAM_ID"))) p.push("APNS_TEAM_ID is the 10-character Apple team id.");
       if (get("APNS_BUNDLE_ID") && !/^[A-Za-z0-9.-]+$/.test(get("APNS_BUNDLE_ID"))) p.push("APNS_BUNDLE_ID is the app's bundle id, like au.com.example.ownerlisting.");
@@ -122,6 +143,29 @@ const PROVIDERS = [
       if (get("APNS_PRODUCTION") && !["0", "1"].includes(get("APNS_PRODUCTION"))) p.push("APNS_PRODUCTION is 1 for the live APNs service, or 0/unset for the sandbox.");
       return p;
     }
+  },
+  {
+    id: "mls", label: "MLS property data", required: false,
+    unlocks: "Syncing listed property data from the MLS feed, and the MLS update webhook (/api/webhooks/mls).",
+    whenOff: "No MLS data is fetched; the webhook answers 503. Owner-entered listings are unaffected.",
+    keys: ["MLS_API_KEY", "MLS_API_BASE_URL"],
+    optionalKeys: ["MLS_WEBHOOK_SECRET", "MLS_API_KEY_HEADER", "MLS_HEALTH_PATH", "MLS_RATE_PER_SECOND"],
+    check: get => httpApiProblems(get, "MLS")
+  },
+  {
+    id: "zillow", label: "Zillow property data", required: false,
+    unlocks: "Property details and estimates from Zillow.",
+    whenOff: "No Zillow data is fetched; price guidance keeps using the configured comparables source only.",
+    keys: ["ZILLOW_API_KEY", "ZILLOW_API_BASE_URL"],
+    optionalKeys: ["ZILLOW_API_KEY_HEADER", "ZILLOW_HEALTH_PATH", "ZILLOW_RATE_PER_SECOND"],
+    check: get => httpApiProblems(get, "ZILLOW")
+  },
+  {
+    id: "providercreds", label: "Provider credential encryption", required: false,
+    unlocks: "Storing a per-agent or per-team provider connection (provider_credentials) with its secret encrypted.",
+    whenOff: "No per-agent or per-team provider connection can be saved; platform-wide keys above still work.",
+    keys: ["PROVIDER_CREDENTIAL_KEY"],
+    check: get => (get("PROVIDER_CREDENTIAL_KEY") && !MFA_KEY.test(get("PROVIDER_CREDENTIAL_KEY")) ? ["PROVIDER_CREDENTIAL_KEY must be 32 random bytes in base64 (openssl rand -base64 32)."] : [])
   },
   {
     id: "abn", label: "ABN Lookup (ABR)", required: false,

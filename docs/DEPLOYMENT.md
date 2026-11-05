@@ -54,7 +54,7 @@ Do not turn this on for real users until counsel has approved the retention peri
 - Answers `{counts:{due,sent,notSent,skipped}}`. Safe to repeat: each report is claimed before it is sent, so overlapping runs never send twice. Reports hold counts, money and listing titles only, never buyer names.
 
 ## 5. Smoke test after deploy
-Home loads; Google sign-in works; `/plans` loads; an upload answers 503 (storage off, expected); checkout answers "not available yet" (expected); `/api/webhooks/payway` rejects unsigned posts.
+Home loads; Google sign-in works; `/plans` loads; an upload answers 503 (storage off, expected); checkout answers "not available yet" (expected); `/api/webhooks/payway`, `/api/webhooks/mls` and `/api/webhooks/push-status` reject unsigned posts (503 while their secret is unset). Staff can check provider keys at `GET /api/staff/providers/health`.
 
 ## 6. Blocked on providers (stays off or fails closed)
 | Area | Behaviour now | Needs |
@@ -64,6 +64,8 @@ Home loads; Google sign-in works; `/plans` loads; an upload answers 503 (storage
 | Payments | Adapter stub; nothing can be marked paid, so nothing publishes | Westpac PayWay merchant account and docs |
 | File storage and malware scan | Upload and download answer 503 | Storage provider, scanner, encryption at rest |
 | ID verification | In-house photo ID + selfie review is built but off until storage, ClamAV, `ID_IMAGE_KEY` and `ID_RETENTION_CRON_SECRET` are all set (page says "not available yet", approval blocked) | Settings below; counsel sign-off; pen test |
+| MLS / Zillow property data | Skeleton built (client, webhooks, tables, health). Nothing is fetched until the keys are set and a provider PR implements the sync | `MLS_API_KEY`, `MLS_API_BASE_URL`, `MLS_WEBHOOK_SECRET`, `ZILLOW_API_KEY`, `ZILLOW_API_BASE_URL`, `PROVIDER_CREDENTIAL_KEY` (docs/PROVIDER_KEYS.md) |
+| FCM / APNs push | Keys read by `check:providers`; delivery-status webhook `/api/webhooks/push-status?provider=fcm\|apns` answers 503 until the secret is set | `FCM_*`, `APNS_*`, `PUSH_STATUS_WEBHOOK_SECRET` |
 | ABN check | Adapter built, reads ABN_LOOKUP_GUID (unset = not confirmed, staff review) | ABN Lookup GUID |
 | AI | Rules-only engine; features report off | Self-hosted model and OCR server |
 | Legal text | Draft terms and contract template | Counsel review |
