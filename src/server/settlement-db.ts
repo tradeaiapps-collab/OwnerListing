@@ -26,7 +26,7 @@ export interface SettlementSummary {
 export interface SettlementView extends SettlementSummary { milestones: Milestone[]; checklists: Checklist[]; canUpdate: boolean }
 
 /** The caller's side of a settlement, worked out from the database. A person who is both buyer and owner has no side. */
-const SIDE_SQL =
+export const SIDE_SQL =
   `CASE WHEN t.buyer_id = t.seller_id THEN NULL WHEN t.buyer_id = $1::uuid THEN 'buyer' WHEN t.seller_id = $1::uuid THEN 'seller'
         WHEN EXISTS (SELECT 1 FROM listing_agent_appointment a WHERE a.listing_id = t.listing_id AND a.agent_user_id = $1::uuid AND a.revoked_at IS NULL) THEN 'agent' END`;
 const BASE_SQL =
