@@ -38,6 +38,10 @@ export interface Comparable {
   parking?: number;
   /** Distance from the subject property, when the source knows both locations. */
   distanceKm?: number;
+  /** Land or floor area in square metres, when the source has it. */
+  areaSqm?: number;
+  /** Days from first listing to sale or lease, when the source has both dates. */
+  daysOnMarket?: number;
   /** Display only, if the source licence allows it. */
   label?: string;
 }
@@ -83,16 +87,16 @@ const ADJ = {
 } as const;
 
 const DAY = 86_400_000;
-const monthsBetween = (a: string, b: string) => (Date.parse(b) - Date.parse(a)) / (30.44 * DAY);
+export const monthsBetween = (a: string, b: string) => (Date.parse(b) - Date.parse(a)) / (30.44 * DAY);
 
-const near = (s: Subject, c: Comparable): boolean => {
+export const near = (s: Subject, c: Comparable): boolean => {
   if (c.distanceKm !== undefined) return c.distanceKm <= MAX_DISTANCE_KM;
   const sameSuburb = s.suburb !== undefined && c.suburb.trim().toLowerCase() === s.suburb.trim().toLowerCase();
   const samePostcode = s.postcode !== undefined && c.postcode !== undefined && c.postcode === s.postcode;
   return sameSuburb || samePostcode;
 };
 
-function adjust(s: Subject, c: Comparable): number {
+export function adjust(s: Subject, c: Comparable): number {
   const a = ADJ[s.transactionType];
   const diff = (x?: number, y?: number) => (x !== undefined && y !== undefined ? x - y : 0);
   const factor = 1 + a.bedroom * diff(s.bedrooms, c.bedrooms) + a.bathroom * diff(s.bathrooms, c.bathrooms) + a.parking * diff(s.parking, c.parking);
@@ -100,7 +104,7 @@ function adjust(s: Subject, c: Comparable): number {
 }
 
 /** Similarity weight: newer, closer and more alike results count more. */
-function weightOf(s: Subject, c: Comparable, now: string): number {
+export function weightOf(s: Subject, c: Comparable, now: string): number {
   const age = Math.max(0, monthsBetween(c.date, now));
   const recency = Math.exp(-age / 6);
   const featureGap = Math.abs((s.bedrooms ?? c.bedrooms ?? 0) - (c.bedrooms ?? s.bedrooms ?? 0)) +
@@ -122,8 +126,8 @@ export function weightedQuantile(pairs: readonly { v: number; w: number }[], q: 
   return s[s.length - 1]!.v;
 }
 
-const roundStep = (tx: "sale" | "rent", cents: number) => (tx === "rent" ? 1_000 : cents >= 200_000_000 ? 2_500_000 : 500_000); // $10 a week; $25k; $5k
-const roundTo = (cents: number, step: number) => Math.round(cents / step) * step;
+export const roundStep = (tx: "sale" | "rent", cents: number) => (tx === "rent" ? 1_000 : cents >= 200_000_000 ? 2_500_000 : 500_000); // $10 a week; $25k; $5k
+export const roundTo = (cents: number, step: number) => Math.round(cents / step) * step;
 
 /**
  * The estimate, or undefined when there are too few comparables or confidence is too low (the screen then shows
@@ -199,6 +203,8 @@ export function parseComparables(raw: unknown): Comparable[] {
     if (typeof o["postcode"] === "string" && /^\d{4}$/.test(o["postcode"])) c.postcode = o["postcode"];
     for (const k of ["bedrooms", "bathrooms", "parking"] as const) if (int(o[k], 0, 20)) c[k] = o[k] as number;
     if (typeof o["distanceKm"] === "number" && o["distanceKm"] >= 0 && o["distanceKm"] < 1000) c.distanceKm = o["distanceKm"];
+    if (typeof o["areaSqm"] === "number" && o["areaSqm"] > 0 && o["areaSqm"] <= 1_000_000) c.areaSqm = o["areaSqm"];
+    if (int(o["daysOnMarket"], 0, 3650)) c.daysOnMarket = o["daysOnMarket"] as number;
     if (typeof o["label"] === "string") c.label = o["label"].slice(0, 120);
     out.push(c);
   }

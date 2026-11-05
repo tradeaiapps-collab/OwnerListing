@@ -32,8 +32,8 @@ export default function MyListings() {
               <strong>{r.title}</strong>
               <div className="muted">{r.address}</div>
               <div><span className={`badge${r.status === "published" ? " badge-accepted" : ""}`}>{STATUS_LABELS[r.status] ?? r.status}</span><span className="badge">{r.transactionType === "sale" ? "For sale" : "For rent"}</span></div>
-              {r.status === "draft" && <div><a href={`/listings/${r.id}/edit`}>Edit this draft</a> · <a href={`/listings/${r.id}/photos`}>Photos</a> · <a href={`/listings/${r.id}/checkout`}>Pay and publish</a> · <a href={`/listings/${r.id}/agent`}>Agent</a></div>}
-              {r.status !== "draft" && <div><a href={`/listings/${r.id}/photos`}>Photos</a> · <a href={`/listings/${r.id}/offers`}>Offers</a> · <a href={`/listings/${r.id}/mandate`}>Negotiation mandate</a> · <a href={`/listings/${r.id}/agent`}>Agent</a></div>}
+              {r.status === "draft" && <div><a href={`/listings/${r.id}/edit`}>Edit this draft</a> · <a href={`/listings/${r.id}/photos`}>Photos</a> · <a href={`/listings/${r.id}/checkout`}>Pay and publish</a> · <a href={`/listings/${r.id}/agent`}>Agent</a> · <a href={`/listings/${r.id}/signing`}>Documents</a></div>}
+              {r.status !== "draft" && <div><a href={`/listings/${r.id}/photos`}>Photos</a> · <a href={`/listings/${r.id}/offers`}>Offers</a> · <a href={`/listings/${r.id}/mandate`}>Negotiation mandate</a> · <a href={`/listings/${r.id}/agent`}>Agent</a> · <a href={`/listings/${r.id}/signing`}>Documents</a></div>}
             </li>
           ))}
         </ul>

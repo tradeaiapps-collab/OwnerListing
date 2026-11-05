@@ -37,6 +37,16 @@
   .nt-prefs th, .nt-prefs td { padding-inline: var(--space-1); }
 }
 
+.nt-digest { display: grid; gap: var(--space-3); margin: 0; padding: var(--space-4); border: 1px solid var(--border); border-radius: var(--radius); min-width: 0; }
+.nt-digest legend { font-weight: 600; padding-inline: var(--space-2); }
+.nt-digest p { margin: 0; }
+.nt-digest-row { display: flex; gap: var(--space-2); align-items: center; min-height: 44px; }
+.nt-digest-row input { width: 24px; height: 24px; }
+.nt-digest-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); gap: var(--space-3); }
+.nt-digest-fields label { display: grid; gap: var(--space-1); font-size: 0.875rem; color: var(--muted); }
+.nt-digest select { min-height: 44px; width: 100%; }
+.nt-digest button { min-height: 44px; }
+
 .nt-elena { display: grid; gap: var(--space-3); padding: var(--space-4); background: var(--surface); border: 1px solid var(--border); border-radius: calc(var(--radius) + 4px); box-shadow: var(--shadow-1); }
 .nt-elena header { display: flex; gap: var(--space-3); align-items: center; }
 .nt-elena img { width: 64px; height: 64px; border-radius: 50%; object-fit: cover; object-position: top; flex: none; }
