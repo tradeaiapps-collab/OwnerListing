@@ -42,6 +42,7 @@ const META: Record<string, { group: string; icon: AdminIcon; blurb: string }> = 
   "/staff/escrow": { group: "compliance", icon: "bank", blurb: "Buyer deposits in trust, bank reconciliation and release approvals" },
   "/staff/prequalifications": { group: "compliance", icon: "id", blurb: "Buyer mortgage pre-approvals: confirm what Elena read, verify or ask for a clearer letter" },
   "/staff/id-review": { group: "compliance", icon: "id", blurb: "Identity checks waiting for review" },
+  "/staff/scheduling-templates": { group: "compliance", icon: "audit", blurb: "Wording Elena uses to draft inspection confirmations and reminders" },
   "/staff/public-holidays": { group: "compliance", icon: "audit", blurb: "Holidays left out of cooling-off business days, by state" },
   "/staff/wording-flags": { group: "compliance", icon: "wording", blurb: "Listings flagged for discriminatory wording" },
   "/staff/disclosures": { group: "compliance", icon: "disclosure", blurb: "State disclosure requirements and versions" },

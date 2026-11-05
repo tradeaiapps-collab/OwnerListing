@@ -23,6 +23,7 @@ export const STAFF_SECTIONS: readonly StaffSection[] = [
   { href: "/staff/trust-accounts", label: "Trust account approvals", permissions: ["trust_account.approve"] },
   { href: "/staff/escrow", label: "Deposits in trust", permissions: ["escrow.manage", "escrow.approve"] },
   { href: "/staff/id-review", label: "Identity review", permissions: ["identity.review"] },
+  { href: "/staff/scheduling-templates", label: "Elena scheduling messages", permissions: ["scheduling_template.manage"] },
   { href: "/staff/prequalifications", label: "Buyer pre-approvals", permissions: ["prequal.review"] },
   { href: "/staff/public-holidays", label: "Public holidays", permissions: ["holiday.manage"] },
   { href: "/staff/wording-flags", label: "Discriminatory wording review", permissions: ["wording.review"] },

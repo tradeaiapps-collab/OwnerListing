@@ -39,6 +39,7 @@ export const PERMISSION_CATALOGUE = [
   { key: "dispute.read_chat", area: "cases", label: "Read job chat in a dispute", description: "Read the saved job chat for a disputed job. Every view is logged.", sensitive: true },
   { key: "prequal.review", area: "marketplace", label: "Review buyer pre-approvals", description: "Open buyers' mortgage pre-approval letters at /staff/prequalifications, confirm what Elena read (amount, conditions, expiry), then verify them or ask the buyer to send a clearer letter. Shows masked buyer names and the lender letter. Every view and decision is logged.", sensitive: true },
   { key: "holiday.manage", area: "cases", label: "Manage public holidays", description: "Add, change and remove the public holidays by state at /staff/public-holidays. They are left out when cooling-off business days are counted, so a change moves deadlines on deposits. Every change is logged.", sensitive: true },
+  { key: "scheduling_template.manage", area: "messaging", label: "Manage Elena scheduling message templates", description: "Edit the platform-wide wording Elena uses to draft inspection confirmations and reminders at /staff/scheduling-templates. Agents can still override it for their own messages. Every change is logged.", sensitive: false },
   { key: "valuation.manage", area: "marketplace", label: "Manage property valuations", description: "Turn buyer-facing property valuations on or off for the whole site or one listing at /staff/valuation-settings, and set the minimum number of comparable sales. Every change is logged.", sensitive: true },
   { key: "listing_optimization.manage", area: "marketplace", label: "Manage listing optimization", description: "Turn Elena's seller listing suggestions on or off, set their thresholds and read how often sellers follow them at /staff/listing-optimization-settings. Every change is logged.", sensitive: false },
   { key: "trust_account.approve", area: "trust_accounts", label: "Approve trust accounts", description: "Approve or reject a solicitor trust account. New or changed details always need two different people.", sensitive: true },
@@ -109,7 +110,7 @@ const ROLE_PERMISSIONS: Record<StaffRole, readonly StaffPermission[]> = {
     "trust_account.approve", "licence.verify", "dispute.read_chat", "signing.support_view", "override.request", "identity.review", "investment.review",
     "wording.review", "sale_event.manage", "disclosure.config_edit", "disclosure.config_approve", "disclosure.verify", "doc_template.edit", "doc_template.publish", "listing.moderate", "listing.bulk", "user.manage", "escrow.manage", "escrow.approve", "holiday.manage", "prequal.review"],
   accountant: ["report.financial", "report.sales", "pii.view_masked", "billing.manage", "commission.manage", "escrow.manage"],
-  support: ["report.buyer", "report.seller", "pii.view_masked", "case.manage", "signing.support_view", "override.request", "listing.moderate"],
+  support: ["report.buyer", "report.seller", "pii.view_masked", "case.manage", "signing.support_view", "override.request", "listing.moderate", "scheduling_template.manage"],
   technical: ["logs.technical", "report.operations", "config.edit"],
   reporting: ["report.sales", "report.suburb", "report.operations"],
   /** Site appearance only (theme.edit). No personal data, no reports, no money. */
