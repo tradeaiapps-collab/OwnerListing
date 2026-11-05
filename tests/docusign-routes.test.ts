@@ -15,6 +15,7 @@ vi.mock("../src/server/mfa-context", async () => {
   const real = await vi.importActual<typeof import("../src/server/mfa-context")>("../src/server/mfa-context");
   return { ...real, recentMfaAt: async () => state.mfaAt };
 });
+vi.mock("../src/server/rate-guard", () => ({ withinRates: async () => true }));
 vi.mock("../src/server/signing-db", () => {
   let n = 0;
   return {
@@ -65,11 +66,17 @@ describe("DocuSign routes", () => {
     state.actor = owner;
   });
 
-  const generate = async () => {
-    const r = await listingRoute.POST(post({ templateKey: tpl.key, values: { inspection_date: "2026-12-02" }, signers: [{ email: "amy@agency.test", roleLabel: "Inspector" }] }), ctx(LISTING));
-    expect(r.status).toBe(201);
-    return ((await r.json()) as { document: { id: string; provider: string } }).document;
+  // Generating answers the same "received" message whatever the signers (no account disclosure), so the new draft is found in the list.
+  const listedIds = async () => ((await (await listingRoute.GET(new Request("http://test/x"), ctx(LISTING))).json()) as { documents: { id: string }[] }).documents.map(d => d.id);
+  const generateWith = async (body: unknown) => {
+    const before = new Set(await listedIds());
+    const r = await listingRoute.POST(post(body), ctx(LISTING));
+    expect(r.status).toBe(200);
+    expect(await r.json()).toMatchObject({ status: "received" });
+    const id = (await listedIds()).find(x => !before.has(x))!;
+    return (await state.repo!.document(id))!;
   };
+  const generate = () => generateWith({ templateKey: tpl.key, values: { inspection_date: "2026-12-02" }, signers: [{ email: "amy@agency.test", roleLabel: "Inspector" }] });
 
   it("new documents use DocuSign when selected, are refused when it is selected but not set up, and use built-in otherwise", async () => {
     expect((await generate()).provider).toBe("docusign");
@@ -77,9 +84,7 @@ describe("DocuSign routes", () => {
     const body = { templateKey: tpl.key, values: { inspection_date: "2026-12-02" }, signers: [{ email: "amy@agency.test", roleLabel: "Inspector" }] };
     expect((await listingRoute.POST(post(body), ctx(LISTING))).status).toBe(503);
     process.env["SIGNING_PROVIDER"] = "builtin";
-    const r = await listingRoute.POST(post(body), ctx(LISTING));
-    expect(r.status).toBe(201);
-    expect(((await r.json()) as { document: { provider: string } }).document.provider).toBe("builtin");
+    expect((await generateWith(body)).provider).toBe("builtin");
   });
 
   it("send, signing link, webhook completion and signed-copy download work end to end, with access limited to the parties", async () => {

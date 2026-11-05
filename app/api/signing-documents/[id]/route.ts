@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 import { cancelWithProvider, docusignSigningLink, refreshFromDocusign, retryDocument, sendViaDocusign } from "../../../../src/domain/esign-service";
 import { declineDocument, explainClause, sendDocument, signDocument, viewDocument } from "../../../../src/domain/signing-service";
-import { getActor } from "../../../../src/server/context";
 import { csrfGuard } from "../../../../src/server/csrf";
+import { SIGN_ATTEMPT_RATE } from "../../../../src/domain/rate-limit";
+import { getActor, getDb } from "../../../../src/server/context";
+import { withinRates } from "../../../../src/server/rate-guard";
 import { failure, unauthenticated } from "../../../../src/server/http";
 import { getEsignDeps, signingMode } from "../../../../src/server/esign";
 import { getSigningRepo, requestContext, signingIds, signingPersona } from "../../../../src/server/signing-db";
@@ -69,6 +71,8 @@ async function handlePost(req: Request, { params }: Ctx) {
     }
     case "explain": { const r = await explainClause(repo, actor, id, (body as Record<string, unknown>)["clauseId"], signingIds, ctx); return r.ok ? NextResponse.json(r.value) : failure(r); }
     case "sign": {
+      if (!(await withinRates(getDb(), "sign-attempt-user", [actor.userId], { windowMs: SIGN_ATTEMPT_RATE.windowMs, limit: SIGN_ATTEMPT_RATE.perUser })))
+        return NextResponse.json({ error: "Too many signing attempts. Wait 15 minutes and try again." }, { status: 429, headers: { "retry-after": "900" } });
       // Signing is binding, so the session must have passed the second sign-in step recently (a hijacked session cannot sign).
       const verified = await recentMfaAt(req);
       if (verified === undefined) return mfaRequiredResponse();

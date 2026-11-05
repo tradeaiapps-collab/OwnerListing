@@ -153,6 +153,10 @@ export default function SigningPage() {
             ))}
           </ul>
 
+          {d.status === "completed" && !viaDocusign && (
+            <div className="sg-actions"><a className="button secondary" href={`/api/signing-documents/${d.id}/pdf`} download>Download signed copy (PDF)</a></div>
+          )}
+
           {returning && <p className="muted" role="status">Checking with DocuSign…</p>}
           {viewer.canSign && viaDocusign && (
             <section className="sg-sign stack" aria-label="Sign with DocuSign">
