@@ -1,7 +1,7 @@
 name: Production migrate
 
 # Manual only: applies db/*.sql to the production database. Run it after merging a PR that adds a migration, BEFORE or right after Vercel finishes deploying.
-# Create a GitHub Environment named "production" with required reviewers, then add the secret PROD_DATABASE_URL (the DIRECT, non-pooled Neon string) to that environment.
+# Create a GitHub Environment named "production" with required reviewers, then add the secret PROD_DATABASE_URL (the Supabase direct connection string, or the Session pooler string if the runner cannot reach the IPv6 direct host) to that environment.
 # Safe to repeat: scripts/migrate.mjs applies each file once.
 on:
   workflow_dispatch:
