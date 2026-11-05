@@ -101,7 +101,7 @@ export interface Valuation {
 }
 
 /** Brings each comparable to the subject's size (a mild elasticity, so a bigger block moves the price less than proportionally). */
-function sizeAdjusted(q: IntelQuery, all: readonly Comparable[]): { comps: Comparable[]; used: boolean } {
+export function sizeAdjusted(q: IntelQuery, all: readonly Comparable[]): { comps: Comparable[]; used: boolean } {
   if (q.areaSqm === undefined) return { comps: [...all], used: false };
   let used = false;
   const comps = all.map(c => {
