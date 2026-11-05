@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { getReport, respondToInspection } from "../../../../src/domain/inspection";
 import { getActor } from "../../../../src/server/context";
 import { csrfGuard } from "../../../../src/server/csrf";
+import { getDb } from "../../../../src/server/context";
+import { fireAutomation } from "../../../../src/server/automation-db";
 import { failure, unauthenticated } from "../../../../src/server/http";
 import { getInspectionRepo, inspectionIds } from "../../../../src/server/inspection-db";
 import { withApi } from "../../../../src/server/api/with-api";
@@ -28,6 +30,7 @@ async function handlePost(req: Request, { params }: Ctx) {
   if (!actor) return unauthenticated();
   const { id } = await params;
   const r = await respondToInspection(getInspectionRepo(), actor, id, await req.json().catch(() => null), inspectionIds);
+  if (r.ok && r.value.status === "completed") await fireAutomation(getDb(), { trigger: "inspection_complete", inspectionId: id });
   return r.ok ? NextResponse.json({ inspection: r.value }) : failure(r);
 }
 
