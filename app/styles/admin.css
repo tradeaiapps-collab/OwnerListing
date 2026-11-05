@@ -89,3 +89,9 @@ button.danger:hover:not(:disabled) { background: var(--danger); border-color: va
   .bulk-bar .bulk-count, .bulk-bar .bulk-pick, .bulk-bar > [role="alert"], .bulk-bar button.link-button { grid-column: 1 / -1; margin-right: 0; }
   .bulk-bar button.link-button { justify-self: start; }
 }
+
+/* Staff listing table: buyer video refund trail under the row actions. */
+.video-refunds { margin-top: var(--space-2, 0.5rem); }
+.video-refunds button.link-button { background: none; border: 0; box-shadow: none; min-height: 0; padding: 0; color: var(--brand); font: inherit; font-size: 0.875rem; cursor: pointer; text-decoration: underline; }
+.video-refunds ul { list-style: none; margin: var(--space-2, 0.5rem) 0 0; padding: 0; display: grid; gap: var(--space-2, 0.5rem); }
+.video-refunds li { overflow-wrap: anywhere; font-size: 0.875rem; }
