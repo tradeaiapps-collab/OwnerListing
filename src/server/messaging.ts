@@ -3,7 +3,7 @@ import { readBrand } from "../config/brand";
 import { alertDeliveryFromEnv } from "../adapters/alert-delivery";
 import { emailFromConfig, type EmailAttachment, type EmailPort, type HostResolver, type TransportFactory } from "../adapters/email";
 import { failed, type SendResult } from "../adapters/messaging";
-import { SmsSendError, smsFromConfig, verificationCodeText, type SmsTextPort } from "../adapters/sms";
+import { SmsSendError, smsFromConfig, type SmsSendOptions, verificationCodeText, type SmsTextPort } from "../adapters/sms";
 import type { AlertDeliveryPort, AlertMessage } from "../domain/alerts";
 import type { Queryable } from "./db";
 import { loadResolved } from "./messaging-settings-db";
@@ -37,8 +37,8 @@ export async function recordOutbox(db: Queryable, env: Env, channel: "email" | "
 export async function getSmsPort(db: Queryable, env: Env, template: string, deps: MessagingDeps = {}): Promise<SmsTextPort> {
   const cfg = (await loadResolved(db, env)).sms;
   const inner = smsFromConfig(cfg, deps.fetch ? { fetch: deps.fetch } : {});
-  async function sendText(to: string, text: string): Promise<SendResult> {
-    const r = await inner.sendText(to, text);
+  async function sendText(to: string, text: string, opts?: SmsSendOptions): Promise<SendResult> {
+    const r = await inner.sendText(to, text, opts);
     await recordOutbox(db, env, "sms", template, to, r);
     return r;
   }
