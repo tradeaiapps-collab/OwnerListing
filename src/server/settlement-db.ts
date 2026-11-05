@@ -1,11 +1,13 @@
 import { randomUUID } from "node:crypto";
 import {
-  addBusinessDays, addDays, mayTick, mayUpdateMilestones, milestoneBlocker, newChecklists, nextStage, STAGES, stuckInfo,
+  addBusinessDays, addDays, STAGE_LABEL, mayTick, mayUpdateMilestones, milestoneBlocker, newChecklists, nextStage, STAGES, stuckInfo,
   type ChecklistItem, type ItemRole, type MilestoneChange, type MilestoneStatus, type Side, type Stage, type Stuck, type TickChange
 } from "../domain/settlement";
 import { localDay, STATE_RULES } from "../domain/sale-fall-through";
 import { appendAuditPg, type Queryable } from "./db";
 import { holidayDatesPg } from "./public-holidays-db";
+import { postSystemNote } from "./transaction-message-db";
+import { STAGE_NOTE } from "../domain/transaction-messages";
 
 // Parameterised SQL only. Every write and its audit_event row share one transaction with the timeline row locked first. Rows are never deleted (db trigger).
 
@@ -90,6 +92,7 @@ export async function createSettlement(db: Queryable, userId: string, offerId: s
       await tx.query("INSERT INTO settlement_checklists (settlement_id, milestone_stage, role, items) VALUES ($1,$2,$3,$4::jsonb)", [id, c.stage, c.role, JSON.stringify(c.items)]);
     }
     await audit(tx, userId, id, "settlement.started", { offerId, coolingOffEstimated: rule !== null });
+    await postSystemNote(tx, id, "Offer accepted. This conversation is for the buyer, owner and agent to talk through the sale in one place. Use @buyer, @seller or @agent to get someone's attention.");
     return { ok: true as const, value: { id } };
   });
 }
@@ -158,6 +161,10 @@ export async function updateMilestone(db: Queryable, userId: string, id: string,
       else { completed = true; await tx.query("UPDATE settlement_timeline SET completed_at = $2, updated_at = $2 WHERE id = $1::uuid", [id, now]); }
     } else {
       await tx.query("UPDATE settlement_timeline SET updated_at = $2 WHERE id = $1::uuid", [id, now]);
+    }
+    if (change.status === "completed") {
+      await postSystemNote(tx, id, completed ? "Settlement completed. Congratulations to everyone." : STAGE_NOTE(STAGE_LABEL[change.stage], STAGE_LABEL[stage]),
+        change.stage === "deposit_received" ? ["seller"] : change.stage === "cooling_off_expires" ? ["buyer"] : []);
     }
     await audit(tx, userId, id, "settlement.milestone_updated", { side, stage: change.stage, status: change.status ?? null, targetDate: change.targetDate ?? null });
     return { ok: true as const, value: { currentStage: stage, completed } };
