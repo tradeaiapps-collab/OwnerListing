@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { acceptBooking, passBooking } from "../../../../../src/domain/inspection-marketplace";
-import { getActor } from "../../../../../src/server/context";
+import { getActor, getDb } from "../../../../../src/server/context";
 import { csrfGuard } from "../../../../../src/server/csrf";
 import { failure, unauthenticated } from "../../../../../src/server/http";
+import { draftBookingMessages } from "../../../../../src/server/elena-scheduling-db";
 import { bookingIds, getBookingRepo } from "../../../../../src/server/inspection-marketplace-db";
 import { withApi } from "../../../../../src/server/api/with-api";
 
@@ -19,6 +20,8 @@ async function handlePost(req: Request, { params }: Ctx) {
   const o = typeof body === "object" && body !== null ? (body as Record<string, unknown>) : {};
   if (o["action"] === "accept") {
     const r = await acceptBooking(getBookingRepo(), actor, id, o["slot"], bookingIds);
+    // Elena drafts the confirmation and the 24-hour reminder for the inspector to review. It never blocks or undoes the booking.
+    if (r.ok) await draftBookingMessages(getDb(), id);
     return r.ok ? NextResponse.json(r.value, { status: 201 }) : failure(r);
   }
   if (o["action"] === "pass") {

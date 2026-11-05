@@ -113,6 +113,8 @@ export const KINDS = {
   fall_through_proposed: "offers",
   fall_through_update: "offers",
   offer_fallen_through: "offers",
+  dispute_opened: "offers",
+  dispute_update: "offers",
   deposit_held: "offers",
   deposit_payout_pending: "offers",
   deposit_released: "offers",
@@ -127,6 +129,8 @@ export const KINDS = {
   marketing_news: "marketing",
   automation_message: "marketing",
   automation_alert: "messages",
+  scheduling_message: "messages",
+  scheduling_suggestion: "messages",
   lead_followup_due: "messages"
 } as const satisfies Record<string, Category>;
 export type Kind = keyof typeof KINDS;
@@ -182,6 +186,8 @@ export function renderNotification(kind: Kind, p: NotificationParams = {}): Rend
     case "offer_countered": return t("Counter-offer", `There is a counter-offer on ${listing}.`);
     case "fall_through_proposed": return t("Sale of your property may have fallen through", `The other side says the contract on ${listing} will not go ahead (${clip(p["reason"], 80, "reason given")}). Open it to see the proposed outcome for the deposit and agree or dispute it.`);
     case "fall_through_update": return t(clip(p["title"], 80, "Update on a sale that fell through"), clip(p["text"], 300, `There is an update on the deposit for ${listing}.`), false);
+    case "dispute_opened": return t("A dispute was raised on your sale", `A dispute about ${listing} was raised (${clip(p["title"], 80, "see the settlement")}). Elena will suggest a fair middle ground. Open it to add your side.`, false);
+    case "dispute_update": return t(clip(p["title"], 80, "Update on a dispute"), clip(p["text"], 300, `There is an update on the dispute about ${listing}.`), false);
     case "offer_fallen_through": return t("Sale marked as fallen through", `The contract on ${listing} is now marked as fallen through. The deposit is returned or released by the solicitor's trust account once staff approve it. Nothing moves until then.`);
     case "deposit_held": {
       const due = clip(p["due"], 20, "");
@@ -200,6 +206,8 @@ export function renderNotification(kind: Kind, p: NotificationParams = {}): Rend
     case "system_notice": return t(clip(p["title"], 80, "Notice"), clip(p["text"], 400, "There is an update about your account."));
     case "marketing_news": return t(clip(p["title"], 80, "News"), clip(p["text"], 400, "There is news from us."));
     case "automation_message": return t(clip(p["title"], 80, "A message about a property"), clip(p["text"], 600, "There is an update about a property you asked about."), false);
+    case "scheduling_message": return t(clip(p["title"], 80, "A message about your inspection"), clip(p["text"], 1500, "There is an update about your inspection."));
+    case "scheduling_suggestion": return t(clip(p["title"], 80, "Elena drafted a message"), clip(p["text"], 400, "Review the draft and send, edit or skip it."));
     case "lead_followup_due": return t("Lead follow-up due", clip(p["text"], 300, `Follow up with ${name} about ${listing}.`), false);
     case "automation_alert": return t(clip(p["title"], 80, "Automation update"), clip(p["text"], 400, "One of your automations ran."));
   }

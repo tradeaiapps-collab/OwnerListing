@@ -11,6 +11,7 @@ import { LocationMap } from "../location-map";
 import { JSON_HEADERS } from "../ui";
 import { SaveAsTemplate } from "../save-as-template";
 import { MarketSnapshot } from "./market-snapshot";
+import { OptimizationPanel } from "../optimization-panel";
 import { ValuationCard } from "../valuation-card";
 import "../../styles/cards.css";
 import "../../styles/detail.css";
@@ -361,6 +362,7 @@ export default function ListingDetail() {
           </div>
           <SaveAsTemplate listingId={listing.id} defaultName={listing.title} userType={userType} />
           {userType === "owner" && <MarketSnapshot listingId={listing.id} />}
+          {userType === "owner" && <OptimizationPanel listingId={listing.id} quiet />}
           {compliance && (
             <ul className="pd-aside-checks" aria-label="At a glance">
               <li><Mark tone={compliance.seller.handledBy === "owner" || compliance.seller.agentLicenceVerified ? "ok" : "wait"} />
