@@ -1,0 +1,45 @@
+/* Agent workspace: KPI tiles, lead pipeline, client panel and the assistant card. Theme tokens only; mobile first. */
+.aw { display: grid; gap: var(--space-6); }
+.aw-kpis { display: grid; gap: var(--space-3); grid-template-columns: repeat(2, minmax(0, 1fr)); margin: 0; padding: 0; list-style: none; }
+@media (min-width: 768px) { .aw-kpis { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.aw-kpi { display: grid; gap: var(--space-1); padding: var(--space-3) var(--space-4); border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); min-width: 0; }
+.aw-kpi span { color: var(--muted); font-size: 0.875rem; }
+.aw-kpi strong { font-family: var(--font-display); font-size: 1.5rem; line-height: 1.2; overflow-wrap: anywhere; }
+.aw-kpi small { color: var(--muted); }
+.aw-main { display: grid; gap: var(--space-6); grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 1024px) { .aw-main { grid-template-columns: minmax(0, 1fr) 340px; align-items: start; } }
+.aw-card { padding: var(--space-4); border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); min-width: 0; }
+.aw-card h2 { margin: 0 0 var(--space-3); font-size: 1.125rem; }
+.aw-leads { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-3); }
+.aw-lead { display: grid; gap: var(--space-2); padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius); }
+.aw-lead.is-open { border-color: var(--gold); background: var(--gold-tint); }
+.aw-lead-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2); }
+.aw-lead-head button { background: none; border: 0; padding: 0; font: inherit; font-weight: 600; color: var(--link); text-align: left; cursor: pointer; min-height: 44px; }
+.aw-lead-head button:focus-visible, .aw-lead select:focus-visible, .aw-lead input:focus-visible, .aw-form :is(input, select, textarea, button):focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.aw-score { display: inline-block; min-width: 3.25rem; padding: 2px var(--space-2); border-radius: 999px; font-size: 0.875rem; font-weight: 700; text-align: center; }
+.aw-score.hot { background: var(--ok-tint); color: var(--ok); }
+.aw-score.warm { background: var(--warn-tint); color: var(--warn); }
+.aw-score.cold { background: var(--tint); color: var(--muted); }
+.aw-meta { margin: 0; color: var(--muted); font-size: 0.875rem; overflow-wrap: anywhere; }
+.aw-controls { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.aw-controls label { display: grid; gap: 2px; font-size: 0.8125rem; color: var(--muted); }
+.aw-controls select, .aw-controls input { min-height: 44px; padding: 0 var(--space-2); font: inherit; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); }
+.aw-overdue { color: var(--danger); font-weight: 600; }
+.aw-form { display: grid; gap: var(--space-2); margin-top: var(--space-3); }
+.aw-form textarea { min-height: 88px; padding: var(--space-2); font: inherit; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); }
+.aw-form select, .aw-form button { min-height: 44px; font: inherit; }
+.aw-notes { list-style: none; margin: var(--space-3) 0 0; padding: 0; display: grid; gap: var(--space-2); }
+.aw-notes li { padding: var(--space-2) var(--space-3); border-left: 3px solid var(--gold); background: var(--tint); border-radius: 0 8px 8px 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+.aw-notes small { display: block; color: var(--muted); }
+.aw-elena { display: grid; gap: var(--space-3); }
+.aw-elena-head { display: flex; align-items: center; gap: var(--space-3); }
+.aw-elena-head img { width: 56px; height: 56px; border-radius: 50%; object-fit: cover; object-position: 50% 12%; border: 1px solid var(--border); }
+.aw-elena-head small { display: block; color: var(--muted); }
+.aw-answer { margin: 0; padding: var(--space-3); border-radius: var(--radius); background: var(--brand); color: var(--brand-text); overflow-wrap: anywhere; }
+.aw-chips { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.aw-chips button { min-height: 44px; padding: 0 var(--space-3); border: 1px solid var(--border); border-radius: 999px; background: var(--bg); color: var(--text); font: inherit; font-size: 0.875rem; cursor: pointer; }
+.aw-chips button:hover { background: var(--tint); }
+.aw-ask { display: flex; gap: var(--space-2); }
+.aw-ask input { flex: 1; min-width: 0; min-height: 44px; padding: 0 var(--space-3); font: inherit; border: 1px solid var(--border); border-radius: 999px; background: var(--bg); color: var(--text); }
+.aw-ask button { min-height: 44px; padding: 0 var(--space-4); border: 0; border-radius: 999px; background: var(--brand); color: var(--brand-text); font: inherit; cursor: pointer; }
+.aw-ask :is(input, button):focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
