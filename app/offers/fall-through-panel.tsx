@@ -146,7 +146,7 @@ function Outcome({ o }: { o: Pick<Preview, "refundCents" | "releaseCents" | "pen
         <div><dt>To the seller</dt><dd>{money(o.releaseCents)}{o.penaltyCents > 0 ? <span className="muted"> (penalty)</span> : null}</dd></div>
       </dl>
       <p>{o.basis}</p>
-      {!o.rulesConfirmed && <p className="ai-note">This is an estimate from our current state rules, which a lawyer has not yet confirmed. Our team checks it before any money is paid, and it is not legal advice.</p>}
+      {!o.rulesConfirmed && <p className="ai-note">This is an estimate from our current state rules, which a lawyer has not reviewed. Our team checks it before any money is paid, and it is not legal advice.</p>}
     </div>
   );
 }

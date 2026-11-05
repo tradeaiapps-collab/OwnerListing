@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  allPaid, businessDaysAfter, nextPayout, parseFallThrough, parseResolution, partyMayRaise, payoutBlockedByRules, planCasePayout, planResolutionDecision, localDay, planRespond, planWithdraw, proposeOutcome, reasonsFor, RULES_CONFIRMED, RULES_VERSION,
+  allPaid, businessDaysAfter, nextPayout, parseFallThrough, parseResolution, partyMayRaise, payoutBlockedByRules, planCasePayout, planResolutionDecision, localDay, planRespond, planWithdraw, proposeOutcome, reasonsFor, RULES_CONFIRMED, RULES_OWNER_ACCEPTED, RULES_VERSION,
   type OutcomeInput
 } from "../src/domain/sale-fall-through";
 
@@ -25,8 +25,9 @@ describe("state rules for cooling-off", () => {
       expect(v).toMatchObject({ penaltyCents: 200_000, releaseCents: 200_000, refundCents: 3_800_000, penaltyUnconfirmed: false });
     }
   });
-  it("is marked as not confirmed by counsel", () => {
+  it("is not marked as confirmed by counsel, but is accepted by the owner so payouts can proceed", () => {
     expect(RULES_CONFIRMED).toBe(false);
+    expect(RULES_OWNER_ACCEPTED).toBe(true);
     expect(value({}).rulesConfirmed).toBe(false);
   });
   it("VIC: 3 business days, 0.2% or $100 whichever is greater", () => {
@@ -116,13 +117,14 @@ describe("answers and payouts", () => {
 
   it("payouts that rest on unconfirmed cooling-off figures are refused; staff-recorded amounts and full refunds are not", () => {
     const base = { status: "agreed" as const, raisedByParty: "buyer" as const, refundCents: 3_800_000, releaseCents: 200_000, rulesVersion: RULES_VERSION, penaltyUnconfirmed: false };
-    expect(payoutBlockedByRules({ ...base, reason: "cooling_off", resolutionSource: "parties" })).toContain("counsel");
+    expect(payoutBlockedByRules({ ...base, reason: "cooling_off", resolutionSource: "parties" }, false, RULES_VERSION, false)).toContain("approved");
+    expect(payoutBlockedByRules({ ...base, reason: "cooling_off", resolutionSource: "parties" })).toBeNull(); // owner accepted
     expect(payoutBlockedByRules({ ...base, reason: "cooling_off", resolutionSource: "parties" }, true, RULES_VERSION)).toBeNull();
-    expect(payoutBlockedByRules({ ...base, reason: "cooling_off", resolutionSource: "parties", rulesVersion: "old" }, true, RULES_VERSION)).toContain("counsel");
-    expect(payoutBlockedByRules({ ...base, reason: "cooling_off", resolutionSource: "parties", penaltyUnconfirmed: true }, true, RULES_VERSION)).toContain("counsel");
+    expect(payoutBlockedByRules({ ...base, reason: "cooling_off", resolutionSource: "parties", rulesVersion: "old" }, true, RULES_VERSION)).toContain("approved");
+    expect(payoutBlockedByRules({ ...base, reason: "cooling_off", resolutionSource: "parties", penaltyUnconfirmed: true }, true, RULES_VERSION)).toContain("approved");
     expect(payoutBlockedByRules({ ...base, reason: "cooling_off", resolutionSource: "court_order" })).toBeNull();
     expect(payoutBlockedByRules({ ...base, reason: "finance_condition", resolutionSource: "parties" })).toBeNull();
-    expect(planCasePayout({ ...base, reason: "cooling_off", resolutionSource: "parties" }, [], false, 4_000_000)).toMatchObject({ ok: false });
+    expect(planCasePayout({ ...base, reason: "cooling_off", resolutionSource: "parties" }, [], false, 4_000_000)).toMatchObject({ ok: true, value: { kind: "refund", amountCents: 3_800_000 } });
   });
   it("a proposed resolution needs a different person to decide it", () => {
     expect(planResolutionDecision({ status: "disputed", proposedBy: "a" }, "b")).toEqual({ allow: true });

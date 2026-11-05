@@ -72,10 +72,10 @@ describe.skipIf(!DATABASE_URL)("sale fell through on Postgres", () => {
     const ev = (await t.db.query("SELECT actor_kind, from_status, to_status FROM offer_event WHERE offer_id = $1 AND event_type = 'fallen_through'", [s.offerId])).rows;
     expect(ev).toEqual([{ actor_kind: "owner", from_status: "accepted", to_status: "fallen_through" }]);
 
-    // Still frozen for ordinary use. The cooling-off split rests on draft state figures, so no payout can be requested until counsel confirms them.
+    // Still frozen for ordinary use. The cooling-off split rests on state figures the owner accepted without counsel review; the refund is requested first.
     expect(await requestRelease(t.db, s.a, s.holdingId, { kind: "refund", amountCents: 1_000_000, reason: "Refund to the buyer now", settlementConfirmed: false })).toMatchObject({ ok: false, status: 409 });
-    expect(await requestCasePayout(t.db, s.a, s.holdingId, id)).toMatchObject({ ok: false, status: 409, error: expect.stringContaining("counsel") });
-    expect(await getHolding(t.db, s.holdingId).then(d => d!.releases.length)).toBe(0);
+    expect(must(await requestCasePayout(t.db, s.a, s.holdingId, id))).toMatchObject({ kind: "refund", amountCents: 3_800_000 });
+    expect(await getHolding(t.db, s.holdingId).then(d => d!.releases.length)).toBe(1);
   });
 
   it("a full-refund case pays out in two-person steps and closes the record", async () => {
