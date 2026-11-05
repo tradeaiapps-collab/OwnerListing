@@ -41,6 +41,7 @@ export default function AgentWorkspace() {
   const [question, setQuestion] = useState("");
   const [busy, setBusy] = useState(false);
   const [stays, setStays] = useState<Stay[]>([]);
+  const [inspectionsToday, setInspectionsToday] = useState(0);
 
   const load = useCallback(async () => {
     try {
@@ -52,6 +53,7 @@ export default function AgentWorkspace() {
   }, []);
   useEffect(() => { void load(); }, [load]);
   useEffect(() => {
+    void call<{ today: number }>("/api/agent/open-inspections").then(r => { if (r.ok) setInspectionsToday(r.body.today); }).catch(() => undefined);
     void call<{ stays: Stay[] }>("/api/agent/blocked-dates").then(r => { if (r.ok) setStays(r.body.stays); }).catch(() => undefined);
   }, []);
 
@@ -98,8 +100,9 @@ export default function AgentWorkspace() {
   return (
     <main className="aw">
       <h1>Agent workspace</h1>
-      <p><a href="/agent/listings">Appointed listings</a> · <a href="/agent/appointments">Invitations</a> · <a href="/agent/team">Team</a> · <a href="/agent/reports">Reports</a> · <a href="/agent/my-performance">My performance</a> · <a href="/agent/market-forecast">Market forecast</a> · <a href="/agent/automations">Automations</a> · <a href="/agent/marketplace">Marketplace profile</a> · <a href="/agent/rates">Loan rates</a> · <a href="/agent/videos">Videos</a></p>
+      <p><a href="/agent/listings">Appointed listings</a> · <a href="/agent/appointments">Invitations</a> · <a href="/agent/inspections">Inspections</a> · <a href="/agent/inspection-availability">Inspection times</a> · <a href="/agent/team">Team</a> · <a href="/agent/reports">Reports</a> · <a href="/agent/my-performance">My performance</a> · <a href="/agent/market-forecast">Market forecast</a> · <a href="/agent/automations">Automations</a> · <a href="/agent/marketplace">Marketplace profile</a> · <a href="/agent/rates">Loan rates</a> · <a href="/agent/videos">Videos</a></p>
       {error && <p role="alert">{error}</p>}
+      {inspectionsToday > 0 && <p role="status"><strong>{inspectionsToday === 1 ? "1 open inspection today" : `${inspectionsToday} open inspections today`}.</strong> <a href="/agent/inspections">See the inspection calendar</a></p>}
       {!data && !error && <p className="muted" role="status">Loading…</p>}
       {p && f && (
         <>

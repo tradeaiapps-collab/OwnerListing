@@ -2,7 +2,7 @@ export type StaffRole = "super_admin" | "compliance" | "accountant" | "support" 
 
 export type PermissionArea =
   | "cases" | "trust_accounts" | "identity" | "reports" | "personal_data" | "pricing" | "messaging"
-  | "staff" | "website" | "platform" | "overrides" | "investments" | "disclosures" | "documents" | "marketplace" | "commissions";
+  | "staff" | "website" | "platform" | "overrides" | "investments" | "disclosures" | "documents" | "marketplace" | "commissions" | "projects";
 
 /** Groups shown in the role builder, in display order. */
 export const PERMISSION_AREAS: readonly { key: PermissionArea; label: string }[] = [
@@ -21,7 +21,8 @@ export const PERMISSION_AREAS: readonly { key: PermissionArea; label: string }[]
   { key: "disclosures", label: "Property disclosures" },
   { key: "documents", label: "Document templates" },
   { key: "marketplace", label: "Listings and accounts" },
-  { key: "commissions", label: "Agent commissions" }
+  { key: "commissions", label: "Agent commissions" },
+  { key: "projects", label: "Internal projects" }
 ];
 
 export interface PermissionInfo { key: string; area: PermissionArea; label: string; description: string; sensitive: boolean }
@@ -36,7 +37,11 @@ export const PERMISSION_CATALOGUE = [
   { key: "wording.review", area: "cases", label: "Review discriminatory wording flags", description: "Clear or uphold listing wording the anti-discrimination filter blocked, with a reason. Nobody reviews their own listing.", sensitive: false },
   { key: "signing.support_view", area: "documents", label: "Read a sent signing document in a dispute", description: "Read a sent or signed document and its audit trail to help settle a dispute. Every view is logged with the reason.", sensitive: true },
   { key: "dispute.read_chat", area: "cases", label: "Read job chat in a dispute", description: "Read the saved job chat for a disputed job. Every view is logged.", sensitive: true },
+  { key: "prequal.review", area: "marketplace", label: "Review buyer pre-approvals", description: "Open buyers' mortgage pre-approval letters at /staff/prequalifications, confirm what Elena read (amount, conditions, expiry), then verify them or ask the buyer to send a clearer letter. Shows masked buyer names and the lender letter. Every view and decision is logged.", sensitive: true },
   { key: "holiday.manage", area: "cases", label: "Manage public holidays", description: "Add, change and remove the public holidays by state at /staff/public-holidays. They are left out when cooling-off business days are counted, so a change moves deadlines on deposits. Every change is logged.", sensitive: true },
+  { key: "scheduling_template.manage", area: "messaging", label: "Manage Elena scheduling message templates", description: "Edit the platform-wide wording Elena uses to draft inspection confirmations and reminders at /staff/scheduling-templates. Agents can still override it for their own messages. Every change is logged.", sensitive: false },
+  { key: "valuation.manage", area: "marketplace", label: "Manage property valuations", description: "Turn buyer-facing property valuations on or off for the whole site or one listing at /staff/valuation-settings, and set the minimum number of comparable sales. Every change is logged.", sensitive: true },
+  { key: "listing_optimization.manage", area: "marketplace", label: "Manage listing optimization", description: "Turn Elena's seller listing suggestions on or off, set their thresholds and read how often sellers follow them at /staff/listing-optimization-settings. Every change is logged.", sensitive: false },
   { key: "trust_account.approve", area: "trust_accounts", label: "Approve trust accounts", description: "Approve or reject a solicitor trust account. New or changed details always need two different people.", sensitive: true },
   { key: "licence.verify", area: "trust_accounts", label: "Verify agent licences", description: "Check and record agent licence verification.", sensitive: false },
   { key: "identity.review", area: "identity", label: "Review identity documents", description: "Open ID images and selfies and approve or reject identity checks.", sensitive: true },
@@ -83,6 +88,9 @@ export const PERMISSION_CATALOGUE = [
   { key: "ad_leads.manage", area: "marketplace", label: "Manage ad leads", description: "See leads from Facebook, Instagram and Google ads at /staff/ad-leads with their full contact details, assign them to agents, track them to enquiry and offer, connect ad accounts, record ad spend and turn automatic follow-up emails on or off. Every action is logged.", sensitive: true },
   { key: "commission.manage", area: "commissions", label: "Manage agent commissions", description: "Record agent commission deals, override amounts with a reason, set payout dates, mark deals earned or cancelled, and confirm a payment was made to the agent, at /staff/commissions. The platform holds no money; this is a record. Every step is logged.", sensitive: true },
   { key: "automation.manage", area: "platform", label: "Workflow rules and scheduled tasks", description: "Create, switch on and off, and delete workflow rules and scheduled tasks at /staff/automation. Rules send notifications to owners, agents and buyers; tasks can archive old listings. Every change is logged.", sensitive: true },
+  { key: "project.manage", area: "projects", label: "Propose and run internal projects", description: "Propose projects, add milestones, features and linked PRs, record blockers and move a project on hold or to completed at /staff/projects. Cannot approve. Every action is logged.", sensitive: false },
+  { key: "project.review", area: "projects", label: "Approve projects as a stakeholder", description: "Approve or reject a proposed project (finance, product owner, CTO) with a comment. Never a project you proposed or own. Every decision is logged.", sensitive: true },
+  { key: "project.tech_lead", area: "projects", label: "Tech lead sign-off on projects", description: "Give the required tech lead sign-off, or reject, on a proposed project with a comment. Never a project you proposed or own. Every decision is logged.", sensitive: true },
   { key: "campaign.manage", area: "messaging", label: "Send email and SMS campaigns", description: "Write campaigns, choose a segment, schedule or send them and read open and click rates at /staff/campaigns. Only people who opted in to marketing are reached. Every send is logged.", sensitive: true }
 ] as const satisfies readonly PermissionInfo[];
 
@@ -100,9 +108,9 @@ const ROLE_PERMISSIONS: Record<StaffRole, readonly StaffPermission[]> = {
   super_admin: ALL,
   compliance: ["report.audit", "report.solicitor", "report.broker", "pii.view_full", "case.manage",
     "trust_account.approve", "licence.verify", "dispute.read_chat", "signing.support_view", "override.request", "identity.review", "investment.review",
-    "wording.review", "sale_event.manage", "disclosure.config_edit", "disclosure.config_approve", "disclosure.verify", "doc_template.edit", "doc_template.publish", "listing.moderate", "listing.bulk", "user.manage", "escrow.manage", "escrow.approve", "holiday.manage"],
+    "wording.review", "sale_event.manage", "disclosure.config_edit", "disclosure.config_approve", "disclosure.verify", "doc_template.edit", "doc_template.publish", "listing.moderate", "listing.bulk", "user.manage", "escrow.manage", "escrow.approve", "holiday.manage", "prequal.review"],
   accountant: ["report.financial", "report.sales", "pii.view_masked", "billing.manage", "commission.manage", "escrow.manage"],
-  support: ["report.buyer", "report.seller", "pii.view_masked", "case.manage", "signing.support_view", "override.request", "listing.moderate"],
+  support: ["report.buyer", "report.seller", "pii.view_masked", "case.manage", "signing.support_view", "override.request", "listing.moderate", "scheduling_template.manage"],
   technical: ["logs.technical", "report.operations", "config.edit"],
   reporting: ["report.sales", "report.suburb", "report.operations"],
   /** Site appearance only (theme.edit). No personal data, no reports, no money. */

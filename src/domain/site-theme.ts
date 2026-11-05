@@ -47,6 +47,7 @@ export const NAV_CATALOG: readonly NavDef[] = [
   { id: "offers", label: "Offers", href: "/listings/mine", icon: "inbox" },
   { id: "searches", label: "Saved searches", href: "/buyer/saved-searches", icon: "bookmark" },
   { id: "saved", label: "Saved homes", href: "/buyer/saved-listings", icon: "heart" },
+  { id: "prequal", label: "Pre-approval", href: "/buyer/prequalification", icon: "shield" },
   { id: "verification", label: "Verification", href: "/buyer/verification", icon: "shield" },
   { id: "dashboard", label: "Dashboard", href: "/dashboard", icon: "gauge" },
   { id: "staff", label: "Staff", href: "/staff", icon: "briefcase" },

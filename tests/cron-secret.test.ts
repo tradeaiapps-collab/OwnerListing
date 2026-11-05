@@ -23,6 +23,7 @@ import * as route from "../app/api/staff/cron-secrets/route";
 import * as cron from "../app/api/internal/automations/run/route";
 
 vi.mock("../src/server/automation-db", () => ({ runDueAutomations: async () => ({ processed: 1 }) }));
+vi.mock("../src/server/elena-scheduling-db", () => ({ runDueSchedulingMessages: async () => ({ expired: 0, suggested: 0 }) }));
 
 const actor = (permissions: string[]) => ({ id: "11111111-1111-4111-8111-111111111111", role: "x", permissions, email: "a@b.c" }) as unknown as StaffActor;
 const ENV = "e".repeat(40);

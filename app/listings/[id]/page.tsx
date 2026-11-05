@@ -10,6 +10,9 @@ import { VideoTour } from "../video-tour";
 import { LocationMap } from "../location-map";
 import { JSON_HEADERS } from "../ui";
 import { SaveAsTemplate } from "../save-as-template";
+import { MarketSnapshot } from "./market-snapshot";
+import { OptimizationPanel } from "../optimization-panel";
+import { ValuationCard } from "../valuation-card";
 import "../../styles/cards.css";
 import "../../styles/detail.css";
 
@@ -315,6 +318,8 @@ export default function ListingDetail() {
             </section>
           )}
 
+          {tx === "sale" && userType !== null && <ValuationCard listingId={listing.id} />}
+
           <h2>Property details</h2>
           <dl className="details detail-facts">
             <dt>State</dt><dd>{STATE_NAMES[listing.jurisdiction] ?? listing.jurisdiction}</dd>
@@ -351,10 +356,13 @@ export default function ListingDetail() {
           <div className="detail-actions">
             <a className="button" href={actionHref(listing.id, "enquire", userType !== null)}>Enquire</a>
             {userType === "buyer" && <a className="button secondary" href={`/client/portal?listing=${listing.id}`}>Book a viewing</a>}
-            {userType === "buyer" && <a className="button secondary" href={`/listings/${listing.id}/inspection`}>Book an inspection</a>}
+            {userType !== "agent" && <a className="button secondary" href={`/listings/${listing.id}/book-inspection`}>Book an open inspection</a>}
+            {userType === "buyer" && <a className="button secondary" href={`/listings/${listing.id}/inspection`}>Book a building inspection</a>}
             <SaveButton listingId={listing.id} userType={userType} />
           </div>
           <SaveAsTemplate listingId={listing.id} defaultName={listing.title} userType={userType} />
+          {userType === "owner" && <MarketSnapshot listingId={listing.id} />}
+          {userType === "owner" && <OptimizationPanel listingId={listing.id} quiet />}
           {compliance && (
             <ul className="pd-aside-checks" aria-label="At a glance">
               <li><Mark tone={compliance.seller.handledBy === "owner" || compliance.seller.agentLicenceVerified ? "ok" : "wait"} />
