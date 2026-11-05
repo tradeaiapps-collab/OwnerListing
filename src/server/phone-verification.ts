@@ -2,7 +2,7 @@ import { createHmac, randomUUID } from "node:crypto";
 import type { SmsPort } from "../adapters/sms";
 import {
   CODE_TTL_MS, MAX_CODE_ATTEMPTS, SMS_CONSENT_VERSION, SMS_SEND_RATE, SMS_VERIFY_RATE,
-  hashCode, hashesEqual, newCode, normaliseAuMobile, secretUsable
+  hashCode, hashesEqual, newCode, normaliseMobile, secretUsable
 } from "../domain/phone-verification";
 import { withinLimit } from "../domain/rate-limit";
 import type { Failure, Result } from "../domain/listing-service";
@@ -54,8 +54,8 @@ export async function sendPhoneCode(d: PhoneDeps, userId: string, ip: string, in
   if (!d.sms.configured || !secretUsable(d.secret)) return OFF;
   const b = (input && typeof input === "object" ? input : {}) as Record<string, unknown>;
   if (b["consent"] !== true) return fail("invalid", "Please tick the box to agree to receive the text message.");
-  const phone = normaliseAuMobile(b["phone"]);
-  if (!phone) return fail("invalid", "Enter an Australian mobile number, for example 0400 000 000.");
+  const phone = normaliseMobile(b["phone"]);
+  if (!phone) return fail("invalid", "Enter an Australian or US mobile number, for example 0400 000 000 or +1 415 555 0132.");
   const s = await d.store.state(userId);
   if (!s.emailVerified) return fail("forbidden", "Verify your email first.");
   if (s.phoneVerified) return fail("conflict", "Your mobile number is already verified.");
