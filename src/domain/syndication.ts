@@ -189,7 +189,7 @@ export interface IncomingBooking {
   guestName: string; guests: number | null; checkIn: string; checkOut: string; totalCents: number | null;
 }
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-const validDate = (s: string): boolean => DATE_RE.test(s) && new Date(`${s}T00:00:00Z`).toISOString().slice(0, 10) === s;
+const validDate = (s: string): boolean => DATE_RE.test(s) && !Number.isNaN(Date.parse(`${s}T00:00:00Z`)) && new Date(`${s}T00:00:00Z`).toISOString().slice(0, 10) === s;
 export const nights = (checkIn: string, checkOut: string): number => Math.round((Date.parse(`${checkOut}T00:00:00Z`) - Date.parse(`${checkIn}T00:00:00Z`)) / 86_400_000);
 
 export function parseIncomingBooking(raw: unknown): Checked<IncomingBooking> {
@@ -227,4 +227,75 @@ export function buildIcal(calendarName: string, bookings: readonly { id: string;
   }
   lines.push("END:VCALENDAR");
   return lines.join("\r\n") + "\r\n";
+}
+
+// ---- Calendar import (iCal from the portal) -----------------------------------------------------------------------------------------
+
+/** Hosts a portal serves its calendar export from. Only these are fetched, so a pasted link can never point at an internal address. */
+const CALENDAR_HOSTS: Record<Portal, RegExp> = {
+  airbnb: /(^|\.)airbnb\.[a-z]{2,3}(\.[a-z]{2})?$/,
+  vrbo: /(^|\.)(vrbo|homeaway|abritel|fewo-direkt)\.[a-z]{2,3}(\.[a-z]{2})?$/,
+  booking_com: /(^|\.)booking\.com$/
+};
+export const IMPORT_EVERY_MINUTES = 60;
+export const MAX_ICAL_BYTES = 1_000_000;
+const MAX_ICAL_EVENTS = 2000;
+
+export function validateCalendarUrl(portal: Portal, raw: unknown): Checked<string> {
+  if (typeof raw !== "string" || raw.trim() === "" || raw.length > 600) return { ok: false, error: "Paste the calendar link (iCal) from the portal." };
+  let u: URL;
+  try { u = new URL(raw.trim()); } catch { return { ok: false, error: "That is not a valid link." }; }
+  if (u.protocol !== "https:") return { ok: false, error: "The link must start with https://." };
+  if (u.username || u.password) return { ok: false, error: "That link has a password in it. Copy the calendar link again." };
+  if (u.port && u.port !== "443") return { ok: false, error: "Use the standard https port." };
+  const host = u.hostname.toLowerCase().replace(/\.$/, "");
+  if (!CALENDAR_HOSTS[portal].test(host)) return { ok: false, error: `That does not look like a ${PORTAL_LABELS[portal]} calendar link.` };
+  u.hash = "";
+  return { ok: true, value: u.toString() };
+}
+
+export interface ImportedBlock { uid: string; checkIn: string; checkOut: string }
+
+const addDay = (d: string): string => new Date(Date.parse(`${d}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
+/** Date part of an iCal value (20261105 or 20261105T140000Z), or null. */
+const icalDay = (v: string): string | null => {
+  const m = /^(\d{4})(\d{2})(\d{2})(?:T\d{6}Z?)?$/.exec(v.trim());
+  if (!m) return null;
+  const d = `${m[1]}-${m[2]}-${m[3]}`;
+  return validDate(d) ? d : null;
+};
+
+/**
+ * Blocked stays out of an iCal text. Cancelled events and events without a usable start are skipped; a missing end is a one night block;
+ * a stay longer than a year is cut to a year. Guest names and notes in SUMMARY/DESCRIPTION are never read.
+ * Returns null when the text is not a calendar at all (so an error page can never be mistaken for "no bookings").
+ */
+export function parseIcal(text: string): ImportedBlock[] | null {
+  if (!/^BEGIN:VCALENDAR/m.test(text)) return null;
+  const lines = text.replace(/\r\n?/g, "\n").replace(/\n[ \t]/g, "").split("\n");
+  const out: ImportedBlock[] = [];
+  let cur: Record<string, string> | null = null;
+  for (const line of lines) {
+    if (line === "BEGIN:VEVENT") { cur = {}; continue; }
+    if (line === "END:VEVENT") {
+      const ev = cur; cur = null;
+      if (!ev || ev["STATUS"]?.toUpperCase() === "CANCELLED" || !ev["DTSTART"]) continue;
+      const start = icalDay(ev["DTSTART"]);
+      if (!start) continue;
+      const endRaw = ev["DTEND"] ? icalDay(ev["DTEND"]) : null;
+      let end = endRaw && endRaw > start ? endRaw : addDay(start);
+      if (nights(start, end) > MAX_STAY_NIGHTS) end = new Date(Date.parse(`${start}T00:00:00Z`) + MAX_STAY_NIGHTS * 86_400_000).toISOString().slice(0, 10);
+      const uid = (ev["UID"] ?? "").trim().slice(0, 150) || `${start}_${end}`;
+      out.push({ uid, checkIn: start, checkOut: end });
+      if (out.length >= MAX_ICAL_EVENTS) break;
+      continue;
+    }
+    if (!cur) continue;
+    const i = line.indexOf(":");
+    if (i < 1) continue;
+    const name = line.slice(0, i).split(";")[0]!.toUpperCase();
+    if (name === "DTSTART" || name === "DTEND" || name === "UID" || name === "STATUS") cur[name] = line.slice(i + 1);
+  }
+  const seen = new Set<string>();
+  return out.filter(b => (seen.has(b.uid) ? false : (seen.add(b.uid), true))).sort((a, b) => (a.checkIn < b.checkIn ? -1 : a.checkIn > b.checkIn ? 1 : 0));
 }

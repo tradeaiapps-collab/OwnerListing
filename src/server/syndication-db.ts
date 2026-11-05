@@ -2,8 +2,8 @@ import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { messagingKeyUsable, openSetting, sealSetting } from "../domain/messaging-crypto";
 import { photoUrl } from "../domain/listing-photos";
 import {
-  buildIcal, buildPortalPayload, ineligibleReason, MAX_ATTEMPTS, nextAttemptAt, nights, parseIncomingBooking, payloadHash, PORTAL_LABELS, PORTALS,
-  portalReady, safeError, STALE_AFTER_HOURS, type IncomingBooking, type ListingPortalInput, type Portal, type PortalConfigInput, type PortalCustomFields,
+  buildIcal, buildPortalPayload, IMPORT_EVERY_MINUTES, ineligibleReason, MAX_ATTEMPTS, MAX_ICAL_BYTES, nextAttemptAt, nextRetryDelaySeconds, nights, parseIcal, parseIncomingBooking, payloadHash, PORTAL_LABELS, PORTALS,
+  portalReady, safeError, STALE_AFTER_HOURS, validateCalendarUrl, type IncomingBooking, type ListingPortalInput, type Portal, type PortalConfigInput, type PortalCustomFields,
   type PortalMode, type PortalPayload, type SyncState, type SyndicationListing
 } from "../domain/syndication";
 import { newWebhookSecret, verifySignature } from "../domain/webhooks";
@@ -12,7 +12,7 @@ import { appendAuditPg, type Queryable } from "./db";
 import { notifyUser } from "./notifier";
 
 type Env = Readonly<Record<string, string | undefined>>;
-type Fetch = (url: string, init: { method: string; headers: Record<string, string>; body?: string; signal?: AbortSignal }) => Promise<{ status: number; text(): Promise<string> }>;
+type Fetch = (url: string, init: { method: string; headers: Record<string, string>; body?: string; signal?: AbortSignal; redirect?: "manual" }) => Promise<{ status: number; text(): Promise<string> }>;
 export interface SyndicationDeps { env: Env; fetch: Fetch; now: () => string }
 export const syndicationDeps = (): SyndicationDeps => ({ env: process.env, fetch: (u, i) => fetch(u, i), now: () => new Date().toISOString() });
 
@@ -427,8 +427,8 @@ async function handleBooking(tx: Queryable, portal: Portal, listingId: string, e
   }
   if (existing) return "duplicate";
   const clash = await tx.query(
-    "SELECT 1 FROM syndication_booking WHERE listing_id = $1::uuid AND status = 'confirmed' AND check_in < $3::date AND $2::date < check_out LIMIT 1",
-    [listingId, e.checkIn, e.checkOut]);
+    "SELECT 1 FROM syndication_booking WHERE listing_id = $1::uuid AND status = 'confirmed' AND NOT (source = 'ical' AND portal = $4) AND check_in < $3::date AND $2::date < check_out LIMIT 1",
+    [listingId, e.checkIn, e.checkOut, portal]);
   const status = clash.rows.length > 0 ? "conflict" : "confirmed";
   await tx.query(
     `INSERT INTO syndication_booking (listing_id, portal, external_booking_id, guest_name, guests, check_in, check_out, total_cents, status, created_at)
@@ -438,11 +438,11 @@ async function handleBooking(tx: Queryable, portal: Portal, listingId: string, e
   return status;
 }
 
-export interface BookingView { id: string; portal: Portal; guestName: string; guests: number | null; checkIn: string; checkOut: string; totalCents: number | null; status: string }
+export interface BookingView { id: string; portal: Portal; source: "webhook" | "ical"; guestName: string; guests: number | null; checkIn: string; checkOut: string; totalCents: number | null; status: string }
 export async function listBookings(db: Queryable, listingId: string): Promise<BookingView[]> {
-  const r = await db.query("SELECT id::text AS id, portal, guest_name, guests, to_char(check_in, 'YYYY-MM-DD') AS check_in, to_char(check_out, 'YYYY-MM-DD') AS check_out, total_cents, status FROM syndication_booking WHERE listing_id = $1::uuid ORDER BY check_in DESC LIMIT 200", [listingId]);
+  const r = await db.query("SELECT id::text AS id, portal, source, guest_name, guests, to_char(check_in, 'YYYY-MM-DD') AS check_in, to_char(check_out, 'YYYY-MM-DD') AS check_out, total_cents, status FROM syndication_booking WHERE listing_id = $1::uuid ORDER BY check_in DESC LIMIT 200", [listingId]);
   return r.rows.map(x => ({
-    id: String(x["id"]), portal: x["portal"] as Portal, guestName: String(x["guest_name"]), guests: x["guests"] === null ? null : Number(x["guests"]),
+    id: String(x["id"]), portal: x["portal"] as Portal, source: x["source"] === "ical" ? "ical" : "webhook", guestName: String(x["guest_name"]), guests: x["guests"] === null ? null : Number(x["guests"]),
     checkIn: day(x["check_in"]), checkOut: day(x["check_out"]), totalCents: x["total_cents"] === null ? null : Number(x["total_cents"]), status: String(x["status"])
   }));
 }
@@ -463,12 +463,185 @@ export async function rotateFeedToken(db: Queryable, userId: string, listingId: 
   return token;
 }
 
-/** The iCal text for a feed token, or null. Booked dates only (confirmed stays), no guest details. */
+/** The iCal text for a feed token, or null. Booked dates only (confirmed stays booked through us; imported blocks are not echoed back, which would loop between portals), no guest details. */
 export async function icalForToken(db: Queryable, token: string, now: string): Promise<string | null> {
   if (!/^[A-Za-z0-9_-]{43}$/.test(token)) return null;
   const f = await db.query("SELECT f.listing_id::text AS listing_id, l.title FROM syndication_feed f JOIN property_listing l ON l.id = f.listing_id WHERE f.token_hash = $1", [sha(token)]);
   const row = f.rows[0];
   if (!row) return null;
-  const b = await db.query("SELECT id::text AS id, to_char(check_in, 'YYYY-MM-DD') AS check_in, to_char(check_out, 'YYYY-MM-DD') AS check_out FROM syndication_booking WHERE listing_id = $1::uuid AND status = 'confirmed' ORDER BY check_in", [row["listing_id"]]);
+  const b = await db.query("SELECT id::text AS id, to_char(check_in, 'YYYY-MM-DD') AS check_in, to_char(check_out, 'YYYY-MM-DD') AS check_out FROM syndication_booking WHERE listing_id = $1::uuid AND status = 'confirmed' AND source = 'webhook' ORDER BY check_in", [row["listing_id"]]);
   return buildIcal(String(row["title"]), b.rows.map(x => ({ id: String(x["id"]), checkIn: day(x["check_in"]), checkOut: day(x["check_out"]) })), now);
+}
+
+// ---- Calendar import (blocked dates from the portal's iCal link) ------------------------------------------------------------------
+
+const importField = (listingId: string, portal: Portal) => `syndication.calendar.${listingId}.${portal}`;
+const SIX_HOURS = 21_600;
+
+export interface CalendarImportView { portal: Portal; label: string; lastStatus: "ok" | "failed" | null; lastError: string | null; lastSyncedAt: string | null; blockedCount: number }
+
+export async function listCalendarImports(db: Queryable, listingId: string): Promise<CalendarImportView[]> {
+  const r = await db.query(
+    `SELECT i.portal, i.last_status, i.last_error, i.last_synced_at,
+            (SELECT count(*)::int FROM syndication_booking b WHERE b.listing_id = i.listing_id AND b.portal = i.portal AND b.source = 'ical' AND b.status <> 'cancelled' AND b.check_out >= current_date) AS blocked
+       FROM syndication_calendar_import i WHERE i.listing_id = $1::uuid ORDER BY i.portal`, [listingId]);
+  return r.rows.map(x => ({
+    portal: x["portal"] as Portal, label: PORTAL_LABELS[x["portal"] as Portal], lastStatus: (x["last_status"] as "ok" | "failed" | null) ?? null,
+    lastError: typeof x["last_error"] === "string" ? x["last_error"] : null, lastSyncedAt: iso(x["last_synced_at"]), blockedCount: Number(x["blocked"])
+  }));
+}
+
+/** Saves (replaces) the portal's calendar link for a listing, sealed, then imports it at once so the owner sees the result. */
+export async function saveCalendarImport(db: Queryable, deps: SyndicationDeps, userId: string, listingId: string, portal: Portal, rawUrl: unknown):
+  Promise<{ ok: true; outcome: ImportOutcome } | { ok: false; error: string; code: "bad_url" | "key_not_configured" }> {
+  const v = validateCalendarUrl(portal, rawUrl);
+  if (!v.ok) return { ok: false, error: v.error, code: "bad_url" };
+  const key = deps.env["SYNDICATION_SETTINGS_KEY"];
+  if (!messagingKeyUsable(key)) return { ok: false, error: "Encryption key not configured. Nothing was saved.", code: "key_not_configured" };
+  const enc = await sealSetting(v.value, key, importField(listingId, portal));
+  const now = deps.now();
+  await inTx(db, async tx => {
+    await tx.query(
+      `INSERT INTO syndication_calendar_import (listing_id, portal, url_enc, next_attempt_at, updated_by, updated_at)
+       VALUES ($1::uuid, $2, $3, $4::timestamptz, $5::uuid, $4::timestamptz)
+       ON CONFLICT (listing_id, portal) DO UPDATE SET url_enc = EXCLUDED.url_enc, attempts = 0, last_status = NULL, last_error = NULL,
+         lease_until = NULL, next_attempt_at = EXCLUDED.next_attempt_at, updated_by = EXCLUDED.updated_by, updated_at = EXCLUDED.updated_at`,
+      [listingId, portal, enc, now, userId]);
+    await audit(tx, "user", userId, "listing", listingId, "syndication.calendar_import_saved", { portal }, now);
+  });
+  return { ok: true, outcome: await syncCalendarImport(db, deps, listingId, portal) };
+}
+
+/** Stops importing from a portal and releases the dates it was blocking. */
+export async function removeCalendarImport(db: Queryable, userId: string, listingId: string, portal: Portal, now: string): Promise<boolean> {
+  return inTx(db, async tx => {
+    await tx.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`syndication:${listingId}`]);
+    const d = await tx.query("DELETE FROM syndication_calendar_import WHERE listing_id = $1::uuid AND portal = $2 RETURNING listing_id", [listingId, portal]);
+    if (d.rows.length === 0) return false;
+    await tx.query("UPDATE syndication_booking SET status = 'cancelled', cancelled_at = $3::timestamptz WHERE listing_id = $1::uuid AND portal = $2 AND source = 'ical' AND status <> 'cancelled'", [listingId, portal, now]);
+    await audit(tx, "user", userId, "listing", listingId, "syndication.calendar_import_removed", { portal }, now);
+    return true;
+  });
+}
+
+export type ImportOutcome = "synced" | "failed" | "skipped" | "unconfigured";
+const BLOCKED_NAME = "Blocked on portal";
+
+/**
+ * Imports one portal calendar. Fetches only the sealed link (never follows redirects), refuses anything that is not an iCal text, then in one
+ * transaction: adds new blocks, moves changed ones, cancels blocks the portal no longer lists (future ones only) and marks a block "conflict" when it
+ * overlaps a confirmed stay from a different portal. A failed fetch changes nothing, so a portal outage never frees dates.
+ */
+export async function syncCalendarImport(db: Queryable, deps: SyndicationDeps, listingId: string, portal: Portal): Promise<ImportOutcome> {
+  const now = deps.now();
+  const got = await db.query(
+    `UPDATE syndication_calendar_import SET lease_until = $3::timestamptz + interval '2 minutes'
+      WHERE listing_id = $1::uuid AND portal = $2 AND (lease_until IS NULL OR lease_until < $3::timestamptz) RETURNING url_enc, attempts`, [listingId, portal, now]);
+  const rec = got.rows[0];
+  if (!rec) {
+    const exists = await db.query("SELECT 1 FROM syndication_calendar_import WHERE listing_id = $1::uuid AND portal = $2", [listingId, portal]);
+    return exists.rows.length > 0 ? "skipped" : "unconfigured";
+  }
+  const fail = async (message: string): Promise<ImportOutcome> => {
+    const attempts = Number(rec["attempts"]) + 1;
+    const wait = nextRetryDelaySeconds(attempts) ?? SIX_HOURS;
+    await db.query(
+      "UPDATE syndication_calendar_import SET last_status = 'failed', last_error = $3, attempts = $4, next_attempt_at = $5::timestamptz, lease_until = NULL WHERE listing_id = $1::uuid AND portal = $2",
+      [listingId, portal, safeError(message), attempts, new Date(Date.parse(now) + wait * 1000).toISOString()]);
+    return "failed";
+  };
+  const key = deps.env["SYNDICATION_SETTINGS_KEY"];
+  const url = messagingKeyUsable(key) ? await openSetting(String(rec["url_enc"]), key, importField(listingId, portal)).catch(() => undefined) : undefined;
+  if (!url) return fail("The saved calendar link could not be read. Paste it again.");
+  const check = validateCalendarUrl(portal, url);
+  if (!check.ok) return fail(check.error);
+
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), FETCH_TIMEOUT_MS);
+  let text: string;
+  try {
+    const res = await deps.fetch(check.value, { method: "GET", headers: { accept: "text/calendar, text/plain" }, signal: ctl.signal, redirect: "manual" });
+    if (res.status !== 200) return await fail(`${PORTAL_LABELS[portal]} answered ${res.status}. Check the calendar link.`);
+    text = await res.text();
+  } catch (e) {
+    return await fail(ctl.signal.aborted ? `${PORTAL_LABELS[portal]} did not answer in time.` : safeError(e, [url]));
+  } finally { clearTimeout(timer); }
+  if (text.length > MAX_ICAL_BYTES) return fail("That calendar is too large.");
+  const blocks = parseIcal(text);
+  if (blocks === null) return fail("That link did not return a calendar.");
+
+  const today = now.slice(0, 10);
+  const listing = (await db.query("SELECT owner_user_id::text AS owner, address_text FROM property_listing WHERE id = $1::uuid", [listingId])).rows[0];
+  const live = blocks.filter(b => b.checkOut >= today);
+  let newClashes = 0;
+  await inTx(db, async tx => {
+    await tx.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`syndication:${listingId}`]);
+    const existing = (await tx.query(
+      "SELECT id::text AS id, external_booking_id, status, to_char(check_in, 'YYYY-MM-DD') AS check_in, to_char(check_out, 'YYYY-MM-DD') AS check_out FROM syndication_booking WHERE listing_id = $1::uuid AND portal = $2 AND source = 'ical'",
+      [listingId, portal])).rows;
+    const byId = new Map(existing.map(r => [String(r["external_booking_id"]), r]));
+    const listed = new Set<string>();
+    for (const b of live) {
+      const extId = `ical:${listingId}:${b.uid}`;
+      listed.add(extId);
+      const clash = await tx.query(
+        "SELECT 1 FROM syndication_booking WHERE listing_id = $1::uuid AND portal <> $2 AND status = 'confirmed' AND check_in < $4::date AND $3::date < check_out LIMIT 1",
+        [listingId, portal, b.checkIn, b.checkOut]);
+      const status = clash.rows.length > 0 ? "conflict" : "confirmed";
+      const row = byId.get(extId);
+      if (!row) {
+        await tx.query(
+          `INSERT INTO syndication_booking (listing_id, portal, external_booking_id, guest_name, check_in, check_out, status, source, created_at)
+           VALUES ($1::uuid,$2,$3,$4,$5::date,$6::date,$7,'ical',$8::timestamptz)`, [listingId, portal, extId, BLOCKED_NAME, b.checkIn, b.checkOut, status, now]);
+        if (status === "conflict") newClashes++;
+      } else if (row["status"] !== status || day(row["check_in"]) !== b.checkIn || day(row["check_out"]) !== b.checkOut) {
+        await tx.query("UPDATE syndication_booking SET status = $2, check_in = $3::date, check_out = $4::date, cancelled_at = NULL WHERE id = $1::uuid", [row["id"], status, b.checkIn, b.checkOut]);
+        if (status === "conflict" && row["status"] !== "conflict") newClashes++;
+      }
+    }
+    for (const r of existing) {
+      if (!listed.has(String(r["external_booking_id"])) && r["status"] !== "cancelled" && day(r["check_out"]) >= today) {
+        await tx.query("UPDATE syndication_booking SET status = 'cancelled', cancelled_at = $2::timestamptz WHERE id = $1::uuid", [r["id"], now]);
+      }
+    }
+    await tx.query(
+      `UPDATE syndication_calendar_import SET last_status = 'ok', last_error = NULL, attempts = 0, last_synced_at = $3::timestamptz, last_event_count = $4,
+              next_attempt_at = $3::timestamptz + make_interval(mins => $5::int), lease_until = NULL WHERE listing_id = $1::uuid AND portal = $2`,
+      [listingId, portal, now, live.length, IMPORT_EVERY_MINUTES]);
+    if (newClashes > 0) await audit(tx, "system", "syndication", "listing", listingId, "syndication.calendar_conflict", { portal, count: newClashes }, now);
+  });
+  if (newClashes > 0 && listing) {
+    await notifyUser(db, String(listing["owner"]), "booking_conflict", { listing: String(listing["address_text"]), name: PORTAL_LABELS[portal], link: `/listings/${listingId}/syndication` }, deps.env);
+  }
+  return "synced";
+}
+
+/** Cron tick: imports every calendar that is due. */
+export async function runCalendarImports(db: Queryable, deps: SyndicationDeps): Promise<{ synced: number; failed: number; skipped: number }> {
+  const due = await db.query(
+    "SELECT listing_id::text AS listing_id, portal FROM syndication_calendar_import WHERE next_attempt_at <= $1::timestamptz AND (lease_until IS NULL OR lease_until < $1::timestamptz) ORDER BY next_attempt_at LIMIT $2",
+    [deps.now(), BATCH]);
+  const counts = { synced: 0, failed: 0, skipped: 0 };
+  for (const r of due.rows) {
+    const o = await syncCalendarImport(db, deps, String(r["listing_id"]), r["portal"] as Portal);
+    if (o === "synced") counts.synced++; else if (o === "failed") counts.failed++; else counts.skipped++;
+  }
+  return counts;
+}
+
+export interface BlockedStay { id: string; listingId: string; listingTitle: string; portal: Portal; checkIn: string; checkOut: string; status: "confirmed" | "conflict"; source: "webhook" | "ical" }
+
+/** Upcoming portal stays and blocks on the listings an agent is appointed to (not revoked), clashes first. */
+export async function upcomingBlockedForAgent(db: Queryable, agentUserId: string, today: string): Promise<BlockedStay[]> {
+  const r = await db.query(
+    `SELECT b.id::text AS id, b.listing_id::text AS listing_id, l.title, b.portal, b.status, b.source,
+            to_char(b.check_in, 'YYYY-MM-DD') AS check_in, to_char(b.check_out, 'YYYY-MM-DD') AS check_out
+       FROM syndication_booking b JOIN property_listing l ON l.id = b.listing_id
+      WHERE b.status IN ('confirmed', 'conflict') AND b.check_out >= $2::date
+        AND EXISTS (SELECT 1 FROM listing_agent_appointment a WHERE a.listing_id = b.listing_id AND a.agent_user_id = $1::uuid AND a.revoked_at IS NULL)
+      ORDER BY (b.status = 'conflict') DESC, b.check_in LIMIT 100`, [agentUserId, today]);
+  return r.rows.map(x => ({
+    id: String(x["id"]), listingId: String(x["listing_id"]), listingTitle: String(x["title"]), portal: x["portal"] as Portal, checkIn: day(x["check_in"]), checkOut: day(x["check_out"]),
+    status: x["status"] as "confirmed" | "conflict", source: x["source"] as "webhook" | "ical"
+  }));
 }
