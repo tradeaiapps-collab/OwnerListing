@@ -26,6 +26,7 @@ const META: Record<string, { group: string; icon: AdminIcon; blurb: string }> = 
   "/staff/listings": { group: "marketplace", icon: "listing", blurb: "Review, suspend and reinstate listings" },
   "/staff/sale-events": { group: "insights", icon: "report", blurb: "Audit sold and rented events, add historical sales, void wrong ones" },
   "/staff/users": { group: "marketplace", icon: "users", blurb: "Find, review and suspend accounts" },
+  "/staff/inspections": { group: "marketplace", icon: "listing", blurb: "Approve inspectors and watch every inspection request" },
   "/staff/users/deleted-accounts": { group: "marketplace", icon: "users", blurb: "Delete accounts and restore them within the recovery window" },
   "/staff/investments": { group: "marketplace", icon: "building", blurb: "Check investor projects before they go live" },
   "/staff/investments/settings": { group: "marketplace", icon: "toggle", blurb: "Turn the investor module on or off" },
