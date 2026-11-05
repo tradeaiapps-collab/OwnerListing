@@ -170,7 +170,49 @@ function Prefs({ onMessage }: { onMessage: (m: string) => void }) {
       </table>
       {!phone ? <p className="nt-sms-note">To get text messages, <a href="/buyer/verification">verify your phone number</a> first.</p> : null}
       <div><button type="submit" disabled={busy}>{busy ? "Saving…" : "Save settings"}</button></div>
+      <Digest onMessage={onMessage} />
     </form>
+  );
+}
+
+const HOURS = Array.from({ length: 24 }, (_, h) => h);
+const hourLabel = (h: number) => `${h % 12 === 0 ? 12 : h % 12}:00 ${h < 12 ? "am" : "pm"}`;
+const ZONES = ["Australia/Sydney", "Australia/Melbourne", "Australia/Brisbane", "Australia/Adelaide", "Australia/Perth", "Australia/Hobart", "Australia/Darwin", "Pacific/Auckland", "UTC"];
+
+function Digest({ onMessage }: { onMessage: (m: string) => void }) {
+  const [d, setD] = useState<{ enabled: boolean; sendHour: number; timezone: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState(false);
+  useEffect(() => {
+    fetch("/api/notifications/digest").then(async r => {
+      if (!r.ok) return setErr(true);
+      const j = (await r.json()) as { digest: { enabled: boolean; sendHour: number; timezone: string } };
+      const here = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      setD(j.digest.enabled || !ZONES.includes(here) ? j.digest : { ...j.digest, timezone: here });
+    }).catch(() => setErr(true));
+  }, []);
+  if (err) return <p role="alert">Could not load your digest settings.</p>;
+  if (!d) return <p className="muted" role="status">Loading…</p>;
+  const zones = ZONES.includes(d.timezone) ? ZONES : [d.timezone, ...ZONES];
+  const save = async () => {
+    setBusy(true); onMessage("");
+    const r = await api("/api/notifications/digest", "PUT", d);
+    setBusy(false);
+    if (!r) return onMessage("Could not save. Check your connection and try again.");
+    const j = (await r.json().catch(() => ({}))) as { error?: string };
+    onMessage(r.ok ? "Digest saved." : j.error ?? "Could not save.");
+  };
+  return (
+    <fieldset className="nt-digest">
+      <legend>Daily digest</legend>
+      <p className="muted">One email a day with what you haven&apos;t opened in the last 24 hours. Elena writes the summary and puts urgent items first. It follows your email choices above, and it is off until you turn it on.</p>
+      <label className="nt-digest-row"><input type="checkbox" checked={d.enabled} onChange={e => setD({ ...d, enabled: e.target.checked })} /> Send me a daily digest</label>
+      <div className="nt-digest-fields">
+        <label>Time<select value={d.sendHour} disabled={!d.enabled} onChange={e => setD({ ...d, sendHour: Number(e.target.value) })}>{HOURS.map(h => <option key={h} value={h}>{hourLabel(h)}</option>)}</select></label>
+        <label>Time zone<select value={d.timezone} disabled={!d.enabled} onChange={e => setD({ ...d, timezone: e.target.value })}>{zones.map(z => <option key={z} value={z}>{z.replace("_", " ")}</option>)}</select></label>
+      </div>
+      <div><button type="button" onClick={save} disabled={busy}>{busy ? "Saving…" : "Save digest"}</button></div>
+    </fieldset>
   );
 }
 

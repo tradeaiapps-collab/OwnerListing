@@ -110,3 +110,29 @@ describe.skipIf(!DATABASE_URL)("notifications (Postgres)", () => {
     await notifyOfferBuyer(db, "00000000-0000-4000-8000-000000000000", "offer_accepted", {}); // unknown offer: nothing, no throw
   });
 });
+
+import { getDigestSettingsPg, runDigests, saveDigestSettingsPg } from "../src/server/notification-digest";
+
+describe.skipIf(!DATABASE_URL)("daily digest (Postgres)", () => {
+  let t: TestDb;
+  let db: TestDb["db"];
+  beforeAll(async () => { t = await createTestDb(); db = t.db; }, 60_000);
+  afterAll(async () => { await t?.close(); });
+
+  it("defaults off, saves a schedule, and picks only users whose local hour is now and who were not sent in 20 hours", async () => {
+    const u = await addUser(db, "owner");
+    expect(await getDigestSettingsPg(db, u)).toEqual({ enabled: false, sendHour: 8, timezone: "Australia/Sydney" });
+    await saveDigestSettingsPg(db, u, { enabled: true, sendHour: 9, timezone: "Australia/Perth" });
+    expect(await getDigestSettingsPg(db, u)).toEqual({ enabled: true, sendHour: 9, timezone: "Australia/Perth" });
+    // 01:00 UTC is 09:00 in Perth; 02:00 UTC is not.
+    const off = await runDigests(db, {}, "2026-11-05T02:00:00Z");
+    expect(off.due).toBe(0);
+    await db.query("INSERT INTO notification (user_id, kind, category, title, body, created_at) VALUES ($1,'offer_received','offers','Offer','b','2026-11-04T23:00:00Z')", [u]);
+    // No email provider configured in tests: the send fails, the claim is put back and the user stays due.
+    const first = await runDigests(db, {}, "2026-11-05T01:00:00Z");
+    expect(first.due).toBe(1);
+    expect(first.failed + first.sent).toBe(1);
+    const row = (await db.query("SELECT enabled FROM notification_digest_setting WHERE user_id = $1", [u])).rows[0]!;
+    expect(row["enabled"]).toBe(true);
+  });
+});
