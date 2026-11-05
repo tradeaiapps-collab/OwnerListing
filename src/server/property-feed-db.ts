@@ -6,6 +6,7 @@ import {
   type ConnectionInput, type FeedItem, type FeedProvider, type FeedSchedule, type Territory
 } from "../domain/property-feed";
 import { appendAuditPg, type Queryable } from "./db";
+import { envWithStoredDomain } from "./provider-credentials-db";
 
 /**
  * Storage and runs for property data feeds. Parameterised SQL only.
@@ -207,7 +208,8 @@ export async function importFeed(db: Queryable, conn: FeedConnection, result: Fe
 }
 
 export async function runConnection(db: Queryable, conn: FeedConnection, trigger: "schedule" | "staff", fetchFn: FetchFn, env: Record<string, string | undefined>, now: string): Promise<FeedRunRow> {
-  const result = await fetchFeed(fetchFn, { provider: conn.provider, sourceUrl: conn.sourceUrl, territory: conn.territory }, env)
+  const runEnv = conn.provider === "domain" ? await envWithStoredDomain(db, env) : env;
+  const result = await fetchFeed(fetchFn, { provider: conn.provider, sourceUrl: conn.sourceUrl, territory: conn.territory }, runEnv)
     .catch((): FetchResult => ({ error: "The fetch failed." }));
   return importFeed(db, conn, result, trigger, now);
 }
