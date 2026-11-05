@@ -18,3 +18,15 @@ CREATE TABLE mobile_session (
   revoked_reason TEXT CHECK (revoked_reason IS NULL OR revoked_reason IN ('sign_out','reuse','account','expired'))
 );
 CREATE INDEX mobile_session_user_idx ON mobile_session(user_id) WHERE revoked_at IS NULL;
+
+-- Every refresh secret this session has already swapped (hash only). Any of them coming back means a copy exists: the session is revoked.
+CREATE TABLE mobile_session_retired_refresh (
+  session_id UUID NOT NULL REFERENCES mobile_session(id),
+  refresh_hash TEXT NOT NULL CHECK (char_length(refresh_hash) = 64),
+  retired_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (session_id, refresh_hash)
+);
+
+-- A phone's push registration belongs to the phone session that made it: once that session ends (sign-out, stolen token, password
+-- or MFA reset, suspension), the phone stops receiving pushes even if the app never unregistered. NULL for browsers.
+ALTER TABLE push_device ADD COLUMN mobile_session_id UUID REFERENCES mobile_session(id);

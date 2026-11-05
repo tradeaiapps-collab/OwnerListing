@@ -11,6 +11,12 @@ import { getSessionState } from "./mfa-context";
 import { mfaEnrolledPg } from "./mfa-db";
 import { unauthenticated } from "./http";
 
+/** Login and refresh read JSON only, so another website cannot post to them without a CORS preflight (which nothing here answers). */
+function notJson(req: Request): NextResponse | null {
+  const type = (req.headers.get("content-type") ?? "").split(";")[0]!.trim().toLowerCase();
+  return type === "application/json" ? null : NextResponse.json({ error: "Content-Type must be application/json." }, { status: 415 });
+}
+
 /** Token replies must never be cached by a proxy or the phone's HTTP cache. */
 const NO_STORE = { "cache-control": "no-store", pragma: "no-cache" } as const;
 const nowSeconds = () => Math.floor(Date.now() / 1000);
@@ -22,6 +28,8 @@ const tokenBody = (t: MobileTokens) => ({ accessToken: t.accessToken, refreshTok
  * app asks for the code and sends it to /api/auth/mfa/verify with the access token; until then every other route answers 401.
  */
 export async function mobileLogin(req: Request): Promise<NextResponse> {
+  const wrongType = notJson(req);
+  if (wrongType) return wrongType;
   const auth = readSessionEnv();
   if (!auth) return notConfigured();
   const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
@@ -38,6 +46,8 @@ export async function mobileLogin(req: Request): Promise<NextResponse> {
 
 /** Body: { refreshToken }. Swaps it for a new pair; the old refresh token stops working. 401 means sign in again. */
 export async function mobileRefresh(req: Request): Promise<NextResponse> {
+  const wrongType = notJson(req);
+  if (wrongType) return wrongType;
   const auth = readSessionEnv();
   if (!auth) return notConfigured();
   const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;

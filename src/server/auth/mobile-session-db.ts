@@ -44,8 +44,8 @@ const revoke = (db: Queryable, id: string, reason: "reuse" | "expired" | "accoun
   db.query(`UPDATE mobile_session SET revoked_at = now(), revoked_reason = $2 WHERE id = $1 AND revoked_at IS NULL`, [id, reason]);
 
 /**
- * Swaps a refresh token for a new pair. Each refresh token works once: a token that was already swapped coming back means two copies
- * exist, so the whole session is revoked and the phone must sign in again. The account is re-checked here too, so a suspension,
+ * Swaps a refresh token for a new pair. Each refresh token works once: any token this session already swapped (every one is kept, as a
+ * hash) coming back means two copies exist, so the whole session is revoked and the phone must sign in again. The account is re-checked here too, so a suspension,
  * deletion, password reset or staff MFA reset after this phone signed in ends the session.
  */
 export async function refreshMobileSession(db: Queryable, token: unknown, secret: string, nowSeconds: number): Promise<RefreshOutcome> {
@@ -67,7 +67,8 @@ export async function refreshMobileSession(db: Queryable, token: unknown, secret
     )).rows[0];
     if (!row || row["revoked_at"] !== null) return { ok: false, reason: "invalid" };
     const hash = hashRefreshSecret(parsed.secret);
-    if (sameHash(row["previous_refresh_hash"] as string | null, hash)) {
+    const retired = (await tx.query(`SELECT 1 FROM mobile_session_retired_refresh WHERE session_id = $1 AND refresh_hash = $2`, [parsed.sessionId, hash])).rows.length > 0;
+    if (retired || sameHash(row["previous_refresh_hash"] as string | null, hash)) {
       await revoke(tx, parsed.sessionId, "reuse");
       return { ok: false, reason: "reuse" };
     }
@@ -83,6 +84,7 @@ export async function refreshMobileSession(db: Queryable, token: unknown, secret
       return { ok: false, reason: "account" };
     }
     const next = newRefreshToken(parsed.sessionId);
+    await tx.query(`INSERT INTO mobile_session_retired_refresh (session_id, refresh_hash) VALUES ($1, $2) ON CONFLICT DO NOTHING`, [parsed.sessionId, hash]);
     const maxExp = epoch(row["max_expires_at"]) ?? nowSeconds;
     await tx.query(
       `UPDATE mobile_session SET previous_refresh_hash = refresh_hash, refresh_hash = $2, last_used_at = to_timestamp($3), expires_at = to_timestamp($4)

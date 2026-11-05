@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { actorFromRequestChecked, sessionFromRequestChecked } from "../src/server/auth/actor";
 import { createMobileSession, markMobileMfaPassed, refreshMobileSession, signOutMobileSession } from "../src/server/auth/mobile-session-db";
 import { SESSION_COOKIE, signSession } from "../src/server/auth/session";
+import { activeTargetsPg, registerDevicePg } from "../src/server/push-db";
 import { addUser, createTestDb, DATABASE_URL, type TestDb } from "./helpers/pg-db";
 
 const secret = "m".repeat(40);
@@ -89,5 +90,30 @@ describe.skipIf(!DATABASE_URL)("phone app sessions (Postgres)", () => {
     await db.query("UPDATE app_user SET password_changed_at = now() + interval '1 second' WHERE id = $1", [b.id]);
     expect(await actorFromRequestChecked(db, bearer(b.tokens.accessToken), secret, nowS())).toBeNull();
     expect(await refreshMobileSession(db, b.tokens.refreshToken, secret, nowS())).toEqual({ ok: false, reason: "account" });
+  });
+
+  it("revokes the session when any older refresh token comes back, not only the last one", async () => {
+    const { tokens } = await start();
+    const r1 = await refreshMobileSession(db, tokens.refreshToken, secret, nowS());
+    if (!r1.ok) throw new Error("refresh 1");
+    const r2 = await refreshMobileSession(db, r1.tokens.refreshToken, secret, nowS());
+    if (!r2.ok) throw new Error("refresh 2");
+    expect(await refreshMobileSession(db, tokens.refreshToken, secret, nowS())).toEqual({ ok: false, reason: "reuse" });
+    expect(await refreshMobileSession(db, r2.tokens.refreshToken, secret, nowS())).toEqual({ ok: false, reason: "invalid" });
+  });
+
+  it("stops pushing to a phone once its session ends", async () => {
+    const phone = (n: string) => ({ platform: "android" as const, token: `fcm-token-${"m".repeat(30)}${n}`, p256dh: null, authSecret: null, label: null });
+    const a = await start();
+    const dev = await registerDevicePg(db, a.id, phone("a"), a.tokens.sessionId);
+    expect((await activeTargetsPg(db, a.id)).map(t => t.id)).toEqual([dev]);
+    await signOutMobileSession(db, a.tokens.sessionId, a.id);
+    expect(await activeTargetsPg(db, a.id)).toEqual([]);
+
+    const b = await start();
+    const devB = await registerDevicePg(db, b.id, phone("b"), b.tokens.sessionId);
+    expect((await activeTargetsPg(db, b.id)).map(t => t.id)).toEqual([devB]);
+    await db.query("UPDATE app_user SET password_changed_at = now() + interval '1 second' WHERE id = $1", [b.id]);
+    expect(await activeTargetsPg(db, b.id)).toEqual([]);
   });
 });

@@ -1,7 +1,7 @@
 import Constants from "expo-constants";
 import * as Linking from "expo-linking";
 import { useState } from "react";
-import { ScrollView, StyleSheet, Switch, Text, View } from "react-native";
+import { Platform, ScrollView, StyleSheet, Switch, Text, View } from "react-native";
 import { apiUrl, useAuth, useUser } from "../../src/auth";
 import { messageOf, useLoad } from "../../src/use-load";
 import { Button, Card, ErrorState, Loading, Muted, Title } from "../../src/ui/kit";
@@ -56,6 +56,7 @@ export default function Account() {
                 onValueChange={v => void toggle(t.category, v)}
                 trackColor={{ true: c.primary, false: c.border }}
                 thumbColor="#ffffff"
+                {...(Platform.OS === "web" ? { activeThumbColor: "#ffffff" } : {})}
               />
             </View>
           ))}

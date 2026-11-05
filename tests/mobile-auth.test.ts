@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { ACCESS_PREFIX, mobileBearer, newRefreshToken, parseRefreshToken, signMobileAccess, verifyMobileAccess, hashRefreshSecret, sameHash } from "../src/server/auth/mobile-token";
 import { signSession, verifySession } from "../src/server/auth/session";
 import { csrfGuard } from "../src/server/csrf";
+import { mobileLogin, mobileRefresh } from "../src/server/mobile-auth";
 
 const secret = "s".repeat(40);
 const now = 1_800_000_000;
@@ -69,5 +70,12 @@ describe("csrfGuard with the phone app", () => {
   });
   it("still requires JSON from the phone", () => {
     expect(csrfGuard(post({ authorization: `Bearer ${live()}`, "content-type": "text/plain" }))?.status).toBe(403);
+  });
+});
+
+describe("phone sign-in routes", () => {
+  it.each([["login", mobileLogin], ["refresh", mobileRefresh]] as const)("%s refuses anything but JSON (no cross-site form posts)", async (_n, fn) => {
+    const res = await fn(new Request("http://test/api/mobile/auth/x", { method: "POST", headers: { "content-type": "text/plain" }, body: "{}" }));
+    expect(res.status).toBe(415);
   });
 });

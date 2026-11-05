@@ -60,6 +60,13 @@ export function mobileBearer(req: Request): string | undefined {
   return m && m[1]!.startsWith(ACCESS_PREFIX) ? m[1] : undefined;
 }
 
+/** The phone session id behind a correctly signed, unexpired bearer token on this request, or null. Signature only: call after getActor. */
+export function mobileSessionIdOf(req: Request, env: Record<string, string | undefined> = process.env, nowSeconds = Math.floor(Date.now() / 1000)): string | null {
+  const secret = env["SESSION_SECRET"];
+  if (!secret) return null;
+  return verifyMobileAccess(mobileBearer(req), secret, nowSeconds)?.sid ?? null;
+}
+
 export const hashRefreshSecret = (secret: string) => createHash("sha256").update(secret).digest("hex");
 
 export function newRefreshToken(sessionId: string): { token: string; hash: string } {
