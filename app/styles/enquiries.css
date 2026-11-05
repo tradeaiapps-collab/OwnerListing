@@ -142,3 +142,15 @@ body.el-chat-page .ga-launcher { display: none; }
 .el-lang { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
 .el-lang label { font-size: 0.875rem; }
 .el-lang select { min-height: 44px; max-width: 100%; padding: 0 var(--space-3); border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); color: inherit; font: inherit; }
+
+/* Elena message moderation panel (seller side) */
+.enq-mod { display: grid; gap: var(--space-2); margin-bottom: var(--space-3); }
+.enq-mod-note { margin: 0; padding: var(--space-2) var(--space-3); border-left: 4px solid var(--border, #d1d5db); background: var(--tint); border-radius: 0 var(--radius-sm, 8px) var(--radius-sm, 8px) 0; overflow-wrap: anywhere; }
+.enq-mod-note.risk-low, .enq-mod-note.risk-medium { border-left-color: var(--warning, #b45309); }
+.enq-mod-note.risk-high { border-left-color: var(--danger, #b91c1c); }
+.enq-mod-note ul { margin: var(--space-1) 0 0; padding-left: var(--space-4); }
+.enq-mod-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-2); }
+.enq-mod-templates summary, .enq-mod-note summary { cursor: pointer; }
+.enq-mod-templates label { display: grid; gap: var(--space-1); margin-top: var(--space-2); }
+.enq-mod-list { list-style: none; margin: var(--space-2) 0 0; padding: 0; display: grid; gap: var(--space-1); }
+.enq-mod-list li { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
