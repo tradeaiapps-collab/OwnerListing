@@ -1,6 +1,7 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { messagingKeyUsable, openSetting, sealSetting } from "../domain/messaging-crypto";
 import { photoUrl } from "../domain/listing-photos";
+import { plansWithFeature } from "../domain/plans";
 import {
   buildIcal, buildPortalPayload, IMPORT_EVERY_MINUTES, ineligibleReason, MAX_ATTEMPTS, MAX_ICAL_BYTES, nextAttemptAt, nextRetryDelaySeconds, nights, parseIcal, parseIncomingBooking, payloadHash, PORTAL_LABELS, PORTALS,
   portalReady, safeError, STALE_AFTER_HOURS, validateCalendarUrl, type IncomingBooking, type ListingPortalInput, type Portal, type PortalConfigInput, type PortalCustomFields,
@@ -120,11 +121,29 @@ export async function canManageListing(db: Queryable, listingId: string, userId:
   return r.rows.length > 0;
 }
 
+/**
+ * Sharing through Channex costs the platform per listing, so it is a paid feature ("holiday_portals"): the listing's paid package, its owner's
+ * live subscription, or its appointed agent's live subscription must include it. `$1` is the listing id, `$2` the plan ids, `$3` the time.
+ */
+const PAID_SQL = (listing: string, plans = "$2", at = "$3") => `(
+  EXISTS (SELECT 1 FROM invoice i WHERE i.listing_id = ${listing}.id AND i.kind = 'listing_fee' AND i.status = 'paid' AND i.plan_id = ANY(${plans}::text[]))
+  OR EXISTS (SELECT 1 FROM subscription s WHERE s.status IN ('active', 'past_due') AND s.ends_at > ${at}::timestamptz AND s.plan_id = ANY(${plans}::text[])
+    AND (s.owner_user_id = ${listing}.owner_user_id OR s.owner_user_id IN (
+      SELECT a.agent_user_id FROM listing_agent_appointment a WHERE a.listing_id = ${listing}.id AND a.revoked_at IS NULL))))`;
+const PAID_PLANS = plansWithFeature("holiday_portals");
+
+export async function holidayPortalsPaid(db: Queryable, listingId: string, now: string): Promise<boolean> {
+  const r = await db.query(`SELECT 1 FROM property_listing l WHERE l.id = $1::uuid AND ${PAID_SQL("l")}`, [listingId, PAID_PLANS, now]);
+  return r.rows.length > 0;
+}
+
 export interface ListingPortalView {
   portal: Portal; label: string; mode: PortalMode; available: boolean; eligibleReason: string | null; enabled: boolean; custom: PortalCustomFields;
   manualUrl: string | null; state: SyncState | null; externalUrl: string | null; lastError: string | null; lastSyncedAt: string | null;
   /** Channex mode only: whether the owner's own account for this portal is connected (null in other modes). */
   connected: boolean | null;
+  /** Channex mode only: the listing's plan does not include holiday-portal sharing, so it cannot be switched on. */
+  needsUpgrade: boolean;
 }
 
 /** What the owner sees: one row per portal staff have switched on and ready, with this listing's choice and sync state. */
@@ -137,6 +156,7 @@ export async function listingSyndication(db: Queryable, listingId: string): Prom
   const syncs = await db.query("SELECT portal, state, external_url, last_error, last_synced_at FROM syndication_sync WHERE listing_id = $1::uuid", [listingId]);
   const cx = await db.query("SELECT connected_portals FROM channex_property WHERE listing_id = $1::uuid", [listingId]);
   const connected = new Set((cx.rows[0]?.["connected_portals"] as string[] | undefined) ?? []);
+  const paid = portals.some(p => p.ready && p.mode === "channex") ? await holidayPortalsPaid(db, listingId, new Date().toISOString()) : true;
   return portals.filter(p => p.ready).map(p => {
     const s = settings.rows.find(x => x["portal"] === p.portal);
     const y = syncs.rows.find(x => x["portal"] === p.portal);
@@ -146,14 +166,15 @@ export async function listingSyndication(db: Queryable, listingId: string): Prom
       enabled: s?.["enabled"] === true, custom: (s?.["custom"] as PortalCustomFields | undefined) ?? {}, manualUrl: typeof s?.["manual_url"] === "string" ? s["manual_url"] : null,
       state: y ? (y["state"] as SyncState) : null, externalUrl: typeof y?.["external_url"] === "string" ? y["external_url"] : null,
       lastError: typeof y?.["last_error"] === "string" ? y["last_error"] : null, lastSyncedAt: iso(y?.["last_synced_at"]),
-      connected: p.mode === "channex" ? connected.has(p.portal) : null
+      connected: p.mode === "channex" ? connected.has(p.portal) : null, needsUpgrade: p.mode === "channex" && !paid
     };
   });
 }
 
-export async function saveListingSetting(db: Queryable, userId: string, listingId: string, portal: Portal, input: ListingPortalInput, now: string): Promise<"ok" | "not_available" | "not_allowed_category"> {
+export async function saveListingSetting(db: Queryable, userId: string, listingId: string, portal: Portal, input: ListingPortalInput, now: string): Promise<"ok" | "not_available" | "not_allowed_category" | "needs_upgrade"> {
   const p = (await listPortals(db)).find(x => x.portal === portal);
   if (!p || !p.ready) return "not_available";
+  if (input.enabled && p.mode === "channex" && !(await holidayPortalsPaid(db, listingId, now))) return "needs_upgrade";
   if (input.enabled) {
     const l = await db.query("SELECT transaction_type FROM property_listing WHERE id = $1::uuid", [listingId]);
     if (!p.allowedTransactionTypes.includes(String(l.rows[0]?.["transaction_type"]))) return "not_allowed_category";
@@ -339,12 +360,12 @@ const releaseSync = (db: Queryable, listingId: string, portal: Portal) =>
   db.query("UPDATE syndication_sync SET lease_until = NULL WHERE listing_id = $1::uuid AND portal = $2", [listingId, portal]);
 
 /** Portals in channex mode that want this listing now (published, opted in, category allowed), in a fixed order. The first one's fields are used. */
-async function channexWanted(db: Queryable, listingId: string): Promise<{ portal: Portal; custom: PortalCustomFields }[]> {
+async function channexWanted(db: Queryable, listingId: string, now: string): Promise<{ portal: Portal; custom: PortalCustomFields }[]> {
   const r = await db.query(
     `SELECT s.portal, s.custom FROM syndication_listing_setting s
        JOIN syndication_portal p ON p.portal = s.portal AND p.enabled AND p.mode = 'channex'
        JOIN property_listing l ON l.id = s.listing_id AND l.status = 'published' AND l.transaction_type = ANY(p.allowed_transaction_types)
-      WHERE s.listing_id = $1::uuid AND s.enabled ORDER BY s.portal`, [listingId]);
+      WHERE s.listing_id = $1::uuid AND s.enabled AND ${PAID_SQL("l")} ORDER BY s.portal`, [listingId, PAID_PLANS, now]);
   return r.rows.map(x => ({ portal: x["portal"] as Portal, custom: (x["custom"] as PortalCustomFields | undefined) ?? {} }));
 }
 
@@ -367,10 +388,12 @@ const saveMapping = (db: Queryable, listingId: string, m: Partial<Record<"proper
  * (reading its channel). Turning a portal off switches off that portal's channel when it serves only this listing; when no portal wants the listing,
  * every night is closed so nothing more can be booked (the property and its history stay).
  */
-async function syncChannex(db: Queryable, deps: SyndicationDeps, x: ChannexSyncInput): Promise<SyncOutcome> {
+async function syncChannex(db: Queryable, deps: SyndicationDeps, input: ChannexSyncInput): Promise<SyncOutcome> {
+  let x = input;
   const { listingId, portal, now } = x;
   const cfg = channexConfig(deps.env);
   if (!cfg) { await x.save({ state: "failed", attempts: MAX_ATTEMPTS, next: null, error: "Channex is not set up (CHANNEX_API_KEY)." }); return "failed"; }
+  if (x.wanted && !(await holidayPortalsPaid(db, listingId, now))) x = { ...x, wanted: false };
   if (!x.wanted && (!x.externalId || x.state === "removed")) { await x.save({ state: "removed", attempts: 0, next: null, error: null }); return "skipped"; }
   await db.query("INSERT INTO channex_property (listing_id) VALUES ($1::uuid) ON CONFLICT DO NOTHING", [listingId]);
   const got = await db.query(
@@ -410,7 +433,7 @@ async function syncChannex(db: Queryable, deps: SyndicationDeps, x: ChannexSyncI
 
 async function channexPush(db: Queryable, deps: SyndicationDeps, cfg: ChannexConfig, x: ChannexSyncInput, m: ChannexMapping): Promise<StepResult> {
   const { listingId, portal, now } = x;
-  const wanted = await channexWanted(db, listingId);
+  const wanted = await channexWanted(db, listingId, now);
   const content = buildChannexContent(x.listing!, wanted[0]?.custom ?? {});
   if (content.nightlyRateCents === null) return { ok: false, status: null, error: "Set a nightly price (or a weekly rent) before sharing on this portal." };
   const contentHash = hashOf(content);
@@ -472,7 +495,7 @@ async function channexStop(db: Queryable, deps: SyndicationDeps, cfg: ChannexCon
     calls++;
     if (!r.ok) return { ok: false, status: r.status, error: r.error ?? "Channex did not switch the channel off." };
   }
-  const others = (await channexWanted(db, listingId)).filter(w => w.portal !== portal);
+  const others = (await channexWanted(db, listingId, now)).filter(w => w.portal !== portal);
   if (others.length === 0 && !m.ariClosed && m.roomTypeId && m.ratePlanId) {
     const r = await pushAri(cfg, deps.fetch, buildAri({ propertyId: m.propertyId, roomTypeId: m.roomTypeId, ratePlanId: m.ratePlanId }, now.slice(0, 10), null, [], true));
     calls++;
@@ -613,16 +636,18 @@ export async function runSyndication(db: Queryable, deps: SyndicationDeps): Prom
              OR (y.state IN ('live', 'manual') AND (l.updated_at > y.last_synced_at OR y.last_synced_at < $1::timestamptz - make_interval(hours => $2::int)))
              OR (y.state = 'live' AND p.mode = 'channex' AND EXISTS (SELECT 1 FROM channex_property c WHERE c.listing_id = s.listing_id AND c.ari_hash IS NULL AND NOT c.ari_closed)))
         AND (y.lease_until IS NULL OR y.lease_until < $1::timestamptz)
-      ORDER BY y.last_synced_at NULLS FIRST LIMIT $3`, [now, STALE_AFTER_HOURS, BATCH]);
+        AND (p.mode <> 'channex' OR ${PAID_SQL("l", "$4", "$1")})
+      ORDER BY y.last_synced_at NULLS FIRST LIMIT $3`, [now, STALE_AFTER_HOURS, BATCH, PAID_PLANS]);
   const gone = await db.query(
     `SELECT y.listing_id::text AS listing_id, y.portal FROM syndication_sync y
        JOIN property_listing l ON l.id = y.listing_id
        JOIN syndication_portal p ON p.portal = y.portal
        LEFT JOIN syndication_listing_setting s ON s.listing_id = y.listing_id AND s.portal = y.portal
       WHERE (y.state IN ('live', 'pending', 'manual') OR (y.state = 'failed' AND y.external_id IS NOT NULL AND y.next_attempt_at IS NOT NULL AND y.next_attempt_at <= $2::timestamptz))
-        AND (l.status <> 'published' OR s.enabled IS NOT TRUE OR NOT p.enabled OR NOT (l.transaction_type = ANY(p.allowed_transaction_types)))
+        AND (l.status <> 'published' OR s.enabled IS NOT TRUE OR NOT p.enabled OR NOT (l.transaction_type = ANY(p.allowed_transaction_types))
+             OR (p.mode = 'channex' AND NOT ${PAID_SQL("l", "$3", "$2")}))
         AND (y.lease_until IS NULL OR y.lease_until < $2::timestamptz)
-      LIMIT $1`, [BATCH, now]);
+      LIMIT $1`, [BATCH, now, PAID_PLANS]);
   const seen = new Set<string>();
   for (const r of [...gone.rows, ...due.rows]) {
     const k = `${r["listing_id"]}:${r["portal"]}`;

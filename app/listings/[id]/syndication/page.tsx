@@ -5,7 +5,7 @@ import "../../../styles/syndication.css";
 
 type Portal = "airbnb" | "vrbo" | "booking_com";
 interface Custom { houseRules?: string; cancellationPolicy?: string; minNights?: number; maxGuests?: number; nightlyRateCents?: number }
-interface PortalView { portal: Portal; label: string; mode: "api" | "manual" | "channex"; eligibleReason: string | null; enabled: boolean; custom: Custom; manualUrl: string | null; state: string | null; externalUrl: string | null; lastError: string | null; lastSyncedAt: string | null; connected: boolean | null }
+interface PortalView { portal: Portal; label: string; mode: "api" | "manual" | "channex"; eligibleReason: string | null; enabled: boolean; custom: Custom; manualUrl: string | null; state: string | null; externalUrl: string | null; lastError: string | null; lastSyncedAt: string | null; connected: boolean | null; needsUpgrade: boolean }
 interface CalendarView { portal: Portal; label: string; lastStatus: "ok" | "failed" | null; lastError: string | null; lastSyncedAt: string | null; blockedCount: number }
 const IMPORT_PORTALS: { portal: Portal; label: string }[] = [{ portal: "airbnb", label: "Airbnb" }, { portal: "vrbo", label: "VRBO" }, { portal: "booking_com", label: "Booking.com" }];
 interface Booking { id: string; portal: Portal; source: "webhook" | "ical"; guestName: string; guests: number | null; checkIn: string; checkOut: string; totalCents: number | null; status: string }
@@ -56,6 +56,12 @@ function PortalCard({ id, v, onChanged, onConnect }: { id: string; v: PortalView
         <span className={`syn-pill ${tone}`}>{text}</span>
       </div>
       {v.eligibleReason && <p className="syn-note">{v.eligibleReason}</p>}
+      {v.needsUpgrade && !v.enabled && (
+        <div className="syn-connect">
+          <p className="syn-note">Sharing on {v.label} comes with the Premium package or an Owner Plus plan.</p>
+          <div className="syn-actions"><a className="button" href={`/listings/${id}/checkout`}>See packages</a></div>
+        </div>
+      )}
       {v.state === "manual_removal" && <p role="alert">This listing is no longer live here. Please remove your {v.label} listing yourself.</p>}
       {v.lastError && v.state === "failed" && <p role="alert">Last problem: {v.lastError}</p>}
       {v.mode === "channex" && v.state === "live" && (
@@ -66,7 +72,7 @@ function PortalCard({ id, v, onChanged, onConnect }: { id: string; v: PortalView
       )}
       {v.externalUrl && <p><a href={v.externalUrl} rel="noopener noreferrer" target="_blank">View on {v.label}</a></p>}
       <form className="syn-form" onSubmit={save}>
-        <label className="syn-check"><input type="checkbox" checked={enabled} onChange={e => setEnabled(e.target.checked)} />Share this listing on {v.label}</label>
+        <label className="syn-check"><input type="checkbox" checked={enabled} disabled={v.needsUpgrade && !v.enabled} onChange={e => setEnabled(e.target.checked)} />Share this listing on {v.label}</label>
         <div className="syn-fields">
           <label className="is-wide">House rules
             <textarea maxLength={2000} value={rules} onChange={e => setRules(e.target.value)} placeholder="No parties, quiet after 10pm…" />

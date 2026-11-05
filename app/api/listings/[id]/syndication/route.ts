@@ -35,6 +35,7 @@ async function handlePut(req: Request, { params }: Ctx) {
   const deps = syndicationDeps();
   const r = await saveListingSetting(getDb(), actor.userId, id, portal, input.value, deps.now());
   if (r === "not_available") return NextResponse.json({ error: "That portal is not switched on yet.", code: "not_available" }, { status: 409 });
+  if (r === "needs_upgrade") return NextResponse.json({ error: "Sharing on Airbnb, Booking.com and Vrbo comes with the Premium package or an Owner Plus plan.", code: "needs_upgrade" }, { status: 402 });
   if (r === "not_allowed_category") return NextResponse.json({ error: "That portal does not take this type of listing.", code: "category" }, { status: 409 });
   await syndicateListing(getDb(), deps, id);
   return NextResponse.json({ portals: await listingSyndication(getDb(), id) });
