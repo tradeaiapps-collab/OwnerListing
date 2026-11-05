@@ -57,6 +57,9 @@ describe.skipIf(!DATABASE_URL)("listing syndication through Channex on Postgres"
     for (const p of ["airbnb", "booking_com"] as const) expect((await savePortal(t.db, staff, p, { mode: "channex", enabled: true }, {}, deps)).ok).toBe(true);
     const owner = await addUser(t.db, "owner");
     const id = await addListing(t.db, owner, { transaction_type: "rent", status: "published", title: "Beach shack", suburb: "Noosa", jurisdiction: "QLD", price_cents: 70_000, bedrooms: 2 });
+    expect(await saveListingSetting(t.db, owner, id, "airbnb", { enabled: true, custom: {} }, deps.now())).toBe("needs_upgrade");
+    expect((await listingSyndication(t.db, id)).find(v => v.portal === "airbnb")?.needsUpgrade).toBe(true);
+    await t.db.query("INSERT INTO invoice (owner_user_id, listing_id, plan_id, kind, amount_ex_gst_cents, gst_cents, total_cents, status, provider, paid_at) VALUES ($1, $2, 'premium', 'listing_fee', 1000, 100, 1100, 'paid', 'payway', now())", [owner, id]);
     await saveListingSetting(t.db, owner, id, "airbnb", { enabled: true, custom: { minNights: 2, nightlyRateCents: 15_000 } }, deps.now());
     await saveListingSetting(t.db, owner, id, "booking_com", { enabled: true, custom: {} }, deps.now());
     await t.db.query("INSERT INTO syndication_booking (listing_id, portal, external_booking_id, guest_name, check_in, check_out, status) VALUES ($1, 'vrbo', 'X', 'G', '2026-11-10', '2026-11-12', 'confirmed')", [id]);
@@ -142,5 +145,16 @@ describe.skipIf(!DATABASE_URL)("listing syndication through Channex on Postgres"
     expect(calls.some(c => c.path === "/availability")).toBe(true);
     expect(calls.some(c => c.path === "/channels/ch-1/activate")).toBe(true);
     expect(calls.some(c => c.path === "/properties")).toBe(false);
+  });
+
+  it("takes the listing off the portals when its paid package no longer counts", async () => {
+    const lid = String((await t.db.query("SELECT listing_id FROM channex_property WHERE property_id = 'cx-1'")).rows[0]!["listing_id"]);
+    await t.db.query("UPDATE invoice SET status = 'refunded' WHERE listing_id = $1", [lid]);
+    reset();
+    const counts = await runSyndication(t.db, deps);
+    expect(counts.removed).toBe(1);
+    expect(calls.some(c => c.path === "/channels/ch-1/deactivate")).toBe(true);
+    expect(calls.find(c => c.path === "/availability")?.body["values"]).toEqual([expect.objectContaining({ availability: 0 })]);
+    expect((await t.db.query("SELECT state FROM syndication_sync WHERE listing_id = $1 AND portal = 'airbnb'", [lid])).rows[0]!["state"]).toBe("removed");
   });
 });
