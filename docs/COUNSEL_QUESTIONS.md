@@ -59,3 +59,9 @@ Please advise in writing on each point. Most apply in every state where the plat
 27. Owner reports about buyers: what process and wording keeps a buyer flag fair and defensible?
 28. Interim in-house ID review: confirm we may hold ID images and selfies briefly for review, the retention periods (7 days after approval, 30 after rejection), reviewer access controls, and any notice or consent wording needed.
 
+## 12. Inspections, document templates and e-signing
+29. Electronic signing is built in (typed full name, consent wording, document SHA-256, time, hashed IP, evidence hash; src/domain/e-sign.ts). Is that enough under the Electronic Transactions Acts for the four templates (inspection access consent, seller disclosure summary, purchase heads of terms, deposit and trust notice)? Which documents, if any, must NOT be signed this way (for example a land contract of sale or a lease over a set term) in QLD first, then WA, NSW, VIC? DocuSign or a similar provider can replace the built-in method if counsel prefers; nothing else changes.
+30. Review the template wording in src/domain/document-templates.ts. They avoid any statutory period or amount on purpose (cooling-off, disclosure forms) and say the heads of terms are "subject to contract". Confirm that is safe, and what a solicitor-supplied contract of sale must still be uploaded separately.
+31. Retention of signed documents, signing evidence and inspection findings (kept permanently now, insert-only). Retention period, and handling of a deletion request from an account holder who signed.
+32. The assistant explains terms from a fixed glossary and summarises inspection findings. Confirm the wording of the glossary (src/domain/transaction-assistant.ts) is general information and not advice.
+

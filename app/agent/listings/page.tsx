@@ -35,7 +35,7 @@ export default function AgentListings() {
           <li key={i.listingId} className="enq-row">
             <a href={`/listings/${i.listingId}`}>{i.title} <small className="muted">({i.jurisdiction}, {i.status}, {i.enquiries} {i.enquiries === 1 ? "enquiry" : "enquiries"})</small></a>
             {i.unread > 0 && <span className="enq-badge" aria-label={`${i.unread} unread`}>{i.unread}</span>}
-            <small><a href={`/listings/${i.listingId}/offers`}>Offers</a> · <a href={`/listings/${i.listingId}/mandate`}>Mandate</a></small>
+            <small><a href={`/listings/${i.listingId}/offers`}>Offers</a> · <a href={`/listings/${i.listingId}/mandate`}>Mandate</a> · <a href={`/listings/${i.listingId}/inspections`}>Inspections</a> · <a href={`/listings/${i.listingId}/transaction`}>Documents</a></small>
           </li>
         ))}
       </ul>

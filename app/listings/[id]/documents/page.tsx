@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import "../../../styles/documents.css";
+import "../../../styles/transaction.css";
 
 type Doc = { id: string; kind: string; visibility: string; status: string; supersedesId?: string };
 type Access = { isOwner: boolean; kinds: string[] };
@@ -31,6 +32,7 @@ export default function ListingDocuments() {
   const [busy, setBusy] = useState(false);
   const [kind, setKind] = useState("");
   const [replace, setReplace] = useState(false);
+  const [history, setHistory] = useState<{ id: string; entries: { at: string; type: string; actorName?: string }[] } | null>(null);
 
   const load = useCallback(async () => {
     setLoadError("");
@@ -50,6 +52,13 @@ export default function ListingDocuments() {
 
   const chosenKind = kind || access.kinds[0] || "";
   const replaceable = (docs ?? []).filter(d => d.kind === chosenKind && d.status === "active");
+
+  async function toggleHistory(docId: string) {
+    if (history?.id === docId) { setHistory(null); return; }
+    const r = await fetch(`/api/documents/${docId}/history`).catch(() => null);
+    const d = r ? await r.json().catch(() => ({})) : {};
+    if (r?.ok) setHistory({ id: docId, entries: d.entries }); else setError(d.error ?? "Could not load the history.");
+  }
 
   async function onUpload(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -157,8 +166,17 @@ export default function ListingDocuments() {
                 {d.status === "superseded" && <span className="doc-mark">Superseded (kept on record)</span>}
                 {d.status === "held" && <span className="doc-mark">Held (legal record)</span>}
                 <a href={`/api/documents/${d.id}/file`}>Download</a>
+                <button type="button" className="secondary" aria-expanded={history?.id === d.id} onClick={() => void toggleHistory(d.id)}>{history?.id === d.id ? "Hide history" : "History"}</button>
                 {access.isOwner && d.status === "active" && (
                   <button type="button" disabled={busy} onClick={() => void requestDeletion(d.id)}>Request deletion</button>
+                )}
+                {history?.id === d.id && (
+                  <ol className="tx-timeline doc-note">
+                    {history.entries.map((e, n) => (
+                      <li key={n}><span>{{ uploaded: "Uploaded", version_created: "New version added", downloaded: "Downloaded" }[e.type] ?? e.type}{e.actorName ? ` · ${e.actorName}` : ""}</span>
+                        <time dateTime={e.at}>{new Intl.DateTimeFormat("en-AU", { dateStyle: "medium", timeStyle: "short" }).format(new Date(e.at))}</time></li>
+                    ))}
+                  </ol>
                 )}
               </li>
             ))}
