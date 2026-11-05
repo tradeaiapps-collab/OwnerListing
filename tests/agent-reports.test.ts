@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { attachmentNote, fitAttachments } from "../src/domain/report-attachments";
 import {
   buildReport, deleteReport, emailText, listReports, nextRunAt, parseDefinition, reportInsights, reportTable, resolvePeriod, runDueReports, runReport,
   saveReport, savedReport, templateDefinition, updateReport, MAX_REPORTS, type DueReport, type ReportDeps, type ReportFacts, type ReportDefinition, type RunSnapshot, type SavedReport
@@ -155,7 +156,7 @@ function store(o: Partial<ReportDeps> = {}, over: { licences?: AgentLicence[]; e
   const saved = new Map<string, SavedReport & { agent: string }>();
   const sched = new Map<string, { frequency: "daily" | "weekly" | "monthly"; next: string; status?: string }>();
   const runs: { id: string; trigger: string; totals: unknown }[] = [];
-  const sent: { to: string; subject: string; text: string }[] = [];
+  const sent: { to: string; subject: string; text: string; attachments?: unknown }[] = [];
   let n = 0;
   const view = (r: SavedReport & { agent: string }): SavedReport => {
     const s = sched.get(r.id);
@@ -177,7 +178,7 @@ function store(o: Partial<ReportDeps> = {}, over: { licences?: AgentLicence[]; e
     }),
     claim: async (id, now, next) => { const s = sched.get(id); if (!s || s.next > now) return false; s.next = next; return true; },
     finish: async (id, status) => { const s = sched.get(id); if (s) s.status = status; },
-    send: async (_a, to, subject, text) => { sent.push({ to, subject, text }); return true; },
+    send: async (_a, to, subject, text, attachments) => { sent.push({ to, subject, text, attachments }); return true; },
     ...o
   };
   return { d, saved, sched, runs, sent };
@@ -270,6 +271,25 @@ describe("the due-report run", () => {
     s.sched.get("r1")!.next = "2026-11-05T00:00:00.000Z";
     const broken = { ...s.d, facts: async () => { throw new Error("db down"); } };
     expect(await runDueReports(broken, undefined)).toMatchObject({ notSent: 1 });
+  });
+  it("attaches the PDF and Excel file to a scheduled email and says so", async () => {
+    const s2 = store();
+    await saveReport(s2.d, agent, { name: "Weekly sales", definition: { template: "sales" }, schedule: { frequency: "daily" } });
+    s2.sched.forEach(v => { v.next = "2026-11-05T00:00:00.000Z"; });
+    await runDueReports(s2.d, "https://own.example");
+    const m = s2.sent[0] as { text: string; attachments: { filename: string; contentType: string; content: Buffer }[] };
+    expect(m.attachments.map(a => a.filename)).toEqual([expect.stringMatching(/^report-weekly-sales-\d{4}-\d\d-\d\d-to-\d{4}-\d\d-\d\d-2026-11-05\.pdf$/), expect.stringMatching(/\.xlsx$/)]);
+    expect(m.attachments[0]!.content.subarray(0, 4).toString()).toBe("%PDF");
+    expect(m.text).toContain("Attached: report-weekly-sales-");
+    expect(m.text).toContain("https://own.example/agent/reports");
+  });
+  it("skips attachments over 25 MB and points at the link", () => {
+    const big = { filename: "a.pdf", content: Buffer.alloc(26 * 1024 * 1024), contentType: "application/pdf" };
+    const small = { filename: "b.xlsx", content: Buffer.alloc(10), contentType: "x" };
+    const fit = fitAttachments([big, small]);
+    expect(fit.attachments).toEqual([small]); expect(fit.skipped).toBe(1);
+    expect(attachmentNote(fit.attachments, fit.skipped)).toContain("too large to attach");
+    expect(attachmentNote([], 0)).toBe("");
   });
   it("builds a plain-text email with the summary, table and link", () => {
     const r = buildReport(def({ period: { days: 30 } }), facts, TODAY, NOW, "Sales");

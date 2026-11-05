@@ -90,6 +90,8 @@ describe.skipIf(!DATABASE_URL)("saved and scheduled reports (Postgres)", () => {
       expect(mail.sent[0]!.to).toBe(staffEmail);
       expect(mail.sent[0]!.subject).toBe("Emailed: 2026-10-07 to 2026-11-05");
       expect(mail.sent[0]!.text).toContain("Elena's summary:");
+      expect((mail.sent[0] as unknown as { attachments: { filename: string }[] }).attachments.map(a => a.filename)).toEqual([expect.stringMatching(/^report-emailed-.*-2026-11-05\.pdf$/), expect.stringMatching(/\.xlsx$/)]);
+      expect(mail.sent[0]!.text).toContain("Attached: report-emailed-");
       expect(mail.sent[0]!.text).toContain(`https://admin.example.test/staff/report-builder?report=${id}`);
       expect(await listRuns(db, id)).toHaveLength(1);
       expect(await status(id)).toMatchObject({ last_status: "sent", enabled: true, next_run_at: new Date("2026-11-05T21:00:00.000Z") });
