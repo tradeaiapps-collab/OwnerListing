@@ -1,7 +1,7 @@
-import { useRouter } from "expo-router";
+import { Redirect, useRouter } from "expo-router";
 import { useCallback, useState } from "react";
 import { FlatList, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
-import { useAuth } from "../../src/auth";
+import { useAuth, useUser } from "../../src/auth";
 import { searchQuery, type SearchFields } from "../../src/lib/format";
 import { ListingRow, type ListingCard } from "../../src/ui/listing-row";
 import { messageOf } from "../../src/use-load";
@@ -11,7 +11,12 @@ import { font, space, useColors } from "../../src/ui/theme";
 interface Page { listings: ListingCard[]; total: number; page: number; pageSize: number }
 
 /** Search published listings: words, sale or rent, bedrooms and a top price. Same filters as the website's browse page. */
-export default function Search() {
+export default function SearchEntry() {
+  const user = useUser();
+  return user.userType === "buyer" ? <Search /> : <Redirect href="/today" />;
+}
+
+function Search() {
   const { api } = useAuth();
   const router = useRouter();
   const c = useColors();
