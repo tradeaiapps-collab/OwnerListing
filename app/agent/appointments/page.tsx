@@ -82,7 +82,7 @@ export default function AgentAppointments() {
               </li>
             ))}
           </ul>
-          <p><a href="/agent/listings">Enquiry inbox</a> · <a href="/agent/commissions">Commissions</a> · <a href="/agent/profile">Your agent profile</a></p>
+          <p><a href="/agent/listings">Enquiry inbox</a> · <a href="/agent/commissions">Commissions</a> · <a href="/agent/market-forecast">Market forecast</a> · <a href="/agent/profile">Your agent profile</a></p>
         </>
       )}
       {error && <p role="alert">{error}</p>}
