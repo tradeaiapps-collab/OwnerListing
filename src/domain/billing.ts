@@ -11,12 +11,26 @@ export interface Invoice {
   amountExGstCents: number;
   gstCents: number;
   totalCents: number;
-  status: "pending" | "paid" | "failed";
+  status: "pending" | "paid" | "failed" | "void" | "refunded";
   providerRef?: string;
   /** Set when the invoice is the flat fee for one listing's package (chosen and priced by the admin). */
   listingId?: string;
   planId?: string;
+  /** Shown on the tax invoice, for example INV-001042. Assigned by the database. */
+  invoiceNumber?: string;
+  kind?: InvoiceKind;
+  description?: string;
+  dueAt?: string;
+  paymentMethod?: PaymentMethod;
+  subscriptionId?: string;
+  createdAt?: string;
+  paidAt?: string;
 }
+
+export type InvoiceKind = "listing_fee" | "subscription" | "other";
+export type PaymentMethod = "card" | "bank_transfer";
+/** Days a customer has to pay an invoice. */
+export const INVOICE_TERMS_DAYS = 14;
 
 export function createInvoice(
   id: string, ownerUserId: string, amountExGstCents: number, forListing?: { listingId: string; planId: string }
@@ -38,6 +52,8 @@ export interface PaymentEvent {
   amountCents: number;
   outcome: "succeeded" | "failed";
   providerRef: string;
+  /** Which channel reported it. Defaults to the card provider; "bank_transfer" is a staff-confirmed transfer. */
+  provider?: "payway" | "bank_transfer";
 }
 
 /**
@@ -66,3 +82,12 @@ export interface PaymentProvider {
   /** Returns null if the signature is invalid. */
   verifyAndParseWebhook(rawBody: string, headers: Readonly<Record<string, string>>): PaymentEvent | null;
 }
+
+/** An invoice for one period of a subscription. Same GST rule as every invoice. */
+export function createSubscriptionInvoice(
+  id: string, ownerUserId: string, subscriptionId: string, planId: string, amountExGstCents: number, description: string, dueAt: string
+): Invoice {
+  return { ...createInvoice(id, ownerUserId, amountExGstCents), kind: "subscription", subscriptionId, planId, description, dueAt };
+}
+
+export const addDays = (iso: string, days: number): string => new Date(Date.parse(iso) + days * 86_400_000).toISOString();

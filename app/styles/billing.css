@@ -12,3 +12,66 @@
 .plan-unpriced { color: var(--muted); font-weight: 600; margin: 0; }
 .plan-choice { display: flex; gap: var(--space-3); align-items: flex-start; min-height: 44px; }
 .plan-choice[aria-disabled="true"] { opacity: 0.6; }
+
+/* Billing page, invoices, finance dashboard. */
+.billing-grid { display: grid; gap: var(--space-6); grid-template-columns: minmax(0, 1fr); align-items: start; }
+@media (min-width: 960px) { .billing-grid { grid-template-columns: minmax(0, 1fr) 22rem; } }
+.billing-main, .billing-side { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-6); min-width: 0; align-content: start; }
+.panel h2 { margin-top: 0; }
+.panel h3 { margin: 0 0 var(--space-2); }
+.status-pill { display: inline-block; padding: 1px 10px; border-radius: 999px; font-size: 0.8125rem; font-weight: 600; border: 1px solid var(--border); background: var(--surface); white-space: nowrap; }
+.status-pill.good { border-color: var(--ok); color: var(--ok); background: var(--ok-tint); }
+.status-pill.warn { border-color: var(--warn); color: var(--warn); background: var(--warn-tint); }
+.status-pill.bad { border-color: var(--danger); color: var(--danger); background: var(--danger-tint); }
+.inv-table { width: 100%; border-collapse: collapse; }
+.inv-table :is(th, td) { padding: var(--space-3) var(--space-3); text-align: left; vertical-align: middle; border-bottom: 1px solid var(--line); }
+.inv-table th { font-size: 0.75rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); font-weight: 600; white-space: nowrap; }
+.inv-table .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.inv-table td:last-child, .inv-table th:last-child { text-align: right; }
+.inv-table tbody tr:last-child td { border-bottom: 0; }
+.table-wrap > table.inv-table { min-width: 40rem; }
+.table-wrap > table.inv-table.wide { min-width: 56rem; }
+.pay-methods { display: grid; gap: var(--space-3); margin: 0; }
+.pay-methods p { margin: 0; }
+.sub-card { display: grid; gap: var(--space-2); }
+.sub-card .big { font-size: 1.25rem; font-weight: 700; margin: 0; }
+.row-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-2); }
+.row-actions > * { min-height: 44px; }
+.interval-toggle { display: inline-flex; border: 1px solid var(--border); border-radius: 999px; padding: 2px; gap: 2px; margin-bottom: var(--space-3); }
+.interval-toggle button { min-height: 40px; padding: 0 var(--space-4); border: 0; border-radius: 999px; background: transparent; color: var(--text); font-weight: 600; box-shadow: none; }
+.interval-toggle button[aria-pressed="true"] { background: var(--brand); color: var(--brand-text); }
+.sub-plans { display: grid; gap: var(--space-3); grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 640px) { .sub-plans { grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); } }
+.sub-plan { border: 1px solid var(--border); border-radius: var(--radius); padding: var(--space-4); display: grid; gap: var(--space-2); align-content: start; background: var(--surface); }
+.sub-plan ul { margin: 0; padding-left: 1.1rem; font-size: 0.9375rem; }
+.sub-plan .plan-price { font-size: 1.5rem; }
+.inv-sheet { max-width: 46rem; border: 1px solid var(--line); border-radius: var(--radius); background: var(--elevated); padding: var(--space-6); display: grid; gap: var(--space-6); }
+.inv-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--space-4); }
+.inv-head h2 { margin: 0; }
+.inv-lines { width: 100%; border-collapse: collapse; }
+.inv-lines :is(th, td) { padding: var(--space-2) 0; border-bottom: 1px solid var(--line); text-align: left; }
+.inv-lines .num { text-align: right; font-variant-numeric: tabular-nums; }
+.inv-lines tfoot th, .inv-lines tfoot td { font-weight: 700; border-bottom: 0; padding-top: var(--space-3); }
+.bank-box { border: 1px dashed var(--border); border-radius: var(--radius); padding: var(--space-4); display: grid; gap: var(--space-1); background: var(--surface); }
+.bank-box dl { margin: 0; display: grid; grid-template-columns: max-content 1fr; gap: var(--space-1) var(--space-4); }
+.bank-box dd { margin: 0; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+@media print { .no-print, nav, header, footer, .site-nav { display: none !important; } .inv-sheet { border: 0; padding: 0; } }
+.notice { padding: var(--space-3) var(--space-4); border-radius: var(--radius); border: 1px solid var(--border); background: var(--surface); margin: 0; }
+.notice.error { border-color: var(--danger); background: var(--danger-tint); }
+.notice.ok { border-color: var(--ok); background: var(--ok-tint); }
+
+/* Elena billing help. */
+.elena-bill { display: grid; gap: var(--space-3); }
+.elena-bill-head { display: flex; align-items: center; gap: var(--space-3); }
+.elena-bill-head img { width: 48px; height: 48px; border-radius: 50%; object-fit: cover; border: 2px solid var(--border); }
+.elena-bill-head p { margin: 0; }
+.elena-log { display: grid; gap: var(--space-3); max-height: 22rem; overflow-y: auto; padding-right: var(--space-1); }
+.elena-msg { padding: var(--space-3); border-radius: var(--radius); background: var(--surface); max-width: none; }
+.elena-msg.me { background: var(--tint-2); justify-self: end; max-width: 90%; }
+.elena-msg p { margin: 0; max-width: none; }
+.elena-msg small { display: block; margin-top: var(--space-2); color: var(--muted); }
+.elena-chips { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.elena-chips button { min-height: 40px; padding: 0 var(--space-3); border-radius: 999px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font-size: 0.875rem; font-weight: 500; box-shadow: none; }
+.elena-form { display: flex; gap: var(--space-2); }
+.elena-form input { flex: 1; min-width: 0; }
+.elena-form button { flex: none; }

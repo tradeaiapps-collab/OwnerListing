@@ -23,7 +23,7 @@ type OfferLinkState = {
 type Target = "price" | "settlement" | "deposit" | "conditions" | "listing" | "status" | "chips" | `q-${string}`;
 const TARGETS: Record<ChatTopic, (turnId: string) => Target[]> = {
   welcome: () => ["chips"], offer: () => ["price", "status"], compromise: () => ["price", "chips"], settlement: () => ["settlement"],
-  deposit: () => ["deposit"], conditions: () => ["conditions"], listing: () => ["listing"], next_steps: () => ["status"],
+  deposit: () => ["deposit"], conditions: () => ["conditions"], listing: () => ["listing"], market: id => [`q-${id}`], next_steps: () => ["status"],
   privacy: id => [`q-${id}`], advice: id => [`q-${id}`], chitchat: id => [`q-${id}`], unknown: id => [`q-${id}`]
 };
 const STATUS_FOR: Record<ChatPose, StageState["status"]> = { wave: "welcome", tablet: "presenting", front: "explaining", "three-quarter": "careful" };

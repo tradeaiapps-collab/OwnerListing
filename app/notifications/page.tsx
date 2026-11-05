@@ -38,6 +38,7 @@ export default function Notifications() {
   }, []);
   useEffect(() => { void load(tab === "history" ? "history" : "inbox"); }, [tab, load]);
 
+  const [explain, setExplain] = useState<{ kind: string; n: number } | null>(null);
   const choose = (t: Tab) => { setTab(t); setMsg(""); window.history.replaceState(null, "", t === "inbox" ? "/notifications" : `/notifications?tab=${t}`); };
 
   const mark = async (url: string, body: unknown, ok: string) => {
@@ -90,6 +91,7 @@ export default function Notifications() {
                         <h3>{n.title}{n.readAt === null ? <span className="sr-only"> (unread)</span> : null}</h3>
                         <p>{n.body}</p>
                         <div className="nt-actions">
+                          {n.category === "appointments" ? <button type="button" onClick={() => setExplain({ kind: n.kind, n: Date.now() })}>Ask Elena to explain</button> : null}
                           {n.link ? <a href={n.link} onClick={() => { if (n.readAt === null) void api("/api/notifications/read", "POST", { ids: [n.id] }); }}>Open</a> : null}
                           {n.readAt === null ? <button type="button" onClick={() => void mark("/api/notifications/read", { ids: [n.id] }, "Marked as read.")}>Mark as read</button> : null}
                           {n.archivedAt === null ? <button type="button" onClick={() => void mark("/api/notifications/archive", { ids: [n.id] }, "Moved to history.")}>Move to history</button> : null}
@@ -104,7 +106,7 @@ export default function Notifications() {
             )}
           </div>
         </section>
-        <Elena onGoSettings={() => choose("preferences")} />
+        <Elena onGoSettings={() => choose("preferences")} explain={explain} />
       </div>
     </main>
   );
@@ -174,7 +176,7 @@ function Prefs({ onMessage }: { onMessage: (m: string) => void }) {
   );
 }
 
-function Elena({ onGoSettings }: { onGoSettings: () => void }) {
+function Elena({ onGoSettings, explain }: { onGoSettings: () => void; explain: { kind: string; n: number } | null }) {
   const [reply, setReply] = useState<ElenaReply | null>(null);
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [q, setQ] = useState("");
@@ -189,6 +191,7 @@ function Elena({ onGoSettings }: { onGoSettings: () => void }) {
     const d = (await r.json()) as { reply: ElenaReply; suggestions?: Suggestion[]; note: string };
     setReply(d.reply); setNote(d.note); setSuggestions(d.suggestions ?? []);
   };
+  useEffect(() => { if (explain) void ask({ action: "explain", kind: explain.kind }); }, [explain]); // eslint-disable-line react-hooks/exhaustive-deps
   const apply = async (s: Suggestion) => {
     const cur = await fetch("/api/notifications/preferences").then(r => r.json()).catch(() => null) as { preferences: Preferences } | null;
     if (!cur) return;
