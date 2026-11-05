@@ -40,6 +40,7 @@ Do not turn this on for real users until counsel has approved the retention peri
 
 ## 4b. Account deletion retention (daily)
 - `.github/workflows/account-retention.yml` calls `POST $APP_URL/api/internal/accounts/retention` with header `x-cron-secret` every day at 02:00 UTC. Set repository secrets `APP_URL` (public address) and `ACCOUNT_RETENTION_CRON_SECRET` (same value as the app, 32+ chars). Until both are set the run is skipped with a warning.
+- `.github/workflows/scheduled-reports.yml` calls `POST $APP_URL/api/internal/reports/run` with header `x-cron-secret` every hour at :05. It sends the staff report schedules that are due (set up at `/staff/report-builder`) to their owners by email. Set repository secrets `APP_URL` and `REPORTS_CRON_SECRET` (same value as the app, 32+ chars). Until both are set the run is skipped with a warning; without email settings (`/staff/messaging`) runs are stored but not sent.
 - Manual run: Actions > Account retention (daily) > Run workflow, or the same curl by hand. Safe to repeat; answers `{counts:{finalised,purged}}`.
 - Every run writes one `job.account_retention_run` audit event (aggregate `job` / `account-retention`, payload = counts), plus one event per account changed. A missing day in the audit trail means the scheduler stopped.
 
