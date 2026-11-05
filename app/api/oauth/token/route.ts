@@ -18,9 +18,17 @@ async function handlePost(req: Request) {
   const form = new URLSearchParams(await req.text().catch(() => ""));
   if (form.get("grant_type") !== "client_credentials") return oauthError("unsupported_grant_type", 400, "Use grant_type=client_credentials.");
   const clientId = form.get("client_id") ?? "";
-  // Counted before any lookup or secret check: 10 tries a minute per client id and address together, and per address alone.
+  // Counted before any lookup or secret check: per client id and address together, per address alone, and per (well-formed) client id
+  // alone, so neither cycling client ids from one address nor spreading guesses at one client over many addresses gets past the limit.
   const ip = clientIp(req);
-  if (!(await withinRates(getDb(), "oauth-token", [`${ip}|${clientId.slice(0, 64)}`], { windowMs: TOKEN_ISSUE_RATE.windowMs, limit: TOKEN_ISSUE_RATE.perClientAndIp })))
+  const db = getDb(), w = TOKEN_ISSUE_RATE.windowMs;
+  const wellFormed = PUBLIC_ID_RE.test(clientId);
+  const allowed = [
+    await withinRates(db, "oauth-token", [`${ip}|${wellFormed ? clientId : "invalid"}`], { windowMs: w, limit: TOKEN_ISSUE_RATE.perClientAndIp }),
+    await withinRates(db, "oauth-token-ip", [ip], { windowMs: w, limit: TOKEN_ISSUE_RATE.perIp }),
+    wellFormed ? await withinRates(db, "oauth-token-client", [clientId], { windowMs: w, limit: TOKEN_ISSUE_RATE.perClient }) : true
+  ];
+  if (allowed.includes(false))
     return NextResponse.json({ error: "temporarily_unavailable", error_description: "Too many token requests. Wait a minute and try again." }, { status: 429, headers: { "cache-control": "no-store", pragma: "no-cache", "retry-after": "60" } });
   const clientSecret = form.get("client_secret") ?? "";
   if (!PUBLIC_ID_RE.test(clientId) || clientSecret.length < 20 || clientSecret.length > 100) return oauthError("invalid_client", 401, "Unknown client or wrong secret.");

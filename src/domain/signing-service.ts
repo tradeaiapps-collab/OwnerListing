@@ -106,12 +106,16 @@ export async function generateDocument(repo: SigningRepository, actor: Actor, li
   if (!Array.isArray(rawSigners) || rawSigners.length < 1 || rawSigners.length > MAX_SIGNERS) return fail("invalid", `Add between 1 and ${MAX_SIGNERS} signers.`);
   const signers: NewSigner[] = [];
   const seen = new Set<string>();
+  const seenEmails = new Set<string>();
   let unresolved = false;
   for (const s of rawSigners) {
     const email = isObj(s) && typeof s["email"] === "string" ? s["email"].trim().toLowerCase() : "";
     const roleLabel = isObj(s) && typeof s["roleLabel"] === "string" ? s["roleLabel"].trim() : "";
     if (!EMAIL_RE.test(email)) return fail("invalid", "Each signer needs a valid email address.");
     if (roleLabel.length < 2 || roleLabel.length > 60) return fail("invalid", "Each signer needs a role, for example Buyer or Agent.");
+    // Duplicates are caught by address before any lookup, so the answer is the same whether or not the address has an account.
+    if (seenEmails.has(email)) return fail("invalid", "The same person is listed twice.");
+    seenEmails.add(email);
     const acct = await repo.accountByEmail(email);
     if (!acct || acct.status !== "active") { unresolved = true; continue; }
     if (seen.has(acct.id)) return fail("invalid", "The same person is listed twice.");

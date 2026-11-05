@@ -160,6 +160,13 @@ describe("document signing service", () => {
     expect(!r.ok && r.message).not.toContain("nowhere");
   });
 
+  it("refuses a repeated address the same way whether or not it has an account", async () => {
+    const dup = (email: string) => generateDocument(repo, owner, LISTING, { ...body, signers: [{ email, roleLabel: "Agent" }, { email: email.toUpperCase(), roleLabel: "Buyer" }] }, ids);
+    const known = await dup("amy@agency.test"), unknown = await dup("nobody@nowhere.test");
+    expect(!known.ok && known.message).toBe("The same person is listed twice.");
+    expect(!unknown.ok && unknown.message).toBe("The same person is listed twice.");
+  });
+
   it("records a signer's first view only once", async () => {
     const d = await sent();
     await viewDocument(repo, agent, d.id, ids);

@@ -5,7 +5,8 @@ import type { SigningDoc, SigningEvent } from "./signing-service";
 /**
  * The signed copy of a completed document, as a PDF: the full text, who signed (name, email, time, address), an excerpt of the audit
  * trail and a seal. Built only from permanent records, so the same document always gives the same file (apart from the print time).
- * The seal is the SHA-256 of the document text hash plus every signature record; anyone can recompute it from the PDF's own fields.
+ * The seal is the SHA-256 of the document id, text hash and every signature record, all printed in the PDF. It is a reference value,
+ * not a cryptographic signature: compare it with the platform's records (it is rebuilt from them on every download) to show the copy is unaltered.
  * Dependency-free (built-in Helvetica; text outside Latin-1 becomes "?").
  */
 export interface SignatureRecord { signerId: string; role: string; name: string; email: string; typedName: string; signedAt: string; ip: string }
@@ -24,7 +25,7 @@ export function signatureRecords(doc: SigningDoc, events: readonly SigningEvent[
 
 /** SHA-256 over the text hash and the signature records, in a fixed field order. */
 export function sealOf(doc: Pick<SigningDoc, "id" | "bodySha256">, sigs: readonly SignatureRecord[]): string {
-  const canonical = JSON.stringify({ document: doc.id, bodySha256: doc.bodySha256, signatures: sigs.map(s => [s.signerId, s.typedName, s.signedAt, s.ip]) });
+  const canonical = JSON.stringify({ document: doc.id, bodySha256: doc.bodySha256, signatures: sigs.map(s => [s.typedName, s.signedAt, s.ip]) });
   return createHash("sha256").update(canonical).digest("hex");
 }
 

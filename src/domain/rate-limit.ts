@@ -77,6 +77,6 @@ export const AI_PHOTO_CAPTION_RATE = { windowMs: 60 * 60 * 1000, perUser: 20 } a
  * tokenIssue: OAuth token endpoint, per client id and IP together. signerLookup: generating a signing document checks signer
  * addresses, so it is limited per IP (and per user) to stop address guessing. signAttempt: signing tries per user.
  */
-export const TOKEN_ISSUE_RATE = { windowMs: 60 * 1000, perClientAndIp: 10 } as const;
+export const TOKEN_ISSUE_RATE = { windowMs: 60 * 1000, perClientAndIp: 10, perIp: 30, perClient: 30 } as const;
 export const SIGNER_LOOKUP_RATE = { windowMs: 60 * 60 * 1000, perIp: 5, perUser: 20 } as const;
 export const SIGN_ATTEMPT_RATE = { windowMs: 15 * 60 * 1000, perUser: 10 } as const;
