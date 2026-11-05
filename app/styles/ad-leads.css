@@ -1,0 +1,44 @@
+/* Ad leads (staff). Tokens only. Reuses the feeds form and setup list styles. */
+.leads-msg { padding: var(--space-3) var(--space-4); border-radius: var(--radius); border: 1px solid var(--line); background: var(--surface); }
+.leads-msg.bad { border-color: var(--danger); color: var(--danger); background: var(--danger-tint); }
+.leads-secret { display: grid; gap: var(--space-3); padding: var(--space-4); margin-bottom: var(--space-4); border: 1px solid var(--gold); border-radius: var(--radius); background: var(--gold-tint); }
+.leads-secret dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: var(--space-2) var(--space-3); margin: 0; }
+.leads-secret dt { font-weight: 600; }
+.leads-secret dd { margin: 0; min-width: 0; }
+.leads-secret code { overflow-wrap: anywhere; word-break: break-all; }
+.leads-secret button { justify-self: start; }
+.leads-tabs { display: flex; flex-wrap: wrap; gap: var(--space-2); margin: var(--space-4) 0; }
+.leads-range { display: inline-grid; grid-auto-flow: column; align-items: center; gap: var(--space-2); font-size: 0.9375rem; margin-bottom: var(--space-2); }
+.leads-lost { display: grid; gap: var(--space-3); max-width: 32rem; padding: var(--space-4); margin-bottom: var(--space-4); border: 1px solid var(--line); border-radius: var(--radius); background: var(--elevated); }
+.leads-lost label { display: grid; gap: var(--space-1); font-weight: 600; }
+.leads-hint { margin: 0; }
+.leads-hint code { overflow-wrap: anywhere; }
+.leads-pager { display: flex; align-items: center; justify-content: center; gap: var(--space-4); margin: var(--space-4) 0; }
+.leads-table .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.leads-table td { vertical-align: top; overflow-wrap: anywhere; }
+.leads-table .status-pill { white-space: nowrap; }
+.table-wrap > table.leads-figures { min-width: 0; }
+.leads-figures th.num { white-space: normal; }
+.leads-settings { list-style: none; padding: 0; margin: 0 0 var(--space-6); display: grid; gap: var(--space-3); grid-template-columns: repeat(auto-fill, minmax(min(100%, 20rem), 1fr)); }
+.leads-settings li { display: grid; gap: var(--space-3); align-content: start; padding: var(--space-4); border: 1px solid var(--line); border-radius: var(--radius); background: var(--elevated); box-shadow: var(--shadow-1); min-width: 0; }
+.leads-settings label { display: grid; gap: var(--space-1); font-size: 0.875rem; font-weight: 600; }
+.leads-settings strong { overflow-wrap: anywhere; }
+.leads-table select { max-width: 100%; min-width: 9rem; }
+.table-wrap > table.leads-table:not(.leads-figures) { min-width: 56rem; }
+/* Phones: each row becomes a labelled card instead of a sideways-scrolling table. */
+@media (max-width: 640px) {
+  .table-wrap > table.leads-table:not(.leads-figures), .table-wrap > table.leads-figures { min-width: 0; }
+  .leads-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .leads-table tr { display: block; padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--line); }
+  .leads-table tbody tr:last-child { border-bottom: 0; }
+  .leads-table td { display: grid; grid-template-columns: 7.5rem minmax(0, 1fr); gap: 2px var(--space-3); padding: var(--space-1) 0; background: transparent; border: 0; text-align: left; white-space: normal; min-width: 0; }
+  .leads-table td.num { text-align: left; }
+  .leads-table td::before { content: attr(data-label); grid-column: 1; grid-row: 1 / span 3; color: var(--muted); font-size: 0.75rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; padding-top: 2px; }
+  .leads-table td > * { grid-column: 2; justify-self: start; min-width: 0; }
+  .leads-table select { width: 100%; }
+}
+/* Routing rule form: checkbox groups sit inline, label beside box. */
+.leads-checks { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-4); padding: var(--space-3) var(--space-4); border: 1px solid var(--line); border-radius: var(--radius); margin: 0; min-width: 0; }
+.leads-checks legend { font-weight: 600; padding: 0 var(--space-2); }
+.leads-checks label { display: inline-flex; align-items: center; gap: var(--space-2); font-weight: 400; min-width: 0; }
+.leads-checks input[type="checkbox"] { flex: none; margin: 0; }
