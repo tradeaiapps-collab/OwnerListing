@@ -68,7 +68,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
       <head>
         {fontUrl && <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />}
         {fontUrl && <link id="site-theme-font" rel="stylesheet" href={fontUrl} />}
-        <style id="site-theme" dangerouslySetInnerHTML={{ __html: buildThemeCss(settings) }} />
+        <style id="site-theme" dangerouslySetInnerHTML={{ __html: buildThemeCss(settings, { followDevice: admin }) }} />
       </head>
       <body className={admin ? "admin-app" : undefined}>
         <a className="skip-link" href="#main-content">Skip to content</a>
