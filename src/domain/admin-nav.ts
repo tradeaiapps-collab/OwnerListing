@@ -34,6 +34,7 @@ const META: Record<string, { group: string; icon: AdminIcon; blurb: string }> = 
   "/staff/safety": { group: "compliance", icon: "safety", blurb: "Messages held by the safety filter" },
   "/staff/trust-accounts": { group: "compliance", icon: "bank", blurb: "Two-person trust account approvals" },
   "/staff/escrow": { group: "compliance", icon: "bank", blurb: "Buyer deposits in trust, bank reconciliation and release approvals" },
+  "/staff/prequalifications": { group: "compliance", icon: "id", blurb: "Buyer mortgage pre-approvals: confirm what Elena read, verify or ask for a clearer letter" },
   "/staff/id-review": { group: "compliance", icon: "id", blurb: "Identity checks waiting for review" },
   "/staff/public-holidays": { group: "compliance", icon: "audit", blurb: "Holidays left out of cooling-off business days, by state" },
   "/staff/wording-flags": { group: "compliance", icon: "wording", blurb: "Listings flagged for discriminatory wording" },
