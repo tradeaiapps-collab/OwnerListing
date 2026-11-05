@@ -58,6 +58,7 @@ const META: Record<string, { group: string; icon: AdminIcon; blurb: string }> = 
   "/staff/meta-leads": { group: "settings", icon: "key", blurb: "Enter, test and disconnect the Facebook and Instagram lead ads keys" },
   "/staff/ad-leads": { group: "insights", icon: "team", blurb: "Leads from Facebook, Instagram and Google ads, assignment, cost per lead" },
   "/staff/automation": { group: "settings", icon: "toggle", blurb: "Workflow rules and scheduled tasks" },
+  "/staff/cron-secrets": { group: "settings", icon: "key", blurb: "Generate, regenerate and pause the secrets that scheduled jobs use" },
   "/staff/campaigns": { group: "marketplace", icon: "message", blurb: "Email and SMS campaigns with open and click rates" },
   "/staff/lead-scoring": { group: "settings", icon: "chart", blurb: "Hot and warm thresholds and how engagement, property fit and follow-up timing blend into a lead score" },
   "/staff/feeds": { group: "settings", icon: "chart", blurb: "Agency CRM and Domain feeds, territory, schedule and licences" },

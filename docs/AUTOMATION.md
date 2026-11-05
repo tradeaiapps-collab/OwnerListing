@@ -23,7 +23,7 @@ Limits: 20 steps, 10 conditions per group, 25 workflows per owner.
 ## State machine and delivery
 Run status: `running` -> `waiting` -> `completed` | `stopped` | `failed`. `advance()` runs steps until a wait, stop or end and returns send actions. The server saves the new position and a `pending` log row first, then sends, then sets the row to `sent`/`skipped`/`failed`, so a crash can lose a message but never double it. Runs keep a copy of the workflow as it was when they started; edits affect new runs only.
 
-A scheduler calls `POST /api/internal/automations/run` (header `x-cron-secret`, env `AUTOMATION_CRON_SECRET`, 32+ chars, else 503) every 10 minutes (`.github/workflows/automation-runs.yml`, repository secrets `APP_URL` and `AUTOMATION_CRON_SECRET`). Due runs are claimed with `FOR UPDATE SKIP LOCKED` and a 10-minute lease.
+A scheduler calls `POST /api/internal/automations/run` (header `x-cron-secret`, secret generated at /staff/cron-secrets (hash stored; shown once), else env `AUTOMATION_CRON_SECRET`, 32+ chars; 503 when none or when paused there) every 10 minutes (`.github/workflows/automation-runs.yml`, repository secrets `APP_URL` and `AUTOMATION_CRON_SECRET`). Due runs are claimed with `FOR UPDATE SKIP LOCKED` and a 10-minute lease.
 
 ## Messaging rules (important)
 Sends go through `notifyUser`, so the recipient's own preferences, quiet hours, rate limits and unsubscribe links apply.
