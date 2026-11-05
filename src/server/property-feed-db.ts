@@ -132,17 +132,8 @@ async function findOrCreateProperty(db: Queryable, i: FeedItem): Promise<string>
       "SELECT id FROM property WHERE lower(address_text) = lower($1) AND state = $2 AND (postcode IS NOT DISTINCT FROM $3::char(4)) ORDER BY created_at LIMIT 1",
       [i.address, i.state, i.postcode ?? null]
     );
-    if (r.rows[0]) {
-      const id = String(r.rows[0]["id"]);
-      // Fill only facts the platform does not have yet; never overwrite what is there.
-      await db.query(
-        `UPDATE property SET suburb = coalesce(suburb, $2), property_type = coalesce(property_type, $3), use_class = coalesce(use_class, $4),
-           bedrooms = coalesce(bedrooms, $5), bathrooms = coalesce(bathrooms, $6), car_spaces = coalesce(car_spaces, $7), land_area_sqm = coalesce(land_area_sqm, $8),
-           latitude = coalesce(latitude, $9), longitude = coalesce(longitude, $10) WHERE id = $1`,
-        [id, i.suburb, i.propertyType, i.useClass, i.bedrooms ?? null, i.bathrooms ?? null, i.parking ?? null, i.landAreaSqm ?? null, i.latitude ?? null, i.longitude ?? null]
-      );
-      return id;
-    }
+    // Reuse the matched property but never change its facts: a feed must not rewrite what owners or other sources recorded.
+    if (r.rows[0]) return String(r.rows[0]["id"]);
   }
   const r = await db.query(
     `INSERT INTO property (address_text, state, suburb, postcode, use_class, property_type, bedrooms, bathrooms, car_spaces, land_area_sqm, latitude, longitude)

@@ -30,6 +30,18 @@ describe("xml-lite", () => {
     expect(() => parseXml("<x>")).toThrow(/Unclosed/);
     expect(() => parseXml("<a/><b/>")).toThrow(/one root/);
   });
+  it("reads attributes in linear time, even from a long run of name characters", () => {
+    const t0 = Date.now();
+    expect(() => parseXml(`<a ${"x".repeat(1_000_000)}/>`)).not.toThrow();
+    expect(Date.now() - t0).toBeLessThan(2000);
+    expect(parseXml(`<a b = "1" c='&amp;' d e="2"/>`).attrs).toEqual({ b: "1", c: "&", e: "2" });
+    expect(() => parseXml(`<a b="1/>`)).toThrow(XmlError);
+  });
+  it("never resolves Object.prototype names as entities or lookup keys", () => {
+    expect(() => parseXml("<x>&constructor;</x>")).toThrow(/Unknown entity/);
+    const r = mapReaxml(`<propertyList><residential status="constructor"><uniqueID>1</uniqueID><address><suburb>A</suburb><state>QLD</state></address><category name="toString"/></residential></propertyList>`);
+    expect(r).toMatchObject({ items: [], rejected: [{ reason: expect.stringContaining("Unknown status") }] });
+  });
   it("caps nesting depth", () => {
     expect(() => parseXml("<a>".repeat(100) + "</a>".repeat(100))).toThrow(/deeply/);
   });
@@ -126,12 +138,15 @@ describe("territory, settings and schedule", () => {
     expect(parseConnectionInput({ provider: "reaxml", label: "Ray White Paddington", agentUserId: agent, territory: { states: "QLD" } }))
       .toMatchObject({ ok: true, value: { provider: "reaxml", schedule: "daily", sourceUrl: null, comparablesLicensed: false } });
     expect(parseConnectionInput({ provider: "reaxml", label: "No agent" })).toMatchObject({ ok: false, error: expect.stringContaining("agent") });
+    expect(parseConnectionInput({ provider: "reaxml", label: "No area", agentUserId: agent })).toMatchObject({ ok: false, error: expect.stringContaining("territory") });
+    expect(parseConnectionInput({ provider: "reaxml", label: "CRM comps", agentUserId: agent, territory: { states: "QLD" }, comparablesLicensed: true, licenceTerms: "Agency says we can use it" }))
+      .toMatchObject({ ok: false, error: expect.stringContaining("cannot be used in comparables") });
     expect(parseConnectionInput({ provider: "domain", label: "Domain QLD" })).toMatchObject({ ok: false, error: expect.stringContaining("territory") });
     expect(parseConnectionInput({ provider: "domain", label: "Domain QLD", territory: { states: "QLD" }, comparablesLicensed: true, licenceTerms: "ok" }))
       .toMatchObject({ ok: false, error: expect.stringContaining("licence") });
     expect(parseConnectionInput({ provider: "domain", label: "Domain QLD", territory: { states: "QLD" }, comparablesLicensed: true, licenceTerms: "Domain Business plan clause 4.2 allows derived valuations" }))
       .toMatchObject({ ok: true, value: { comparablesLicensed: true } });
-    expect(parseConnectionInput({ provider: "reaxml", label: "Bad url", agentUserId: agent, sourceUrl: "https://10.1.1.1/feed" })).toMatchObject({ ok: false });
+    expect(parseConnectionInput({ provider: "reaxml", label: "Bad url", agentUserId: agent, territory: { states: "QLD" }, sourceUrl: "https://10.1.1.1/feed" })).toMatchObject({ ok: false });
     expect(parseConnectionInput({ provider: "zillow", label: "Nope" })).toMatchObject({ ok: false, error: "Choose a provider." });
   });
   it("schedules daily runs at 02:00 Queensland time and weekly ones on Sunday", () => {

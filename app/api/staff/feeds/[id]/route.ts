@@ -1,7 +1,9 @@
+import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { staffCan } from "../../../../../src/domain/staff-access";
 import { getDb, getStaff } from "../../../../../src/server/context";
 import { csrfGuard } from "../../../../../src/server/csrf";
+import { appendAuditPg } from "../../../../../src/server/db";
 import { getConnection, recentRuns, rotatePushToken, runConnection, setConnectionEnabled } from "../../../../../src/server/property-feed-db";
 import { withApi } from "../../../../../src/server/api/with-api";
 
@@ -38,7 +40,10 @@ async function handlePost(req: Request, ctx: Ctx) {
   switch (body.action) {
     case "run": {
       if (!conn.enabled) return NextResponse.json({ error: "Resume the connection first." }, { status: 409 });
-      return NextResponse.json({ run: await runConnection(db, conn, "staff", fetch, process.env, now) });
+      const run = await runConnection(db, conn, "staff", fetch, process.env, now);
+      await appendAuditPg(db, { id: randomUUID(), occurredAt: now, actorType: "user", actorId: staff.id, aggregateType: "feed_connection", aggregateId: id,
+        eventType: "feed.run_started", correlationId: randomUUID(), payload: { runId: run.id, status: run.status } });
+      return NextResponse.json({ run });
     }
     case "pause":
     case "resume":

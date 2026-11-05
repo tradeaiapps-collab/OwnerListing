@@ -16,7 +16,7 @@ export const XML_LIMITS = { maxDepth: 64, maxNodes: 500_000 } as const;
 
 export class XmlError extends Error {}
 
-const ENTITIES: Record<string, string> = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'" };
+const ENTITIES: Record<string, string> = Object.assign(Object.create(null) as Record<string, string>, { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'" });
 
 export function decodeEntities(s: string): string {
   return s.replace(/&(#x[0-9a-fA-F]+|#[0-9]+|[a-zA-Z]+);/g, (m, ref: string) => {
@@ -31,7 +31,6 @@ export function decodeEntities(s: string): string {
 }
 
 const NAME = /^[A-Za-z_][\w.:-]*/;
-const ATTR = /([A-Za-z_][\w.:-]*)\s*=\s*("([^"]*)"|'([^']*)')/g;
 
 export function parseXml(input: string): XmlNode {
   const src = input.replace(/^﻿/, "");
@@ -76,7 +75,7 @@ export function parseXml(input: string): XmlNode {
     const m = NAME.exec(body);
     if (!m) throw new XmlError("Bad tag name.");
     const node: XmlNode = { name: m[0], attrs: {}, children: [], text: "" };
-    for (const a of body.slice(m[0].length).matchAll(ATTR)) node.attrs[a[1]!] = decodeEntities(a[3] ?? a[4] ?? "");
+    readAttrs(body, m[0].length, node.attrs);
     if (++nodes > XML_LIMITS.maxNodes) throw new XmlError("Too many elements.");
     top.children.push(node);
     if (!selfClosing) {
@@ -88,6 +87,34 @@ export function parseXml(input: string): XmlNode {
   const doc = root.children[0];
   if (!doc || root.children.length !== 1) throw new XmlError("Expected one root element.");
   return doc;
+}
+
+const NAME_CHAR = /[\w.:-]/;
+/**
+ * Attributes of one tag, read in a single left-to-right pass (linear time: a regex here can backtrack quadratically on a
+ * long run of name characters). Anything that is not name="value" or name='value' is skipped one character at a time.
+ */
+function readAttrs(s: string, from: number, out: Record<string, string>): void {
+  let i = from;
+  const n = s.length;
+  while (i < n) {
+    while (i < n && !/[A-Za-z_]/.test(s[i]!)) i++;
+    const start = i;
+    while (i < n && NAME_CHAR.test(s[i]!)) i++;
+    if (i === start) break;
+    const name = s.slice(start, i);
+    let j = i;
+    while (j < n && /\s/.test(s[j]!)) j++;
+    if (s[j] !== "=") continue;
+    j++;
+    while (j < n && /\s/.test(s[j]!)) j++;
+    const q = s[j];
+    if (q !== '"' && q !== "'") { i = j; continue; }
+    const end = s.indexOf(q, j + 1);
+    if (end === -1) throw new XmlError("Unclosed attribute value.");
+    if (!(name in out)) out[name] = decodeEntities(s.slice(j + 1, end));
+    i = end + 1;
+  }
 }
 
 /** The index of the '>' that ends a tag, skipping '>' inside quoted attribute values. */

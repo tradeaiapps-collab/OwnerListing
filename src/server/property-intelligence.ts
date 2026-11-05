@@ -28,6 +28,8 @@ export function createPlatformComparablesSource(db: Queryable): ComparablesSourc
           `SELECT e.id, e.event_type, e.amount_cents, e.occurred_at, p.suburb, p.postcode, p.property_type, p.bedrooms, p.bathrooms, p.car_spaces, p.land_area_sqm,
                   (SELECT min(l.occurred_at) FROM property_event l
                     WHERE l.property_id = e.property_id AND l.event_type = 'listed' AND l.occurred_at <= e.occurred_at
+                      AND (l.source IN ('platform','public_record') OR (l.source = 'licensed_third_party' AND EXISTS (
+                            SELECT 1 FROM feed_connection lf WHERE lf.id = l.feed_connection_id AND lf.comparables_licensed)))
                       AND l.occurred_at > e.occurred_at - interval '365 days') AS listed_at
              FROM property_event e JOIN property p ON p.id = e.property_id
             WHERE e.event_type IN ('sold','rented') AND e.amount_cents > 0 AND e.occurred_at >= $1::timestamptz AND e.occurred_at <= $2::timestamptz

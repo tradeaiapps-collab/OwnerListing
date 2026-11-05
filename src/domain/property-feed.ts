@@ -34,7 +34,7 @@ export function normaliseState(v: string | undefined): AuState | undefined {
   if (!v) return undefined;
   const t = v.trim();
   const up = t.toUpperCase();
-  return (STATES as readonly string[]).includes(up) ? (up as AuState) : STATE_NAMES[t.toLowerCase()];
+  return (STATES as readonly string[]).includes(up) ? (up as AuState) : (Object.hasOwn(STATE_NAMES, t.toLowerCase()) ? STATE_NAMES[t.toLowerCase()] : undefined);
 }
 
 export type FeedStatus = "active" | "sold" | "leased" | "withdrawn";
@@ -183,10 +183,12 @@ export function parseConnectionInput(body: unknown): { ok: true; value: Connecti
   const urlRaw = typeof b["sourceUrl"] === "string" ? b["sourceUrl"].trim() : "";
   if (urlRaw && !feedUrlOk(urlRaw)) return { ok: false, error: "The feed address must be a public https URL without a password in it." };
   if (provider === "domain" && urlRaw) return { ok: false, error: "The Domain API needs no feed address." };
-  if (provider === "domain" && !t.value.states.length && !t.value.postcodes.length && !t.value.suburbs.length) {
-    return { ok: false, error: "Set a territory (states, postcodes or suburbs) for a Domain connection." };
+  if (!t.value.states.length && !t.value.postcodes.length && !t.value.suburbs.length) {
+    return { ok: false, error: "Set a territory (states, postcodes or suburbs) for the connection." };
   }
   const comparablesLicensed = b["comparablesLicensed"] === true;
+  // An agency's own CRM is supplied by the agent, so its sold prices are not independent market evidence.
+  if (comparablesLicensed && provider === "reaxml") return { ok: false, error: "Sold prices from an agency CRM feed cannot be used in comparables." };
   const terms = typeof b["licenceTerms"] === "string" ? b["licenceTerms"].trim() : "";
   if (comparablesLicensed && terms.length < 10) return { ok: false, error: "Record the licence terms that allow using these sold prices (at least 10 characters)." };
   if (terms.length > 1000) return { ok: false, error: "The licence terms are too long." };
@@ -218,6 +220,11 @@ const COM_CATEGORY: Record<string, FeedPropertyType> = {
   offices: "office", office: "office", retail: "retail", "showrooms/bulkygoods": "retail", "industrial/warehouse": "industrial",
   industrial: "industrial", warehouse: "warehouse", "hotel/leisure": "hospitality", hospitality: "hospitality", land: "land", "land/development": "land"
 };
+/** Own-key lookup (never Object.prototype names such as "constructor"), defaulting to "other". */
+const lookup = (table: Record<string, FeedPropertyType>, key: string | undefined): FeedPropertyType => {
+  const k = (key ?? "").toLowerCase();
+  return Object.hasOwn(table, k) ? table[k]! : "other";
+};
 const REAXML_STATUS: Record<string, FeedStatus> = { current: "active", sold: "sold", leased: "leased", withdrawn: "withdrawn", offmarket: "withdrawn", deleted: "withdrawn" };
 
 /** Weekly rent from a REAXML <rent period="..."> value. */
@@ -236,7 +243,8 @@ function reaxmlItem(n: XmlNode): FeedItem | { reject: string; externalId?: strin
   if (!externalId || externalId.length > 120) return { reject: "No uniqueID." };
   const agentId = textOf(n, "agentID");
   const id = agentId ? `${agentId}:${externalId}` : externalId;
-  const status = REAXML_STATUS[(n.attrs["status"] ?? "current").toLowerCase()];
+  const statusKey = (n.attrs["status"] ?? "current").toLowerCase();
+  const status = Object.hasOwn(REAXML_STATUS, statusKey) ? REAXML_STATUS[statusKey] : undefined;
   if (!status) return { reject: `Unknown status "${n.attrs["status"]}".`, externalId: id };
   const addr = child(n, "address");
   const suburb = textOf(addr, "suburb");
@@ -257,9 +265,9 @@ function reaxmlItem(n: XmlNode): FeedItem | { reject: string; externalId?: strin
   }
   let propertyType: FeedPropertyType;
   if (kind === "land" || kind === "commercialland") propertyType = "land";
-  else if (commercial) propertyType = COM_CATEGORY[(child(n, "commercialCategory")?.attrs["name"] ?? "").toLowerCase()] ?? "other";
+  else if (commercial) propertyType = lookup(COM_CATEGORY, child(n, "commercialCategory")?.attrs["name"]);
   else if (kind === "rural") propertyType = textOf(n, "features/bedrooms") ? "house" : "land";
-  else propertyType = RES_CATEGORY[(child(n, "category")?.attrs["name"] ?? "").toLowerCase()] ?? "other";
+  else propertyType = lookup(RES_CATEGORY, child(n, "category")?.attrs["name"]);
 
   const priceNode = child(n, "price");
   const priceCents = transactionType === "rent" ? (commercial ? undefined : weeklyRent(child(n, "rent"))) : moneyCents(priceNode?.text, "sale");
@@ -353,7 +361,7 @@ export function mapDomainListing(l: J, searchType: "Sale" | "Rent" | "Sold"): Fe
   const listingType = String(l["listingType"] ?? searchType);
   const transactionType: "sale" | "rent" = listingType === "Rent" ? "rent" : "sale";
   const rawType = String(p["propertyType"] ?? (Array.isArray(p["allPropertyTypes"]) ? p["allPropertyTypes"][0] : "") ?? "").replace(/[^a-z]/gi, "").toLowerCase();
-  const propertyType = DOMAIN_TYPE[rawType] ?? "other";
+  const propertyType = lookup(DOMAIN_TYPE, rawType);
   const price = obj(l["priceDetails"]);
   const priceCents = moneyCents(price["price"] ?? price["priceFrom"], transactionType);
   const soldSrc = { ...obj(obj(l["saleDetails"])["soldDetails"]), ...obj(l["soldData"]) };

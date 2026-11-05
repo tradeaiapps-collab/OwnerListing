@@ -24,7 +24,9 @@ CREATE TABLE feed_connection (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   CHECK (provider <> 'reaxml' OR agent_user_id IS NOT NULL),
-  CHECK (NOT comparables_licensed OR char_length(coalesce(licence_terms, '')) >= 10)
+  CHECK (NOT comparables_licensed OR char_length(coalesce(licence_terms, '')) >= 10),
+  -- An agency's own CRM is agent-supplied, not independent market evidence.
+  CHECK (provider <> 'reaxml' OR NOT comparables_licensed)
 );
 CREATE INDEX feed_connection_due_idx ON feed_connection (next_run_at) WHERE enabled AND schedule <> 'manual';
 CREATE INDEX feed_connection_agent_idx ON feed_connection (agent_user_id) WHERE agent_user_id IS NOT NULL;

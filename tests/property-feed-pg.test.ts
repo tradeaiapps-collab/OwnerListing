@@ -50,7 +50,7 @@ describe.skipIf(!DATABASE_URL)("property feeds on PostgreSQL", () => {
     expect(String(raw.rows[0]!["push_token_hash"])).not.toContain(pushToken!);
     expect((await connectionForPush(t.db, id, pushToken!))?.id).toBe(id);
     expect(await connectionForPush(t.db, id, "wrong")).toBeNull();
-    const p = parseConnectionInput({ provider: "reaxml", label: "Owner CRM", agentUserId: staff });
+    const p = parseConnectionInput({ provider: "reaxml", label: "Owner CRM", agentUserId: staff, territory: { states: "QLD" } });
     expect(p.ok && await createConnection(t.db, staff, p.value, NOW)).toEqual({ ok: false, error: "That user is not an agent account." });
     const audit = await t.db.query("SELECT event_type FROM audit_event WHERE aggregate_id = $1", [id]);
     expect(audit.rows.map(r => r["event_type"])).toContain("feed.connection_created");
@@ -93,7 +93,7 @@ describe.skipIf(!DATABASE_URL)("property feeds on PostgreSQL", () => {
   it("runs due connections once (claimed), records failures, and skips paused and push-only ones", async () => {
     const { id } = await conn({ provider: "domain", label: "Domain due", territory: { states: "QLD" } });
     await t.db.query("UPDATE feed_connection SET next_run_at = $2 WHERE id = $1", [id, "2026-11-04T16:00:00Z"]);
-    const { id: pushOnly } = await conn({ provider: "reaxml", label: "Push only due", agentUserId: agent });
+    const { id: pushOnly } = await conn({ provider: "reaxml", label: "Push only due", agentUserId: agent, territory: { states: "QLD" } });
     await t.db.query("UPDATE feed_connection SET next_run_at = $2 WHERE id = $1", [pushOnly, "2026-11-04T16:00:00Z"]);
     const runs = await runDueFeeds(t.db, async () => Response.json([]), {}, NOW);
     expect(runs.filter(r => r.connectionId === id)).toEqual([expect.objectContaining({ status: "failed", error: expect.stringContaining("not set up") })]);
@@ -108,8 +108,25 @@ describe.skipIf(!DATABASE_URL)("property feeds on PostgreSQL", () => {
     expect(listed).toMatchObject({ enabled: false, lastRun: { status: "failed" } });
   });
 
+  it("never changes the facts of a property it matched, and keeps unlicensed listings out of days on market", async () => {
+    const own = await t.db.query("INSERT INTO property (address_text, state, suburb, postcode, property_type, bedrooms) VALUES ('8 Owner Rd, Paddington QLD 4064','QLD','Paddington','4064','house',5) RETURNING id");
+    const pid = String(own.rows[0]!["id"]);
+    await t.db.query("INSERT INTO property_event (property_id, event_type, occurred_at, amount_cents, source) VALUES ($1,'sold','2026-10-30T00:00:00Z',99900000,'platform')", [pid]);
+    const { conn: c } = await conn({ provider: "reaxml", label: "Overwrite CRM", agentUserId: agent, territory: { postcodes: "4064" } });
+    const feed = `<propertyList><residential status="current"><uniqueID>own-1</uniqueID><price>500000</price><listingDate>2026-01-01</listingDate>
+      <address><streetNumber>8</streetNumber><street>Owner Rd</street><suburb>Paddington</suburb><state>QLD</state><postcode>4064</postcode></address>
+      <category name="Unit"/><features><bedrooms>1</bedrooms></features></residential></propertyList>`;
+    expect(await importPushedReaxml(t.db, c, feed, NOW)).toMatchObject({ created: 1, events: 1 });
+    const p = await t.db.query("SELECT property_type, bedrooms FROM property WHERE id = $1", [pid]);
+    expect(p.rows[0]).toEqual({ property_type: "house", bedrooms: 5 });
+    const sale = (await createPlatformComparablesSource(t.db).find({ transactionType: "sale", propertyType: "house", suburb: "Paddington", postcode: "4064" }, NOW))
+      .find(r => r.priceCents === 99_900_000);
+    expect(sale).toBeDefined();
+    expect(sale!.daysOnMarket).toBeUndefined();
+  });
+
   it("rotating the push token retires the old one", async () => {
-    const { id, pushToken } = await conn({ provider: "reaxml", label: "Rotate", agentUserId: agent });
+    const { id, pushToken } = await conn({ provider: "reaxml", label: "Rotate", agentUserId: agent, territory: { states: "QLD" } });
     const next = await rotatePushToken(t.db, staff, id, NOW);
     expect(await connectionForPush(t.db, id, pushToken!)).toBeNull();
     expect((await connectionForPush(t.db, id, next!))?.id).toBe(id);

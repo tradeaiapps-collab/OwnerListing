@@ -48,6 +48,10 @@ describe("CRM push route", () => {
     expect(ok.status).toBe(200);
     expect(await ok.json()).toMatchObject({ ok: true, created: 1 });
     expect((await push("good-token", "x", { "content-length": String(25 * 1024 * 1024) })).status).toBe(413);
+    // A chunked upload has no content-length: the body is still cut off at 20 MB.
+    const big = new ReadableStream({ start(c) { for (let i = 0; i < 21; i++) c.enqueue(new Uint8Array(1024 * 1024)); c.close(); } });
+    const chunked = await pushPost(new Request("http://test/api/feeds/reaxml/c1", { method: "POST", headers: { authorization: "Bearer good-token" }, body: big, duplex: "half" } as RequestInit), { params: Promise.resolve({ id: "c1" }) });
+    expect(chunked.status).toBe(413);
     expect(state.pushes).toBe(1);
   });
 });
