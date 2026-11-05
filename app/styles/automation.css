@@ -1,0 +1,11 @@
+.automation .au-table { min-width: 34rem; }
+.automation .au-table th, .automation .au-table td { vertical-align: top; }
+.automation .au-num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.automation .au-wide { min-width: 14rem; }
+.automation .au-section { margin-top: var(--space-8); }
+.automation .au-add { margin: var(--space-4) 0; }
+.automation .au-add > summary { cursor: pointer; font-weight: 600; margin-bottom: var(--space-3); }
+.automation .au-add form.stack { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr)); gap: var(--space-4); align-items: end; max-width: none; }
+.automation .au-add form.stack > :is(label:has(textarea), button, .au-full) { grid-column: 1 / -1; }
+.automation .row-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-2); }
+.automation .au-help { margin: 0; }

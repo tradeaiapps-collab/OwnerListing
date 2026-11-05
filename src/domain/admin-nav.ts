@@ -53,6 +53,8 @@ const META: Record<string, { group: string; icon: AdminIcon; blurb: string }> = 
   "/staff/ai": { group: "settings", icon: "ai", blurb: "Self-hosted AI engine and limits" },
   "/staff/ad-leads/rules": { group: "settings", icon: "toggle", blurb: "Send ad leads to agents by postcode, suburb, property type or interest" },
   "/staff/ad-leads": { group: "insights", icon: "team", blurb: "Leads from Facebook, Instagram and Google ads, assignment, cost per lead" },
+  "/staff/automation": { group: "settings", icon: "toggle", blurb: "Workflow rules and scheduled tasks" },
+  "/staff/campaigns": { group: "marketplace", icon: "message", blurb: "Email and SMS campaigns with open and click rates" },
   "/staff/lead-scoring": { group: "settings", icon: "chart", blurb: "Hot and warm thresholds and how engagement, property fit and follow-up timing blend into a lead score" },
   "/staff/feeds": { group: "settings", icon: "chart", blurb: "Agency CRM and Domain feeds, territory, schedule and licences" },
   "/staff/invites": { group: "team", icon: "team", blurb: "Invite staff and manage their access" },

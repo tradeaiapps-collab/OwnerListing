@@ -8,6 +8,7 @@ const state = vi.hoisted(() => ({ actor: null as Actor | null, deps: null as Lis
 
 vi.mock("../src/server/context", () => ({
   getActor: () => state.actor,
+  getDb: () => ({ query: async () => ({ rows: [] }) }),
   getDeps: () => state.deps
 }));
 

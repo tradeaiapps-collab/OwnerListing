@@ -40,6 +40,8 @@ export const STAFF_SECTIONS: readonly StaffSection[] = [
   { href: "/staff/commissions", label: "Agent commissions", permissions: ["commission.manage"] },
   { href: "/staff/ad-leads", label: "Ad leads", permissions: ["ad_leads.manage"] },
   { href: "/staff/ad-leads/rules", label: "Lead routing rules", permissions: ["ad_leads.manage"] },
+  { href: "/staff/automation", label: "Automation", permissions: ["automation.manage"] },
+  { href: "/staff/campaigns", label: "Campaigns", permissions: ["campaign.manage"] },
   { href: "/staff/feeds", label: "Property data feeds", permissions: ["feeds.manage"] },
   { href: "/staff/lead-scoring", label: "Lead scoring", permissions: ["feeds.manage"] },
   { href: "/staff/investments", label: "Investor projects review", permissions: ["investment.review"] },
