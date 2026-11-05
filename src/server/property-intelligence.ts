@@ -13,7 +13,7 @@ const NO_STORE = { "cache-control": "no-store" } as const;
 const LOOKBACK_MONTHS = 26;
 
 /**
- * Sales and leases the platform itself recorded (property_event 'sold' / 'rented'), by suburb or postcode, last 26 months.
+ * Sales and leases the platform itself recorded (property_event 'sold' / 'rented', not voided), by suburb or postcode, last 26 months.
  * Only platform and public-record rows: owner-supplied figures are unverified and licensed third-party rows may not be reusable.
  * Days on the market runs from the property's first 'listed' event in the year before the sale. Parameterised SQL only.
  */
@@ -29,7 +29,7 @@ export function createPlatformComparablesSource(db: Queryable): ComparablesSourc
                     WHERE l.property_id = e.property_id AND l.event_type = 'listed' AND l.occurred_at <= e.occurred_at
                       AND l.occurred_at > e.occurred_at - interval '365 days') AS listed_at
              FROM property_event e JOIN property p ON p.id = e.property_id
-            WHERE e.event_type IN ('sold','rented') AND e.amount_cents > 0 AND e.occurred_at >= $1::timestamptz AND e.occurred_at <= $2::timestamptz
+            WHERE e.event_type IN ('sold','rented') AND e.voided_at IS NULL AND e.amount_cents > 0 AND e.occurred_at >= $1::timestamptz AND e.occurred_at <= $2::timestamptz
               AND e.source IN ('platform','public_record') AND p.property_type IS NOT NULL AND p.suburb IS NOT NULL
               AND (($3::text IS NOT NULL AND lower(p.suburb) = lower($3::text)) OR ($4::text IS NOT NULL AND p.postcode = $4::text))
             ORDER BY e.occurred_at DESC LIMIT 2000`,
