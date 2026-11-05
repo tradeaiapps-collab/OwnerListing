@@ -102,6 +102,7 @@ export const KINDS = {
   offer_rejected: "offers",
   offer_countered: "offers",
   saved_search_match: "listings",
+  market_shift: "listings",
   security_notice: "account",
   system_notice: "account",
   marketing_news: "marketing"
@@ -145,6 +146,7 @@ export function renderNotification(kind: Kind, p: NotificationParams = {}): Rend
     case "offer_rejected": return t("Offer not accepted", `Your offer on ${listing} was not accepted.`);
     case "offer_countered": return t("Counter-offer", `There is a counter-offer on ${listing}.`);
     case "saved_search_match": return t("New property matches your search", `${listing} matches one of your saved searches.`);
+    case "market_shift": return t(clip(p["title"], 80, "Market update"), clip(p["text"], 400, "There is a change in one of your areas."));
     case "security_notice": return t(clip(p["title"], 80, "Security notice"), clip(p["text"], 400, "Please review your account security settings."));
     case "system_notice": return t(clip(p["title"], 80, "Notice"), clip(p["text"], 400, "There is an update about your account."));
     case "marketing_news": return t(clip(p["title"], 80, "News"), clip(p["text"], 400, "There is news from us."));
