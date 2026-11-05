@@ -187,6 +187,16 @@ describe.skipIf(!DATABASE_URL)("sale fell through on Postgres", () => {
     expect(d.holding.status).toBe("cancelled");
   });
 
+  it("cooling-off leaves out the state's public holidays on file, so a long break keeps the period open", async () => {
+    const s = await setup({ acceptedDaysAgo: 10 });
+    expect(await previewFallThrough(t.db, s.buyer, "buyer", s.offerId, "cooling_off")).toMatchObject({ ok: false, error: expect.stringContaining("cooling-off period") });
+    // Every day since the contract is a NSW holiday (a shutdown), so no business days have been used.
+    await t.db.query("INSERT INTO public_holiday (state, holiday_date, name) SELECT 'NSW', d::date, 'Test shutdown' FROM generate_series(current_date - 12, current_date + 1, interval '1 day') d");
+    const p = must(await previewFallThrough(t.db, s.buyer, "buyer", s.offerId, "cooling_off"));
+    expect(p.basis).toContain("public holiday");
+    expect(p.basis).toContain("used 0");
+  });
+
   it("refuses without an accepted offer and an open record, after cooling-off ends, and in states with no right", async () => {
     const s = await setup({ acceptedDaysAgo: 30 });
     expect(await raiseFallThrough(t.db, s.buyer, "buyer", s.offerId, "cooling_off", null)).toMatchObject({ ok: false, error: expect.stringContaining("cooling-off period") });

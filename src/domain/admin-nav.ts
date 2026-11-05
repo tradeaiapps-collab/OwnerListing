@@ -35,6 +35,7 @@ const META: Record<string, { group: string; icon: AdminIcon; blurb: string }> = 
   "/staff/trust-accounts": { group: "compliance", icon: "bank", blurb: "Two-person trust account approvals" },
   "/staff/escrow": { group: "compliance", icon: "bank", blurb: "Buyer deposits in trust, bank reconciliation and release approvals" },
   "/staff/id-review": { group: "compliance", icon: "id", blurb: "Identity checks waiting for review" },
+  "/staff/public-holidays": { group: "compliance", icon: "audit", blurb: "Holidays left out of cooling-off business days, by state" },
   "/staff/wording-flags": { group: "compliance", icon: "wording", blurb: "Listings flagged for discriminatory wording" },
   "/staff/disclosures": { group: "compliance", icon: "disclosure", blurb: "State disclosure requirements and versions" },
   "/staff/doc-templates": { group: "compliance", icon: "disclosure", blurb: "Contract, disclosure and agreement templates for e-signing" },
