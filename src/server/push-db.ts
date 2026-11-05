@@ -10,12 +10,14 @@ const MAX_DEVICES = 10;
 export interface DeviceView { id: string; platform: Platform; label: string | null; createdAt: string; lastSeenAt: string }
 
 /** Registers or refreshes a device. A token seen before moves to this user (a shared browser or a phone sold on) and is reactivated. At most 10 active devices per user: the oldest are retired. */
-export async function registerDevicePg(db: Queryable, userId: string, d: DeviceInput): Promise<string> {
+/** `mobileSessionId`: the phone app session registering it (null for a browser); pushes stop when that session ends. */
+export async function registerDevicePg(db: Queryable, userId: string, d: DeviceInput, mobileSessionId: string | null = null): Promise<string> {
   const run = async (tx: Queryable) => {
     const r = await tx.query(
-      `INSERT INTO push_device (user_id, platform, token, p256dh, auth_secret, label) VALUES ($1::uuid,$2,$3,$4,$5,$6)
-       ON CONFLICT (token) DO UPDATE SET user_id = $1::uuid, platform = $2, p256dh = $4, auth_secret = $5, label = COALESCE($6, push_device.label), last_seen_at = now(), revoked_at = NULL
-       RETURNING id`, [userId, d.platform, d.token, d.p256dh, d.authSecret, d.label]);
+      `INSERT INTO push_device (user_id, platform, token, p256dh, auth_secret, label, mobile_session_id) VALUES ($1::uuid,$2,$3,$4,$5,$6,$7::uuid)
+       ON CONFLICT (token) DO UPDATE SET user_id = $1::uuid, platform = $2, p256dh = $4, auth_secret = $5, label = COALESCE($6, push_device.label), last_seen_at = now(), revoked_at = NULL,
+         mobile_session_id = $7::uuid
+       RETURNING id`, [userId, d.platform, d.token, d.p256dh, d.authSecret, d.label, mobileSessionId]);
     const id = String(r.rows[0]!["id"]);
     await tx.query(
       `UPDATE push_device SET revoked_at = now() WHERE user_id = $1::uuid AND revoked_at IS NULL AND id NOT IN
@@ -41,7 +43,19 @@ export async function revokeDeviceByIdPg(db: Queryable, deviceId: string): Promi
 }
 
 export async function activeTargetsPg(db: Queryable, userId: string): Promise<PushTarget[]> {
-  const r = await db.query("SELECT id, platform, token, p256dh, auth_secret FROM push_device WHERE user_id = $1::uuid AND revoked_at IS NULL", [userId]);
+  // A phone registered by the app only counts while its session is live: not revoked or expired, and not ended by a password reset,
+  // staff MFA reset, restore or suspension since it began (the same checks as every request, src/server/auth/actor.ts).
+  const r = await db.query(
+    `SELECT d.id, d.platform, d.token, d.p256dh, d.auth_secret FROM push_device d
+      WHERE d.user_id = $1::uuid AND d.revoked_at IS NULL
+        AND (d.mobile_session_id IS NULL OR EXISTS (
+          SELECT 1 FROM mobile_session m JOIN app_user u ON u.id = m.user_id
+           WHERE m.id = d.mobile_session_id AND m.user_id = d.user_id AND m.revoked_at IS NULL AND m.expires_at > now() AND m.max_expires_at > now()
+             AND u.status = 'active' AND u.deleted_at IS NULL
+             AND (u.password_changed_at IS NULL OR u.password_changed_at < m.created_at)
+             AND (u.restored_at IS NULL OR u.restored_at < m.created_at)
+             AND NOT EXISTS (SELECT 1 FROM mfa_reset_log r WHERE r.user_id = u.id AND r.reset_at >= m.created_at)))`,
+    [userId]);
   return r.rows.map(x => ({ id: String(x["id"]), platform: String(x["platform"]) as Platform, token: String(x["token"]), p256dh: x["p256dh"] === null ? null : String(x["p256dh"]), authSecret: x["auth_secret"] === null ? null : String(x["auth_secret"]) }));
 }
 

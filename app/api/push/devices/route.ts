@@ -7,6 +7,7 @@ import { failure } from "../../../../src/server/http";
 import { listDevicesPg, registerDevicePg, revokeDevicePg } from "../../../../src/server/push-db";
 import { getPushPorts, webPublicKey } from "../../../../src/server/push-senders";
 import { withApi } from "../../../../src/server/api/with-api";
+import { mobileSessionIdOf } from "../../../../src/server/auth/mobile-token";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -29,7 +30,7 @@ async function handlePost(req: Request) {
   if (!actor) return unauthenticated();
   const parsed = parseDeviceInput(await req.json().catch(() => null));
   if (!parsed.ok) return failure(parsed);
-  return NextResponse.json({ id: await registerDevicePg(getDb(), actor.userId, parsed.value) }, { status: 201 });
+  return NextResponse.json({ id: await registerDevicePg(getDb(), actor.userId, parsed.value, mobileSessionIdOf(req)) }, { status: 201 });
 }
 
 /** Body: { id }. Removes one of the user's own devices. */

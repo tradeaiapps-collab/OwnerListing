@@ -1,5 +1,6 @@
 import { createHmac, randomUUID } from "node:crypto";
 import { readCookie, SESSION_COOKIE, verifySession } from "../auth/session";
+import { mobileBearer, verifyMobileAccess } from "../auth/mobile-token";
 import { STAFF_COOKIE, verifyStaffSession } from "../auth/staff-session";
 import { getDb } from "../context";
 import { apiError, toV1ErrorBody, type ApiErrorBody } from "./errors";
@@ -42,11 +43,13 @@ const defaults: ApiLayerDeps = {
 
 const CORRELATION_SHAPE = /^[A-Za-z0-9._:-]{8,100}$/;
 
-/** Who the key belongs to. Cookies are only signature-checked here; the handler still does the full sign-in check. */
+/** Who the key belongs to. Cookies and phone tokens are only signature-checked here; the handler still does the full sign-in check. */
 function scopeOf(req: Request, d: ApiLayerDeps): string {
   const secret = d.secret();
   const now = d.nowSeconds();
   if (secret && secret.length >= 32) {
+    const phone = verifyMobileAccess(mobileBearer(req), secret, now);
+    if (phone) return `user:${phone.uid}`;
     const user = verifySession(readCookie(req, SESSION_COOKIE), secret, now);
     if (user) return `user:${user.uid}`;
     const staff = verifyStaffSession(readCookie(req, STAFF_COOKIE), secret, now);

@@ -265,3 +265,6 @@ Provider-neutral, Westpac PayWay stays the card provider (no live keys; checkout
 
 ## Document templates and e-signatures (5 Nov 2026)
 Owner-generated documents from staff-published templates, built-in e-signing with SHA-256 and insert-only audit trail, Elena explains clauses while signing. Details and open items: docs/DOCUMENT_SIGNING.md.
+
+## Phone app (5 Nov 2026, PR feature/mobile-app)
+React Native with Expo in mobile/ (one codebase, iPhone and Android). Phone sign-in: POST /api/mobile/auth/login|refresh|logout, 15-minute bearer access tokens, single-use rotating refresh tokens (reuse revokes the session), table mobile_session; bearer requests ignore cookies, second step required as on the web. Screens: search, property, saved, appointments, agent messages, alerts, push topics. Push uses the PR #166 FCM/APNs senders with native device tokens. Open: Apple and Google developer accounts, Firebase project, APNs key, final app id, Google sign-in and sign-up in the app, store listing. Details: mobile/README.md.
