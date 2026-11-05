@@ -15,7 +15,7 @@ const OWNER_TASKS: readonly DashboardLink[] = [
 
 const BY_ROLE: Record<DashboardRole, readonly DashboardLink[]> = {
   owner: OWNER_TASKS,
-  agent: OWNER_TASKS,
+  agent: [...OWNER_TASKS, { href: "/teams", label: "Teams", text: "Your agency: members, tasks, splits and performance." }],
   buyer: [
     { href: "/listings", label: "Browse listings", text: "Search published properties." },
     { href: "/buyer/saved-searches", label: "Saved searches", text: "Alerts for new matches." },
