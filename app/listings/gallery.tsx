@@ -91,10 +91,13 @@ function Lightbox({ items, index, title, onIndex, onClose, info }: {
         <p className="gl-counter" aria-live="polite">{index + 1} of {total}</p>
         <div className="gl-top-tools">
           {info && <button type="button" className="gl-close gl-info-btn" aria-expanded={panel} onClick={() => setPanel(!panel)}>{panel ? "Hide details" : "Details"}</button>}
-          <button type="button" className="gl-close" onClick={onClose} aria-label="Close photo viewer">Close</button>
+          <button type="button" className="gl-close gl-x" onClick={onClose} aria-label="Close photo viewer">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
+          </button>
         </div>
       </div>
       <div className="gl-stage"
+        onClick={e => { const t = e.target as HTMLElement; if (t === e.currentTarget || t.classList.contains("gl-figure")) onClose(); }}
         onPointerDown={e => { if (e.pointerType !== "mouse") start.current = { x: e.clientX, y: e.clientY }; }}
         onPointerUp={e => {
           const s = start.current;
