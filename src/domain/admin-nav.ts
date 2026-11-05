@@ -26,6 +26,7 @@ const META: Record<string, { group: string; icon: AdminIcon; blurb: string }> = 
   "/staff/listings": { group: "marketplace", icon: "listing", blurb: "Review, suspend and reinstate listings" },
   "/staff/settlements": { group: "marketplace", icon: "case", blurb: "Every sale from offer to settlement, with stuck deals flagged" },
   "/staff/disputes": { group: "marketplace", icon: "case", blurb: "Buyer-seller disputes Elena could not settle, and how mediation is going" },
+  "/staff/negotiation-coaching": { group: "insights", icon: "report", blurb: "Which of Elena's suggestions people use, and how coached deals end" },
   "/staff/sale-events": { group: "insights", icon: "report", blurb: "Audit sold and rented events, add historical sales, void wrong ones" },
   "/staff/users": { group: "marketplace", icon: "users", blurb: "Find, review and suspend accounts" },
   "/staff/inspections": { group: "marketplace", icon: "listing", blurb: "Approve inspectors and watch every inspection request" },

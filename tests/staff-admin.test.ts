@@ -57,7 +57,7 @@ describe("dashboard sections follow permissions", () => {
   it("shows each role only what it may use", () => {
     expect(sectionsFor(comp).map(s => s.href)).toEqual(["/staff/dashboard", "/staff/disputes", "/staff/sale-events", "/staff/listings", "/staff/users", "/staff/inspections", "/staff/cases", "/staff/safety", "/staff/moderation", "/staff/trust-accounts", "/staff/escrow", "/staff/id-review", "/staff/prequalifications", "/staff/public-holidays", "/staff/wording-flags", "/staff/disclosures", "/staff/doc-templates", "/staff/disclosures/reviews", "/staff/audit", "/staff/investments"]);
     expect(sectionsFor(support).map(s => s.href)).toEqual(["/staff/dashboard", "/staff/disputes", "/staff/listings", "/staff/cases", "/staff/safety", "/staff/moderation"]);
-    expect(sectionsFor(tech).map(s => s.href)).toEqual(["/staff/dashboard", "/staff/settlements", "/staff/feasibility", "/staff/cron-secrets"]);
+    expect(sectionsFor(tech).map(s => s.href)).toEqual(["/staff/dashboard", "/staff/settlements", "/staff/negotiation-coaching", "/staff/feasibility", "/staff/cron-secrets"]);
   });
 });
 

@@ -25,3 +25,15 @@
 .settle-table .num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .settle-check-group { border: 0; margin: 0; padding: 0; min-width: 0; }
 .settle-check-group legend { padding: 0; font-weight: 600; font-size: 0.875rem; color: var(--muted); }
+
+.coach-panel { display: grid; gap: var(--space-3); margin: 0 0 var(--space-6); padding: var(--space-4); border: 1px solid var(--line); border-left: 4px solid var(--gold); border-radius: var(--radius); background: var(--elevated); min-width: 0; }
+.coach-panel h2 { margin: 0; }
+.coach-compare { margin: 0; font-weight: 600; }
+.coach-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-3); grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr)); }
+.coach-card { display: grid; gap: var(--space-2); align-content: start; padding: var(--space-4); border: 1px solid var(--line); border-radius: var(--radius); background: var(--bg); min-width: 0; overflow-wrap: anywhere; }
+.coach-card h3 { margin: 0; font-size: 1.0625rem; }
+.coach-card p { margin: 0; }
+.coach-card.is-risk { border-color: color-mix(in srgb, var(--warn) 60%, var(--bg)); }
+.coach-card.is-dismissed { opacity: 0.7; }
+.coach-card .badge { justify-self: start; }
+.coach-template { margin: 0; padding: var(--space-3); border-left: 3px solid var(--gold); background: var(--elevated); }
