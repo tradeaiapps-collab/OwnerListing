@@ -69,14 +69,17 @@ export async function recordAcceptedOfferEventPg(db: Queryable, offerId: string)
 }
 
 /** Accepted offers that have no event yet (accepted before this existed, or a write that failed). Writes them; returns how many. */
-export async function backfillAcceptedOfferEventsPg(db: Queryable, limit = 500): Promise<{ checked: number; written: number }> {
+export async function backfillAcceptedOfferEventsPg(db: Queryable, limit = 500): Promise<{ checked: number; written: number; failed: number }> {
   const r = await db.query(
     `SELECT o.id FROM formal_offer o WHERE o.status = 'accepted' AND NOT EXISTS (SELECT 1 FROM property_event e WHERE e.offer_id = o.id) ORDER BY o.submitted_at LIMIT $1::int`,
     [limit]
   );
-  let written = 0;
-  for (const row of r.rows) if (await recordAcceptedOfferEventPg(db, String(row["id"]))) written++;
-  return { checked: r.rows.length, written };
+  let written = 0, failed = 0;
+  // One bad offer must not stop the rest, or every later sweep would stop at the same one.
+  for (const row of r.rows) {
+    try { if (await recordAcceptedOfferEventPg(db, String(row["id"]))) written++; } catch { failed++; }
+  }
+  return { checked: r.rows.length, written, failed };
 }
 
 /** A staff-entered historical sale or rental. Finds or creates the property by address and state. Returns the new event id. */

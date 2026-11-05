@@ -65,7 +65,7 @@ export default function StaffSaleEvents() {
     setNotice(""); setError("");
     const res = await postStaff("/api/staff/sale-events", { action: "sweep", reason: "Sweep accepted offers that have no sold or rented event." });
     if (!res.ok) { setError(String(res.data["error"] ?? "Could not sweep.")); return; }
-    setNotice(`Checked ${res.data["checked"]} accepted offers without an event and wrote ${res.data["written"]}.`); await load();
+    setNotice(`Checked ${res.data["checked"]} accepted offers without an event and wrote ${res.data["written"]}${Number(res.data["failed"]) > 0 ? `, ${res.data["failed"]} could not be written` : ""}.`); await load();
   }
 
   const set = (k: keyof typeof BLANK) => (e: { target: { value: string } }) => setForm({ ...form, [k]: e.target.value });

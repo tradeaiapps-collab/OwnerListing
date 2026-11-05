@@ -10,7 +10,7 @@ vi.mock("../src/server/db", () => ({ appendAuditPg: async (_db: unknown, e: { ev
 vi.mock("../src/server/sale-events-db", () => ({
   listSaleEventsPg: async (_db: unknown, f: unknown, full: boolean) => { state.calls.push(["list", f, full]); return { rows: [], nextCursor: null }; },
   recordManualEventPg: async (_db: unknown, e: { suburb: string }, staffId: string) => { state.calls.push(["record", e.suburb, staffId]); return "E1"; },
-  backfillAcceptedOfferEventsPg: async () => ({ checked: 3, written: 2 }),
+  backfillAcceptedOfferEventsPg: async () => ({ checked: 3, written: 2, failed: 0 }),
   voidSaleEventPg: async (_db: unknown, id: string, staffId: string, reason: string) => {
     state.calls.push(["void", id, staffId, reason]);
     return state.voidOutcome === "voided" ? { outcome: "voided", propertyId: "P1" } : { outcome: state.voidOutcome };
@@ -70,7 +70,7 @@ describe("staff sale-event routes", () => {
   it("sweeps accepted offers that have no event", async () => {
     state.staff = comp;
     const r = await list.POST(req("http://test/api/staff/sale-events", { action: "sweep", reason: "Sweep after the release." }));
-    expect(await r.json()).toEqual({ ok: true, checked: 3, written: 2 });
+    expect(await r.json()).toEqual({ ok: true, checked: 3, written: 2, failed: 0 });
     expect(state.audits).toEqual(["staff.sale_events_swept"]);
   });
 
