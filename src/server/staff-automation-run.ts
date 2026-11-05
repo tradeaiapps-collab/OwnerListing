@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { appendAuditPg, type Queryable } from "./db";
-import { scanAgingListings } from "./automation-db";
+import { scanAgingListings } from "./staff-automation-db";
 import { runDueCampaigns, type SendCounts } from "./campaigns-db";
 import { runDueTasks } from "./scheduled-tasks-db";
 
@@ -21,7 +21,7 @@ export async function runAutomationTick(db: Queryable, nowIso: string, env: Env)
   const result = { aging, campaigns, tasks, errors };
   await appendAuditPg(db, {
     id: randomUUID(), occurredAt: nowIso, actorType: "system", actorId: "automation", aggregateType: "job", aggregateId: "automation",
-    eventType: "job.automation_run", correlationId: randomUUID(), payload: { ...result }
+    eventType: "job.staff_automation_run", correlationId: randomUUID(), payload: { ...result }
   });
   return result;
 }

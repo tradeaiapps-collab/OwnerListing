@@ -11,7 +11,7 @@ vi.mock("../src/server/context", () => ({
   getActor: () => null, getDb: () => ({ query: async () => ({ rows: [] }) }), getStaff: async () => state.staff, getDeps: () => ({ now: () => "2026-11-05T00:00:00.000Z" })
 }));
 vi.mock("../src/server/db", () => ({ appendAuditPg: async (_db: unknown, e: { eventType: string }) => { state.audits.push(e.eventType); } }));
-vi.mock("../src/server/automation-db", () => ({
+vi.mock("../src/server/staff-automation-db", () => ({
   listRulesPg: async () => [], recentRunsPg: async () => [], createRulePg: async (_d: unknown, r: { name: string }) => { state.calls.push(["rule", r.name]); return "R1"; },
   getRulePg: async () => ({ id: "x" }), updateRulePg: async () => true, setRuleEnabledPg: async (_d: unknown, id: string, on: boolean) => { state.calls.push(["rule-enabled", id, on]); return true; },
   deleteRulePg: async () => "deleted"
@@ -27,7 +27,7 @@ vi.mock("../src/server/campaigns-db", () => ({
   recordOpenPg: async (_d: unknown, t: string) => { state.openTokens.push(t); },
   recordClickPg: async () => state.clickTarget
 }));
-vi.mock("../src/server/automation-run", () => ({ runAutomationTick: async () => { state.tickCalls++; return { aging: 0, campaigns: null, tasks: null, errors: [] }; } }));
+vi.mock("../src/server/staff-automation-run", () => ({ runAutomationTick: async () => { state.tickCalls++; return { aging: 0, campaigns: null, tasks: null, errors: [] }; } }));
 
 import * as auto from "../app/api/staff/automation/route";
 import * as autoOne from "../app/api/staff/automation/[id]/route";
@@ -35,7 +35,7 @@ import * as camp from "../app/api/staff/campaigns/route";
 import * as campOne from "../app/api/staff/campaigns/[id]/route";
 import * as open from "../app/api/campaigns/open/[token]/route";
 import * as click from "../app/api/campaigns/click/[token]/route";
-import * as cron from "../app/api/internal/automation/run/route";
+import * as cron from "../app/api/internal/staff-automation/run/route";
 process.env["APP_URL"] = "http://test";
 
 const admin: StaffActor = { id: "00000000-0000-4000-8000-000000000001", role: "super_admin" };
@@ -126,25 +126,25 @@ describe("campaign tracking routes (public)", () => {
 
 describe("automation cron route", () => {
   const SECRET = "z".repeat(40);
-  const call = (secret?: string) => cron.POST(new Request("http://test/api/internal/automation/run", { method: "POST", headers: secret === undefined ? {} : { "x-cron-secret": secret } }));
-  afterEach(() => { delete process.env["AUTOMATION_CRON_SECRET"]; });
+  const call = (secret?: string) => cron.POST(new Request("http://test/api/internal/staff-automation/run", { method: "POST", headers: secret === undefined ? {} : { "x-cron-secret": secret } }));
+  afterEach(() => { delete process.env["STAFF_AUTOMATION_CRON_SECRET"]; });
   it("fails closed while the secret is unset or short and rejects a wrong one", async () => {
     expect((await call("x")).status).toBe(503);
-    process.env["AUTOMATION_CRON_SECRET"] = "short";
+    process.env["STAFF_AUTOMATION_CRON_SECRET"] = "short";
     expect((await call("short")).status).toBe(503);
-    process.env["AUTOMATION_CRON_SECRET"] = SECRET;
+    process.env["STAFF_AUTOMATION_CRON_SECRET"] = SECRET;
     expect((await call()).status).toBe(401);
     expect((await call(SECRET + "x")).status).toBe(401);
     expect(state.tickCalls).toBe(0);
   });
   it("runs the tick with the right secret, and a 15-minute workflow calls it", async () => {
-    process.env["AUTOMATION_CRON_SECRET"] = SECRET;
+    process.env["STAFF_AUTOMATION_CRON_SECRET"] = SECRET;
     const res = await call(SECRET);
     expect(res.status).toBe(200);
     expect(state.tickCalls).toBe(1);
-    const wf = readFileSync(path.join(__dirname, "..", ".github", "workflows", "automation.yml"), "utf8");
+    const wf = readFileSync(path.join(__dirname, "..", ".github", "workflows", "staff-automation.yml"), "utf8");
     expect(wf).toContain('cron: "*/15 * * * *"');
-    expect(wf).toContain("/api/internal/automation/run");
-    expect(wf).toContain("AUTOMATION_CRON_SECRET");
+    expect(wf).toContain("/api/internal/staff-automation/run");
+    expect(wf).toContain("STAFF_AUTOMATION_CRON_SECRET");
   });
 });

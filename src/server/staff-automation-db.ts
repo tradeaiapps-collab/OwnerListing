@@ -1,4 +1,4 @@
-import { fillTemplate, type MessageKind, type Recipient, type RuleInput, type Trigger, type TriggerConfig } from "../domain/automation";
+import { fillTemplate, type MessageKind, type Recipient, type RuleInput, type Trigger, type TriggerConfig } from "../domain/staff-automation";
 import type { Queryable } from "./db";
 import { notifyUser } from "./notifier";
 
@@ -12,7 +12,7 @@ const toRule = (x: Record<string, unknown>): RuleRow => ({
   messageKind: String(x["message_kind"]) as MessageKind, title: String(x["title"]), body: String(x["body"]), link: x["link"] === null ? null : String(x["link"]),
   createdAt: iso(x["created_at"])!, updatedAt: iso(x["updated_at"])!, lastFiredAt: iso(x["last_fired_at"]), runs: Number(x["runs"] ?? 0)
 });
-const SELECT = `SELECT r.*, (SELECT count(*)::int FROM automation_run a WHERE a.rule_id = r.id) AS runs FROM automation_rule r`;
+const SELECT = `SELECT r.*, (SELECT count(*)::int FROM staff_automation_run a WHERE a.rule_id = r.id) AS runs FROM staff_automation_rule r`;
 
 export async function listRulesPg(db: Queryable): Promise<RuleRow[]> {
   return (await db.query(`${SELECT} ORDER BY r.created_at DESC LIMIT 200`)).rows.map(toRule);
@@ -23,26 +23,26 @@ export async function getRulePg(db: Queryable, id: string): Promise<RuleRow | nu
 }
 export async function createRulePg(db: Queryable, r: RuleInput, by: string): Promise<string> {
   const x = await db.query(
-    `INSERT INTO automation_rule (name, enabled, trigger, trigger_config, recipient, message_kind, title, body, link, created_by)
+    `INSERT INTO staff_automation_rule (name, enabled, trigger, trigger_config, recipient, message_kind, title, body, link, created_by)
      VALUES ($1,$2,$3,$4::jsonb,$5,$6,$7,$8,$9,$10::uuid) RETURNING id`,
     [r.name, r.enabled, r.trigger, JSON.stringify(r.triggerConfig), r.recipient, r.messageKind, r.title, r.body, r.link, by]);
   return String(x.rows[0]!["id"]);
 }
 export async function updateRulePg(db: Queryable, id: string, r: RuleInput): Promise<boolean> {
   const x = await db.query(
-    `UPDATE automation_rule SET name=$2, enabled=$3, trigger=$4, trigger_config=$5::jsonb, recipient=$6, message_kind=$7, title=$8, body=$9, link=$10, updated_at=now()
+    `UPDATE staff_automation_rule SET name=$2, enabled=$3, trigger=$4, trigger_config=$5::jsonb, recipient=$6, message_kind=$7, title=$8, body=$9, link=$10, updated_at=now()
       WHERE id = $1::uuid RETURNING id`,
     [id, r.name, r.enabled, r.trigger, JSON.stringify(r.triggerConfig), r.recipient, r.messageKind, r.title, r.body, r.link]);
   return x.rows.length > 0;
 }
 export async function setRuleEnabledPg(db: Queryable, id: string, enabled: boolean): Promise<boolean> {
-  return (await db.query("UPDATE automation_rule SET enabled = $2, updated_at = now() WHERE id = $1::uuid RETURNING id", [id, enabled])).rows.length > 0;
+  return (await db.query("UPDATE staff_automation_rule SET enabled = $2, updated_at = now() WHERE id = $1::uuid RETURNING id", [id, enabled])).rows.length > 0;
 }
 /** A rule that has run is only switched off (its runs are history); one that never ran can be removed. */
 export async function deleteRulePg(db: Queryable, id: string): Promise<"deleted" | "disabled" | "missing"> {
-  const used = await db.query("SELECT 1 FROM automation_run WHERE rule_id = $1::uuid LIMIT 1", [id]);
+  const used = await db.query("SELECT 1 FROM staff_automation_run WHERE rule_id = $1::uuid LIMIT 1", [id]);
   if (used.rows.length > 0) return (await setRuleEnabledPg(db, id, false)) ? "disabled" : "missing";
-  return (await db.query("DELETE FROM automation_rule WHERE id = $1::uuid RETURNING id", [id])).rows.length > 0 ? "deleted" : "missing";
+  return (await db.query("DELETE FROM staff_automation_rule WHERE id = $1::uuid RETURNING id", [id])).rows.length > 0 ? "deleted" : "missing";
 }
 
 /** People a rule tells for one listing. Ids are looked up here, never taken from a request. */
@@ -62,7 +62,7 @@ async function recipientsFor(db: Queryable, recipient: Recipient, listingId: str
 /** Fires one rule for one event once. The unique (rule, event) row is the lock: a repeat of the same event finds it and does nothing. */
 async function fire(db: Queryable, rule: RuleRow, eventKey: string, listingId: string, buyerId: string | null, vars: { count?: number; days?: number }, env: Env): Promise<number> {
   const claim = await db.query(
-    "INSERT INTO automation_run (rule_id, event_key, listing_id) VALUES ($1::uuid,$2,$3::uuid) ON CONFLICT (rule_id, event_key) DO NOTHING RETURNING id", [rule.id, eventKey, listingId]);
+    "INSERT INTO staff_automation_run (rule_id, event_key, listing_id) VALUES ($1::uuid,$2,$3::uuid) ON CONFLICT (rule_id, event_key) DO NOTHING RETURNING id", [rule.id, eventKey, listingId]);
   const runId = claim.rows[0]?.["id"];
   if (!runId) return 0;
   const who = await recipientsFor(db, rule.recipient, listingId, buyerId);
@@ -71,8 +71,8 @@ async function fire(db: Queryable, rule: RuleRow, eventKey: string, listingId: s
     await notifyUser(db, uid, rule.messageKind === "marketing_news" ? "marketing_news" : "system_notice",
       { title: fillTemplate(rule.title, v), text: fillTemplate(rule.body, v), listing: who.listing, ...(rule.link ? { link: rule.link } : {}) }, env);
   }
-  await db.query("UPDATE automation_run SET recipients = $2 WHERE id = $1::uuid", [String(runId), who.ids.length]);
-  await db.query("UPDATE automation_rule SET last_fired_at = now() WHERE id = $1::uuid", [rule.id]);
+  await db.query("UPDATE staff_automation_run SET recipients = $2 WHERE id = $1::uuid", [String(runId), who.ids.length]);
+  await db.query("UPDATE staff_automation_rule SET last_fired_at = now() WHERE id = $1::uuid", [rule.id]);
   return who.ids.length;
 }
 
@@ -118,7 +118,7 @@ export async function scanAgingListings(db: Queryable, env: Env = process.env, l
     const due = await db.query(
       `SELECT l.id FROM property_listing l
         WHERE l.status = 'published' AND l.deleted_at IS NULL AND l.created_at <= now() - make_interval(days => $2::int)
-          AND NOT EXISTS (SELECT 1 FROM automation_run a WHERE a.rule_id = $1::uuid AND a.event_key = 'aging:' || l.id::text)
+          AND NOT EXISTS (SELECT 1 FROM staff_automation_run a WHERE a.rule_id = $1::uuid AND a.event_key = 'aging:' || l.id::text)
         ORDER BY l.created_at LIMIT $3`, [r.id, days, limit]);
     for (const x of due.rows) {
       const id = String(x["id"]);
@@ -131,6 +131,6 @@ export async function scanAgingListings(db: Queryable, env: Env = process.env, l
 export interface RunRow { id: string; ruleId: string; ruleName: string; eventKey: string; recipients: number; createdAt: string }
 export async function recentRunsPg(db: Queryable, limit = 30): Promise<RunRow[]> {
   const r = await db.query(
-    `SELECT a.id, a.rule_id, r.name, a.event_key, a.recipients, a.created_at FROM automation_run a JOIN automation_rule r ON r.id = a.rule_id ORDER BY a.created_at DESC LIMIT $1`, [limit]);
+    `SELECT a.id, a.rule_id, r.name, a.event_key, a.recipients, a.created_at FROM staff_automation_run a JOIN staff_automation_rule r ON r.id = a.rule_id ORDER BY a.created_at DESC LIMIT $1`, [limit]);
   return r.rows.map(x => ({ id: String(x["id"]), ruleId: String(x["rule_id"]), ruleName: String(x["name"]), eventKey: String(x["event_key"]).split(":")[0]!, recipients: Number(x["recipients"]), createdAt: iso(x["created_at"])! }));
 }

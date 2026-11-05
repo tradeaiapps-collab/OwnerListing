@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getListing, listingWordingFlags, parseDraftPatch, toPublicListing, updateDraft } from "../../../../src/domain/listing-service";
-import { recordListingView } from "../../../../src/server/automation-db";
+import { recordListingView } from "../../../../src/server/staff-automation-db";
 import { getActor, getDb, getDeps } from "../../../../src/server/context";
 import { failure, unauthenticated } from "../../../../src/server/http";
 import { csrfGuard } from "../../../../src/server/csrf";

@@ -1,11 +1,11 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { emitOfferReceived, createRulePg, deleteRulePg, listRulesPg, recordListingView, scanAgingListings } from "../src/server/automation-db";
+import { emitOfferReceived, createRulePg, deleteRulePg, listRulesPg, recordListingView, scanAgingListings } from "../src/server/staff-automation-db";
 import { audienceCountPg, createCampaignPg, getCampaignPg, moveCampaignPg, recordClickPg, recordOpenPg, runDueCampaigns } from "../src/server/campaigns-db";
-import { runAutomationTick } from "../src/server/automation-run";
+import { runAutomationTick } from "../src/server/staff-automation-run";
 import { getPreferencesPg, savePreferencesPg } from "../src/server/notifications-db";
 import { createTaskPg, deleteTaskPg, listTasksPg, runDueTasks, runTaskNowPg, setTaskEnabledPg } from "../src/server/scheduled-tasks-db";
-import type { RuleInput } from "../src/domain/automation";
+import type { RuleInput } from "../src/domain/staff-automation";
 import type { CampaignInput } from "../src/domain/campaigns";
 import type { TaskInput } from "../src/domain/scheduled-tasks";
 import { addListing, addUser, createTestDb, DATABASE_URL, type TestDb } from "./helpers/pg-db";
@@ -77,7 +77,7 @@ describe.skipIf(!DATABASE_URL)("automation (Postgres)", () => {
     });
 
     it("fires the viewed-N-times rule once per buyer when the count is reached, counting one view an hour and never the owner", async () => {
-      await db.query("UPDATE automation_rule SET enabled = false");
+      await db.query("UPDATE staff_automation_rule SET enabled = false");
       await createRulePg(db, rule({ name: "Views", trigger: "listing_viewed_repeat", triggerConfig: { views: 3, windowDays: 14 }, recipient: "buyer", messageKind: "marketing_news", title: "Still interested?", body: "You viewed {listing} {count} times." }), staff);
       const l = await listingWithAgent();
       const buyer = await addUser(db, "buyer");
@@ -100,7 +100,7 @@ describe.skipIf(!DATABASE_URL)("automation (Postgres)", () => {
     });
 
     it("tells owners of listings live for the set days, once each", async () => {
-      await db.query("UPDATE automation_rule SET enabled = false");
+      await db.query("UPDATE staff_automation_rule SET enabled = false");
       await createRulePg(db, rule({ name: "Aging", trigger: "listing_aging", triggerConfig: { days: 90 }, recipient: "owner", title: "Time to relist {listing}?", body: "Live {days} days." }), staff);
       const old = await listingWithAgent({ created_at: new Date(Date.now() - 100 * 86_400_000).toISOString(), address_text: "9 Old Rd" });
       const fresh = await listingWithAgent({ address_text: "1 New Rd" });
@@ -115,8 +115,8 @@ describe.skipIf(!DATABASE_URL)("automation (Postgres)", () => {
     });
 
     it("refuses an off-site link and an unknown trigger in the database", async () => {
-      await expect(db.query("INSERT INTO automation_rule (name, trigger, recipient, message_kind, title, body, link, created_by) VALUES ('abc','offer_received','owner','system_notice','t','b','//evil.test',$1)", [staff])).rejects.toThrow();
-      await expect(db.query("INSERT INTO automation_rule (name, trigger, recipient, message_kind, title, body, created_by) VALUES ('abc','nope','owner','system_notice','t','b',$1)", [staff])).rejects.toThrow();
+      await expect(db.query("INSERT INTO staff_automation_rule (name, trigger, recipient, message_kind, title, body, link, created_by) VALUES ('abc','offer_received','owner','system_notice','t','b','//evil.test',$1)", [staff])).rejects.toThrow();
+      await expect(db.query("INSERT INTO staff_automation_rule (name, trigger, recipient, message_kind, title, body, created_by) VALUES ('abc','nope','owner','system_notice','t','b',$1)", [staff])).rejects.toThrow();
     });
   });
 
@@ -312,6 +312,6 @@ describe.skipIf(!DATABASE_URL)("automation (Postgres)", () => {
     const r = await runAutomationTick(db, NOW, {});
     expect(r.errors).toEqual([]);
     expect(r.tasks).not.toBeNull();
-    expect(Number((await db.query("SELECT count(*)::int AS n FROM audit_event WHERE event_type = 'job.automation_run'")).rows[0]!["n"])).toBe(1);
+    expect(Number((await db.query("SELECT count(*)::int AS n FROM audit_event WHERE event_type = 'job.staff_automation_run'")).rows[0]!["n"])).toBe(1);
   });
 });

@@ -1,9 +1,9 @@
 -- Staff automation: workflow rules, bulk email/SMS campaigns and scheduled tasks.
---   automation_rule / automation_run  "when X happens, do Y". One run row per rule and event (unique key), so an event never fires a rule twice.
+--   staff_automation_rule / staff_automation_run  "when X happens, do Y". One run row per rule and event (unique key), so an event never fires a rule twice.
 --   listing_view                      signed-in buyer views of a published listing (feeds the "viewed N times" trigger).
 --   campaign / campaign_recipient     a message to a segment, sent in batches. Recipients are fixed (snapshotted) when sending starts.
 --   scheduled_task / scheduled_task_run  bulk actions that run at a set time (once, daily, weekly, monthly).
-CREATE TABLE automation_rule (
+CREATE TABLE staff_automation_rule (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name TEXT NOT NULL CHECK (char_length(name) BETWEEN 3 AND 120),
   enabled BOOLEAN NOT NULL DEFAULT true,
@@ -19,18 +19,18 @@ CREATE TABLE automation_rule (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   last_fired_at TIMESTAMPTZ
 );
-CREATE INDEX automation_rule_trigger_idx ON automation_rule (trigger) WHERE enabled;
+CREATE INDEX staff_automation_rule_trigger_idx ON staff_automation_rule (trigger) WHERE enabled;
 
-CREATE TABLE automation_run (
+CREATE TABLE staff_automation_run (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  rule_id UUID NOT NULL REFERENCES automation_rule(id),
+  rule_id UUID NOT NULL REFERENCES staff_automation_rule(id),
   event_key TEXT NOT NULL CHECK (char_length(event_key) <= 200),
   listing_id UUID REFERENCES property_listing(id),
   recipients INT NOT NULL DEFAULT 0,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE (rule_id, event_key)
 );
-CREATE INDEX automation_run_rule_idx ON automation_run (rule_id, created_at DESC);
+CREATE INDEX staff_automation_run_rule_idx ON staff_automation_run (rule_id, created_at DESC);
 
 CREATE TABLE listing_view (
   id BIGSERIAL PRIMARY KEY,

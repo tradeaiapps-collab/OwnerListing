@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { describeRule, fillTemplate, parseRule } from "../src/domain/automation";
+import { describeRule, fillTemplate, parseRule } from "../src/domain/staff-automation";
 import { campaignStats, canMove, parseCampaign } from "../src/domain/campaigns";
 import { describeTask, nextTaskRun, parseTask } from "../src/domain/scheduled-tasks";
 import { groupSections } from "../src/domain/admin-nav";

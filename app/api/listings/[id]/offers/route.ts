@@ -11,7 +11,7 @@ import { expireCountersPg } from "../../../../../src/server/offer-counter-db";
 import { offerLinkPg, offersForOwnerPg, submitOfferPg } from "../../../../../src/server/offers-db";
 import { csrfGuard } from "../../../../../src/server/csrf";
 import { requireListingHandler } from "../../../../../src/server/owner-listing";
-import { emitOfferReceived } from "../../../../../src/server/automation-db";
+import { emitOfferReceived } from "../../../../../src/server/staff-automation-db";
 import { notifyOfferOwner } from "../../../../../src/server/notifier";
 import { requireCurrentTerms } from "../../../../../src/server/terms-guard";
 import { withApi } from "../../../../../src/server/api/with-api";

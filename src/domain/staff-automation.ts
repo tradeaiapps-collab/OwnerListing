@@ -1,5 +1,5 @@
 /**
- * Workflow rules: "when X happens, tell Y". Pure validation and wording; the database side is src/server/automation-db.ts.
+ * Workflow rules: "when X happens, tell Y". Pure validation and wording; the database side is src/server/staff-automation-db.ts.
  * A rule never changes data. It sends a notification through the notification centre, so each person's channel choices and opt-outs still apply.
  */
 export const TRIGGERS = ["offer_received", "listing_aging", "listing_viewed_repeat"] as const;

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
-import { parseRule, TRIGGER_INFO, describeRule } from "../../../../src/domain/automation";
+import { parseRule, TRIGGER_INFO, describeRule } from "../../../../src/domain/staff-automation";
 import { describeTask, parseTask, TASK_INFO } from "../../../../src/domain/scheduled-tasks";
-import { createRulePg, listRulesPg, recentRunsPg } from "../../../../src/server/automation-db";
+import { createRulePg, listRulesPg, recentRunsPg } from "../../../../src/server/staff-automation-db";
 import { getDb, getDeps } from "../../../../src/server/context";
 import { createTaskPg, listTasksPg, recentTaskRunsPg } from "../../../../src/server/scheduled-tasks-db";
 import { fail, readJsonObject, staffAudit, staffGate } from "../../../../src/server/staff-route";

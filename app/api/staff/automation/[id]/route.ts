@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { parseRule } from "../../../../../src/domain/automation";
-import { deleteRulePg, getRulePg, setRuleEnabledPg, updateRulePg } from "../../../../../src/server/automation-db";
+import { parseRule } from "../../../../../src/domain/staff-automation";
+import { deleteRulePg, getRulePg, setRuleEnabledPg, updateRulePg } from "../../../../../src/server/staff-automation-db";
 import { getDb, getDeps } from "../../../../../src/server/context";
 import { deleteTaskPg, runTaskNowPg, setTaskEnabledPg } from "../../../../../src/server/scheduled-tasks-db";
 import { fail, readJsonObject, staffAudit, staffGate, UUID_RE } from "../../../../../src/server/staff-route";
