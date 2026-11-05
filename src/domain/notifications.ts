@@ -100,6 +100,11 @@ export const KINDS = {
   consultation_cancelled: "appointments",
   review_received: "messages",
   booking_received: "appointments",
+  open_inspection_confirmed: "appointments",
+  open_inspection_new: "appointments",
+  open_inspection_reminder_24h: "appointments",
+  open_inspection_reminder_1h: "appointments",
+  open_inspection_cancelled: "appointments",
   booking_conflict: "appointments",
   offer_received: "offers",
   offer_accepted: "offers",
@@ -164,6 +169,11 @@ export function renderNotification(kind: Kind, p: NotificationParams = {}): Rend
     case "consultation_confirmed": return t("Consultation confirmed", `Your consultation with ${name} is confirmed for ${when}.`);
     case "consultation_cancelled": return t("Consultation cancelled", `${name} cancelled the consultation planned for ${when}.`);
     case "review_received": return t("New review", `${name} left you a review.`);
+    case "open_inspection_confirmed": return t("Inspection booked", `You are booked to inspect ${listing} on ${when}. Contact: ${clip(p["contact"], 120, "the listing agent")}. Bring photo ID, and message the agent from the listing if your plans change.`);
+    case "open_inspection_new": return t("New inspection booked", `${name} booked to inspect ${listing} on ${when}.`);
+    case "open_inspection_reminder_24h": return t("Inspection tomorrow", `Your inspection of ${listing} is tomorrow: ${when}. Contact: ${clip(p["contact"], 120, "the listing agent")}.`);
+    case "open_inspection_reminder_1h": return t("Inspection in 1 hour", `Your inspection of ${listing} starts in about an hour: ${when}. Contact: ${clip(p["contact"], 120, "the listing agent")}.`);
+    case "open_inspection_cancelled": return t("Inspection cancelled", `The inspection of ${listing} on ${when} was cancelled. ${clip(p["next"], 200, "Open the listing to book another time.")}`);
     case "booking_received": return t("New booking from a portal", `${name} booked ${listing} through a listing portal. The dates are now blocked on your calendar.`);
     case "booking_conflict": return t("Booking clashes with another", `A booking from ${name} for ${listing} overlaps dates that are already booked. Contact the portal or the guest to sort it out.`);
     case "offer_received": return t("New offer received", `A new offer was made on ${listing}. Review it in your offers.`);

@@ -355,7 +355,8 @@ export default function ListingDetail() {
           <div className="detail-actions">
             <a className="button" href={actionHref(listing.id, "enquire", userType !== null)}>Enquire</a>
             {userType === "buyer" && <a className="button secondary" href={`/client/portal?listing=${listing.id}`}>Book a viewing</a>}
-            {userType === "buyer" && <a className="button secondary" href={`/listings/${listing.id}/inspection`}>Book an inspection</a>}
+            {userType !== "agent" && <a className="button secondary" href={`/listings/${listing.id}/book-inspection`}>Book an open inspection</a>}
+            {userType === "buyer" && <a className="button secondary" href={`/listings/${listing.id}/inspection`}>Book a building inspection</a>}
             <SaveButton listingId={listing.id} userType={userType} />
           </div>
           <SaveAsTemplate listingId={listing.id} defaultName={listing.title} userType={userType} />
