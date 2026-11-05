@@ -2,6 +2,8 @@ import { ANALYTICS_TIME_ZONE } from "./admin-analytics";
 import { median, rankLeads, type LeadFact, type WorkspaceDeps } from "./agent-workspace";
 import { gate } from "./agent-workspace";
 import type { Actor, Failure, Result } from "./listing-service";
+import { attachmentFileName, attachmentNote, fitAttachments, type EmailAttachment } from "./report-attachments";
+import { toPdf, toXlsx } from "./report-export";
 import { localDateInZone } from "./timezone";
 
 /**
@@ -285,7 +287,7 @@ export interface ReportDeps extends Pick<WorkspaceDeps, "licences" | "today" | "
   /** Moves the next run on only if it is still due at `now`; false means another tick took it. */
   claim(reportId: string, now: string, next: string): Promise<boolean>;
   finish(reportId: string, status: "sent" | "not_sent" | "skipped", at: string): Promise<void>;
-  send(agentId: string, to: string, subject: string, text: string): Promise<boolean>;
+  send(agentId: string, to: string, subject: string, text: string, attachments?: EmailAttachment[]): Promise<boolean>;
 }
 
 const deny = (code: Failure["code"], message: string): Failure => ({ ok: false, code, message });
@@ -353,7 +355,7 @@ export async function savedReport(d: ReportDeps, a: Actor, id: string, snapshot:
 }
 
 const pad = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s.padEnd(n));
-export function emailText(r: ReportResult, ins: Insights, link: string): { subject: string; text: string } {
+export function emailText(r: ReportResult, ins: Insights, link: string, note = ""): { subject: string; text: string } {
   const t = reportTable(r);
   const widths = t.head.map((h, i) => Math.min(28, Math.max(h.length, ...t.rows.slice(0, 30).map(row => String(row[i]).length))));
   const fmt = (row: readonly (string | number)[]) => row.map((c, i) => pad(String(c), widths[i]!)).join("  ").trimEnd();
@@ -361,10 +363,24 @@ export function emailText(r: ReportResult, ins: Insights, link: string): { subje
     ins.headline, "", ...ins.points.map(p => `- ${p}`), "",
     `${r.title} for ${r.period.from} to ${r.period.to} (compared with ${r.previousPeriod.from} to ${r.previousPeriod.to}).`, "",
     fmt(t.head), ...t.rows.slice(0, 31).map(fmt), t.rows.length > 31 ? `…and ${t.rows.length - 31} more rows` : "", "",
+    ...(note ? [note, ""] : []),
     `Open the full report, or export it as CSV, Excel or PDF: ${link}`, "",
     "Summary written by Elena, an AI assistant, from your own listings' numbers. Change or stop this email from your reports page."
   ];
   return { subject: `${r.title}: ${r.period.from} to ${r.period.to}`, text: lines.join("\n") };
+}
+
+/** PDF and Excel copies of an emailed report (same table the downloads carry); files that would push the total past 25 MB are left out. */
+export function reportAttachments(r: ReportResult, ins: Insights, sentAt: string): { attachments: EmailAttachment[]; skipped: number } {
+  const t = reportTable(r);
+  const sentOn = localDateInZone(sentAt, ANALYTICS_TIME_ZONE);
+  const sub = `${r.period.from} to ${r.period.to}, compared with ${r.previousPeriod.from} to ${r.previousPeriod.to}`;
+  const notes = [ins.headline, ...ins.points.map(p => `- ${p}`), "Summary by Elena, an AI assistant, from your own listings' numbers."];
+  const name = (ext: "pdf" | "xlsx") => attachmentFileName(r.title, r.period.from, r.period.to, sentOn, ext);
+  return fitAttachments([
+    { filename: name("pdf"), content: Buffer.from(toPdf(r.title, sub, t.head, t.rows, notes)), contentType: "application/pdf" },
+    { filename: name("xlsx"), content: Buffer.from(toXlsx(t.head, t.rows, r.title)), contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }
+  ]);
 }
 
 export interface DueSummary { due: number; sent: number; notSent: number; skipped: number }
@@ -385,8 +401,10 @@ export async function runDueReports(d: ReportDeps, appUrl: string | undefined, l
       if (!ok) { out.skipped++; await d.finish(j.reportId, "skipped", at); continue; }
       const report = buildReport(j.definition, await d.facts(j.agentId), reportToday(d), now, j.name);
       await d.addRun(j.reportId, "scheduled", report.period.from, report.period.to, report.totals, at);
-      const m = emailText(report, reportInsights(report), `${(appUrl ?? "").replace(/\/+$/, "")}/agent/reports`);
-      const sent = await d.send(j.agentId, j.email!, m.subject, m.text);
+      const insights = reportInsights(report);
+      const { attachments, skipped } = reportAttachments(report, insights, at);
+      const m = emailText(report, insights, `${(appUrl ?? "").replace(/\/+$/, "")}/agent/reports`, attachmentNote(attachments, skipped));
+      const sent = await d.send(j.agentId, j.email!, m.subject, m.text, attachments);
       sent ? out.sent++ : out.notSent++;
       await d.finish(j.reportId, sent ? "sent" : "not_sent", at);
     } catch {

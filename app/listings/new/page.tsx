@@ -1,7 +1,10 @@
 "use client";
 import { useState } from "react";
-import { BondPathwayField, ListingFields, type BondState } from "../fields";
+import { BondPathwayField, ListingFields, type BondState, type ListingDefaults } from "../fields";
+import { TemplatePicker } from "../template-picker";
+import type { TemplateView } from "../../../src/domain/listing-template";
 import { JSON_HEADERS, listingFormBody } from "../ui";
+import { dollarsToCents } from "../../../src/domain/listing-details";
 import { PhotoManager } from "../photo-manager";
 
 type Check = { allowed: boolean; reasons: string[] };
@@ -15,6 +18,22 @@ export default function NewListing() {
   const [isRent, setIsRent] = useState(false);
   const [bond, setBond] = useState("");
   const [bondState, setBondState] = useState<BondState>("idle");
+  const [defaults, setDefaults] = useState<ListingDefaults>({});
+  const [fieldsKey, setFieldsKey] = useState(0);
+
+  /** Template fields go over the form; what was already typed (title, address, suburb, postcode, price) is kept. */
+  function applyTemplate(t: TemplateView, form: HTMLFormElement) {
+    const fd = new FormData(form), s = (k: string) => String(fd.get(k) ?? "");
+    const cents = dollarsToCents(s("price"));
+    const kept: ListingDefaults = {
+      title: s("title"), address: s("address"), suburb: s("suburb"), postcode: s("postcode"), jurisdiction: s("jurisdiction"), transactionType: s("transactionType"),
+      useClass: s("useClass"), propertyType: s("propertyType"), description: s("description"), amenities: fd.getAll("amenities").map(String),
+      ...(cents !== undefined ? { priceCents: cents } : {})
+    };
+    const n = (k: string) => (s(k).trim() === "" ? {} : { [k]: Number(s(k)) });
+    setDefaults({ ...kept, ...n("bedrooms"), ...n("bathrooms"), ...n("parking"), ...t.content });
+    setFieldsKey(k => k + 1);
+  }
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -74,8 +93,9 @@ export default function NewListing() {
     <main className="narrow">
       <h1>Create a listing</h1>
       <p className="muted">Start with the basics. You can save a draft and finish later. Nothing is public until you publish.</p>
-      <form className="stack" onSubmit={onSubmit}>
-        <ListingFields />
+      <TemplatePicker onApply={t => { const f = document.getElementById("new-listing-form"); if (f instanceof HTMLFormElement) applyTemplate(t, f); }} />
+      <form id="new-listing-form" className="stack" onSubmit={onSubmit}>
+        <ListingFields key={fieldsKey} defaults={defaults} />
         <div className="form-bar"><button type="submit" disabled={busy}>Save draft</button></div>
       </form>
       {signedOut && <p role="alert"><a href="/login?as=owner&next=/listings/new">Sign in</a> to save a listing.</p>}
