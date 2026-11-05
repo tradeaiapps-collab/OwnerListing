@@ -1,0 +1,33 @@
+/* Listing syndication (staff portal setup and the owner's per-listing page). Mobile first, tokens only. */
+.syn-page { display: grid; gap: var(--space-4); max-width: 60rem; }
+.syn-page h1, .syn-page h2, .syn-page h3, .syn-page p { margin: 0; overflow-wrap: anywhere; }
+.syn-grid { display: grid; gap: var(--space-4); }
+.syn-panel { border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); padding: var(--space-4); display: grid; gap: var(--space-3); min-width: 0; }
+.syn-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2); }
+.syn-pill { display: inline-flex; align-items: center; min-height: 26px; padding: 0 var(--space-3); border-radius: 999px; border: 1px solid var(--border); font-size: 0.75rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; white-space: nowrap; color: var(--muted); background: var(--elevated); }
+.syn-pill.is-live { color: var(--link); border-color: color-mix(in srgb, var(--gold) 45%, var(--bg)); background: var(--gold-tint); }
+.syn-pill.is-warn { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 45%, var(--bg)); background: var(--warn-tint); }
+.syn-pill.is-bad { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 55%, var(--bg)); background: var(--danger-tint); }
+.syn-form { display: grid; gap: var(--space-3); }
+.syn-form label { display: grid; gap: var(--space-1); font-weight: 600; font-size: 0.9375rem; }
+.syn-form :is(input:not([type="checkbox"]), select, textarea) { font-size: 1rem; min-height: 44px; width: 100%; max-width: 100%; }
+.syn-form textarea { min-height: 96px; }
+.syn-form .syn-check { display: flex; align-items: center; gap: var(--space-2); min-height: 44px; }
+.syn-form .syn-check input { width: 1.25rem; height: 1.25rem; min-height: 0; }
+.syn-fields { display: grid; gap: var(--space-3); }
+.syn-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.syn-actions :is(button, .button) { min-height: 44px; }
+.syn-secret { padding: var(--space-3); border: 1px solid var(--line); border-left: 3px solid var(--gold); border-radius: var(--radius-sm, 8px); background: var(--gold-tint); overflow-wrap: anywhere; user-select: all; font-family: ui-monospace, monospace; }
+.syn-table-wrap { overflow-x: auto; }
+.syn-table { width: 100%; border-collapse: collapse; font-size: 0.9375rem; }
+.syn-table :is(th, td) { padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+.syn-table th { color: var(--muted); font-size: 0.8125rem; font-weight: 700; white-space: nowrap; }
+.syn-table td.num, .syn-table th.num { text-align: right; font-variant-numeric: tabular-nums; }
+.syn-table td:last-child { white-space: nowrap; }
+.syn-note { color: var(--muted); font-size: 0.9375rem; }
+@media (min-width: 640px) {
+  .syn-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .syn-fields .is-wide { grid-column: 1 / -1; }
+}
+.syn-form fieldset { margin: 0; min-width: 0; padding: var(--space-3) var(--space-4); border: 1px solid var(--line); border-radius: var(--radius-sm, 8px); gap: var(--space-1); }
+.syn-form legend { padding: 0 var(--space-2); font-weight: 600; font-size: 0.9375rem; }
