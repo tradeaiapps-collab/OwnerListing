@@ -1,0 +1,39 @@
+name: DocuSign signer reminders (hourly)
+
+# Calls the signer reminder job once an hour. Each DocuSign signer still pending 72 hours after their last request gets one reminder email
+# (in-app and email). Safe to repeat: a signer is claimed before being reminded, so never twice.
+# Repository secrets: APP_URL (public https origin, no trailing slash) and SIGNING_REMINDER_CRON_SECRET (same value as the app).
+# While both are unset the run is skipped with a warning; one without the other, or any non-2xx answer, fails the run.
+on:
+  schedule:
+    - cron: "25 * * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: signing-reminders
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Call the reminder job
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          CRON_SECRET: ${{ secrets.SIGNING_REMINDER_CRON_SECRET }}
+        run: |
+          if [ -z "$APP_URL" ] && [ -z "$CRON_SECRET" ]; then
+            echo "::warning::APP_URL and SIGNING_REMINDER_CRON_SECRET are not set; skipping (no deployment to call yet)."
+            exit 0
+          fi
+          if [ -z "$APP_URL" ] || [ -z "$CRON_SECRET" ]; then
+            echo "::error::Set both APP_URL and SIGNING_REMINDER_CRON_SECRET."
+            exit 1
+          fi
+          body=$(curl -sS --fail-with-body --retry 3 --retry-all-errors --max-time 60 -X POST \
+            -H "x-cron-secret: $CRON_SECRET" "$APP_URL/api/internal/signing/reminders")
+          echo "$body"
+          echo "Signing reminders $(date -u +%FT%TZ): $body" >> "$GITHUB_STEP_SUMMARY"

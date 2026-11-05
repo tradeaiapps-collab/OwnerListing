@@ -6,6 +6,7 @@ import type { Actor } from "../src/domain/listing-service";
 import { generateDocument } from "../src/domain/signing-service";
 import type { StaffActor } from "../src/domain/staff-access";
 import { installStarters, loadTemplates, publishVersion } from "../src/server/doc-template-db";
+import { runSigningReminders, sendSigningRequests } from "../src/server/notifier";
 import { createPgSigningRepository } from "../src/server/signing-db";
 import { addListing, addUser, createTestDb, DATABASE_URL, type TestDb } from "./helpers/pg-db";
 
@@ -91,5 +92,37 @@ describe.skipIf(!DATABASE_URL)("DocuSign signing on Postgres", () => {
     if (!retry.ok) throw new Error(retry.message);
     expect(retry.value).toMatchObject({ status: "draft", retryOf: a.value.id, bodySha256: a.value.bodySha256, provider: "docusign" });
     expect((await repo.events(a.value.id)).map(e => e.eventType)).toContain("retried");
+  });
+
+  it("emails pending signers once on send, skips recent resends, reminds once after 72 hours, and never emails a signer who already signed", async () => {
+    const author: StaffActor = { id: await addUser(t.db, "admin"), role: "compliance" };
+    await installStarters(t.db, author);
+    const ownerId = await addUser(t.db, "owner"), aId = await addUser(t.db, "agent"), bId = await addUser(t.db, "buyer");
+    const listingId = await addListing(t.db, ownerId, { jurisdiction: "QLD", title: "Cottage", address_text: "3 Lake St" });
+    const owner: Actor = { userId: ownerId, userType: "owner" };
+    const repo = createPgSigningRepository(t.db);
+    const deps: EsignDeps = { repo, esign: createFakeEsign(), storage: { configured: true, put: async () => undefined }, ids, appUrl: "https://ol.test" };
+    const tpl = (await loadTemplates(t.db)).find(x => x.key === "inspection_access")!;
+    if (tpl.liveVersion === null) await publishVersion(t.db, { id: await addUser(t.db, "admin"), role: "compliance" }, tpl.id, tpl.latestVersion);
+    const g = await generateDocument(repo, owner, listingId, { templateKey: "inspection_access", values: { inspection_date: "2026-12-02" },
+      signers: [{ email: await emailOf(aId), roleLabel: "Inspector" }, { email: await emailOf(bId), roleLabel: "Buyer" }] }, ids, {}, { provider: "docusign" });
+    if (!g.ok) throw new Error(g.message);
+    const env = { APP_URL: "https://ol.test" };
+    const t0 = new Date("2026-11-05T00:00:00.000Z");
+    const at = (h: number) => new Date(t0.getTime() + h * 3_600_000).toISOString();
+    expect(await sendSigningRequests(t.db, g.value.id, at(0), env)).toEqual({ sent: 0, skipped: 0 }); // draft: nobody is asked yet
+    await sendViaDocusign(deps, owner, g.value.id);
+    await t.db.query("UPDATE signing_document SET sent_at = $2 WHERE id = $1", [g.value.id, at(0)]);
+    expect(await sendSigningRequests(t.db, g.value.id, at(0), env)).toEqual({ sent: 2, skipped: 0 });
+    expect(await sendSigningRequests(t.db, g.value.id, at(0.5), env)).toEqual({ sent: 0, skipped: 2 }); // within the hour
+    expect((await t.db.query("SELECT count(*)::int AS n FROM notification WHERE kind = 'signature_requested'")).rows[0]!["n"]).toBe(2);
+
+    const contacts = await repo.signerContacts(g.value.id);
+    await applyEnvelopeUpdate(deps, { envelopeId: (await repo.document(g.value.id))!.envelopeId!, recipients: [{ recipientId: contacts[0]!.recipientId!, state: "completed" }] });
+    expect(await runSigningReminders(t.db, at(71), env)).toEqual({ reminded: 0 });
+    expect(await runSigningReminders(t.db, at(73), env)).toEqual({ reminded: 1 }); // only the signer still pending
+    expect(await runSigningReminders(t.db, at(200), env)).toEqual({ reminded: 0 }); // once only
+    expect((await t.db.query("SELECT count(*)::int AS n FROM notification WHERE kind = 'signature_reminder'")).rows[0]!["n"]).toBe(1);
+    expect(await sendSigningRequests(t.db, g.value.id, at(74), env)).toEqual({ sent: 1, skipped: 0 }); // owner resend reaches the pending signer only
   });
 });
