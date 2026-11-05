@@ -20,11 +20,30 @@
 .settle-check .role { color: var(--muted); font-size: 0.8125rem; text-transform: capitalize; margin-left: auto; }
 .settle-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: end; }
 .settle-actions label { display: grid; gap: var(--space-1); font-weight: 600; font-size: 0.875rem; }
-.settle-table { min-width: 44rem; }
+.settle-table { min-width: 52rem; }
 .settle-table th, .settle-table td { vertical-align: top; text-align: left; }
 .settle-table .num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .settle-check-group { border: 0; margin: 0; padding: 0; min-width: 0; }
 .settle-check-group legend { padding: 0; font-weight: 600; font-size: 0.875rem; color: var(--muted); }
+.risk-badge { display: inline-flex; align-items: center; gap: var(--space-1); padding: 0 var(--space-2); border: 1px solid currentColor; border-radius: 999px; font-size: 0.8125rem; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.risk-badge.risk-low { color: var(--ok); background: var(--ok-tint); }
+.risk-badge.risk-medium { color: var(--warn); background: var(--warn-tint); }
+.risk-badge.risk-high { color: var(--danger); background: var(--danger-tint); }
+.risk-trend { color: var(--muted); font-size: 0.8125rem; white-space: nowrap; }
+.risk-alerts { list-style: none; margin: 0 0 var(--space-6); padding: 0; display: grid; gap: var(--space-2); }
+.risk-alerts > li { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); padding: var(--space-3) var(--space-4); border: 1px solid var(--line); border-left-width: 4px; border-radius: var(--radius); background: var(--elevated); min-width: 0; }
+.risk-alerts > li.risk-high { border-left-color: var(--danger); }
+.risk-alerts > li.risk-medium { border-left-color: var(--warn); }
+.risk-alerts a, .risk-alerts strong { overflow-wrap: anywhere; min-width: 0; }
+.risk-alerts .why { flex: 1 1 100%; margin: 0; color: var(--muted); font-size: 0.875rem; }
+.risk-panel { display: grid; gap: var(--space-3); padding: var(--space-4); margin: 0 0 var(--space-6); border: 1px solid var(--line); border-left-width: 4px; border-radius: var(--radius); background: var(--elevated); min-width: 0; }
+.risk-panel.risk-high { border-left-color: var(--danger); }
+.risk-panel.risk-medium { border-left-color: var(--warn); }
+.risk-panel.risk-low { border-left-color: var(--ok); }
+.risk-panel h2 { margin: 0; font-size: 1.125rem; }
+.risk-panel ul { margin: 0; padding-left: var(--space-4); display: grid; gap: var(--space-1); }
+.risk-panel .pts { color: var(--muted); font-variant-numeric: tabular-nums; }
+.risk-panel p { margin: 0; }
 
 .coach-panel { display: grid; gap: var(--space-3); margin: 0 0 var(--space-6); padding: var(--space-4); border: 1px solid var(--line); border-left: 4px solid var(--gold); border-radius: var(--radius); background: var(--elevated); min-width: 0; }
 .coach-panel h2 { margin: 0; }

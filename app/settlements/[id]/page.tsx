@@ -1,6 +1,7 @@
 "use client";
 import { use, useCallback, useEffect, useState } from "react";
 import { dateLabel, STAGE_LABEL, STAGES, type Stage } from "../../../src/domain/settlement";
+import { RiskPanel, type RiskData } from "../risk-panel";
 import "../../styles/offers.css";
 import "../../styles/settlement.css";
 import CoachingPanel from "./coaching-panel";
@@ -21,11 +22,17 @@ export default function SettlementPage({ params }: { params: Promise<{ id: strin
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState("");
+  const [risk, setRisk] = useState<RiskData | null>(null);
 
   const load = useCallback(async () => {
     const r = await fetch(`/api/settlements/${id}`).catch(() => null);
     const d = r ? await r.json().catch(() => ({})) : {};
-    if (r?.ok) { setV(d as View); setError(""); } else setError(r?.status === 401 ? "Sign in to see this settlement." : r?.status === 404 ? "Settlement not found." : "Could not load this settlement.");
+    if (r?.ok) {
+      setV(d as View); setError("");
+      // Risk advice is for the owner and agent only (the buyer gets a 403 and sees nothing).
+      const rr = await fetch(`/api/settlements/${id}/risk`).catch(() => null);
+      setRisk(rr?.ok ? ((await rr.json().catch(() => null)) as RiskData | null) : null);
+    } else setError(r?.status === 401 ? "Sign in to see this settlement." : r?.status === 404 ? "Settlement not found." : "Could not load this settlement.");
   }, [id]);
   useEffect(() => { void load(); }, [load]);
 
@@ -48,6 +55,7 @@ export default function SettlementPage({ params }: { params: Promise<{ id: strin
       <p className="muted">{v.fellThrough ? "This sale fell through, so the timeline is closed." : v.completed ? "Settled." : v.canUpdate ? "You can complete stages and tick the owner, agent and solicitor items." : "You can tick your own items. The owner or agent completes each stage."}</p>
       {v.stuck.stuck ? <p role="status" className="ai-note"><strong>{v.stuck.blocked ? "This stage is blocked." : `This stage has been open ${v.stuck.days} days.`}</strong> Check what is holding it up.</p> : null}
       {error ? <p role="alert">{error}</p> : null}
+      {risk && !v.completed && !v.fellThrough ? <RiskPanel r={risk} who="party" /> : null}
       {!v.fellThrough && !v.completed ? <CoachingPanel settlementId={v.id} /> : null}
       <ol className="settle-steps">
         {STAGES.map(stage => {
