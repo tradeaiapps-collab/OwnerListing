@@ -3,11 +3,13 @@ import { useEffect, useState } from "react";
 import type { GroupStat, Health } from "../../../src/domain/elena-learning";
 import { loadError } from "../staff-api";
 
-interface Experiment { key: string; feature: string; status: string; winner?: string; note: string; arms: { arm: string; n: number; successRate: number }[] }
+interface Arm { arm: string; n: number; successRate: number; lower: number; upper: number; dealsKnown: number; conversion?: number; medianDays?: number; meanRating?: number }
+interface Experiment { key: string; feature: string; status: string; winner?: string; note: string; arms: Arm[] }
+interface Coverage { feature: string; readsWeights: boolean; suggestions: number; withReaction: number; coverage: number; weightedShare: number; ok: boolean }
 interface Config { version: number; status: string; trainedOn: number; notes: string[]; createdAt: string }
 interface Payload {
   health: Health; active: { trainedOn: number } | null; differentiators: string[]; byFeature: GroupStat[]; byType: GroupStat[]; byRegion: GroupStat[]; byRole: GroupStat[];
-  configs: Config[]; experiments: Experiment[]; features: string[];
+  configs: Config[]; experiments: Experiment[]; features: string[]; coverage: Coverage[]; advice: string; scored: number; minSample: number;
 }
 const pct = (n?: number) => (n === undefined ? "–" : `${Math.round(n * 100)}%`);
 
@@ -32,7 +34,7 @@ export default function ElenaTraining() {
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
   const [o, setO] = useState({ settlementId: "", outcome: "settled", days: "", price: "", negotiations: "", satisfaction: "" });
-  const [x, setX] = useState({ key: "", feature: "negotiation_coach", arms: "a,b" });
+  const [x, setX] = useState({ key: "", feature: "negotiation_coach", arms: "control,learned" });
 
   async function load() {
     const r = await fetch("/api/staff/elena-training").catch(() => null);
@@ -83,6 +85,20 @@ export default function ElenaTraining() {
           <Table title="By state" rows={data.byRegion} />
           <Table title="By role" rows={data.byRole} />
 
+          <h2>Features using learned settings</h2>
+          <p role="status">{data.advice}</p>
+          <div className="table-wrap"><table>
+            <thead><tr><th scope="col">Feature</th><th scope="col">Reads learned weights</th><th scope="col" className="num">Suggestions (30 days)</th><th scope="col" className="num">Used weights</th><th scope="col" className="num">Outcome recorded</th></tr></thead>
+            <tbody>{data.coverage.map(c => (
+              <tr key={c.feature}>
+                <td>{c.feature}</td>
+                <td><span aria-label={c.readsWeights ? "Yes" : "No"}>{c.readsWeights ? "✓" : "✗"}</span> {c.readsWeights ? "" : <span className="muted">records only</span>}</td>
+                <td className="num">{c.suggestions}</td><td className="num">{c.readsWeights ? pct(c.weightedShare) : "–"}</td>
+                <td className="num">{c.suggestions === 0 ? "–" : `${pct(c.coverage)}${c.ok ? "" : " (below 80%)"}`}</td>
+              </tr>
+            ))}</tbody>
+          </table></div>
+
           <h2>Learned settings</h2>
           {data.configs.length === 0 ? <p className="muted">Nothing proposed yet. The monthly job proposes a version once 30 suggestions have an outcome.</p> : (
             <div className="table-wrap"><table>
@@ -97,9 +113,9 @@ export default function ElenaTraining() {
           <h2>A/B tests</h2>
           {data.experiments.length === 0 ? <p className="muted">No tests yet.</p> : (
             <div className="table-wrap"><table>
-              <thead><tr><th scope="col">Test</th><th scope="col">Feature</th><th scope="col">Status</th><th scope="col">Arms (reacted, accepted)</th><th scope="col">Result</th><th scope="col"><span className="sr-only">Action</span></th></tr></thead>
+              <thead><tr><th scope="col">Test</th><th scope="col">Feature</th><th scope="col">Status</th><th scope="col">Arms: reacted · accepted (95% range) · deals settled · median days · rating</th><th scope="col">Result</th><th scope="col"><span className="sr-only">Action</span></th></tr></thead>
               <tbody>{data.experiments.map(e => (
-                <tr key={e.key}><td>{e.key}</td><td>{e.feature}</td><td>{e.status}</td><td>{e.arms.map(a => `${a.arm}: ${a.n}, ${pct(a.successRate)}`).join(" · ")}</td><td>{e.note}</td>
+                <tr key={e.key}><td>{e.key}</td><td>{e.feature}</td><td>{e.status}</td><td>{e.arms.map(a => <div key={a.arm}><strong>{a.arm}</strong>: {a.n} · {pct(a.n ? a.successRate : undefined)} ({a.n ? `${pct(a.lower)} to ${pct(a.upper)}` : "–"}) · {a.dealsKnown ? `${pct(a.conversion)} of ${a.dealsKnown}` : "–"} · {a.medianDays ?? "–"} · {a.meanRating === undefined ? "–" : a.meanRating.toFixed(1)}</div>)}</td><td style={{ minWidth: "11rem" }}>{e.note}</td>
                   <td>{e.status === "running" && <button type="button" className="secondary" disabled={busy} onClick={() => void post({ action: "stop_experiment", key: e.key }, "Test stopped.")}>Stop</button>}</td></tr>
               ))}</tbody>
             </table></div>
@@ -107,7 +123,7 @@ export default function ElenaTraining() {
           <form className="filters" onSubmit={e => { e.preventDefault(); void post({ action: "experiment", key: x.key, feature: x.feature, arms: x.arms.split(",").map(s => s.trim()) }, "Test started."); }}>
             <label>Key <input value={x.key} onChange={e => setX({ ...x, key: e.target.value })} required pattern="[a-z0-9_]{3,40}" /></label>
             <label>Feature <select value={x.feature} onChange={e => setX({ ...x, feature: e.target.value })}>{data.features.map(f => <option key={f}>{f}</option>)}</select></label>
-            <label>Arms (comma separated) <input value={x.arms} onChange={e => setX({ ...x, arms: e.target.value })} required /></label>
+            <label>Arms (comma separated; name one "control" to keep the original behaviour) <input value={x.arms} onChange={e => setX({ ...x, arms: e.target.value })} required /></label>
             <button type="submit" disabled={busy}>Start test</button>
           </form>
 

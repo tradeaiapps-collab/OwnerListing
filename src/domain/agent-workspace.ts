@@ -176,7 +176,10 @@ export interface WorkspaceDeps {
   setStage(agentId: string, enquiryId: string, stage: Stage, followUpAt: string | null): Promise<void>;
   personaName(): Promise<string>;
   /** Staff-set scoring rules. When absent, the original engagement-only score is used. */
-  scoring?(): Promise<ScoringConfig>;
+  scoring?(agentId?: string): Promise<ScoringConfig>;
+  /** Learning hooks (optional): the scores shown to an agent, and what the agent then did with a lead. Must never throw. */
+  noteLeads?(agentId: string, leads: readonly Lead[]): Promise<void>;
+  noteLeadAction?(agentId: string, enquiryId: string, action: "overridden" | "worked" | "dropped"): Promise<void>;
   setOverride?(agentId: string, enquiryId: string, score: number, reason: string, at: string): Promise<void>;
   clearOverride?(agentId: string, enquiryId: string): Promise<void>;
 }
@@ -192,8 +195,9 @@ export async function gate(d: Pick<WorkspaceDeps, "licences" | "today">, a: Acto
 
 export async function getWorkspace(d: WorkspaceDeps, a: Actor): Promise<Result<Workspace>> {
   const f = await gate(d, a); if (f) return f;
-  const [facts, offers, peers, rate, cfg] = await Promise.all([d.leads(a.userId), d.offers(a.userId), d.peers(a.userId), d.platformRate(), d.scoring?.()]);
+  const [facts, offers, peers, rate, cfg] = await Promise.all([d.leads(a.userId), d.offers(a.userId), d.peers(a.userId), d.platformRate(), d.scoring?.(a.userId)]);
   const leads = rankLeads(facts, d.now(), cfg);
+  await d.noteLeads?.(a.userId, leads);
   const performance = buildPerformance(leads, offers, peers);
   return { ok: true, value: { performance, forecast: forecast(performance, rate), leads } };
 }
@@ -202,7 +206,7 @@ const find = (leads: readonly Lead[], buyerId: string) => leads.find(l => l.buye
 
 export async function clientDetail(d: WorkspaceDeps, a: Actor, buyerId: string): Promise<Result<{ lead: Lead; notes: NoteFact[]; summary: string }>> {
   const f = await gate(d, a); if (f) return f;
-  const lead = find(rankLeads(await d.leads(a.userId), d.now(), await d.scoring?.()), buyerId);
+  const lead = find(rankLeads(await d.leads(a.userId), d.now(), await d.scoring?.(a.userId)), buyerId);
   if (!lead) return deny("not_found", "That client is not on one of your listings.");
   const notes = await d.notes(a.userId, buyerId);
   return { ok: true, value: { lead, notes, summary: clientSummary(lead, notes) } };
@@ -233,6 +237,7 @@ export async function updateLead(d: WorkspaceDeps, a: Actor, enquiryId: string, 
   if (fu !== null && (typeof fu !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(fu) || Number.isNaN(Date.parse(fu)))) return deny("invalid", "Follow-up must be a date (YYYY-MM-DD) or empty.");
   if (!(await d.leads(a.userId)).some(l => l.enquiryId === enquiryId)) return deny("not_found", "That enquiry is not on one of your listings.");
   await d.setStage(a.userId, enquiryId, o["stage"] as Stage, fu as string | null);
+  if (o["stage"] !== "new") await d.noteLeadAction?.(a.userId, enquiryId, o["stage"] === "lost" ? "dropped" : "worked");
   return { ok: true, value: true };
 }
 
@@ -243,6 +248,7 @@ export async function overrideLeadScore(d: WorkspaceDeps, a: Actor, enquiryId: s
   if (!d.setOverride) return deny("invalid", "Score overrides are not available.");
   if (!(await d.leads(a.userId)).some(l => l.enquiryId === enquiryId)) return deny("not_found", "That enquiry is not on one of your listings.");
   await d.setOverride(a.userId, enquiryId, p.value.score, p.value.reason, d.now().toISOString());
+  await d.noteLeadAction?.(a.userId, enquiryId, "overridden");
   return { ok: true, value: true };
 }
 

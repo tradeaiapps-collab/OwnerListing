@@ -4,6 +4,7 @@ import { VARIANT_WIDTH } from "../domain/listing-photos";
 import type { Comparable } from "../domain/price-guidance";
 import { pricingAdvice, type SellerSubject } from "../domain/seller-insights";
 import type { Queryable } from "./db";
+import { noteMany } from "./elena-wiring-db";
 import { listSuggestions, syncSuggestions, type StoredSuggestion } from "./listing-optimization-db";
 import { createPgPhotoStore } from "./photos-db";
 import { getIntelligenceSource } from "./property-intelligence";
@@ -55,5 +56,8 @@ export async function optimizeListing(db: Queryable, l: PropertyListing, setting
   };
   const found = generateSuggestions(facts, await priceFacts(db, l, now).catch(() => undefined), settings);
   await syncSuggestions(db, l.id, found, now);
-  return listSuggestions(db, l.id, now);
+  const stored = await listSuggestions(db, l.id, now);
+  // The stored row's id is the suggestion id: the weekly sweep reads implemented / dismissed from that row.
+  await noteMany(db, stored.filter(s => s.status === "open").map(s => ({ id: s.id, feature: "listing_optimization" as const, type: s.type, userId: l.ownerUserId, userRole: "owner", region: l.jurisdiction, listingId: l.id })));
+  return stored;
 }

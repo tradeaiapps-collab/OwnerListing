@@ -1,3 +1,4 @@
+import { noteSuggestion } from "./elena-wiring-db";
 import { randomUUID } from "node:crypto";
 import {
   DEFAULT_TEMPLATES, KIND_LABEL, MESSAGE_KINDS, formatAppointment, parseDecision, pickTemplate, planMessages, renderTemplate,
@@ -93,8 +94,12 @@ export async function draftBookingMessages(db: Queryable, bookingId: string, now
       const chosen = pickTemplate(p.kind, own && { voice: text(own["voice"]) as Voice, body: text(own["body"]) }, global && { voice: text(global["voice"]) as Voice, body: text(global["body"]) });
       // The buyer's own booking note is echoed back only in the confirmation, as a line the agent can edit or drop.
       const draft = renderTemplate(chosen.body, { ...vars, buyer_notes: p.kind === "booking_confirmation" && notes ? `You mentioned: "${notes.slice(0, 300)}"` : "" });
-      const r = await db.query(INSERT_MESSAGE_SQL, [randomUUID(), bookingId, p.kind, author, recipient, draft, p.status, p.dueAt]);
-      if (r.rows.length === 1) { created++; if (p.status === "suggested") suggestedNow = true; }
+      const msgId = randomUUID();
+      const r = await db.query(INSERT_MESSAGE_SQL, [msgId, bookingId, p.kind, author, recipient, draft, p.status, p.dueAt]);
+      if (r.rows.length === 1) {
+        // The draft's id doubles as the suggestion id, so the weekly sweep can read what the agent did (sent, edited, skipped) from the draft itself.
+        await noteSuggestion(db, { id: msgId, feature: "inspection_responder", type: p.kind, userId: author, userRole: "inspector", region: text(b["jurisdiction"]).trim(), source: "ai_draft", context: { kind: p.kind } });
+        created++; if (p.status === "suggested") suggestedNow = true; }
     }
     if (suggestedNow) await notifyUser(db, author, "scheduling_suggestion", { title: "Elena drafted a message", text: `A confirmation for ${text(b["title"])} is ready to review.`, link: "/inspector/messages" }, env);
     return created;

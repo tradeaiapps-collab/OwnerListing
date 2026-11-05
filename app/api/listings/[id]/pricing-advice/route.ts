@@ -3,6 +3,7 @@ import type { ListingRecord } from "../../../../../src/domain/listing-service";
 import { SELLER_GOALS, SELLER_NOTE, isSellerGoal, pricingAdvice, type SellerGoal } from "../../../../../src/domain/seller-insights";
 import { getDb, getDeps } from "../../../../../src/server/context";
 import { csrfGuard } from "../../../../../src/server/csrf";
+import { noteSuggestion, stableId } from "../../../../../src/server/elena-wiring-db";
 import { requireListingOwner } from "../../../../../src/server/owner-listing";
 import { getIntelligenceSource, noStore } from "../../../../../src/server/property-intelligence";
 import { getPricingPreference, getSellerInsights, savePricingPreference } from "../../../../../src/server/seller-insights-db";
@@ -31,6 +32,13 @@ async function build(req: Request, id: string, goal: SellerGoal | undefined, sav
   const insights = await getSellerInsights(db, subject, now, load);
   const advice = pricingAdvice(chosen, subject, await load(), now);
   if (save) await savePricingPreference(db, id, chosen, advice.state === "ready" ? advice : undefined, now);
+  // Recorded when the seller saves a goal (their explicit ask for advice). The weekly sweep compares their asking price with it later.
+  if (save && advice.state === "ready") {
+    await noteSuggestion(db, {
+      id: stableId("pricing", id, chosen, String(advice.recommendedCents)), feature: "pricing", type: chosen, userId: owner.actor.userId, userRole: "owner", region: l.jurisdiction, listingId: id,
+      context: { recommendedCents: advice.recommendedCents, askingCents: l.priceCents ?? 0, confidence: advice.confidence, basedOnSales: advice.basedOnSales }
+    });
+  }
   const preference = save ? { goal: chosen, ...(advice.state === "ready" ? { recommendedCents: advice.recommendedCents, rationale: advice.rationale } : {}), updatedAt: now } : stored;
   return NextResponse.json({ goal: chosen, goals: SELLER_GOALS, advice, preference, askingCents: l.priceCents ?? null, ...insights, note: SELLER_NOTE }, { headers: noStore });
 }

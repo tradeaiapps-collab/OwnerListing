@@ -37,6 +37,8 @@ export interface SuggestionFact {
   responseSeconds?: number | undefined;
   /** How the deal ended, when the suggestion belongs to an offer that settled or fell through. */
   dealOutcome?: "settled" | "fell_through" | undefined;
+  /** Days from acceptance to settlement, when the deal settled and the days are known. */
+  dealDays?: number | undefined;
 }
 
 /** How much a reaction counts as a success. A modified suggestion helped, but less than an untouched one. */
@@ -286,4 +288,75 @@ export function differentiators(h: Health, config: LearnedConfig | undefined): s
   if (config && config.trainedOn > 0) out.push(`The active settings were learned from ${config.trainedOn} scored suggestions, with ${Object.keys(config.regionWeights).length} state-specific adjustments.`);
   if (h.settlementRate !== undefined) out.push(`Settlement outcomes feed back in: ${Math.round(h.settlementRate * 100)}% of tracked deals settled.`);
   return out;
+}
+
+/* ---------- wiring: which features read the learned settings ---------- */
+
+/** The arm that always gets the original behaviour. In a test that has this arm, every other arm gets the active learned settings. */
+export const CONTROL_ARM = "control";
+
+/** Features whose code reads the active learned settings. The rest only record suggestions and reactions. Keep in step with the code. */
+export const WEIGHT_READERS: readonly Feature[] = ["negotiation_coach", "mediation", "lead_scoring"];
+
+/** Learned settings apply when a config is active and the person's test arm (if a test runs) is not the control arm. */
+export const weightsApply = (config: LearnedConfig | undefined, arm: string | undefined): boolean =>
+  config !== undefined && Object.keys(config.typeWeights).length + Object.keys(config.regionWeights).length > 0 && arm !== CONTROL_ARM;
+
+export interface FeatureCoverage { feature: Feature; readsWeights: boolean; suggestions: number; withReaction: number; coverage: number; weightedShare: number; ok: boolean }
+
+/** Per feature, over the last 30 days: does it read the weights, how much of what it suggested has a recorded reaction, how much used weights. */
+export function featureCoverage(facts: readonly SuggestionFact[], nowIso: string): FeatureCoverage[] {
+  const cutoff = Date.parse(nowIso) - 30 * 86_400_000;
+  return FEATURES.map(feature => {
+    const xs = facts.filter(f => f.feature === feature && Date.parse(f.createdAt) >= cutoff);
+    const withReaction = xs.filter(f => f.action !== undefined).length;
+    const weighted = xs.filter(f => f.context["weighted"] === true).length;
+    const coverage = xs.length === 0 ? 0 : withReaction / xs.length;
+    return { feature, readsWeights: WEIGHT_READERS.includes(feature), suggestions: xs.length, withReaction, coverage, weightedShare: xs.length === 0 ? 0 : weighted / xs.length, ok: xs.length > 0 && coverage >= CAPTURE_TARGET };
+  }).filter(c => c.suggestions > 0 || c.readsWeights);
+}
+
+/** Wilson score interval for a rate. */
+export function wilsonInterval(successes: number, n: number, z = 1.96): { lower: number; upper: number } {
+  if (n === 0) return { lower: 0, upper: 0 };
+  const p = successes / n, z2 = z * z, d = 1 + z2 / n, c = p + z2 / (2 * n), m = z * Math.sqrt((p * (1 - p) + z2 / (4 * n)) / n);
+  return { lower: Math.max(0, (c - m) / d), upper: Math.min(1, (c + m) / d) };
+}
+
+export interface ArmReport extends ArmResult { lower: number; upper: number; dealsKnown: number; conversion: number | undefined; medianDays: number | undefined; meanRating: number | undefined }
+export interface ExperimentReport extends ExperimentResult { arms: ArmReport[] }
+
+/** experimentResult plus, per arm: a 95% interval on the acceptance rate, the share of known deals that settled, median days to settle and mean rating. */
+export function experimentReport(facts: readonly SuggestionFact[], arms: readonly string[]): ExperimentReport {
+  const base = experimentResult(facts, arms);
+  return {
+    ...base,
+    arms: base.arms.map(a => {
+      const xs = facts.filter(f => f.arm === a.arm);
+      const reacted = xs.filter(f => f.action !== undefined), wins = reacted.filter(f => f.action === "accepted" || f.action === "modified").length;
+      const deals = xs.filter(f => f.dealOutcome !== undefined), settled = deals.filter(f => f.dealOutcome === "settled");
+      const ratings = xs.map(f => f.rating).filter((r): r is number => r !== undefined);
+      return {
+        ...a, ...wilsonInterval(wins, reacted.length), dealsKnown: deals.length, conversion: deals.length === 0 ? undefined : settled.length / deals.length,
+        medianDays: median(settled.map(f => f.dealDays).filter((d): d is number => d !== undefined)),
+        meanRating: ratings.length === 0 ? undefined : ratings.reduce((x, y) => x + y, 0) / ratings.length
+      };
+    })
+  };
+}
+
+/** When to retrain next: said in plain words for the dashboard. */
+export function nextUpdateAdvice(scored: number, activeSince: string | undefined, nowIso: string, hasProposed: boolean): string {
+  if (hasProposed) return "A proposed version is waiting. Review it and activate it, ideally as an A/B test first.";
+  if (scored < MIN_SAMPLE) return `Wait. ${MIN_SAMPLE - scored} more scored suggestions are needed before Elena can propose weights.`;
+  if (!activeSince) return "Run the monthly job now: there is enough data and nothing is active yet.";
+  const days = Math.floor((Date.parse(nowIso) - Date.parse(activeSince)) / 86_400_000);
+  return days >= 30 ? `Run the monthly job now: the active version is ${days} days old.` : `Next update in about ${30 - days} days (the active version is ${days} days old).`;
+}
+
+/** Lead-scoring weights with the learned multiplier for each signal (engagement, fit, follow-up). A signal not learned keeps its staff-set weight. */
+export function adjustLeadWeights<W extends { engagement: number; fit: number; followUp: number }>(config: LearnedConfig | undefined, weights: W): W {
+  if (!config) return weights;
+  const m = (signal: string) => config.typeWeights[`lead_scoring/${signal}`] ?? 1;
+  return { ...weights, engagement: weights.engagement * m("engagement"), fit: weights.fit * m("fit"), followUp: weights.followUp * m("follow_up") };
 }

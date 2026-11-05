@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { acceptanceBy, differentiators, FEATURES } from "../../../../src/domain/elena-learning";
+import { acceptanceBy, differentiators, featureCoverage, FEATURES, MIN_SAMPLE, nextUpdateAdvice, successScore } from "../../../../src/domain/elena-learning";
 import { isUuid } from "../../../../src/domain/offer-decision";
 import { getDb, getDeps } from "../../../../src/server/context";
 import {
@@ -17,10 +17,15 @@ async function handleGet(req: Request) {
   await syncSettlementOutcomesPg(db);
   const { facts, health } = await trainingDashboardPg(db, new Date(now));
   const active = await activeConfigPg(db);
+  const configs = await listConfigsPg(db);
+  const scored = facts.filter(f => successScore(f) !== undefined).length;
+  const activeRow = configs.find(c => c.status === "active");
+  const advice = nextUpdateAdvice(scored, activeRow?.activatedAt ?? activeRow?.createdAt, now, configs.some(c => c.status === "proposed"));
   return NextResponse.json({
+    coverage: featureCoverage(facts, now), advice, scored, minSample: MIN_SAMPLE,
     health, active: active ?? null, differentiators: differentiators(health, active),
     byFeature: acceptanceBy(facts, "feature"), byType: acceptanceBy(facts, "featureType").slice(0, 30), byRegion: acceptanceBy(facts, "region"), byRole: acceptanceBy(facts, "role"),
-    configs: await listConfigsPg(db), experiments: await experimentsPg(db, facts), features: FEATURES
+    configs, experiments: await experimentsPg(db, facts), features: FEATURES
   }, { headers: { "cache-control": "no-store" } });
 }
 

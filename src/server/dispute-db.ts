@@ -4,6 +4,8 @@ import {
   type CreateInput, type DisputeStatus, type DisputeType, type EscalationReason, type History, type MediationInput, type Party, type PositionInput,
   type ResponseInput, type ResponseKind, type Suggestion
 } from "../domain/dispute";
+import { rankSuggestions } from "../domain/elena-learning";
+import { configIfWeighted, learnedFor, noteReaction, noteSuggestion, stableId, type Learned } from "./elena-wiring-db";
 import { appendAuditPg, type Queryable } from "./db";
 import { notifyUser } from "./notifier";
 import { postSystemNote } from "./transaction-message-db";
@@ -40,17 +42,17 @@ export interface DisputeView extends DisputeSummary {
 // ---------- shared lookups ----------
 
 interface Ctx {
-  id: string; buyerId: string; sellerId: string; agentId: string | null; completed: boolean; fellThrough: boolean; title: string; address: string;
+  id: string; offerId: string; buyerId: string; sellerId: string; agentId: string | null; completed: boolean; fellThrough: boolean; title: string; address: string;
   settleTarget: string | null; blocked: boolean;
 }
 const CTX_SQL =
-  `SELECT t.id, t.buyer_id, t.seller_id, t.completed_at, o.status AS offer_status, l.title, l.address_text,
+  `SELECT t.id, t.offer_id, t.buyer_id, t.seller_id, t.completed_at, o.status AS offer_status, l.title, l.address_text,
           (SELECT a.agent_user_id FROM listing_agent_appointment a WHERE a.listing_id = t.listing_id AND a.revoked_at IS NULL LIMIT 1) AS agent_id,
           (SELECT m.target_date FROM settlement_milestones m WHERE m.settlement_id = t.id AND m.stage = 'settlement_completed') AS settle_target,
           (SELECT m.status FROM settlement_milestones m WHERE m.settlement_id = t.id AND m.stage = t.current_stage) AS current_status
      FROM settlement_timeline t JOIN formal_offer o ON o.id = t.offer_id JOIN property_listing l ON l.id = t.listing_id`;
 const ctxOf = (r: Record<string, unknown>): Ctx => ({
-  id: String(r["id"]), buyerId: String(r["buyer_id"]), sellerId: String(r["seller_id"]), agentId: str(r["agent_id"]),
+  id: String(r["id"]), offerId: String(r["offer_id"]), buyerId: String(r["buyer_id"]), sellerId: String(r["seller_id"]), agentId: str(r["agent_id"]),
   completed: r["completed_at"] != null, fellThrough: r["offer_status"] === "fallen_through", title: String(r["title"]), address: String(r["address_text"] ?? r["title"]),
   settleTarget: r["settle_target"] == null ? null : (r["settle_target"] instanceof Date ? r["settle_target"].toISOString() : String(r["settle_target"])).slice(0, 10), blocked: r["current_status"] === "blocked"
 });
@@ -78,13 +80,29 @@ export async function historyFor(db: Queryable, type: DisputeType): Promise<Hist
 }
 
 async function suggestionFor(tx: Queryable, d: { type: DisputeType; claim: number | null; description: string; created: Date }, c: Ctx, round: number,
-  stances: { buyer: number | null; seller: number | null }, texts: { buyer: string; seller: string }, now: Date): Promise<Suggestion> {
+  stances: { buyer: number | null; seller: number | null }, texts: { buyer: string; seller: string }, now: Date, learned?: Learned): Promise<Suggestion> {
   const input: MediationInput = {
     type: d.type, round, claimCents: d.claim, buyerSharePct: stances.buyer, sellerSharePct: stances.seller, buyerText: texts.buyer, sellerText: texts.seller, description: d.description,
     daysOpen: daysBetween(d.created, now), daysToSettlement: c.settleTarget ? daysBetween(now, new Date(`${c.settleTarget}T00:00:00Z`)) : null, settlementBlocked: c.blocked,
     history: await historyFor(tx, d.type)
   };
-  return mediate(input);
+  const s = mediate(input);
+  // Learned settings only reorder Elena's suggested wordings (the one that has worked best for this kind of dispute leads). Amounts are never changed.
+  const ranked = rankSuggestions(learned ? configIfWeighted(learned) : undefined, undefined, s.templates.map(t => ({ ...t, feature: "mediation" as const, type: templateType(d.type, t.label), baseScore: 1 })));
+  return { ...s, templates: ranked.map(({ label, text }) => ({ label, text })) };
+}
+
+const slug = (t: string) => t.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "").slice(0, 30);
+/** The learning key for a mediation suggestion: the dispute type and the wording that leads it. */
+const templateType = (type: DisputeType, label: string) => `${type}:${slug(label)}`;
+const mediationId = (disputeId: string, round: number, userId: string) => stableId("mediation", disputeId, String(round), userId);
+
+/** After the round is saved: records what Elena suggested to each party. Never throws; runs outside the transaction. */
+async function noteRound(db: Queryable, c: Ctx, disputeId: string, type: DisputeType, s: Suggestion, learned: Learned): Promise<void> {
+  const lead = s.templates[0];
+  for (const [userId, role] of [[c.buyerId, "buyer"], [c.sellerId, "seller"]] as const) {
+    await noteSuggestion(db, { id: mediationId(disputeId, s.round, userId), feature: "mediation", type: lead ? templateType(type, lead.label) : type, userId, userRole: role, offerId: c.offerId, context: { round: s.round, disputeType: type } }, learned);
+  }
 }
 
 // ---------- notifications ----------
@@ -142,7 +160,8 @@ async function lockDispute(tx: Queryable, settlementId: string, id: string): Pro
 
 /** The other side states their position; Elena then opens round 1. */
 export async function submitPosition(db: Queryable, userId: string, settlementId: string, id: string, input: PositionInput, now: Date = new Date()): Promise<Out<{ round: number }>> {
-  const h: { ctx: Ctx | null } = { ctx: null };
+  const h: { ctx: Ctx | null; shown: { type: DisputeType; s: Suggestion } | null } = { ctx: null, shown: null };
+  const learned = await learnedFor(db, "mediation", id);
   const out = await atomic(db, async tx => {
     const c = h.ctx = await loadCtx(tx, settlementId, true);
     const side = c ? sideIn(c, userId) : null;
@@ -155,12 +174,14 @@ export async function submitPosition(db: Queryable, userId: string, settlementId
     await tx.query(`UPDATE disputes SET ${col.text} = $2, ${col.pct} = $3, status = 'mediating', current_round = 1, updated_at = $4 WHERE id = $1::uuid`, [id, input.position, input.sellerSharePct, now]);
     const fresh = (await tx.query("SELECT * FROM disputes WHERE id = $1::uuid", [id])).rows[0]!;
     const s = await suggestionFor(tx, { type: String(fresh["type"]) as DisputeType, claim: num(fresh["claim_cents"]), description: String(fresh["description"]), created: new Date(iso(fresh["created_at"])!) }, c, 1,
-      { buyer: num(fresh["buyer_share_pct"]), seller: num(fresh["seller_share_pct"]) }, { buyer: String(fresh["buyer_position"] ?? ""), seller: String(fresh["seller_position"] ?? "") }, now);
+      { buyer: num(fresh["buyer_share_pct"]), seller: num(fresh["seller_share_pct"]) }, { buyer: String(fresh["buyer_position"] ?? ""), seller: String(fresh["seller_position"] ?? "") }, now, learned);
+    h.shown = { type: String(fresh["type"]) as DisputeType, s };
     await tx.query("INSERT INTO dispute_mediation_rounds (dispute_id, round, elena_suggestion) VALUES ($1::uuid, 1, $2::jsonb)", [id, JSON.stringify(s)]);
     await audit(tx, "user", userId, id, "dispute.position_added", { side });
     await postSystemNote(tx, settlementId, `Both sides have given their position on "${String(fresh["title"])}". Elena has a suggestion ready on the disputes page.`);
     return { ok: true as const, value: { round: 1 } };
   });
+  if (out.ok && h.ctx && h.shown) await noteRound(db, h.ctx, id, h.shown.type, h.shown.s, learned);
   if (out.ok && h.ctx) await tell(db, h.ctx, ["buyer", "seller"], id, { kind: "update", title: "Elena has a suggestion", text: "Both sides have given their position. Open the dispute to see Elena's suggestion and accept, counter or ask for staff." });
   return out;
 }
@@ -171,7 +192,8 @@ const stanceOf = (resp: unknown, counter: unknown, suggested: number | null): nu
 
 /** Accept, counter or ask for staff on the current round. Answers are private until both sides have answered. */
 export async function respond(db: Queryable, userId: string, settlementId: string, id: string, input: ResponseInput, now: Date = new Date()): Promise<Out<{ status: DisputeStatus; round: number }>> {
-  const h: { ctx: Ctx | null; told: { sides: Side[]; title: string; text: string } | null } = { ctx: null, told: null };
+  const h: { ctx: Ctx | null; told: { sides: Side[]; title: string; text: string } | null; shown: { type: DisputeType; s: Suggestion } | null; reacted: { round: number; response: ResponseKind } | null } = { ctx: null, told: null, shown: null, reacted: null };
+  const learned = await learnedFor(db, "mediation", id);
   const out = await atomic(db, async tx => {
     const c = h.ctx = await loadCtx(tx, settlementId, true);
     const side = c ? sideIn(c, userId) : null;
@@ -183,6 +205,7 @@ export async function respond(db: Queryable, userId: string, settlementId: strin
     const r = (await tx.query("SELECT * FROM dispute_mediation_rounds WHERE dispute_id = $1::uuid AND round = $2 FOR UPDATE", [id, round])).rows[0];
     if (!r || r["resolved"]) return no(409, "This round is already closed.");
     if (r[`${side}_response`] != null) return no(409, "You already answered this round.");
+    h.reacted = { round, response: input.response };
     await tx.query(
       `UPDATE dispute_mediation_rounds SET ${side}_response = $3, ${side}_counter_pct = $4, ${side}_note = $5 WHERE dispute_id = $1::uuid AND round = $2`,
       [id, round, input.response, input.response === "counter" ? input.sellerSharePct : null, input.note]);
@@ -215,13 +238,19 @@ export async function respond(db: Queryable, userId: string, settlementId: strin
       seller: stanceOf(sellerResp, side === "seller" ? input.sellerSharePct : r["seller_counter_pct"], suggestion.sellerSharePct)
     };
     const notes = { buyer: String((side === "buyer" ? input.note : r["buyer_note"]) ?? d["buyer_position"] ?? ""), seller: String((side === "seller" ? input.note : r["seller_note"]) ?? d["seller_position"] ?? "") };
-    const next = await suggestionFor(tx, { type: String(d["type"]) as DisputeType, claim: num(d["claim_cents"]), description: String(d["description"]), created: new Date(iso(d["created_at"])!) }, c, round + 1, stances, notes, now);
+    const next = await suggestionFor(tx, { type: String(d["type"]) as DisputeType, claim: num(d["claim_cents"]), description: String(d["description"]), created: new Date(iso(d["created_at"])!) }, c, round + 1, stances, notes, now, learned);
+    h.shown = { type: String(d["type"]) as DisputeType, s: next };
     await tx.query("INSERT INTO dispute_mediation_rounds (dispute_id, round, elena_suggestion) VALUES ($1::uuid,$2,$3::jsonb)", [id, round + 1, JSON.stringify(next)]);
     await tx.query("UPDATE disputes SET current_round = $2, updated_at = $3 WHERE id = $1::uuid", [id, round + 1, now]);
     await audit(tx, "user", userId, id, "dispute.next_round", { round: round + 1 });
     h.told = { sides: ["buyer", "seller"], title: `Round ${round + 1}: a new suggestion`, text: "Elena has a new suggestion based on both answers. Open the dispute to respond." };
     return { ok: true as const, value: { status: "mediating" as DisputeStatus, round: round + 1 } };
   });
+  if (out.ok && h.reacted) {
+    // accept = accepted, counter = modified, ask for staff = rejected (Elena's suggestion did not settle it)
+    await noteReaction(db, mediationId(id, h.reacted.round, userId), h.reacted.response === "accept" ? "accepted" : h.reacted.response === "counter" ? "modified" : "rejected", userId);
+  }
+  if (out.ok && h.ctx && h.shown) await noteRound(db, h.ctx, id, h.shown.type, h.shown.s, learned);
   if (out.ok && h.ctx && h.told) await tell(db, h.ctx, h.told.sides, id, { kind: "update", title: h.told.title, text: h.told.text });
   return out;
 }
