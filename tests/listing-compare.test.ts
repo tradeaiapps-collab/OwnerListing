@@ -54,7 +54,8 @@ describe("compareProperties", () => {
   it("writes factual highlights and a summary from the numbers only", () => {
     expect(c.highlights).toContain("Lowest price: City unit at $600,000, $300,000 below the next.");
     expect(c.highlights).toContain("Most bedrooms: Pool house (4).");
-    expect(c.highlights).toContain("Only Pool house lists pool.");
+    expect(c.highlights).toContain("Only Pool house lists pool and garage.");
+    expect(c.highlights).toContain("Only City unit lists lift.");
     expect(c.summary.startsWith("Comparing 2 properties:")).toBe(true);
     expect(c.summary).not.toMatch(/should|recommend|best buy|good deal/i);
   });

@@ -93,11 +93,13 @@ export function compareProperties(ls: readonly PublicListing[]): Comparison {
   }
   const pb = rows.find(x => x.key === "perBedroom")!;
   if (sameTx && pb.best.length === 1) highlights.push(`Lowest ${tx === "rent" ? "rent" : "price"} per bedroom: ${name(ls[pb.best[0]!]!)} at ${pb.values[pb.best[0]!]!}.`);
-  const only = (a: typeof AMENITIES[number]) => ls.filter(l => l.amenities?.includes(a));
+  // Features only one listing has, grouped per listing so the summary stays short.
+  const unique = new Map<number, string[]>();
   for (const a of AMENITIES) {
-    const w = only(a);
-    if (w.length === 1 && ls.length > 1) highlights.push(`Only ${name(w[0]!)} lists ${AMENITY_LABELS[a].toLowerCase()}.`);
+    const w = ls.map((l, i) => (l.amenities?.includes(a) ? i : -1)).filter(i => i >= 0);
+    if (w.length === 1 && ls.length > 1) unique.set(w[0]!, [...(unique.get(w[0]!) ?? []), AMENITY_LABELS[a].toLowerCase()]);
   }
+  for (const [i, names] of unique) highlights.push(`Only ${name(ls[i]!)} lists ${names.length > 1 ? `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}` : names[0]}.`);
   if (!sameTx) highlights.push("These include both a sale and a rental, so prices are shown but not ranked.");
   const missing = rows[0]!.values.filter(v => v === NOT_STATED).length;
   if (missing > 0) highlights.push(`${missing} of ${ls.length} listings do not state a price.`);
