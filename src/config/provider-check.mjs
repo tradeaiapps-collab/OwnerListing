@@ -145,6 +145,10 @@ const PROVIDERS = [
       if (get("DOCUSIGN_OAUTH_HOST") && !/^(?:[a-z0-9-]+\.)+docusign\.(?:net|com)$/i.test(get("DOCUSIGN_OAUTH_HOST"))) p.push("DOCUSIGN_OAUTH_HOST must be a DocuSign host (demo: account-d.docusign.com, live: account.docusign.com).");
       if (get("SIGNING_PROVIDER") && !["builtin", "docusign"].includes(get("SIGNING_PROVIDER").toLowerCase())) p.push("SIGNING_PROVIDER must be builtin or docusign.");
       if (get("APP_URL") && get("DOCUSIGN_INTEGRATION_KEY") && !/^https:\/\//.test(get("APP_URL"))) p.push("APP_URL must be https so DocuSign can call the webhook.");
+      return p;
+    }
+  },
+  {
     // Mirrors domainConfig in src/adapters/feed-providers.ts: both keys or the Domain feed connector stays off.
     id: "domain", label: "Domain API (property feeds)", required: false,
     unlocks: "Domain listings and sold results imported into property data and, where the licence allows, comparables.",
