@@ -42,6 +42,7 @@ const META: Record<string, { group: string; icon: AdminIcon; blurb: string }> = 
   "/staff/audit": { group: "compliance", icon: "audit", blurb: "Every staff action, in order" },
   "/staff/analytics": { group: "insights", icon: "chart", blurb: "Platform trends, market forecasts, agent benchmarks and team trends" },
   "/staff/elena-insights": { group: "insights", icon: "assistant", blurb: "Elena's read on agents, areas, alerts and next steps" },
+  "/staff/alerts": { group: "insights", icon: "assistant", blurb: "Set when Elena flags slow replies, weak conversion and quiet areas" },
   "/staff/report-builder": { group: "insights", icon: "builder", blurb: "Build and export custom reports" },
   "/staff/reports": { group: "insights", icon: "report", blurb: "Sales and operations reports" },
   "/staff/finance": { group: "insights", icon: "price", blurb: "Revenue, invoices, bank transfers and payment issues" },
