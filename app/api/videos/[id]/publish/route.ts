@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { publishVideo } from "../../../../../src/domain/listing-video";
-import { getActor } from "../../../../../src/server/context";
+import { getActor, getStaff } from "../../../../../src/server/context";
 import { csrfGuard } from "../../../../../src/server/csrf";
 import { failure, unauthenticated } from "../../../../../src/server/http";
 import { getVideoRepo, videoIds } from "../../../../../src/server/listing-video-db";
@@ -11,8 +11,9 @@ async function handlePost(req: Request, { params }: { params: Promise<{ id: stri
   const blocked = csrfGuard(req);
   if (blocked) return blocked;
   const actor = await getActor(req);
-  if (!actor) return unauthenticated();
-  const r = await publishVideo(getVideoRepo(), actor, (await params).id, videoIds);
+  const staff = actor ? null : await getStaff(req);
+  if (!actor && !staff) return unauthenticated();
+  const r = await publishVideo(getVideoRepo(), actor, (await params).id, videoIds, staff);
   return r.ok ? NextResponse.json(r.value) : failure(r);
 }
 export const POST = withApi(handlePost);
