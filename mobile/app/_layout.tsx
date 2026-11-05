@@ -1,31 +1,15 @@
-import * as Notifications from "expo-notifications";
-import { Stack, useRouter } from "expo-router";
+import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { useEffect, useRef } from "react";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { AuthProvider, useAuth } from "../src/auth";
-import { hrefFor, routeForLink } from "../src/lib/links";
-import { pushData, reportOpened } from "../src/push";
+import { usePushTaps } from "../src/use-push-taps";
 import { Loading } from "../src/ui/kit";
 import { useColors } from "../src/ui/theme";
 
 function Navigator() {
   const { state, api } = useAuth();
   const c = useColors();
-  const router = useRouter();
-  const lastResponse = Notifications.useLastNotificationResponse();
-  const handled = useRef<string | null>(null);
-
-  // A tapped push opens the matching screen once the user is signed in (a cold start waits for the keychain read).
-  useEffect(() => {
-    if (state.status !== "signedIn" || !lastResponse) return;
-    const key = lastResponse.notification.request.identifier;
-    if (handled.current === key || lastResponse.actionIdentifier !== Notifications.DEFAULT_ACTION_IDENTIFIER) return;
-    handled.current = key;
-    const { id, link } = pushData(lastResponse.notification);
-    reportOpened(api, id);
-    router.push(hrefFor(routeForLink(link)) as never);
-  }, [api, lastResponse, router, state.status]);
+  usePushTaps(api, state.status === "signedIn");
 
   if (state.status === "loading") return <Loading />;
   const signedIn = state.status === "signedIn";

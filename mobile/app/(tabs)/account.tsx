@@ -48,7 +48,6 @@ export default function Account() {
               <View style={{ flex: 1, paddingRight: space.md }}>
                 <Text style={[s.prefTitle, { color: c.text }]}>{t.label ?? t.category}</Text>
                 {t.text ? <Muted>{t.text}</Muted> : null}
-                {t.locked ? <Muted>Always on: account and security notices.</Muted> : null}
               </View>
               <Switch
                 accessibilityLabel={`Push for ${t.label ?? t.category}`}
@@ -56,6 +55,7 @@ export default function Account() {
                 disabled={!!t.locked}
                 onValueChange={v => void toggle(t.category, v)}
                 trackColor={{ true: c.primary, false: c.border }}
+                thumbColor="#ffffff"
               />
             </View>
           ))}

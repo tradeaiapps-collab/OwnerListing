@@ -1,9 +1,11 @@
+import Ionicons from "@expo/vector-icons/Ionicons";
 import { Tabs } from "expo-router";
-import { Text, type ColorValue } from "react-native";
+import type { ColorValue } from "react-native";
 import { useUser } from "../../src/auth";
 import { useColors } from "../../src/ui/theme";
 
-const icon = (glyph: string) => ({ color }: { color: ColorValue }) => <Text style={{ color, fontSize: 18 }} accessibilityElementsHidden>{glyph}</Text>;
+type IconName = keyof typeof Ionicons.glyphMap;
+const icon = (name: IconName) => ({ color, size }: { color: ColorValue; size: number }) => <Ionicons name={name} size={size} color={color as string} />;
 
 /** Buyers get Saved; owners and agents get Appointments (their agent appointments and the messages in them). */
 export default function TabsLayout() {
@@ -16,11 +18,11 @@ export default function TabsLayout() {
       tabBarStyle: { backgroundColor: c.surface, borderTopColor: c.border },
       headerStyle: { backgroundColor: c.surface }, headerTintColor: c.text, sceneStyle: { backgroundColor: c.bg }
     }}>
-      <Tabs.Screen name="index" options={{ title: "Search", tabBarIcon: icon("⌕") }} />
-      <Tabs.Screen name="saved" options={{ title: "Saved", tabBarIcon: icon("♡"), href: buyer ? "/saved" : null }} />
-      <Tabs.Screen name="appointments" options={{ title: "Appointments", tabBarIcon: icon("☰"), href: buyer ? null : "/appointments" }} />
-      <Tabs.Screen name="notifications" options={{ title: "Alerts", tabBarIcon: icon("◔") }} />
-      <Tabs.Screen name="account" options={{ title: "Account", tabBarIcon: icon("◉") }} />
+      <Tabs.Screen name="index" options={{ title: "Search", tabBarIcon: icon("search") }} />
+      <Tabs.Screen name="saved" options={{ title: "Saved", tabBarIcon: icon("heart-outline"), href: buyer ? "/saved" : null }} />
+      <Tabs.Screen name="appointments" options={{ title: "Appointments", tabBarIcon: icon("people-outline"), href: buyer ? null : "/appointments" }} />
+      <Tabs.Screen name="notifications" options={{ title: "Alerts", tabBarIcon: icon("notifications-outline") }} />
+      <Tabs.Screen name="account" options={{ title: "Account", tabBarIcon: icon("person-circle-outline") }} />
     </Tabs>
   );
 }

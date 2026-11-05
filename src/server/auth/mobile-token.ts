@@ -28,7 +28,7 @@ export interface MobileAccessPayload {
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const TYPES: readonly string[] = ["owner", "agent", "buyer", "vendor"];
-const accessKey = (secret: string) => createHmac("sha256", secret).update("ownerlisting/mobile-access/v1").digest();
+const accessKey = (secret: string) => createHmac("sha256", secret).update("ol-mobile-access-v1").digest();
 const mac = (data: string, secret: string) => createHmac("sha256", accessKey(secret)).update(data).digest();
 
 export function signMobileAccess(p: MobileAccessPayload, secret: string): string {

@@ -9,9 +9,11 @@ import type { ApiClient } from "./lib/api-client";
  * device token (hex). POST /api/push/devices stores it against the signed-in user; registering again refreshes it.
  */
 
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({ shouldShowBanner: true, shouldShowList: true, shouldPlaySound: false, shouldSetBadge: true })
-});
+if (Platform.OS !== "web") {
+  Notifications.setNotificationHandler({
+    handleNotification: async () => ({ shouldShowBanner: true, shouldShowList: true, shouldPlaySound: false, shouldSetBadge: true })
+  });
+}
 
 /** Android needs its channels created before the first push arrives. Same split as the server's tags. */
 async function androidChannels() {
@@ -23,7 +25,7 @@ async function androidChannels() {
 
 /** Asks for permission (once) and registers this phone. Returns the device id, or null when push is off or unavailable. */
 export async function registerForPush(api: ApiClient): Promise<string | null> {
-  if (!Device.isDevice) return null; // simulators have no push token
+  if (Platform.OS === "web" || !Device.isDevice) return null; // the web preview and simulators have no push token
   await androidChannels();
   let { status } = await Notifications.getPermissionsAsync();
   if (status !== "granted") status = (await Notifications.requestPermissionsAsync()).status;

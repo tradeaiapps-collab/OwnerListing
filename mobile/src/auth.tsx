@@ -19,7 +19,7 @@ export type AuthState =
 const KEY = "ownerlisting.tokens.v1";
 
 /** Tokens live only in the Keychain (iPhone) or the Keystore-backed secure store (Android), readable only after first unlock. */
-const secureStore: TokenStore = {
+const nativeStore: TokenStore = {
   async read() {
     const raw = await SecureStore.getItemAsync(KEY);
     if (!raw) return null;
@@ -33,6 +33,14 @@ const secureStore: TokenStore = {
   write: tokens => SecureStore.setItemAsync(KEY, JSON.stringify(tokens), { keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY }),
   clear: () => SecureStore.deleteItemAsync(KEY)
 };
+
+/** The web build is only a preview for design checks: tokens stay in memory and are gone on reload. */
+function memoryStore(): TokenStore {
+  let v: TokenPair | null = null;
+  return { read: async () => v, write: async t => { v = t; }, clear: async () => { v = null; } };
+}
+
+const secureStore: TokenStore = Platform.OS === "web" ? memoryStore() : nativeStore;
 
 export const apiUrl = String((Constants.expoConfig?.extra as { apiUrl?: string } | undefined)?.apiUrl ?? "http://localhost:3004");
 
