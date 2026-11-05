@@ -126,7 +126,7 @@ describe.skipIf(!DATABASE_URL)("Elena scheduling messages on Postgres", () => {
   });
 
   it("a visit under 24 hours away gets the confirmation only", async () => {
-    const b = await booked(1);
+    const b = await booked(2); // slot(1) is 01:00 UTC tomorrow, under 12h away after ~13:00 UTC
     await t.db.query("UPDATE inspection_booking SET scheduled_at = now() + interval '13 hours' WHERE id = $1", [b.bookingId]);
     expect(await draftBookingMessages(t.db, b.bookingId, new Date().toISOString(), env)).toBe(1);
   });
