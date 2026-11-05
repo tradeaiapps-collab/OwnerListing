@@ -82,6 +82,18 @@ describe("DocuSign routes", () => {
     expect(((await r.json()) as { document: { provider: string } }).document.provider).toBe("builtin");
   });
 
+  it("the owner can email signers again only for a document that is out for signature through DocuSign", async () => {
+    const d = await generate();
+    expect((await docRoute.POST(post({ action: "remind" }), ctx(d.id))).status).toBe(409); // still a draft
+    await docRoute.POST(post({ action: "send" }), ctx(d.id));
+    state.actor = agent;
+    expect((await docRoute.POST(post({ action: "remind" }), ctx(d.id))).status).toBe(404); // a signer is not the owner
+    state.actor = owner;
+    const r = await docRoute.POST(post({ action: "remind" }), ctx(d.id));
+    expect(r.status).toBe(200);
+    expect(await r.json()).toMatchObject({ sent: expect.any(Number), skipped: expect.any(Number) });
+  });
+
   it("send, signing link, webhook completion and signed-copy download work end to end, with access limited to the parties", async () => {
     const d = await generate();
     expect((await docRoute.POST(post({ action: "send" }), ctx(d.id))).status).toBe(200);

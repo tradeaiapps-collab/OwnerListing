@@ -4,6 +4,8 @@ import { declineDocument, explainClause, sendDocument, signDocument, viewDocumen
 import { getActor } from "../../../../src/server/context";
 import { csrfGuard } from "../../../../src/server/csrf";
 import { failure, unauthenticated } from "../../../../src/server/http";
+import { getDb } from "../../../../src/server/context";
+import { sendSigningRequests } from "../../../../src/server/notifier";
 import { getEsignDeps, signingMode } from "../../../../src/server/esign";
 import { getSigningRepo, requestContext, signingIds, signingPersona } from "../../../../src/server/signing-db";
 import { mfaRequiredResponse, recentMfaAt } from "../../../../src/server/mfa-context";
@@ -22,7 +24,7 @@ async function handleGet(req: Request, { params }: Ctx) {
 
 /**
  * Body: { "action": "send" | "cancel" | "retry" } for the owner ("retry" copies a declined or cancelled document into a new draft), { "action": "refresh" }
- * for the owner or a signer (asks DocuSign for the latest status), { "action": "docusign_link" } for a signer (returns the DocuSign signing page address), or { "action": "explain", "clauseId" }, { "action": "sign", "typedName", "consent": true }
+ * for the owner or a signer (asks DocuSign for the latest status), { "action": "docusign_link" } for a signer (returns the DocuSign signing page address), { "action": "remind" } for the owner (emails signers who have not responded again), or { "action": "explain", "clauseId" }, { "action": "sign", "typedName", "consent": true }
  * and { "action": "decline", "reason"? } for a signer.
  */
 async function handlePost(req: Request, { params }: Ctx) {
@@ -42,6 +44,7 @@ async function handlePost(req: Request, { params }: Ctx) {
         const deps = getEsignDeps();
         if (!deps) return NextResponse.json({ error: "DocuSign is not set up yet." }, { status: 503 });
         const r = await sendViaDocusign(deps, actor, id, ctx);
+        if (r.ok) await sendSigningRequests(getDb(), id, new Date().toISOString());
         return r.ok ? NextResponse.json({ document: r.value }) : failure(r);
       }
       const r = await sendDocument(repo, actor, id, signingIds, ctx);
@@ -60,6 +63,13 @@ async function handlePost(req: Request, { params }: Ctx) {
       if (!deps) return NextResponse.json({ error: "DocuSign is not set up yet." }, { status: 503 });
       const r = await docusignSigningLink(deps, actor, id, ctx);
       return r.ok ? NextResponse.json(r.value) : failure(r);
+    }
+    case "remind": {
+      // Owner asks again: signers who were asked less than an hour ago are skipped.
+      const doc = await repo.document(id);
+      if (!doc || doc.ownerUserId !== actor.userId) return NextResponse.json({ error: "Document not found." }, { status: 404 });
+      if (doc.provider !== "docusign" || doc.status !== "out_for_signature") return NextResponse.json({ error: "Only a document out for signature through DocuSign can be sent again." }, { status: 409 });
+      return NextResponse.json(await sendSigningRequests(getDb(), id, new Date().toISOString()));
     }
     case "refresh": {
       const deps = getEsignDeps();
