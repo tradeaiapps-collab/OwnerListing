@@ -49,13 +49,30 @@ export interface PhotoRecord {
   variants: Exclude<PhotoSize, "full">[];
 }
 
-export interface LayoutEntry { photoId: string; caption: string; alt: string; hidden: boolean }
+/** Rooms and areas a photo can be filed under. An empty category means "not sorted yet". */
+export const PHOTO_CATEGORIES = [
+  { key: "exterior", label: "Exterior and street" }, { key: "living", label: "Living areas" }, { key: "kitchen", label: "Kitchen" },
+  { key: "dining", label: "Dining" }, { key: "bedroom", label: "Bedrooms" }, { key: "bathroom", label: "Bathrooms" },
+  { key: "laundry", label: "Laundry" }, { key: "outdoor", label: "Outdoor and garden" }, { key: "pool", label: "Pool" },
+  { key: "garage", label: "Garage and parking" }, { key: "view", label: "Views" }, { key: "other", label: "Other" }
+] as const;
+export type PhotoCategory = (typeof PHOTO_CATEGORIES)[number]["key"];
+const CATEGORY_KEYS: ReadonlySet<string> = new Set(PHOTO_CATEGORIES.map(c => c.key));
+export const isPhotoCategory = (v: unknown): v is PhotoCategory => typeof v === "string" && CATEGORY_KEYS.has(v);
+export const categoryLabel = (key: string) => PHOTO_CATEGORIES.find(c => c.key === key)?.label ?? "";
+
+export const FEATURE_LIMITS = { maxPerPhoto: 5, maxChars: 40 } as const;
+
+/** `category` and `features` are optional so galleries saved before they existed (and investor project galleries) stay valid. */
+export interface LayoutEntry { photoId: string; caption: string; alt: string; hidden: boolean; category?: PhotoCategory; features?: string[] }
 export interface Layout { version: number; entries: LayoutEntry[]; tourUrl: string | null }
 export const EMPTY_LAYOUT: Layout = { version: 0, entries: [], tourUrl: null };
 
 /** What the browser gets for one photo. */
 export interface PhotoView {
   id: string; kind: PhotoKind; width: number; height: number; caption: string; alt: string; hidden: boolean;
+  /** "" when the owner has not filed the photo under a room. */
+  category: PhotoCategory | ""; features: string[];
   sizes: PhotoSize[];
 }
 
@@ -90,6 +107,19 @@ export function cleanText(v: unknown, max: number): string | null {
   if (typeof v !== "string") return null;
   const s = v.replace(/[\u0000-\u001f\u007f​-‏‪-‮⁦-⁩]/g, " ").replace(/\s+/g, " ").trim();
   return s.length > max ? null : s;
+}
+
+/** Up to five short feature tags ("stone benchtop"). Returns null when the input is not a list of clean short strings. */
+export function cleanFeatures(v: unknown): string[] | null {
+  if (v === undefined || v === null) return [];
+  if (!Array.isArray(v) || v.length > FEATURE_LIMITS.maxPerPhoto) return null;
+  const out: string[] = [];
+  for (const f of v) {
+    const t = cleanText(f, FEATURE_LIMITS.maxChars);
+    if (t === null) return null;
+    if (t && !out.some(x => x.toLowerCase() === t.toLowerCase())) out.push(t);
+  }
+  return out;
 }
 
 /** Optional video or virtual tour link: https only, no credentials, no odd ports. */
@@ -139,7 +169,7 @@ export function layoutWithUpload(layout: Layout, photoId: string, replacesId?: s
   if (!replacesId) return [...layout.entries, fresh];
   const out: LayoutEntry[] = [];
   for (const e of layout.entries) {
-    if (e.photoId === replacesId) out.push({ ...fresh, caption: e.caption, alt: e.alt }, { ...e, hidden: true });
+    if (e.photoId === replacesId) out.push({ ...fresh, caption: e.caption, alt: e.alt, ...(e.category ? { category: e.category } : {}), ...(e.features?.length ? { features: e.features } : {}) }, { ...e, hidden: true });
     else out.push(e);
   }
   return out;
@@ -174,7 +204,14 @@ export function checkLayoutChange(
     const alt = cleanText(o["alt"], PHOTO_LIMITS.altMax);
     if (alt === null) return { ok: false, message: `Descriptions must be ${PHOTO_LIMITS.altMax} characters or fewer.` };
     if (o["hidden"] !== undefined && typeof o["hidden"] !== "boolean") return { ok: false, message: "Invalid gallery." };
-    entries.push({ photoId: id, caption, alt, hidden: o["hidden"] === true });
+    const cat = o["category"];
+    if (cat !== undefined && cat !== null && cat !== "" && !isPhotoCategory(cat)) return { ok: false, message: "Unknown room or category." };
+    const features = cleanFeatures(o["features"]);
+    if (features === null) return { ok: false, message: `Features must be up to ${FEATURE_LIMITS.maxPerPhoto} short tags of ${FEATURE_LIMITS.maxChars} characters or fewer.` };
+    entries.push({
+      photoId: id, caption, alt, hidden: o["hidden"] === true,
+      ...(isPhotoCategory(cat) ? { category: cat } : {}), ...(features.length ? { features } : {})
+    });
   }
   const dropped = current.entries.filter(e => !seen.has(e.photoId));
   if (dropped.length && ctx.everPublished) return { ok: false, message: "Photos of a published listing cannot be deleted. Hide or replace them instead." };
@@ -201,6 +238,11 @@ export function makeCover<T>(list: readonly T[], isIt: (t: T) => boolean): T[] {
   return i < 0 ? [...list] : moveEntry(list, i, 0);
 }
 
+/** Rooms that have at least one photo, in the standard order, with counts (for the gallery filter). */
+export function categoriesIn(views: readonly Pick<PhotoView, "category">[]): { key: PhotoCategory; label: string; count: number }[] {
+  return PHOTO_CATEGORIES.map(c => ({ key: c.key, label: c.label, count: views.filter(v => v.category === c.key).length })).filter(c => c.count > 0);
+}
+
 // --- Views -------------------------------------------------------------------------------------------------------
 
 /** Gallery entries joined with their file records. Public viewers never get hidden entries. */
@@ -209,7 +251,8 @@ export function viewsFor(layout: Layout, photos: ReadonlyMap<string, PhotoRecord
   for (const e of layout.entries) {
     const p = photos.get(e.photoId);
     if (!p || (e.hidden && !includeHidden)) continue;
-    out.push({ id: p.id, kind: p.kind, width: p.width, height: p.height, caption: e.caption, alt: e.alt, hidden: e.hidden, sizes: [...p.variants, "full"] });
+    out.push({ id: p.id, kind: p.kind, width: p.width, height: p.height, caption: e.caption, alt: e.alt, hidden: e.hidden,
+      category: e.category ?? "", features: e.features ?? [], sizes: [...p.variants, "full"] });
   }
   return out;
 }

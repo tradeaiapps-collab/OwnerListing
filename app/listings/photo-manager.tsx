@@ -1,12 +1,13 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { classifyTour } from "../../src/domain/virtual-tour";
-import { PHOTO_BASE, PHOTO_LIMITS, PROJECT_PHOTO_MAX, makeCover, moveEntry, photoUrl, type PhotoKind, type PhotoView } from "../../src/domain/listing-photos";
+import { FEATURE_LIMITS, PHOTO_BASE, PHOTO_CATEGORIES, PHOTO_LIMITS, PROJECT_PHOTO_MAX, isPhotoCategory, makeCover, moveEntry, photoUrl, type PhotoKind, type PhotoView } from "../../src/domain/listing-photos";
 import { JSON_HEADERS } from "./ui";
 import "../styles/gallery.css";
 
 type Gallery = { photos: PhotoView[]; tourUrl: string | null; version: number; canManage: boolean; canUpload: boolean; everPublished: boolean; editable: boolean };
 type Row = PhotoView;
+type Suggestion = { photoId: string; caption: string; features: string[] };
 type QueueItem = { name: string; state: "waiting" | "uploading" | "done" | "error"; message?: string };
 
 const TYPES = ["image/jpeg", "image/png", "image/webp"];
@@ -51,6 +52,7 @@ export function PhotoManager({ listingId, projectId }: { listingId?: string; pro
   const [drag, setDrag] = useState<number | null>(null);
   const [target, setTarget] = useState<number | null>(null);
   const input = useRef<HTMLInputElement>(null);
+  const [elena, setElena] = useState<{ busy: boolean; message: string; items: Suggestion[]; label: string }>({ busy: false, message: "", items: [], label: "" });
 
   const load = useCallback(async () => {
     setLoadError("");
@@ -108,11 +110,33 @@ export function PhotoManager({ listingId, projectId }: { listingId?: string; pro
     await load();
   }
 
+  /** Asks Elena for captions and feature tags. Suggestions are shown for review; nothing changes until the owner applies them. */
+  async function askElena() {
+    if (!listingId) return;
+    const sendable = rows.filter(r => r.kind === "photo" && !r.hidden).slice(0, 12);
+    setElena({ busy: true, message: "", items: [], label: "" });
+    try {
+      const r = await fetch(`${listUrl}/suggest`, { method: "POST", headers: JSON_HEADERS, body: JSON.stringify({ photos: sendable.map(p => ({ photoId: p.id, category: p.category || undefined, note: p.alt || undefined })) }) });
+      if (!r.ok) { setElena({ busy: false, message: r.status === 429 ? "Too many requests. Try again later." : await errorOf(r), items: [], label: "" }); return; }
+      const d = await r.json();
+      if (d.state !== "ready") { setElena({ busy: false, message: d.message ?? "Elena is unavailable right now.", items: [], label: "" }); return; }
+      const skipped = (d.skipped ?? []).length;
+      setElena({ busy: false, items: d.suggestions, label: d.label, message: skipped ? `${skipped} ${skipped === 1 ? "photo was" : "photos were"} skipped: choose a room or add a description first.` : "" });
+    } catch {
+      setElena({ busy: false, message: "Could not reach Elena. Try again.", items: [], label: "" });
+    }
+  }
+  const apply = (items: Suggestion[]) => {
+    change(rows.map(r => { const s = items.find(x => x.photoId === r.id); return s ? { ...r, caption: s.caption, features: s.features, alt: r.alt || s.caption } : r; }));
+    setElena(e => ({ ...e, items: e.items.filter(x => !items.includes(x)) }));
+    setStatus(`${items.length} ${items.length === 1 ? "suggestion" : "suggestions"} applied. Check them, then save.`);
+  };
+
   async function save() {
     if (!data) return;
     setBusy(true); setError(""); setStatus("");
     try {
-      const entries = rows.map(r => ({ photoId: r.id, caption: r.caption, alt: r.alt, hidden: r.hidden }));
+      const entries = rows.map(r => ({ photoId: r.id, caption: r.caption, alt: r.alt, hidden: r.hidden, ...(isProject ? {} : { category: r.category, features: r.features }) }));
       const body = isProject ? { version: data.version, entries } : { version: data.version, tourUrl: tour.trim() || null, entries };
       const r = await fetch(layoutUrl, { method: "PUT", headers: JSON_HEADERS, body: JSON.stringify(body) });
       if (r.ok) {
@@ -177,6 +201,37 @@ export function PhotoManager({ listingId, projectId }: { listingId?: string; pro
         </div>
       )}
 
+      {manage && !isProject && counts.photo > 0 && (
+        <div className="gl-elena">
+          <div className="form-bar">
+            <button type="button" className="secondary" onClick={() => void askElena()} disabled={busy || elena.busy}>{elena.busy ? "Elena is thinking..." : "Ask Elena for captions"}</button>
+            <span className="muted">Elena can't see your photos. She writes from the room and description you give each one, so choose a room first.</span>
+          </div>
+          {elena.message && <p role="status">{elena.message}</p>}
+          {elena.items.length > 0 && (
+            <div aria-live="polite">
+              <p className="muted">{elena.label}</p>
+              <ul className="gl-sugg">
+                {elena.items.map(sg => {
+                  const n = rows.findIndex(r => r.id === sg.photoId) + 1;
+                  return (
+                    <li key={sg.photoId}>
+                      <strong>Photo {n}:</strong> {sg.caption}
+                      {sg.features.length > 0 && <span className="gl-feats">{sg.features.map(f => <span key={f} className="gl-feat">{f}</span>)}</span>}
+                      <button type="button" className="secondary" onClick={() => apply([sg])} aria-label={`Use suggestion for photo ${n}`}>Use</button>
+                    </li>
+                  );
+                })}
+              </ul>
+              <div className="form-bar">
+                <button type="button" onClick={() => apply(elena.items)}>Use all</button>
+                <button type="button" className="secondary" onClick={() => setElena(e => ({ ...e, items: [] }))}>Dismiss</button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {rows.length === 0 ? <p className="muted">No photos yet.</p> : (
         <ol className="gl-list" aria-label="Gallery order">
           {rows.map((r, i) => {
@@ -195,17 +250,32 @@ export function PhotoManager({ listingId, projectId }: { listingId?: string; pro
                     {r.id === coverId && <span className="gl-badge is-cover">Cover</span>}
                     {r.kind === "floorplan" && <span className="gl-badge">Floor plan</span>}
                     {r.kind === "photo360" && <span className="gl-badge">360</span>}
+                    {r.category && <span className="gl-badge">{PHOTO_CATEGORIES.find(c => c.key === r.category)?.label}</span>}
                     {r.hidden && <span className="gl-badge">Hidden</span>}
                   </span>
                 </div>
                 {manage && (
                   <>
+                    {!isProject && r.kind === "photo" && (
+                      <label>Room
+                        <select value={r.category} onChange={e => patch(i, { category: isPhotoCategory(e.target.value) ? e.target.value : "" })}>
+                          <option value="">Not sorted yet</option>
+                          {PHOTO_CATEGORIES.map(c => <option key={c.key} value={c.key}>{c.label}</option>)}
+                        </select>
+                      </label>
+                    )}
                     <label>Caption (shown under the photo)
                       <input value={r.caption} maxLength={PHOTO_LIMITS.captionMax} onChange={e => patch(i, { caption: e.target.value })} placeholder="e.g. Kitchen with stone benchtop" />
                     </label>
                     <label>Description for screen readers
                       <input value={r.alt} maxLength={PHOTO_LIMITS.altMax} onChange={e => patch(i, { alt: e.target.value })} placeholder="What the photo shows" />
                     </label>
+                    {!isProject && r.kind === "photo" && (
+                      <label>Features (comma separated, up to {FEATURE_LIMITS.maxPerPhoto})
+                        <input defaultValue={r.features.join(", ")} key={`${r.id}:${r.features.join("|")}`} maxLength={FEATURE_LIMITS.maxPerPhoto * (FEATURE_LIMITS.maxChars + 2)} placeholder="e.g. stone benchtop, gas cooktop"
+                          onChange={() => setDirty(true)} onBlur={e => patch(i, { features: e.target.value.split(",").map(x => x.trim()).filter(Boolean).slice(0, FEATURE_LIMITS.maxPerPhoto) })} />
+                      </label>
+                    )}
                     <div className="gl-tools">
                       <button type="button" className="secondary" disabled={busy || i === 0} onClick={() => move(i, i - 1)} aria-label={`Move ${label} up`}>Up</button>
                       <button type="button" className="secondary" disabled={busy || i === rows.length - 1} onClick={() => move(i, i + 1)} aria-label={`Move ${label} down`}>Down</button>

@@ -21,7 +21,7 @@ const search = (o: Partial<SavedSearch> = {}): SavedSearch => ({
 describe("PropertyListing to ListingSummary", () => {
   it("carries only the fields searches use", () => {
     const s = toListingSummary(prop());
-    expect(s).toEqual({ id: ID, status: "published", jurisdiction: "QLD", transactionType: "sale", useClass: "residential", propertyType: "house", suburb: "New Farm", priceCents: 120000000, bedrooms: 4 });
+    expect(s).toEqual({ id: ID, status: "published", jurisdiction: "QLD", transactionType: "sale", useClass: "residential", propertyType: "house", suburb: "New Farm", priceCents: 120000000, bedrooms: 4, bathrooms: 2, parking: 1 });
     expect(JSON.stringify(s)).not.toMatch(/owner-secret|Secret St|Private title/);
   });
   it("matches on suburb, price, bedrooms and property type", () => {

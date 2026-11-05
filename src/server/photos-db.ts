@@ -1,6 +1,6 @@
 import type { JobAssignment } from "../domain/job-chat";
 import type { PhotoMime } from "../domain/image-meta";
-import { EMPTY_LAYOUT, coverOf, type Layout, type LayoutEntry, type PhotoKind, type PhotoRecord } from "../domain/listing-photos";
+import { EMPTY_LAYOUT, cleanFeatures, coverOf, isPhotoCategory, type Layout, type LayoutEntry, type PhotoKind, type PhotoRecord } from "../domain/listing-photos";
 import type { PhotoStore, StoredSizes } from "../domain/photo-service";
 import type { Queryable } from "./db";
 
@@ -16,7 +16,9 @@ const toPhoto = (r: Record<string, unknown>): PhotoRecord => ({
 const toEntries = (v: unknown): LayoutEntry[] =>
   (Array.isArray(v) ? v : []).filter((e): e is Record<string, unknown> => typeof e === "object" && e !== null).map(e => ({
     photoId: String(e["photoId"]), caption: typeof e["caption"] === "string" ? e["caption"] : "",
-    alt: typeof e["alt"] === "string" ? e["alt"] : "", hidden: e["hidden"] === true
+    alt: typeof e["alt"] === "string" ? e["alt"] : "", hidden: e["hidden"] === true,
+    ...(isPhotoCategory(e["category"]) ? { category: e["category"] } : {}),
+    ...((cleanFeatures(e["features"]) ?? []).length ? { features: cleanFeatures(e["features"])! } : {})
   }));
 
 const toLayout = (r: Record<string, unknown> | undefined): Layout =>

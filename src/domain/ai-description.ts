@@ -11,7 +11,7 @@ export interface ReportFinding { docId: string; adverseFindings: boolean }
 export const REPORTS_NOTICE = "Building and pest reports are available. Buyers should read them.";
 export const ADVERSE_NOTICE = "Some issues are noted in the inspection reports.";
 
-const ABSOLUTE = [/\bdefect[- ]free\b/i, /\bno (defects|issues|problems)\b/i, /\bstructurally sound\b/i,
+export const ABSOLUTE = [/\bdefect[- ]free\b/i, /\bno (defects|issues|problems)\b/i, /\bstructurally sound\b/i,
   /\b(termite|pest)[- ]free\b/i, /\bperfect condition\b/i];
 
 /**

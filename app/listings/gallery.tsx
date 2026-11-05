@@ -1,6 +1,6 @@
 "use client";
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
-import { altFor, PHOTO_BASE, photoUrl, srcSetFor, type PhotoView } from "../../src/domain/listing-photos";
+import { altFor, categoriesIn, PHOTO_BASE, photoUrl, srcSetFor, type PhotoView } from "../../src/domain/listing-photos";
 import { PRESENTER_SPEAK_EVENT } from "../presenter/presenter-core";
 import { classifyTour, tourSummary } from "../../src/domain/virtual-tour";
 import "../styles/gallery.css";
@@ -107,6 +107,7 @@ function Lightbox({ items, index, title, onIndex, onClose, info }: {
         <figure key={v.id} className={dir.current ? `gl-figure gl-from-${dir.current}` : "gl-figure"}>
           <Img key={v.id} v={v} sizes="100vw" alt={alt} eager className={v.kind === "floorplan" ? "gl-img gl-plan" : "gl-img"} />
           {v.caption && <figcaption>{v.caption}</figcaption>}
+          {v.features.length > 0 && <ul className="gl-feats" aria-label="Features">{v.features.map(f => <li key={f} className="gl-feat">{f}</li>)}</ul>}
         </figure>
         {total > 1 && <button type="button" className="gl-nav gl-next" onClick={() => go(1)} aria-label="Next photo">›</button>}
         {/* Preload the neighbours so arrows feel instant. */}
@@ -254,6 +255,7 @@ export function ListingGallery({ listingId, title, highlights }: { listingId: st
   const [tab, setTab] = useState<Tab>("photo");
   const [open, setOpen] = useState<number | null>(null);
   const [panoIdx, setPanoIdx] = useState(0);
+  const [room, setRoom] = useState<string>("");
   const narrow = useNarrow();
 
   useEffect(() => {
@@ -274,8 +276,11 @@ export function ListingGallery({ listingId, title, highlights }: { listingId: st
   const tour = classifyTour(tourUrl);
   const framed = tour?.embedUrl !== undefined;
   const wantsTour = tab === "tour" && framed, wants360 = tab === "photo360" && byKind.photo360.length > 0;
-  const items = byKind[tab === "floorplan" ? "floorplan" : "photo"].length ? byKind[tab === "floorplan" ? "floorplan" : "photo"] : byKind.photo.length ? byKind.photo : byKind.floorplan;
-  const current: Tab = wantsTour ? "tour" : wants360 ? "photo360" : items === byKind.floorplan && byKind.floorplan.length ? "floorplan" : "photo";
+  const all = byKind[tab === "floorplan" ? "floorplan" : "photo"].length ? byKind[tab === "floorplan" ? "floorplan" : "photo"] : byKind.photo.length ? byKind.photo : byKind.floorplan;
+  const current: Tab = wantsTour ? "tour" : wants360 ? "photo360" : all === byKind.floorplan && byKind.floorplan.length ? "floorplan" : "photo";
+  const rooms = current === "photo" ? categoriesIn(all) : [];
+  const activeRoom = rooms.some(r => r.key === room) ? room : "";
+  const items = activeRoom ? all.filter(p => p.category === activeRoom) : all;
   const tabs = ([["photo", "Photos"], ["floorplan", "Floor plan"], ["photo360", "360 photos"]] as const).filter(([k]) => byKind[k].length > 0);
   const allTabs: (readonly [Tab, string, number?])[] = [...tabs.map(([k, n]) => [k, n, byKind[k].length] as const), ...(framed ? [["tour", tour!.label] as const] : [])];
   const pano = byKind.photo360[Math.min(panoIdx, byKind.photo360.length - 1)];
@@ -299,8 +304,8 @@ export function ListingGallery({ listingId, title, highlights }: { listingId: st
         : items.length === 0
         ? <div className="gl-empty" role="img" aria-label="No photos added yet"><span>No photos yet</span></div>
         : narrow
-          ? <Carousel key={current} items={items} title={title} onOpen={setOpen} />
-          : <HeroGrid key={current} items={items} title={title} onOpen={setOpen} label={label} />}
+          ? <Carousel key={current + activeRoom} items={items} title={title} onOpen={setOpen} />
+          : <HeroGrid key={current + activeRoom} items={items} title={title} onOpen={setOpen} label={label} />}
       {(allTabs.length > 1 || tourUrl || videos.length > 0) && (
         <div className="gl-tabs">
           {allTabs.length > 1 && (
@@ -323,6 +328,14 @@ export function ListingGallery({ listingId, title, highlights }: { listingId: st
             Hear Elena describe this tour
           </button>
         </p>
+      )}
+      {rooms.length > 1 && (
+        <div className="gl-tabs" role="group" aria-label="Filter photos by room">
+          <button type="button" className="gl-tab" aria-pressed={activeRoom === ""} onClick={() => setRoom("")}>All <span className="gl-tab-n">{all.length}</span></button>
+          {rooms.map(r => (
+            <button key={r.key} type="button" className="gl-tab" aria-pressed={activeRoom === r.key} onClick={() => setRoom(r.key)}>{r.label} <span className="gl-tab-n">{r.count}</span></button>
+          ))}
+        </div>
       )}
       {open !== null && items[open] && <Lightbox items={items} index={open} title={title} onIndex={setOpen} onClose={() => setOpen(null)} />}
     </section>

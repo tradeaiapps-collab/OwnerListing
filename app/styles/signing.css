@@ -1,0 +1,39 @@
+/* Documents and e-signatures: owner generator, signer page, template editor. Theme variables only. */
+.sg-badge { display: inline-block; padding: var(--space-1) var(--space-3); border-radius: 999px; border: 1px solid var(--border); background: var(--surface); font-size: 0.8125rem; font-weight: 600; white-space: nowrap; }
+.sg-badge.is-completed { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 45%, var(--bg)); background: color-mix(in srgb, var(--ok) 10%, var(--bg)); }
+.sg-badge.is-declined, .sg-badge.is-cancelled { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 45%, var(--bg)); background: var(--danger-tint); }
+.sg-badge.is-out_for_signature { color: var(--link); border-color: color-mix(in srgb, var(--gold) 45%, var(--bg)); background: var(--gold-tint); }
+.sg-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); margin-bottom: var(--space-4); }
+.sg-head h1 { margin: 0; overflow-wrap: anywhere; }
+.sg-hash { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.75rem; overflow-wrap: anywhere; color: var(--muted); }
+.sg-grid { display: grid; gap: var(--space-4); }
+@media (min-width: 720px) { .sg-grid.two { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.sg-clause { border: 1px solid var(--border); border-radius: var(--radius); padding: var(--space-4); background: var(--bg); display: grid; gap: var(--space-2); }
+@media (min-width: 640px) { .sg-clause { padding: var(--space-6); } }
+.sg-clause.is-current { border-color: var(--gold); box-shadow: var(--shadow-1); }
+.sg-clause h3 { margin: 0; font-size: 1.0625rem; overflow-wrap: anywhere; }
+.sg-clause p { margin: 0; max-width: none; overflow-wrap: anywhere; }
+.sg-explain { border-left: 3px solid var(--gold); background: var(--gold-tint); padding: var(--space-3) var(--space-4); border-radius: 0 var(--radius) var(--radius) 0; }
+.sg-explain small { display: block; margin-top: var(--space-2); color: var(--muted); }
+.sg-clauses { display: grid; gap: var(--space-3); margin: var(--space-4) 0; }
+.sg-guide { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
+.sg-guide p { flex: 1 1 100%; margin: 0; }
+.sg-signers, .sg-trail { list-style: none; padding: 0; margin: 0 0 var(--space-4); display: grid; gap: var(--space-2); }
+.sg-signers li, .sg-trail li { display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--space-2); padding: var(--space-3) 0; border-bottom: 1px solid var(--border); overflow-wrap: anywhere; }
+.sg-trail li > span:first-child { font-weight: 600; }
+.sg-sign { border: 1px solid var(--border); border-radius: var(--radius); padding: var(--space-4); background: var(--surface); }
+.sg-sign .check { display: flex; gap: var(--space-3); align-items: flex-start; font-weight: 400; }
+.sg-sign .check input { margin-top: 0.3em; flex: none; }
+.sg-row { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: end; }
+.sg-row > label { flex: 1 1 200px; }
+.sg-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-2); }
+.sg-code { width: 100%; min-height: 20rem; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.8125rem; line-height: 1.5; }
+.sg-problems { color: var(--danger); margin: 0; padding-left: var(--space-6); }
+.sg-table { width: 100%; border-collapse: collapse; }
+.sg-table th, .sg-table td { text-align: left; padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--border); vertical-align: top; }
+.sg-table-wrap { position: relative; overflow-x: auto; }
+.card-list > li.sg-card { min-width: 0; }
+.sg-meta { display: block; overflow-wrap: anywhere; }
+.sg-table-wrap { max-width: 100%; }
+.sg-table th, .sg-table td { white-space: nowrap; }
+.sg-table td:last-child { white-space: normal; }
