@@ -1,11 +1,13 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
 import "../../styles/staff.css";
+import "../../styles/reports.css";
 import { loadError, postStaff } from "../staff-api";
 
 type Field = "sms.provider" | "sms.accountSid" | "sms.authToken" | "sms.apiKeySid" | "sms.sender" | "email.host" | "email.port" | "email.user" | "email.password" | "email.from";
 interface FieldView { set: boolean; source: "env" | "database" | "none"; display?: string }
 interface LogEntry { channel: "email" | "sms"; template: string; status: "sent" | "failed" | "not_configured"; errorCode: string | null; at: string }
+interface UsageRow { month: string; template: string; messages: number; segments: number; delivered: number; failed: number; estMicros: number; priceMicros: number }
 interface View { keyConfigured: boolean; fields: Record<Field, FieldView>; smsConfigured: boolean; emailConfigured: boolean; log?: LogEntry[] }
 
 const STATUS_BADGE: Record<LogEntry["status"], [string, string]> = {
@@ -21,6 +23,8 @@ const EMAIL_FIELDS: [Field, string, boolean][] = [
   ["email.host", "SMTP host", false], ["email.port", "SMTP port (465, 587, 25 or 2525)", false], ["email.user", "SMTP user", false], ["email.password", "SMTP password", true], ["email.from", "From address", false]
 ];
 
+const dollars = (micros: number) => `$${(micros / 1_000_000).toFixed(2)}`;
+
 function status(v: FieldView): string {
   if (!v.set) return "not set";
   const from = v.source === "env" ? " (from server settings, overrides this form)" : "";
@@ -34,12 +38,15 @@ export default function StaffMessaging() {
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [phone, setPhone] = useState("");
+  const [usage, setUsage] = useState<UsageRow[] | null>(null);
 
   const load = useCallback(async () => {
     const r = await fetch("/api/staff/messaging").catch(() => null);
     if (!r) { setError("Could not load."); return; }
     if (!r.ok) { setError(loadError(r.status)); return; }
     setView(await r.json());
+    const u = await fetch("/api/staff/messaging/sms-usage?months=3").catch(() => null);
+    if (u?.ok) setUsage(((await u.json()) as { usage: UsageRow[] }).usage);
   }, []);
   useEffect(() => { void load(); }, [load]);
 
@@ -119,6 +126,28 @@ export default function StaffMessaging() {
               ))}</tbody>
             </table></div>
           )}
+        </section>
+      )}
+      {view && usage && (
+        <section>
+          <h2>Text message usage (last 3 months)</h2>
+          {usage.length === 0 ? <p className="muted">No notification texts sent yet.</p> : (
+            <div style={{ overflowX: "auto" }}>
+              <table className="report-table">
+                <thead><tr><th>Month</th><th>Type</th><th className="num">Texts</th><th className="num">Segments</th><th className="num">Delivered</th><th className="num">Failed</th><th className="num">Cost</th></tr></thead>
+                <tbody>
+                  {usage.map(u => (
+                    <tr key={`${u.month}-${u.template}`}>
+                      <td>{u.month}</td><td>{u.template.replace(/^notif_/, "").replace(/_/g, " ")}</td>
+                      <td className="num">{u.messages}</td><td className="num">{u.segments}</td><td className="num">{u.delivered}</td><td className="num">{u.failed}</td>
+                      <td className="num">{dollars(u.priceMicros > 0 ? u.priceMicros : u.estMicros)}{u.priceMicros > 0 ? "" : " est."}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          <p className="muted">Cost is the provider&apos;s reported price when it sends one, otherwise segments times SMS_COST_PER_SEGMENT_CENTS. Check it against the provider invoice.</p>
         </section>
       )}
       {note && <p role="status">{note}</p>}

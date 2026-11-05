@@ -86,7 +86,7 @@ export function createReportDeps(db: Queryable, now: () => Date = () => new Date
       return r.rows.length === 1;
     },
     async finish(reportId, status, at) { await db.query("UPDATE agent_report_schedule SET last_status = $2, last_run_at = $3::timestamptz WHERE report_id = $1::uuid", [reportId, status, at]); },
-    send: (_agentId, to, subject, text) => sendNotice(db, "agent_report", to, { subject, text }, env)
+    send: (_agentId, to, subject, text, attachments) => sendNotice(db, "agent_report", to, { subject, text, ...(attachments?.length ? { attachments } : {}) }, env)
   };
 }
 export const getReportDeps = (): ReportDeps => createReportDeps(getDb());

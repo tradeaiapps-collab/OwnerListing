@@ -2,9 +2,9 @@ import { createHmac } from "node:crypto";
 import { readBrand } from "../config/brand";
 import { alertDeliveryFromEnv } from "../adapters/alert-delivery";
 import { createDevFileEmail, devFileEmailWanted } from "../adapters/email-dev";
-import { emailFromConfig, type EmailMessage, type EmailPort, type HostResolver, type TransportFactory } from "../adapters/email";
+import { emailFromConfig, type EmailAttachment, type EmailMessage, type EmailPort, type HostResolver, type TransportFactory } from "../adapters/email";
 import { failed, type SendResult } from "../adapters/messaging";
-import { SmsSendError, smsFromConfig, verificationCodeText, type SmsTextPort } from "../adapters/sms";
+import { SmsSendError, smsFromConfig, type SmsSendOptions, verificationCodeText, type SmsTextPort } from "../adapters/sms";
 import type { AlertDeliveryPort, AlertMessage } from "../domain/alerts";
 import { htmlFromText } from "../domain/account-emails";
 import type { Queryable } from "./db";
@@ -51,8 +51,8 @@ export async function recentOutbox(db: Queryable, limit = 50): Promise<OutboxEnt
 export async function getSmsPort(db: Queryable, env: Env, template: string, deps: MessagingDeps = {}): Promise<SmsTextPort> {
   const cfg = (await loadResolved(db, env)).sms;
   const inner = smsFromConfig(cfg, deps.fetch ? { fetch: deps.fetch } : {});
-  async function sendText(to: string, text: string): Promise<SendResult> {
-    const r = await inner.sendText(to, text);
+  async function sendText(to: string, text: string, opts?: SmsSendOptions): Promise<SendResult> {
+    const r = await inner.sendText(to, text, opts);
     await recordOutbox(db, env, "sms", template, to, r);
     return r;
   }
@@ -85,7 +85,7 @@ export async function getEmailPort(db: Queryable, env: Env, template: string, de
 }
 
 /** Sends one plain notice email on the settings in force now. True only if it went out; never throws (a notice never blocks the action). */
-export async function sendNotice(db: Queryable, template: string, to: string, msg: { subject: string; text: string; html?: string }, env: Env = process.env): Promise<boolean> {
+export async function sendNotice(db: Queryable, template: string, to: string, msg: { subject: string; text: string; html?: string; attachments?: readonly EmailAttachment[] }, env: Env = process.env): Promise<boolean> {
   try {
     const port = await getEmailPort(db, env, template);
     return port.configured && (await port.send({ to, ...msg })).status === "sent";

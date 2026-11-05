@@ -4,6 +4,7 @@ import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { JSON_HEADERS } from "../../listings/ui";
 import { PRESENTER_SPEAK_EVENT } from "../../presenter/presenter-core";
+import { EarningsSummary, PayDialog, PayoutAccountCard } from "./payouts-ui";
 
 type Role = "manager" | "agent" | "staff";
 type Member = { userId: string; displayName: string; role: Role; memberBps: number | null; email?: string };
@@ -20,7 +21,7 @@ type Dashboard = {
 type Task = { id: string; title: string; notes: string; assigneeUserId: string; dueDate: string | null; status: "open" | "in_progress" | "done" };
 type Commission = {
   id: string; memberUserId: string; description: string; grossCents: number; memberBps: number; memberCents: number; officeCents: number;
-  status: "recorded" | "approved" | "paid"; payoutReference: string; createdAt: string;
+  status: "recorded" | "approved" | "paid"; payoutReference: string; createdAt: string; paidAt?: string | null;
 };
 
 const TABS = [["overview", "Overview"], ["members", "Members"], ["tasks", "Tasks"], ["commissions", "Commissions"]] as const;
@@ -28,7 +29,7 @@ type Tab = typeof TABS[number][0];
 const money = (c: number | null) => (c === null ? "–" : new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD" }).format(c / 100));
 const pct = (bps: number) => `${bps / 100}%`;
 const ROLE_LABEL: Record<Role, string> = { manager: "Manager", agent: "Agent", staff: "Staff" };
-const STATUS_LABEL: Record<string, string> = { open: "Open", in_progress: "In progress", done: "Done", recorded: "Recorded", approved: "Approved", paid: "Paid" };
+const STATUS_LABEL: Record<string, string> = { open: "Open", in_progress: "In progress", done: "Done", recorded: "Pending approval", approved: "Approved, ready to pay", paid: "Paid" };
 
 async function call(url: string, method: string, body?: unknown): Promise<{ ok: boolean; data: any }> {
   try {
@@ -46,6 +47,8 @@ export default function TeamPage() {
   const [dash, setDash] = useState<Dashboard | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [commissions, setCommissions] = useState<Commission[]>([]);
+  const [payoutInfo, setPayoutInfo] = useState<{ enabled: boolean; verified: string[] }>({ enabled: false, verified: [] });
+  const [paying, setPaying] = useState<Commission | null>(null);
   const [loadError, setLoadError] = useState("");
   const [tab, setTab] = useState<Tab>("overview");
   const [msg, setMsg] = useState("");
@@ -56,7 +59,12 @@ export default function TeamPage() {
     setDetail(d.data.detail);
     if (db.ok) setDash(db.data.dashboard);
     if (t.ok) setTasks(t.data.tasks);
-    if (c.ok) setCommissions(c.data.commissions);
+    if (c.ok) {
+      setCommissions(c.data.commissions);
+      const users = [...new Set((c.data.commissions as Commission[]).filter(x => x.status === "approved").map(x => x.memberUserId))].join(",");
+      const p = await call(`/api/teams/${id}/payouts?users=${users}`, "GET");
+      if (p.ok) setPayoutInfo({ enabled: p.data.enabled === true, verified: p.data.verifiedUserIds ?? [] });
+    }
   }, [id]);
   useEffect(() => { void reload(); }, [reload]);
 
@@ -200,7 +208,9 @@ export default function TeamPage() {
 
       {tab === "commissions" && (
         <section className="team-page" aria-label="Commissions">
-          <p className="muted">These are records only. The platform does not hold or pay out money: the agency pays outside the platform, then a manager marks the entry paid.</p>
+          <p className="muted">The platform never holds commission money. {payoutInfo.enabled ? "Payouts go from the agency's Stripe account straight to the agent." : "The agency pays outside the platform, then a manager marks the entry paid."}</p>
+          {myRole !== "staff" && <PayoutAccountCard teamId={id} />}
+          {myRole !== "staff" && <EarningsSummary commissions={commissions} me={me} />}
           {isManager && <CommissionForm earners={earners} onRecord={body => act(`/api/teams/${id}/commissions`, "POST", body, "Commission recorded.")} />}
           {myRole === "staff" && <p className="muted">Staff do not see commission.</p>}
           {myRole !== "staff" && commissions.length === 0 && <p className="muted">No commission recorded yet.</p>}
@@ -214,11 +224,14 @@ export default function TeamPage() {
                     <tr key={c.id}>
                       <td>{c.createdAt.slice(0, 10)}</td><td className="name">{nameOf(c.memberUserId)}</td><td className="name">{c.description || "–"}</td>
                       <td className="num">{money(c.grossCents)}</td><td className="num">{pct(c.memberBps)}</td><td className="num">{money(c.memberCents)}</td><td className="num">{money(c.officeCents)}</td>
-                      <td><span className="team-status" data-s={c.status}>{STATUS_LABEL[c.status]}</span>{c.payoutReference ? ` · ${c.payoutReference}` : ""}</td>
+                      <td><span className="team-status" data-s={c.status}>{STATUS_LABEL[c.status]}</span>{c.status === "paid" && c.paidAt ? ` ${c.paidAt.slice(0, 10)}` : ""}{c.payoutReference ? ` · ${c.payoutReference}` : ""}</td>
                       {isManager && (
                         <td className="team-actions">
                           {c.status === "recorded" && <button type="button" onClick={() => void act(`/api/teams/${id}/commissions/${c.id}`, "PATCH", { action: "approve" }, "Approved.")}>Approve</button>}
-                          {c.status === "approved" && <button type="button" onClick={() => { const ref = window.prompt("Payment reference (optional), for example the EFT number") ?? null; if (ref !== null) void act(`/api/teams/${id}/commissions/${c.id}`, "PATCH", { action: "mark_paid", payoutReference: ref }, "Marked paid."); }}>Mark paid</button>}
+                          {c.status === "approved" && payoutInfo.enabled && c.memberUserId === me && <span className="muted">Another manager must pay this</span>}
+                          {c.status === "approved" && payoutInfo.enabled && c.memberUserId !== me && payoutInfo.verified.includes(c.memberUserId) && <button type="button" onClick={() => setPaying(c)}>Pay</button>}
+                          {c.status === "approved" && payoutInfo.enabled && c.memberUserId !== me && !payoutInfo.verified.includes(c.memberUserId) && <span className="muted">Agent has not set up payouts</span>}
+                          {c.status === "approved" && <button type="button" className="secondary" onClick={() => { const ref = window.prompt("Payment reference (optional), for example the EFT number") ?? null; if (ref !== null) void act(`/api/teams/${id}/commissions/${c.id}`, "PATCH", { action: "mark_paid", payoutReference: ref }, "Marked paid."); }}>Mark paid</button>}
                         </td>
                       )}
                     </tr>
@@ -229,6 +242,7 @@ export default function TeamPage() {
           )}
         </section>
       )}
+      {paying && <PayDialog commission={paying} agentName={nameOf(paying.memberUserId)} teamId={id} onClose={() => setPaying(null)} onDone={m => { setPaying(null); setMsg(m); void reload(); }} />}
     </main>
   );
 }

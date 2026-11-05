@@ -48,7 +48,7 @@ export interface SigningRepository {
 }
 
 export interface Ids { newId: () => string; now: () => string }
-export interface RequestContext { ip?: string | undefined; userAgent?: string | undefined }
+export interface RequestContext { ip?: string | undefined; userAgent?: string | undefined; /** When the signer last passed the second sign-in step (ISO time); recorded with the signature. */ mfaVerifiedAt?: string | undefined }
 
 const fail = (code: Failure["code"], message: string): Failure => ({ ok: false, code, message });
 const NOT_FOUND = fail("not_found", "Document not found.");
@@ -186,7 +186,7 @@ export async function signDocument(repo: SigningRepository, actor: Actor, id: st
     const at = ids.now();
     if (!doc || doc.status !== "out_for_signature") return fail("conflict", "This document is no longer open for signing.");
     if (!(await tx.decide(signer.id, "signed", typed.trim().replace(/\s+/g, " "), at))) return fail("conflict", "You have already responded to this document.");
-    await tx.appendEvent({ documentId: id, signerId: signer.id, actorUserId: actor.userId, eventType: "signed", bodySha256: doc.bodySha256, ip: ctx.ip, userAgent: ctx.userAgent, detail: { role: signer.roleLabel, consent: "electronic signature" }, at });
+    await tx.appendEvent({ documentId: id, signerId: signer.id, actorUserId: actor.userId, eventType: "signed", bodySha256: doc.bodySha256, ip: ctx.ip, userAgent: ctx.userAgent, detail: { role: signer.roleLabel, consent: "electronic signature", ...(ctx.mfaVerifiedAt ? { mfaVerifiedAt: ctx.mfaVerifiedAt } : {}) }, at });
     const after = (await tx.document(id))!;
     if (after.signers.every(s => s.status === "signed") && (await tx.setStatus(id, ["out_for_signature"], "completed", at))) {
       await tx.appendEvent({ documentId: id, actorUserId: actor.userId, eventType: "completed", bodySha256: doc.bodySha256, at });

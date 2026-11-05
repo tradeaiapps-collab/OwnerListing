@@ -188,6 +188,19 @@ describe("SMTP email adapter", () => {
     return { made, close, factory: (o: Record<string, unknown>): MailTransport => { made.push(o); return { sendMail, close }; } };
   };
 
+  it("passes attachments to the transport, and refuses a total over 25 MB or an unsafe file name", async () => {
+    const sendMail = vi.fn(async () => ({ messageId: "<a@example.test>" }));
+    const t = transportFor(sendMail);
+    const email = createSmtpEmail(smtpCfg, { createTransport: t.factory, resolve: PUBLIC });
+    const pdf = { filename: "report-sales-2026-10-01-to-2026-10-07-2026-11-05.pdf", content: Buffer.from("%PDF"), contentType: "application/pdf" };
+    expect((await email.send({ to: "buyer@example.test", subject: "Hi", text: "Body", attachments: [pdf] })).status).toBe("sent");
+    expect(sendMail).toHaveBeenCalledWith(expect.objectContaining({ attachments: [pdf] }));
+    const big = { ...pdf, content: Buffer.alloc(25 * 1024 * 1024 + 1) };
+    expect(await email.send({ to: "buyer@example.test", subject: "Hi", text: "Body", attachments: [big] })).toMatchObject({ status: "failed", errorCode: "invalid_message" });
+    expect(await email.send({ to: "buyer@example.test", subject: "Hi", text: "Body", attachments: [{ ...pdf, filename: "../etc/passwd" }] })).toMatchObject({ status: "failed" });
+    expect(sendMail).toHaveBeenCalledTimes(1);
+  });
+
   it("builds a TLS-required transport and sends a plain-text message", async () => {
     const sendMail = vi.fn(async () => ({ messageId: "<abc@example.test>" }));
     const t = transportFor(sendMail);

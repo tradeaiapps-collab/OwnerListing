@@ -36,7 +36,7 @@ function PhoneForm({ consentText, onDone }: { consentText: string; onDone: () =>
   });
   return (
     <div>
-      <label>Australian mobile number <input type="tel" autoComplete="tel" inputMode="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="0400 000 000" /></label>
+      <label>Mobile number (Australia or US) <input type="tel" autoComplete="tel" inputMode="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="0400 000 000 or +1 415 555 0132" /></label>
       <label><input type="checkbox" checked={consent} onChange={e => setConsent(e.target.checked)} /> {consentText}</label>
       <button type="button" disabled={busy || !consent || phone.trim() === ""} onClick={send}>{sent ? "Send a new code" : "Text me a code"}</button>
       {sent && (
