@@ -5,6 +5,7 @@ import GuideAssistant from "./guide-assistant";
 import { ElenaContextTracker } from "./elena-context";
 import AdminShell from "./admin-shell";
 import SiteNav from "./site-nav";
+import NavMemory from "./nav-memory";
 import { THEME_INIT_SCRIPT } from "./theme-toggle";
 import ThemePreviewBridge from "./theme-preview-bridge";
 import "./styles/a11y.css";
@@ -115,6 +116,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
             </footer>
           </>
         )}
+        <NavMemory />
         <ElenaContextTracker />
         {guide?.enabled && <GuideAssistant greeting={guide.greeting} chips={guide.chips} disclaimer={GUIDE_DISCLAIMER} persona={{ name: persona.name, icon: persona.icon, portrait: persona.portrait, poses: persona.poses }} />}
         {bridgeOrigin && <ThemePreviewBridge allowedOrigin={bridgeOrigin} />}
