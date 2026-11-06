@@ -72,6 +72,8 @@ Signing in through `/dev-login` also unlocks gated features for testing: an agen
 
 Also seeded: 8 published listings, a law firm with an approved trust account, plan prices (Basic $0, Standard $149, Premium $299) and add-on prices, terms accepted for every demo account.
 
+Staff pages are populated too (`scripts/seed-admin-demo.mjs`, also `npm run seed:admin`): Negotiation coaching (12 coached deals, 8 settled, versus 5 not coached, 2 settled), Disputes, Elena insights and training (215 suggestions, a proposed learned setting), Moderation (6 open and 3 reviewed listings, wording flags, flagged seller messages) and Investor projects (6 projects in every review state, with contracts and fees). Sign in as `staff.super_admin` or `staff.compliance` at the admin site. Safe to run again.
+
 ## Test checklist
 
 Tick each line. "Expected" is what you should see; anything else is a bug to report (note the page and what you clicked).
