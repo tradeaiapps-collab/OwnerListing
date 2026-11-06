@@ -201,3 +201,22 @@ describe("buyer routes", () => {
     expect(mayAlert(off.preferences[0])).toBe(false);
   });
 });
+
+describe("sensible minimums", () => {
+  const base = { transactionType: "sale", useClass: "residential" };
+  it("rejects 0 bedrooms with a helpful message", () => {
+    const r = parseSavedSearchInput({ ...base, minBedrooms: 0 });
+    expect(r).toMatchObject({ ok: false, message: expect.stringContaining("Studios") });
+  });
+  it("treats 0 bathrooms and 0 parking as no minimum", () => {
+    const r = parseSavedSearchInput({ ...base, minBathrooms: 0, minParking: 0 });
+    expect(r.ok && "minBathrooms" in r.value).toBe(false);
+    expect(r.ok && "minParking" in r.value).toBe(false);
+  });
+  it("rejects unrealistically low prices but allows 0 as no floor", () => {
+    expect(parseSavedSearchInput({ ...base, minPriceCents: 1000, maxPriceCents: 10000 }).ok).toBe(false);
+    expect(parseSavedSearchInput({ ...base, transactionType: "rent", maxPriceCents: 1000 }).ok).toBe(false);
+    expect(parseSavedSearchInput({ ...base, minPriceCents: 0, maxPriceCents: 90_000_000 }).ok).toBe(true);
+    expect(parseSavedSearchInput({ ...base, transactionType: "rent", minPriceCents: 30_000, maxPriceCents: 65_000 }).ok).toBe(true);
+  });
+});

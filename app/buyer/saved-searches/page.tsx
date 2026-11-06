@@ -6,7 +6,7 @@ import { AMENITIES, AMENITY_LABELS, formatAud } from "../../../src/domain/listin
 import { PROPERTY_TYPES } from "../../../src/domain/listing-service";
 import { savedSearchHref } from "../../../src/domain/saved-search-link";
 import { JSON_HEADERS } from "../../listings/ui";
-import { savedSearchFormBody } from "./form";
+import { savedSearchFormBody, savedSearchHints } from "./form";
 import "../../styles/search.css";
 
 const summarise = (s: SavedSearch) => [
@@ -35,6 +35,15 @@ export default function SavedSearches() {
   const [signedOut, setSignedOut] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [hints, setHints] = useState<string[]>([]);
+
+  /** Checks the form with the server's rules as the buyer leaves a field, so mistakes show before saving. */
+  function validate(form: HTMLFormElement) {
+    const fd = new FormData(form);
+    const checked = savedSearchFormBody(fd);
+    setError("error" in checked ? checked.error : "");
+    setHints(savedSearchHints(fd));
+  }
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState("");
@@ -107,7 +116,7 @@ export default function SavedSearches() {
       <h1>Saved searches</h1>
       {signedOut && <p role="alert"><a href="/login?as=buyer&next=/buyer/saved-searches">Sign in</a> to save a search.</p>}
       <p className="muted">Save what you are looking for and we can tell you when a matching property is listed.</p>
-      <form className="stack" onSubmit={onSubmit} noValidate>
+      <form className="stack" onSubmit={onSubmit} onBlur={e => validate(e.currentTarget)} onChange={e => validate(e.currentTarget)} noValidate>
         <fieldset className="form-section">
           <legend>What are you looking for</legend>
           <div className="form-grid">
@@ -139,19 +148,19 @@ export default function SavedSearches() {
               <input name="suburbs" placeholder="Separate suburbs with commas" />
             </label>
             <label className="field">Minimum price ($)
-              <input name="minPrice" inputMode="decimal" />
+              <input name="minPrice" inputMode="decimal" placeholder="e.g. 500000 (rent: per week)" />
             </label>
             <label className="field">Maximum price ($)
-              <input name="maxPrice" inputMode="decimal" />
+              <input name="maxPrice" inputMode="decimal" placeholder="e.g. 900000 (rent: per week)" />
             </label>
             <label className="field">Minimum bedrooms
-              <input name="minBedrooms" inputMode="numeric" />
+              <input name="minBedrooms" inputMode="numeric" placeholder="1 or more (studios count as 1)" />
             </label>
             <label className="field">Minimum bathrooms
-              <input name="minBathrooms" inputMode="numeric" />
+              <input name="minBathrooms" inputMode="numeric" placeholder="Optional, e.g. 1" />
             </label>
             <label className="field">Minimum parking
-              <input name="minParking" inputMode="numeric" />
+              <input name="minParking" inputMode="numeric" placeholder="Optional, e.g. 1" />
             </label>
             <fieldset className="field span-all mf-group">
               <legend>Must have</legend>
@@ -164,6 +173,7 @@ export default function SavedSearches() {
         <div className="form-bar"><button type="submit" disabled={busy}>Save search</button></div>
       </form>
       {error && <p role="alert">{error}</p>}
+      {hints.map(h => <p key={h} className="muted">{h}</p>)}
 
       <section>
         <h2>Your searches</h2>
