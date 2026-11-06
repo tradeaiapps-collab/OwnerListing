@@ -1,5 +1,5 @@
 /**
- * Full text of the OwnerListing Terms and Privacy. Plain data, rendered by app/terms/page.tsx.
+ * Full text of the Terms and Privacy. Plain data, rendered by app/terms/page.tsx.
  * Bump TERMS_TEXT_VERSION whenever the text changes, and add a matching terms_version row.
  * DRAFT: Australian counsel must review before publication (docs/COUNSEL_QUESTIONS.md).
  */
@@ -21,7 +21,7 @@ export const TERMS_PARTS: readonly TermsPart[] = [
         id: "about",
         title: "1.1 About these terms",
         paragraphs: [
-          `These terms are an agreement between you and ${TERMS_OPERATOR} ("OwnerListing", "we", "us"). They cover the website, the mobile app and every related service (the "Platform"). By creating an account, posting, or using the Platform after signing in, you agree to them together with the privacy section (Part 4) and cookie policy (4.7).`,
+          `These terms are an agreement between you and ${TERMS_OPERATOR} ("we", "us"). They cover the website, the mobile app and every related service (the "Platform"). By creating an account, posting, or using the Platform after signing in, you agree to them together with the privacy section (Part 4) and cookie policy (4.7).`,
           "If you do not agree, do not use the Platform. Browsing public listings does not need an account.",
         ],
       },
@@ -29,7 +29,7 @@ export const TERMS_PARTS: readonly TermsPart[] = [
         id: "what",
         title: "1.2 What the Platform does",
         paragraphs: [
-          "OwnerListing is an online marketplace where owners list their own property for sale or rent, buyers and renters find and contact them, and approved contractors (for example photographers, inspectors and solicitors) and licensed agents can be engaged. We provide tools for listings, enquiries, chat, offers, documents, contracts and reports.",
+          "The Platform is an online marketplace where owners list their own property for sale or rent, buyers and renters find and contact them, and approved contractors (for example photographers, inspectors and solicitors) and licensed agents can be engaged. We provide tools for listings, enquiries, chat, offers, documents, contracts and reports.",
           "We also provide an AI assistant. It can draft replies, summarise enquiries, compare offers and prepare reports. You decide what to send and what to accept.",
         ],
       },
