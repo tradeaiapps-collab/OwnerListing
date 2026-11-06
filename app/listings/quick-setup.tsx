@@ -13,7 +13,7 @@ const TYPES = ["image/jpeg", "image/png", "image/webp"];
 const MB = PHOTO_LIMITS.maxBytes / 1_000_000;
 const STEPS = ["Photos", "Site plan", "Describe"] as const;
 
-function problem(f: File): string | null {
+export function problem(f: File): string | null {
   if (!TYPES.includes(f.type)) return `${f.name}: only JPEG, PNG or WebP images.`;
   if (f.size === 0) return `${f.name}: the file is empty.`;
   if (f.size > PHOTO_LIMITS.maxBytes) return `${f.name}: larger than ${MB} MB.`;
@@ -21,7 +21,7 @@ function problem(f: File): string | null {
 }
 
 /** Thumbnail that frees its object URL when it goes away. */
-function Thumb({ file, onRemove }: { file: File; onRemove: () => void }) {
+export function Thumb({ file, onRemove }: { file: File; onRemove: () => void }) {
   const [url, setUrl] = useState("");
   useEffect(() => { const u = URL.createObjectURL(file); setUrl(u); return () => URL.revokeObjectURL(u); }, [file]);
   return (
