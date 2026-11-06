@@ -35,6 +35,9 @@ export default function SavedSearches() {
   const [signedOut, setSignedOut] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [confirmId, setConfirmId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState("");
 
   useEffect(() => {
     Promise.all([fetch("/api/buyer/saved-searches"), fetch("/api/buyer/alert-preferences")])
@@ -66,6 +69,21 @@ export default function SavedSearches() {
       setError("Could not save the search.");
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function onDelete(id: string) {
+    setDeletingId(id);
+    setDeleteError("");
+    try {
+      const res = await fetch(`/api/buyer/saved-searches/${encodeURIComponent(id)}`, { method: "DELETE" });
+      if (res.status === 401) setSignedOut(true);
+      else if (res.ok || res.status === 404) { setSearches(list => list.filter(x => x.id !== id)); setConfirmId(null); }
+      else setDeleteError("Could not delete the search. Please try again.");
+    } catch {
+      setDeleteError("Could not delete the search. Please try again.");
+    } finally {
+      setDeletingId(null);
     }
   }
 
@@ -149,7 +167,28 @@ export default function SavedSearches() {
 
       <section>
         <h2>Your searches</h2>
-        {searches.length === 0 ? <p className="empty">No saved searches yet.</p> : <ul className="card-list">{searches.map(s => <li key={s.id}><span>{summarise(s)}</span> <a className="button" href={savedSearchHref(s)}>View listings</a></li>)}</ul>}
+        {searches.length === 0 ? <p className="empty">No saved searches yet.</p> : (
+          <ul className="card-list">
+            {searches.map(s => (
+              <li key={s.id} className="ss-row">
+                <span className="ss-text">{summarise(s)}</span>
+                 <a className="button" href={savedSearchHref(s)}>View listings</a>
+                {confirmId === s.id ? (
+                  <span className="ss-confirm" role="group" aria-label="Confirm delete">
+                    <span id={`ss-q-${s.id}`}>Delete this search?</span>
+                    <button type="button" className="secondary" disabled={deletingId === s.id} onClick={() => { setConfirmId(null); setDeleteError(""); }}>Cancel</button>
+                    <button type="button" className="danger" aria-describedby={`ss-q-${s.id}`} disabled={deletingId === s.id} onClick={() => void onDelete(s.id)}>{deletingId === s.id ? "Deleting…" : "Delete"}</button>
+                  </span>
+                ) : (
+                  <button type="button" className="secondary ss-trash" aria-label={`Delete saved search: ${summarise(s)}`} title="Delete" disabled={deletingId !== null} onClick={() => { setConfirmId(s.id); setDeleteError(""); }}>
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6" /></svg>
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+        {deleteError && <p role="alert">{deleteError}</p>}
       </section>
 
       <section>

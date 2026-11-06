@@ -143,7 +143,7 @@ export default function EditListing() {
           {saved && savedFlags.map(f => <WordingFlagList key={f.field} field={f.field} flags={f.flags} />)}
           {error && <p role="alert">{error}</p>}
           <PhotoManager listingId={listing.id} />
-          <LocationPicker listingId={listing.id} latitude={listing.latitude} longitude={listing.longitude} />
+          <LocationPicker listingId={listing.id} address={listing.address} latitude={listing.latitude} longitude={listing.longitude} />
           <section className="panel">
             {listing.transactionType === "rent" && <BondPathwayField value={bond} state={bondState} onChange={saveBond} />}
             <p><a href={`/listings/${listing.id}/disclosures`}>Required disclosures for your state</a></p>
