@@ -516,3 +516,26 @@ button.role-item:hover:not(:disabled), a.role-item:hover, .role-item:focus-visib
 .role-card-text { display: grid; gap: var(--space-1); min-width: 0; flex: 1 1 220px; }
 .role-card-text strong { display: flex; align-items: center; gap: var(--space-2); }
 @media (max-width: 640px) { .role-switch-hint { display: none; } .role-switch-btn { padding: 0 var(--space-2); } }
+.ela-done { margin: 0 0 var(--space-3); padding: var(--space-2) var(--space-3); border-radius: var(--radius); background: var(--surface); border: 1px solid var(--border); font-size: 0.875rem; }
+.ela-count { font-weight: 400; font-size: 0.8125rem; margin-left: var(--space-2); }
+.ela-answer { display: grid; gap: var(--space-3); }
+.ela-answer input, .ela-answer textarea { width: 100%; }
+.ela-num { min-width: 44px; min-height: 44px; }
+.qs-tabs { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-bottom: var(--space-4); }
+.qs-tabs > button { flex: 1 1 14rem; min-height: 44px; }
+.qs-head { display: flex; gap: var(--space-3); align-items: flex-start; }
+.qs-head > div { flex: 1; min-width: 0; }
+.qs-steps { list-style: none; margin: var(--space-4) 0; padding: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-2); }
+.qs-steps button { width: 100%; min-height: 44px; font-size: 0.875rem; padding-inline: var(--space-2); }
+.qs-steps li.on button { background: var(--navy, #1a2040); color: #fff; }
+.qs-body { min-height: 12rem; }
+.qs-body h3 { margin: 0 0 var(--space-2); font-size: 1rem; }
+.qs-opt { font-weight: 400; font-size: 0.8125rem; margin-left: var(--space-2); }
+.qs-thumbs { list-style: none; margin: var(--space-3) 0 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(88px, 1fr)); gap: var(--space-2); }
+.qs-thumb { position: relative; aspect-ratio: 1; border-radius: var(--radius); overflow: hidden; border: 1px solid var(--border); }
+.qs-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.qs-thumb button { position: absolute; top: 4px; right: 4px; min-height: 32px; min-width: 32px; padding: 0; border-radius: 50%; line-height: 1; }
+.qs-foot { display: flex; flex-wrap: wrap; gap: var(--space-3); justify-content: space-between; align-items: center; margin-top: var(--space-4); padding-top: var(--space-4); border-top: 1px solid var(--line); }
+.qs-nav { display: flex; gap: var(--space-2); }
+.qs-result { margin-bottom: var(--space-4); }
+@media (max-width: 479px) { .qs-foot { flex-direction: column-reverse; align-items: stretch; } .qs-nav { flex-direction: column-reverse; } .qs-nav > button, .qs-foot > button { width: 100%; } }
