@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { beforeEach, describe, expect, it } from "vitest";
 import { QLD_DRAFT_VERSIONS, SEED_NOTE, getRequiredDisclosureKeys } from "../src/config/disclosures";
+import { STATE_DRAFT_VERSIONS, STATE_SEED_NOTE } from "../src/config/disclosures-states";
 import {
   approvalBlocker, buildChecklist, itemsFor, parseItems, parseNewVersion, parseSubmission, requiredKeys, type DisclosureItem, type DisclosureRecord
 } from "../src/domain/disclosure-config";
@@ -165,5 +166,30 @@ describe("publish gate with versioned requirements", () => {
     const r = await publishListing(deps, owner, l.id, true);
     expect(r.ok && r.value.decision.allowed).toBe(true);
     expect(marked).toEqual([]);
+  });
+});
+
+describe("other states seed", () => {
+  it("covers NSW, VIC, SA, WA, TAS, ACT and NT residential sale, each valid with unique keys", () => {
+    expect(STATE_DRAFT_VERSIONS.map(v => v.jurisdiction).sort()).toEqual(["ACT", "NSW", "NT", "SA", "TAS", "VIC", "WA"]);
+    const keys = new Set<string>();
+    for (const v of STATE_DRAFT_VERSIONS) {
+      expect(`${v.transactionType}:${v.useClass}`).toBe("sale:residential");
+      expect(parseItems(v.items)).toEqual({ ok: true, value: v.items });
+      expect(requiredKeys(v.items, "house").length).toBeGreaterThan(0);
+      for (const i of v.items) { expect(keys.has(i.key)).toBe(false); keys.add(i.key); }
+    }
+  });
+
+  it("matches its migration exactly, and the migration seeds drafts only", () => {
+    const sql = readFileSync("db/20261106120000_state_disclosure_drafts.sql", "utf8");
+    const rows = [...sql.matchAll(/\('(\w+)', 'sale', 'residential', 1, '((?:[^']|'')*)'::jsonb, '(\w+)', '((?:[^']|'')*)'\)/g)];
+    expect(rows).toHaveLength(STATE_DRAFT_VERSIONS.length);
+    for (const [, j, json, status, note] of rows) {
+      const v = STATE_DRAFT_VERSIONS.find(x => x.jurisdiction === j)!;
+      expect(JSON.parse(json!.replace(/''/g, "'"))).toEqual(JSON.parse(JSON.stringify(v.items)));
+      expect(status).toBe("draft");
+      expect(note!.replace(/''/g, "'")).toBe(STATE_SEED_NOTE);
+    }
   });
 });
