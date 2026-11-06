@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { classifyTour } from "../../src/domain/virtual-tour";
-import { FEATURE_LIMITS, PHOTO_BASE, PHOTO_CATEGORIES, PHOTO_LIMITS, PROJECT_PHOTO_MAX, isPhotoCategory, makeCover, moveEntry, photoUrl, type PhotoKind, type PhotoView } from "../../src/domain/listing-photos";
+import { FEATURE_LIMITS, PHOTO_BASE, PHOTO_CATEGORIES, PHOTO_LIMITS, PROFANITY_MESSAGE, PROJECT_PHOTO_MAX, findProfanity, isPhotoCategory, makeCover, moveEntry, photoUrl, type PhotoKind, type PhotoView } from "../../src/domain/listing-photos";
 import { JSON_HEADERS } from "./ui";
 import "../styles/gallery.css";
 
@@ -52,6 +52,9 @@ export function PhotoManager({ listingId, projectId }: { listingId?: string; pro
   const [drag, setDrag] = useState<number | null>(null);
   const [target, setTarget] = useState<number | null>(null);
   const input = useRef<HTMLInputElement>(null);
+  /** Photos whose text the owner has checked (left a field) and photos where they chose to post flagged wording anyway. */
+  const [checked, setChecked] = useState<ReadonlySet<string>>(new Set());
+  const [allowed, setAllowed] = useState<ReadonlySet<string>>(new Set());
   const [elena, setElena] = useState<{ busy: boolean; message: string; items: Suggestion[]; label: string }>({ busy: false, message: "", items: [], label: "" });
 
   const load = useCallback(async () => {
@@ -69,6 +72,8 @@ export function PhotoManager({ listingId, projectId }: { listingId?: string; pro
   useEffect(() => { void load(); }, [load]);
 
   const change = (next: Row[]) => { setRows(next); setDirty(true); setStatus(""); };
+  const flagged = (r: Row) => !isProject && findProfanity([r.caption, r.alt, ...r.features].join(" . ")).length > 0;
+  const markChecked = (id: string) => setChecked(prev => new Set(prev).add(id));
   const patch = (i: number, p: Partial<Row>) => change(rows.map((r, j) => (j === i ? { ...r, ...p } : r)));
   const move = (from: number, to: number) => {
     change(moveEntry(rows, from, to));
@@ -134,10 +139,17 @@ export function PhotoManager({ listingId, projectId }: { listingId?: string; pro
 
   async function save() {
     if (!data) return;
+    const blocked = rows.filter(r => flagged(r) && !allowed.has(r.id));
+    if (blocked.length) {
+      setChecked(prev => new Set([...prev, ...blocked.map(r => r.id)]));
+      setError(`${PROFANITY_MESSAGE} (${blocked.map(r => `photo ${rows.indexOf(r) + 1}`).join(", ")})`);
+      return;
+    }
     setBusy(true); setError(""); setStatus("");
     try {
       const entries = rows.map(r => ({ photoId: r.id, caption: r.caption, alt: r.alt, hidden: r.hidden, ...(isProject ? {} : { category: r.category, features: r.features }) }));
-      const body = isProject ? { version: data.version, entries } : { version: data.version, tourUrl: tour.trim() || null, entries };
+      const override = rows.some(r => flagged(r));
+      const body = isProject ? { version: data.version, entries } : { version: data.version, tourUrl: tour.trim() || null, entries, ...(override ? { allowFlagged: true } : {}) };
       const r = await fetch(layoutUrl, { method: "PUT", headers: JSON_HEADERS, body: JSON.stringify(body) });
       if (r.ok) {
         const review = isProject && (await r.json().catch(() => ({}))).backToReview === true;
@@ -265,16 +277,25 @@ export function PhotoManager({ listingId, projectId }: { listingId?: string; pro
                       </label>
                     )}
                     <label>Caption (shown under the photo)
-                      <input value={r.caption} maxLength={PHOTO_LIMITS.captionMax} onChange={e => patch(i, { caption: e.target.value })} placeholder="e.g. Kitchen with stone benchtop" />
+                      <input value={r.caption} maxLength={PHOTO_LIMITS.captionMax} onChange={e => patch(i, { caption: e.target.value })} onBlur={() => markChecked(r.id)} aria-invalid={checked.has(r.id) && flagged(r) && !allowed.has(r.id) ? true : undefined} placeholder="e.g. Kitchen with stone benchtop" />
                     </label>
                     <label>Description for screen readers
-                      <input value={r.alt} maxLength={PHOTO_LIMITS.altMax} onChange={e => patch(i, { alt: e.target.value })} placeholder="What the photo shows" />
+                      <input value={r.alt} maxLength={PHOTO_LIMITS.altMax} onChange={e => patch(i, { alt: e.target.value })} onBlur={() => markChecked(r.id)} aria-invalid={checked.has(r.id) && flagged(r) && !allowed.has(r.id) ? true : undefined} placeholder="What the photo shows" />
                     </label>
                     {!isProject && r.kind === "photo" && (
                       <label>Features (comma separated, up to {FEATURE_LIMITS.maxPerPhoto})
                         <input defaultValue={r.features.join(", ")} key={`${r.id}:${r.features.join("|")}`} maxLength={FEATURE_LIMITS.maxPerPhoto * (FEATURE_LIMITS.maxChars + 2)} placeholder="e.g. stone benchtop, gas cooktop"
-                          onChange={() => setDirty(true)} onBlur={e => patch(i, { features: e.target.value.split(",").map(x => x.trim()).filter(Boolean).slice(0, FEATURE_LIMITS.maxPerPhoto) })} />
+                          onChange={() => setDirty(true)} onBlur={e => { patch(i, { features: e.target.value.split(",").map(x => x.trim()).filter(Boolean).slice(0, FEATURE_LIMITS.maxPerPhoto) }); markChecked(r.id); }} />
                       </label>
+                    )}
+                    {checked.has(r.id) && flagged(r) && (
+                      allowed.has(r.id)
+                        ? <p className="muted" role="status">Posting this wording anyway. <button type="button" className="secondary" onClick={() => setAllowed(prev => { const n = new Set(prev); n.delete(r.id); return n; })}>Undo</button></p>
+                        : (
+                          <p className="gl-warn" role="alert">{PROFANITY_MESSAGE}{" "}
+                            <button type="button" className="secondary" onClick={() => setAllowed(prev => new Set(prev).add(r.id))}>Post anyway (for example a product or street name)</button>
+                          </p>
+                        )
                     )}
                     <div className="gl-tools">
                       <button type="button" className="secondary" disabled={busy || i === 0} onClick={() => move(i, i - 1)} aria-label={`Move ${label} up`}>Up</button>
