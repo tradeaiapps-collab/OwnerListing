@@ -7,6 +7,7 @@ import { getEnquiryDeps } from "../../../../../src/server/enquiry-db";
 import { failure, unauthenticated } from "../../../../../src/server/http";
 import { screenWithDefaults } from "../../../../../src/server/message-safety";
 import { moderateSentMessage } from "../../../../../src/server/message-moderation-db";
+import { listingNumberPg } from "../../../../../src/server/listing-number";
 import { notifyEnquiryMessage } from "../../../../../src/server/notifier";
 import { requireCurrentTerms } from "../../../../../src/server/terms-guard";
 import { withApi } from "../../../../../src/server/api/with-api";
@@ -24,7 +25,10 @@ async function handleGet(req: Request, { params }: Ctx) {
   const { id } = await params;
   if (!isUuid(id)) return failure(notFound);
   const r = await getThread(getEnquiryDeps(), actor, id);
-  return r.ok ? NextResponse.json(r.value) : failure(r);
+  if (!r.ok) return failure(r);
+  // The listing's public number, shown at the top of the chat. Absent when the lookup fails; the chat still works.
+  const number = await listingNumberPg(getDb(), r.value.enquiry.listingId).catch(() => undefined);
+  return NextResponse.json({ ...r.value, ...(number ? { listingNumber: number } : {}) });
 }
 
 /** Adds a message to the thread. Body: { "body": "text" }. */
