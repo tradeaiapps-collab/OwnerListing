@@ -171,7 +171,8 @@ export default function SavedSearches() {
           <ul className="card-list">
             {searches.map(s => (
               <li key={s.id} className="ss-row">
-                <span className="ss-text">{summarise(s)} <a href={savedSearchHref(s)}>View matches</a></span>
+                <span className="ss-text">{summarise(s)}</span>
+                 <a className="button" href={savedSearchHref(s)}>View listings</a>
                 {confirmId === s.id ? (
                   <span className="ss-confirm" role="group" aria-label="Confirm delete">
                     <span id={`ss-q-${s.id}`}>Delete this search?</span>
@@ -205,7 +206,7 @@ export default function SavedSearches() {
           </label>
         ))}
       </section>
-      <p><a href="/listings">View listings</a></p>
+      <p><a href="/listings">Browse all listings</a></p>
     </main>
   );
 }

@@ -597,6 +597,56 @@ async function seedOwnerExamples(client) {
   console.log(made ? `Example listings created: ${made} for ${email}.` : `Example listings already present for ${email}.`);
 }
 
+// ---- 30 more varied listings (browse and saved-search testing) -------------------------------------------------------
+// Sale and rent across all eight states, every property type, 0-6 bedrooms, so saved searches have something to filter.
+// Idempotent per address. Photos and map pins come from the shared seedPhotos / listing coordinates below.
+const MORE_LISTINGS = [
+  // [state, suburb, postcode, street, type, sale|rent, price (AUD, weekly for rent), beds, baths, cars, lat, lng]
+  ["QLD", "Bulimba", "4171", "14 Oxford St", "house", "sale", 1850000, 5, 3, 2, -27.4488, 153.0584], ["QLD", "Teneriffe", "4005", "22/9 Macquarie St", "unit", "sale", 695000, 2, 2, 1, -27.4558, 153.0463],
+  ["QLD", "Ascot", "4007", "61 Lancaster Rd", "house", "rent", 1100, 4, 2, 2, -27.4300, 153.0600], ["QLD", "Southport", "4215", "7/30 Seaworld Dr", "unit", "rent", 620, 1, 1, 1, -27.9660, 153.4290],
+  ["QLD", "Noosaville", "4566", "5 Gympie Tce", "townhouse", "sale", 1250000, 3, 2, 2, -26.3970, 153.0620], ["QLD", "Springfield Lakes", "4300", "18 Brookside Ct", "land", "sale", 420000, 0, 0, 0, -27.6840, 152.9060],
+  ["NSW", "Manly", "2095", "12 Ocean Pde", "unit", "sale", 1480000, 2, 2, 1, -33.7970, 151.2880], ["NSW", "Parramatta", "2150", "310/8 Church St", "unit", "rent", 560, 1, 1, 0, -33.8150, 151.0010],
+  ["NSW", "Newtown", "2042", "27 Camden St", "townhouse", "sale", 1690000, 3, 2, 1, -33.8970, 151.1790], ["NSW", "Penrith", "2750", "44 High St", "house", "sale", 890000, 4, 2, 2, -33.7510, 150.6940],
+  ["NSW", "Newcastle", "2300", "9 Hunter St", "house", "rent", 780, 3, 1, 1, -32.9270, 151.7760], ["NSW", "Bondi Junction", "2022", "2/88 Oxford St", "unit", "rent", 850, 2, 1, 0, -33.8930, 151.2480],
+  ["VIC", "Brighton", "3186", "19 Bay St", "house", "sale", 3250000, 5, 4, 3, -37.9060, 144.9960], ["VIC", "Carlton", "3053", "3/150 Lygon St", "unit", "rent", 520, 1, 1, 0, -37.7990, 144.9670],
+  ["VIC", "Footscray", "3011", "41 Barkly St", "townhouse", "sale", 780000, 3, 2, 2, -37.8000, 144.8990], ["VIC", "Geelong", "3220", "6 Moorabool St", "house", "sale", 720000, 4, 2, 2, -38.1490, 144.3600],
+  ["VIC", "St Kilda", "3182", "12/20 Acland St", "unit", "sale", 560000, 1, 1, 0, -37.8680, 144.9810], ["VIC", "Richmond", "3121", "88 Swan St", "house", "rent", 950, 3, 2, 1, -37.8240, 144.9990],
+  ["WA", "Cottesloe", "6011", "4 Marine Pde", "house", "sale", 2950000, 5, 3, 2, -31.9950, 115.7510], ["WA", "Perth", "6000", "1204/1 Barrack Sq", "unit", "rent", 700, 2, 2, 1, -31.9570, 115.8590],
+  ["WA", "Fremantle", "6160", "15 South Tce", "townhouse", "sale", 910000, 3, 2, 1, -32.0570, 115.7480], ["SA", "Glenelg", "5045", "31 Moseley St", "house", "sale", 1380000, 4, 2, 2, -34.9810, 138.5160],
+  ["SA", "Adelaide", "5000", "9/60 Gouger St", "unit", "rent", 480, 1, 1, 0, -34.9290, 138.5960], ["SA", "Norwood", "5067", "23 The Parade", "house", "rent", 690, 3, 1, 1, -34.9210, 138.6330],
+  ["TAS", "Sandy Bay", "7005", "17 Churchill Ave", "house", "sale", 1050000, 4, 2, 2, -42.8990, 147.3250], ["TAS", "Launceston", "7250", "5 George St", "townhouse", "rent", 560, 2, 1, 1, -41.4370, 147.1390],
+  ["ACT", "Kingston", "2604", "11/3 Giles St", "unit", "sale", 640000, 2, 1, 1, -35.3150, 149.1450], ["ACT", "Gungahlin", "2912", "28 Hibberson St", "house", "rent", 720, 4, 2, 2, -35.1850, 149.1330],
+  ["NT", "Darwin City", "0800", "14/2 Smith St", "unit", "rent", 520, 2, 1, 1, -12.4630, 130.8420], ["NT", "Fannie Bay", "0820", "8 Aralia St", "house", "sale", 970000, 4, 2, 2, -12.4290, 130.8350]
+];
+async function seedMoreListings(client) {
+  const email = "more.listings@demo.invalid";
+  let owner = (await client.query(`SELECT id FROM app_user WHERE email = $1`, [email])).rows[0]?.id;
+  if (!owner) {
+    owner = (await client.query(`INSERT INTO app_user (email, display_name, user_type, status) VALUES ($1, 'Dana Wright (owner, 30 more listings)', 'owner', 'active') RETURNING id`, [email])).rows[0].id;
+    await client.query(`INSERT INTO terms_acceptance (user_id, version) VALUES ($1, '2026-10-24')`, [owner]);
+  }
+  const ta = (await client.query(`SELECT id FROM trust_account WHERE approved_at IS NOT NULL ORDER BY approved_at LIMIT 1`)).rows[0]?.id;
+  if (!ta) { console.log("More listings skipped: no approved trust account yet."); return; }
+  let made = 0;
+  for (const [i, [state, suburb, postcode, street, type, tx, price, beds, baths, cars, lat, lng]] of MORE_LISTINGS.entries()) {
+    const address = `${street}, ${suburb} ${state} ${postcode}`;
+    if ((await client.query(`SELECT 1 FROM property_listing WHERE owner_user_id = $1 AND address_text = $2`, [owner, address])).rowCount) continue;
+    const kind = type === "land" ? "Vacant block" : `${beds}-bedroom ${type}`;
+    const title = `${kind.charAt(0).toUpperCase() + kind.slice(1)} in ${suburb}`;
+    const pid = (await client.query(
+      `INSERT INTO property (address_text, state, suburb, postcode, use_class, property_type, bedrooms, bathrooms, car_spaces, latitude, longitude)
+       VALUES ($1, $2, $3, $4, 'residential', $5, $6, $7, $8, $9, $10) RETURNING id`, [address, state, suburb, postcode, type, beds, baths, cars, lat, lng])).rows[0].id;
+    const lid = (await client.query(
+      `INSERT INTO property_listing (owner_user_id, jurisdiction, transaction_type, use_class, property_type, title, description, address_text, suburb, postcode, price_cents,
+         bedrooms, bathrooms, parking, latitude, longitude, property_id, status, listing_fee_paid, terms_accepted, created_at)
+       VALUES ($1, $2, $3, 'residential', $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, 'published', true, true, now() - $17::int * interval '1 day') RETURNING id`,
+      [owner, state, tx, type, title, `Demo listing in ${suburb}. Example data for browsing and saved-search testing.`, address, suburb, postcode, price * 100, beds, baths, cars, lat, lng, pid, 1 + i])).rows[0].id;
+    await client.query(`INSERT INTO trust_account_check (listing_id, trust_account_id, decision, evidence, reasons) VALUES ($1, $2, 'approved', '{}', '["Demo data"]')`, [lid, ta]);
+    made++;
+  }
+  console.log(made ? `More listings created: ${made} for ${email}.` : `More listings already present for ${email}.`);
+}
+
 // ---- Open inspection times for the Bondi demo listing ----------------------------------------------------------------
 // Published by the owner (Sarah): a weekly Saturday morning session plus a few one-off dates over the next three weeks
 // (evening, morning and afternoon). Dates are relative to today in Sydney time. Idempotent: skipped once the listing has times.
@@ -814,6 +864,7 @@ try {
     await seedInvestor(db);
     await seedPerformanceAndMessages(db);
     await seedOwnerExamples(db);
+    await seedMoreListings(db);
     await seedPhotos(db);
     await seedLocations(db);
     await seedFiles(db);
@@ -944,6 +995,7 @@ try {
   await seedInvestor(db);
   await seedPerformanceAndMessages(db);
   await seedOwnerExamples(db);
+  await seedMoreListings(db);
   await seedPhotos(db);
   await seedLocations(db);
   await seedFiles(db);
