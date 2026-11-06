@@ -11,7 +11,7 @@ import { ElenaPublishCheck } from "../../elena-publish-check";
 
 type Loaded = ListingDefaults & { id: string; status: string; latitude?: number; longitude?: number };
 type FieldFlags = { field: string; flags: WordingFlagView[] };
-type Suggestion = { state: "ready"; text: string; label: string } | { state: "unavailable"; message: string };
+type Suggestion = { state: "ready"; text: string; label: string } | { state: "unavailable"; message: string; reason?: string };
 
 /** Owner asks the self-hosted AI for a draft description. Shown as text to copy and edit; never saved or published from here. */
 function SuggestDescription({ id }: { id: string }) {

@@ -52,6 +52,16 @@ export const MAX_OWNER_NOTES = 1000;
 const MAX_SUGGESTION = 2500;
 export const DESCRIPTION_UNAVAILABLE = "AI unavailable: write the description yourself, or try again later.";
 
+/** Why no suggestion came back. Each reason has its own plain message so the owner knows what to do next. */
+export type DescriptionUnavailableReason = "off" | "busy" | "timeout" | "unreachable" | "rejected";
+export const DESCRIPTION_MESSAGES: Record<DescriptionUnavailableReason, string> = {
+  off: "AI suggestions are not switched on for this site yet. Write the description yourself; a super admin can turn AI on at Staff, AI.",
+  busy: "AI unavailable: the AI is busy with other requests. Wait a minute and try again.",
+  timeout: "AI unavailable: the AI took too long to answer. Try again, or use shorter notes.",
+  unreachable: "AI unavailable: the AI service could not be reached right now. Try again later, or write the description yourself.",
+  rejected: "The AI wrote something that failed our safety checks (for example contact details or a link). Try again with different notes, or write the description yourself."
+};
+
 export const DESCRIPTION_SYSTEM_PROMPT = [
   "Task: draft a short, factual property listing description (80 to 180 words) for the owner to edit.",
   "Use only the facts and owner notes given. Never invent features, measurements, prices, condition or history.",
@@ -80,16 +90,21 @@ export function checkSuggestion(text: string): boolean {
 
 export type DescriptionSuggestion =
   | { state: "ready"; text: string; label: typeof AI_SUGGESTION_LABEL }
-  | { state: "unavailable"; message: string };
+  | { state: "unavailable"; message: string; reason: DescriptionUnavailableReason };
 
-/** Never throws: AI off, an engine error or text failing the checks all give "AI unavailable". Nothing is saved or published. */
+const unavailable = (reason: DescriptionUnavailableReason): DescriptionSuggestion => ({ state: "unavailable", message: DESCRIPTION_MESSAGES[reason], reason });
+
+/** Never throws: AI off, an engine error or text failing the checks give an "unavailable" state with the reason. Nothing is saved or published. */
 export async function suggestDescription(engine: AiEnginePort, facts: DescriptionFacts, ownerNotes = ""): Promise<DescriptionSuggestion> {
-  const unavailable: DescriptionSuggestion = { state: "unavailable", message: DESCRIPTION_UNAVAILABLE };
-  if (!isEngineUsable(engine)) return unavailable;
+  if (!isEngineUsable(engine)) return unavailable("off");
   try {
     const text = (await engine.generate(buildDescriptionPrompt(facts, ownerNotes), { system: DESCRIPTION_SYSTEM_PROMPT, maxTokens: 400 })).trim();
-    return checkSuggestion(text) ? { state: "ready", text, label: AI_SUGGESTION_LABEL } : unavailable;
-  } catch {
-    return unavailable;
+    return checkSuggestion(text) ? { state: "ready", text, label: AI_SUGGESTION_LABEL } : unavailable("rejected");
+  } catch (e) {
+    const code = (e as { code?: unknown } | null)?.code;
+    if (code === "busy") return unavailable("busy");
+    if (code === "timeout") return unavailable("timeout");
+    if (code === "too_large") return unavailable("rejected");
+    return unavailable("unreachable");
   }
 }

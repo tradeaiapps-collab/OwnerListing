@@ -4,7 +4,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import {
   AiUnavailableError, checkEndpoint, createOllamaEngine, MAX_RESPONSE_BYTES, readAiConfig, type OllamaConfig
 } from "../src/adapters/ollama-engine";
-import { BASE_SYSTEM_PROMPT, fenceData, isEngineUsable } from "../src/domain/ai-engine";
+import { BASE_SYSTEM_PROMPT, fenceData, isEngineUsable, rulesOnlyEngine } from "../src/domain/ai-engine";
 import { AI_SUGGESTION_LABEL } from "../src/domain/ai-engine";
 import { DESCRIPTION_SYSTEM_PROMPT, suggestDescription } from "../src/domain/ai-description";
 import { checkAiSummary, compareOffers, requestAiSummary } from "../src/domain/offer-analysis";
@@ -169,6 +169,15 @@ describe("prompt-injection hardening", () => {
   it("engine failures never throw into pages", async () => {
     handler = (_q, _b, res) => { res.writeHead(200); res.end("garbage"); };
     await expect(suggestDescription(createOllamaEngine(cfg()), facts)).resolves.toMatchObject({ state: "unavailable" });
+  });
+  it("suggest description says why it is unavailable: off, unreachable, rejected", async () => {
+    const off = await suggestDescription(rulesOnlyEngine, facts, "x");
+    expect(off).toMatchObject({ state: "unavailable", reason: "off" });
+    expect(off.state === "unavailable" && off.message).toContain("not switched on");
+    handler = (_q, _b, res) => { res.writeHead(500); res.end("no"); };
+    expect(await suggestDescription(createOllamaEngine(cfg()), facts, "x")).toMatchObject({ reason: "unreachable" });
+    handler = reply("Call 0412 345 678 today.");
+    expect(await suggestDescription(createOllamaEngine(cfg()), facts, "x")).toMatchObject({ reason: "rejected" });
   });
 });
 
