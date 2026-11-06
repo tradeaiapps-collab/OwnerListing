@@ -167,7 +167,7 @@ export default function SavedSearches() {
           </label>
         ))}
       </section>
-      <p><a href="/listings">View listings</a></p>
+      <p className="ss-cta"><a className="button" href="/listings">View listings →</a></p>
     </main>
   );
 }

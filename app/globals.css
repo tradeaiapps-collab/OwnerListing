@@ -557,3 +557,6 @@ button.role-item:hover:not(:disabled), a.role-item:hover, .role-item:focus-visib
 .elena-search .es-out p, .elena-search .es-out li { color: var(--text); }
 /* Empty-state copy was left-aligned inside a centred box because of the 72ch paragraph cap; centre the block. */
 .empty p, .cmp-empty p { margin-inline: auto; }
+
+.ss-cta { margin-top: var(--space-6); }
+@media (max-width: 479px) { .ss-cta .button { width: 100%; } }
