@@ -1,7 +1,9 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "./icons";
-import RoleSwitcher from "./role-switcher";
+import RoleSwitcher, { loadRoles } from "./role-switcher";
+import { roleNav } from "../src/domain/role-nav";
+import type { UserRole } from "../src/domain/roles";
 import ThemeToggle from "./theme-toggle";
 import { NAV_CATALOG, type IconStyle, type NavItem } from "../src/domain/site-theme";
 
@@ -14,7 +16,7 @@ type Who = "loading" | "out" | "staff" | "owner" | "buyer";
 export default function SiteNav({ items, iconStyle, signInHref, themeToggle }: { items?: NavItem[]; iconStyle?: IconStyle; signInHref?: "/dev-login"; themeToggle?: boolean }) {
   const [who, setWho] = useState<Who>("loading");
   const [invest, setInvest] = useState(false);
-  const [unread, setUnread] = useState(0);
+  const [role, setRole] = useState<UserRole | null>(null);
   // Phone menu. `ready` flips on after hydration, so without JavaScript every link stays visible (CSS only collapses when data-js is set).
   const [ready, setReady] = useState(false);
   const [open, setOpen] = useState(false);
@@ -49,7 +51,7 @@ export default function SiteNav({ items, iconStyle, signInHref, themeToggle }: {
         window.location.assign(`/mfa?next=${encodeURIComponent(window.location.pathname + window.location.search)}`);
       } else if (me?.user) {
         setWho(me.user.userType === "buyer" ? "buyer" : "owner");
-        void get("/api/notifications?limit=1").then(n => setUnread(typeof n?.unread === "number" ? n.unread : 0));
+        void loadRoles().then(r => setRole(r?.currentRole ?? (me.user.userType === "buyer" ? "buyer" : me.user.userType === "agent" ? "agent" : "owner")));
       }
       else setWho("out");
     });
@@ -60,6 +62,9 @@ export default function SiteNav({ items, iconStyle, signInHref, themeToggle }: {
     window.location.assign("/");
   };
 
+  // Signed-in people get the focused menu for the role they are viewing as; it updates on the reload that follows a role switch.
+  const pending = (who === "owner" || who === "buyer") && role === null;
+  const signedIn = (who === "owner" || who === "buyer") && role !== null;
   const owner = who === "owner" || who === "out";
   const buyer = who === "buyer" || who === "out";
   const shown: Record<string, boolean> = {
@@ -76,25 +81,12 @@ export default function SiteNav({ items, iconStyle, signInHref, themeToggle }: {
         <span>Menu</span>
       </button>
       <div className="site-nav-links" id="site-nav-links">
-      {list.map(it => {
+      {signedIn ? roleNav(role).filter(it => invest || (it.id !== "projects" && it.id !== "portfolio")).map(it => <a key={it.id} href={it.href}>{it.label}</a>) : pending ? null : list.map(it => {
         const def = NAV_CATALOG.find(n => n.id === it.id);
         if (!def || !it.visible || !shown[it.id]) return null;
         const href = it.id === "signin" && signInHref ? signInHref : def.href;
         return <a key={it.id} href={href}><Icon name={def.icon} style={style} />{it.label}</a>;
       })}
-      {/* Not in the admin nav catalogue on purpose: shown only while the investor module is live (status answers 404 when off). */}
-      {invest && who !== "loading" && <a href="/investments">Investor projects</a>}
-      {/* Not in the admin nav catalogue: adding an id there would invalidate every saved theme's navigation list. */}
-      {who === "buyer" && <a href="/offers">My offers</a>}
-      {(who === "owner" || who === "buyer") && <a href="/client/portal">My portal</a>}
-      {(who === "owner" || who === "buyer") && <a href="/notifications">Notifications{unread > 0 ? <span className="nt-badge nt-bell-badge" aria-label={`${unread} unread`}>{unread}</span> : null}</a>}
-      {(who === "owner" || who === "buyer") && <a href="/messages">Messages</a>}
-      {(who === "owner" || who === "buyer") && <a href="/market">Market insights</a>}
-      {(who === "owner" || who === "buyer") && <a href="/inspections">Inspections</a>}
-      {who !== "staff" && who !== "loading" && <a href="/marketplace/agents">Find an agent</a>}
-      {(who === "owner" || who === "buyer") && <a href="/marketplace/consultations">My consultations</a>}
-      {who === "owner" && <a href="/owner/agent-performance">Agent performance</a>}
-      {who === "buyer" && <a href="/buyer/rate-agent">Rate your agent</a>}
       {(who === "owner" || who === "buyer" || who === "staff") && <button type="button" className="nav-signout" onClick={signOut}>Sign out</button>}
       </div>
       {(who === "owner" || who === "buyer") && <RoleSwitcher />}

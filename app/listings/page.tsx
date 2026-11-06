@@ -124,7 +124,7 @@ export default function Listings() {
         <h1>Find a property</h1>
         <a className="button secondary" href="/listings/new">List your property</a>
       </div>
-      <form className="search-form" aria-label="Search listings" onSubmit={e => { e.preventDefault(); setPage(1); setApplied(form); }}>
+      <form id="listing-search" className="search-form" aria-label="Search listings" onSubmit={e => { e.preventDefault(); setPage(1); setApplied(form); }}>
         <input className="wide search-words" type="search" aria-label="Search by street, suburb or feature" placeholder="Search by street, suburb or feature, e.g. saltwater pool" maxLength={100} value={form.q} onChange={set("q")} />
         <select aria-label="Sale or rent" value={form.transactionType} onChange={e => setForm(f => ({ ...f, transactionType: e.target.value, minPrice: "", maxPrice: "" }))}>
           <option value="">Sale or rent</option>
