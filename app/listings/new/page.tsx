@@ -8,16 +8,14 @@ import { dollarsToCents } from "../../../src/domain/listing-details";
 import { PhotoManager } from "../photo-manager";
 import { QuickSetupPanel, type QuickFiles } from "../quick-setup";
 import type { QuickSetup } from "../../../src/domain/quick-setup";
+import { ElenaPublishCheck } from "../elena-publish-check";
 
 type Ready = Extract<QuickSetup, { state: "ready" }>;
 type Upload = { name: string; state: "waiting" | "uploading" | "done" | "error"; message?: string };
 
-type Check = { allowed: boolean; reasons: string[] };
-
 export default function NewListing() {
   const [error, setError] = useState("");
   const [draftId, setDraftId] = useState("");
-  const [check, setCheck] = useState<Check | null>(null);
   const [busy, setBusy] = useState(false);
   const [signedOut, setSignedOut] = useState(false);
   const [isRent, setIsRent] = useState(false);
@@ -93,7 +91,6 @@ export default function NewListing() {
     const body = parsed.body;
     setBusy(true);
     setError("");
-    setCheck(null);
     setBond("");
     setBondState("idle");
     try {
@@ -117,27 +114,11 @@ export default function NewListing() {
     const value = e.target.value;
     setBond(value);
     setBondState("saving");
-    setCheck(null);
     try {
       const res = await fetch(`/api/listings/${draftId}`, { method: "PATCH", headers: JSON_HEADERS, body: JSON.stringify({ rentalBondPathway: value }) });
       setBondState(res.ok ? "saved" : "error");
     } catch {
       setBondState("error");
-    }
-  }
-
-  async function runCheck() {
-    setBusy(true);
-    setError("");
-    try {
-      const res = await fetch(`/api/listings/${draftId}/publish?dryRun=1`, { method: "POST", headers: JSON_HEADERS });
-      const d = await res.json();
-      if (!res.ok) setError(d.error ?? "Check failed.");
-      else setCheck({ allowed: d.decision.allowed, reasons: d.decision.reasons });
-    } catch {
-      setError("Check failed.");
-    } finally {
-      setBusy(false);
     }
   }
 
@@ -181,13 +162,7 @@ export default function NewListing() {
           {isRent && (
             <BondPathwayField value={bond} state={bondState} onChange={saveBond} />
           )}
-          <button type="button" className="secondary" disabled={busy} onClick={runCheck}>Check if it can be published</button>
-          {check && (
-            <div>
-              <h3>{check.allowed ? "Can be published" : "Blocked"}</h3>
-              <ul className="plain-list">{check.reasons.map(r => <li key={r}>{r}</li>)}</ul>
-            </div>
-          )}
+          <ElenaPublishCheck listingId={draftId} />
         </section>
       )}
       <p><a className="button secondary" href="/listings/mine">Back to my listings</a></p>
