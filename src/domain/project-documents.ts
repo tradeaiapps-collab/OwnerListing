@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import type { ObjectStoragePort } from "../adapters/object-storage";
 import { sniffMime } from "./file-sniff";
 import { viewProject, type InvestmentDeps } from "./investment-service";
+import { maskContacts } from "./investment-terms";
 import { ownerMayEdit } from "./investor-projects";
 import type { Actor, Failure, Result } from "./listing-service";
 import type { MalwareScanPort } from "../adapters/malware-scan";
@@ -101,6 +102,8 @@ export async function uploadProjectDocument(
   if (!(PROJECT_DOC_VISIBILITIES as readonly string[]).includes(input.visibility)) return fail("invalid", "Choose who can see this document.");
   const title = input.title.trim();
   if (title.length < 2 || title.length > 120) return fail("invalid", "Give the document a title of 2 to 120 characters.");
+  // Investors see the title, so it follows the same no-contact-details rule as the project text.
+  if (maskContacts(title).masked) return fail("invalid", "The title cannot contain emails, phone numbers or links.");
   if (input.bytes.length === 0) return fail("invalid", "The file is empty.");
   if (input.bytes.length > PROJECT_DOC_MAX_BYTES) return fail("invalid", "Each document must be 50 MB or smaller.");
   if (!(PROJECT_DOC_MIMES as readonly string[]).includes(input.declaredMime)) return fail("invalid", "Only PDF, JPEG, PNG and WebP files can be added.");

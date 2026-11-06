@@ -102,7 +102,7 @@ describe("project document upload", () => {
 
   it("refuses unknown kinds, visibilities, bad titles, wrong or disguised types, empty and infected files", async () => {
     const id = await posted();
-    for (const o of [{ kind: "nope" }, { visibility: "public" }, { title: " " }, { declaredMime: "application/zip" }, { declaredMime: "image/png" }, { bytes: EXE, declaredMime: "application/pdf" }, { bytes: new Uint8Array() }]) {
+    for (const o of [{ kind: "nope" }, { visibility: "public" }, { title: " " }, { title: "Call me on 0412 345 678" }, { title: "mail bob@example.com" }, { declaredMime: "application/zip" }, { declaredMime: "image/png" }, { bytes: EXE, declaredMime: "application/pdf" }, { bytes: new Uint8Array() }]) {
       expect((await add(id, o)).ok).toBe(false);
     }
     verdict = "infected";
