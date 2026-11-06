@@ -114,6 +114,80 @@ async function seedLocations(client) {
   if (n) console.log(`Demo map locations added: ${n} listings.`);
 }
 
+// ---- Demo files (listing Files page) ------------------------------------------------------------------------------------
+// The upload form refuses a listing with no property record, so every demo listing gets one. The eight main demo listings then get example
+// files: floor plan, 360 photo, title search, building inspection, pest report and a contract with an earlier, superseded version.
+// Bytes are written only when LOCAL_STORAGE_DIR is set (same guard as the photos); rows are added either way. Idempotent.
+
+/** A one-page PDF with a title and text lines (Helvetica, no external fonts). */
+function makePdf(title, lines) {
+  const esc = s => s.replace(/[\\()]/g, m => `\\${m}`);
+  let stream = `BT /F1 18 Tf 56 780 Td (${esc(title)}) Tj ET\n`;
+  lines.forEach((t, i) => { stream += `BT /F1 11 Tf 56 ${740 - i * 18} Td (${esc(t)}) Tj ET\n`; });
+  const objs = ["<< /Type /Catalog /Pages 2 0 R >>", "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>",
+    `<< /Length ${Buffer.byteLength(stream)} >>\nstream\n${stream}endstream`, "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>"];
+  let out = "%PDF-1.4\n"; const offs = [];
+  objs.forEach((o, i) => { offs.push(Buffer.byteLength(out)); out += `${i + 1} 0 obj\n${o}\nendobj\n`; });
+  const xref = Buffer.byteLength(out);
+  out += `xref\n0 ${objs.length + 1}\n0000000000 65535 f \n${offs.map(o => `${String(o).padStart(10, "0")} 00000 n \n`).join("")}trailer\n<< /Size ${objs.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
+  return Buffer.from(out, "latin1");
+}
+/** A 2:1 equirectangular-style panorama: sky, distant ridge, lawn, with the horizon at mid height. */
+function panorama(p) {
+  const [accent] = PALETTES[p % PALETTES.length];
+  return makePng(1600, 800, (x, y) => {
+    const ridge = 330 + Math.sin(x / 90) * 24 + Math.sin(x / 31) * 8;
+    if (y > 400) return mix([96, 150, 78], [60, 110, 55], (y - 400) / 400);
+    if (y > ridge) return mix(accent, [60, 70, 80], 0.5);
+    return mix([120, 175, 235], [225, 238, 250], y / 400);
+  });
+}
+
+async function seedFiles(client) {
+  let linked = 0;
+  const bare = (await client.query(`SELECT id, address_text, jurisdiction, suburb, postcode, use_class, property_type, bedrooms, bathrooms, parking, latitude, longitude FROM property_listing WHERE property_id IS NULL AND owner_user_id IN (SELECT id FROM app_user WHERE email LIKE '%@demo.invalid')`)).rows;
+  for (const l of bare) {
+    const pid = (await client.query(
+      `INSERT INTO property (address_text, state, suburb, postcode, use_class, property_type, bedrooms, bathrooms, car_spaces, latitude, longitude)
+       VALUES ($1, TRIM($2), $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING id`,
+      [l.address_text, l.jurisdiction, l.suburb, l.postcode, l.use_class, l.property_type, l.bedrooms, l.bathrooms, l.parking, l.latitude, l.longitude])).rows[0].id;
+    await client.query(`UPDATE property_listing SET property_id = $2 WHERE id = $1`, [l.id, pid]);
+    linked++;
+  }
+  const dir = localDevStorageDir(process.env);
+  const targets = (await client.query(
+    `SELECT l.id, l.owner_user_id, l.property_id, l.address_text, l.transaction_type FROM property_listing l
+      WHERE l.address_text = ANY($1::text[]) AND l.property_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM property_document d WHERE d.listing_id = l.id)
+      ORDER BY l.created_at, l.id`, [DEMO_LOCATIONS.map(d => d[0])])).rows;
+  let made = 0;
+  for (const [i, l] of targets.entries()) {
+    const sale = l.transaction_type === "sale";
+    const files = [
+      ["floorplan", "image/png", "public", floorplan(), null],
+      ...(i % 2 === 0 ? [["photo_360", "image/png", "public", panorama(i), null]] : []),
+      ["title_search", "application/pdf", "owner_only", makePdf("Title search", [l.address_text, "Registered proprietor: as per owner account", "Encumbrances: none recorded", "Searched: demo data, not a real search"]), null],
+      ["building_inspection", "application/pdf", "parties", makePdf("Building inspection report", [l.address_text, "Overall condition: good", "Minor items: gutters, two loose roof tiles", "Demo document, not a real inspection"]), null],
+      ["pest_report", "application/pdf", "parties", makePdf("Timber pest report", [l.address_text, "No active termite activity found", "Re-inspect in 12 months", "Demo document, not a real report"]), null],
+      ...(sale ? [["contract", "application/pdf", "parties", makePdf("Contract of sale (draft 1)", [l.address_text, "Superseded by draft 2 after the owner's edits", "Demo document"]), "old"],
+                  ["contract", "application/pdf", "parties", makePdf("Contract of sale (draft 2)", [l.address_text, "Special conditions: finance and building inspection", "Demo document"]), "new"]] : [])
+    ];
+    let oldId = null;
+    for (const [kind, mime, visibility, bytes, ver] of files) {
+      const id = randomUUID(), key = `listings/${l.id}/${randomUUID()}`;
+      if (dir) await putLocalObject(dir, key, bytes);
+      await client.query(
+        `INSERT INTO property_document (id, property_id, listing_id, kind, storage_key, sha256, uploaded_by, source, declared_mime, size_bytes, visibility, status, supersedes_id, uploaded_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, 'owner_supplied', $8, $9, $10, $11, $12, now() - ($13::int * interval '1 day'))`,
+        [id, l.property_id, l.id, kind, key, createHash("sha256").update(bytes).digest("hex"), l.owner_user_id, mime, bytes.length, visibility,
+          ver === "old" ? "superseded" : "active", ver === "new" ? oldId : null, 12 - made % 9]);
+      if (ver === "old") oldId = id;
+      made++;
+    }
+  }
+  if (linked || made) console.log(`Demo files: ${linked} listings given a property record, ${made} example files added${dir ? "" : " (no bytes: LOCAL_STORAGE_DIR is not set)"}.`);
+}
+
 const url = process.env.DATABASE_URL;
 if (process.env.NODE_ENV === "production") { console.error("Refusing to seed: NODE_ENV is production."); process.exit(2); }
 if (!url) { console.error("DATABASE_URL is required."); process.exit(2); }
@@ -135,6 +209,167 @@ async function seedInvestor(db) {
                   VALUES ($1, now(), now(), '+61400000002', now(), 'manual_review')`, [id]);
   console.log("Demo investor created: Noah Patel (fully verified).");
 }
+// ---- Demo agent performance + sale conversations (Messages page, Agent performance page) ------------------------------
+// Idempotent (marker: priya.agent). Adds three listed agents, 13 past sales from the last 6 months (two fell through) with buyer
+// ratings, and five settlements with message threads so every role has a populated inbox. Needs the base demo accounts.
+async function seedPerformanceAndMessages(client) {
+  const marker = await client.query(`SELECT 1 FROM app_user WHERE email = $1`, [`priya.agent${D}`]);
+  if (marker.rows.length) return;
+  const find = async email => (await client.query(`SELECT id FROM app_user WHERE email = $1`, [email + D])).rows[0]?.id;
+  const who = { sarah: await find("sarah.owner"), daniel: await find("daniel.owner"), mia: await find("mia.agent"), james: await find("james.buyer"),
+    emma: await find("emma.buyer"), liam: await find("liam.buyer"), noah: await find("noah.investor"), boss: await find("staff.super_admin") };
+  if (Object.values(who).some(v => !v)) { console.log("Demo performance and messages skipped: base demo accounts are missing."); return; }
+  await client.query("BEGIN");
+  try {
+    const q = async (text, params) => (await client.query(text, params)).rows;
+    // Listed agents (Mia already exists).
+    const agentSpecs = [
+      ["priya", "Priya Sharma (agent)", "NSW", "Inner-west and eastern suburbs specialist", ["Apartments", "Terraces"], ["Coogee", "Marrickville", "Newtown", "Surry Hills", "Manly"], 9],
+      ["tom", "Tom Becker (agent)", "VIC", "Period homes across Melbourne's inner north", ["Period homes", "First home buyers"], ["Brunswick", "Northcote", "Richmond", "Carlton"], 6],
+      ["hannah", "Hannah Cole (agent)", "QLD", "New to the platform, taking new clients", ["Townhouses", "Investors"], ["Chermside", "Nundah", "Clayfield"], 3]
+    ];
+    for (const [key, name, st, headline, specialties, suburbs, years] of agentSpecs) {
+      who[key] = (await q(`INSERT INTO app_user (email, display_name, user_type, status, roles, active_role) VALUES ($1, $2, 'agent', 'active', ARRAY['agent'], 'agent') RETURNING id`, [`${key}.agent${D}`, name]))[0].id;
+      await q(`INSERT INTO terms_acceptance (user_id, version) VALUES ($1, '2026-10-24')`, [who[key]]);
+      await q(`INSERT INTO agent_licence (user_id, jurisdiction, licence_number, status, verified_by, verified_at, expires_at) VALUES ($1, $2, $3, 'verified', $4, now(), (now() + interval '1 year')::date)`, [who[key], st, `DEMO-${key.toUpperCase()}-1`, who.boss]);
+      await q(`INSERT INTO agent_profile (user_id, accepting_new, service_suburbs, transaction_types, use_classes, bio, listed, headline, specialties, languages, years_experience, consult_modes, consult_minutes)
+               VALUES ($1, true, $2, ARRAY['sale'], ARRAY['residential'], $3, true, $4, $5, ARRAY['English'], $6, ARRAY['video','phone'], 30)`,
+        [who[key], suburbs, "Demo agent profile.", headline, specialties, years]);
+    }
+    await q(`INSERT INTO agent_profile (user_id, accepting_new, service_suburbs, transaction_types, use_classes, bio, listed, headline, specialties, languages, years_experience, consult_modes, consult_minutes)
+             VALUES ($1, true, ARRAY['Paddington','Bulimba','Ascot','Teneriffe'], ARRAY['sale'], ARRAY['residential'], 'Demo agent profile.', true, 'Inner-Brisbane family homes and townhouses', ARRAY['Family homes','Townhouses'], ARRAY['English','Mandarin'], 12, ARRAY['video','phone'], 30)
+             ON CONFLICT (user_id) DO UPDATE SET listed = true, headline = EXCLUDED.headline, specialties = EXCLUDED.specialties, service_suburbs = EXCLUDED.service_suburbs, years_experience = EXCLUDED.years_experience`, [who.mia]);
+
+    const ta = (await q(`SELECT id FROM trust_account WHERE account_name LIKE 'Harbour Legal Trust%' LIMIT 1`))[0]?.id;
+    // [key, agent, owner, buyer, title, address, state, type, suburb, postcode, list $, offer $, days on market, offer days ago, status, rating, comment]
+    const deals = [
+      ["m1", "mia", "sarah", "james", "Queenslander with wraparound verandah", "31 Latrobe Tce, Paddington QLD 4064", "QLD", "house", "Paddington", "4064", 1420000, 1455000, 21, 20, "accepted", 5, "Mia kept us informed every step and got a great price."],
+      ["m2", "mia", "daniel", "emma", "Bulimba riverside townhouse", "5/18 Oxford St, Bulimba QLD 4171", "QLD", "townhouse", "Bulimba", "4171", 980000, 960000, 34, 55, "accepted", 4, "Professional and responsive. Inspection times were flexible."],
+      ["m3", "mia", "sarah", "liam", "Ascot family home", "77 Hawthorne Rd, Ascot QLD 4007", "QLD", "house", "Ascot", "4007", 1850000, 1890000, 18, 95, "accepted", 5, "Fast sale, well above what we expected."],
+      ["m4", "mia", "daniel", "emma", "Teneriffe warehouse apartment", "12/40 Commercial Rd, Teneriffe QLD 4005", "QLD", "unit", "Teneriffe", "4005", 890000, 865000, 52, 130, "fallen_through", null, ""],
+      ["p1", "priya", "sarah", "james", "Coogee two-bedroom with ocean glimpses", "9/14 Dolphin St, Coogee NSW 2034", "NSW", "unit", "Coogee", "2034", 1100000, 1180000, 14, 12, "accepted", 5, "Priya ran a very tight campaign and the result beat our hopes."],
+      ["p2", "priya", "daniel", "noah", "Marrickville terrace, investment grade", "22 Illawarra Rd, Marrickville NSW 2204", "NSW", "house", "Marrickville", "2204", 1650000, 1620000, 29, 40, "accepted", 5, "Clear advice on rental yield and a smooth contract."],
+      ["p3", "priya", "sarah", "liam", "Newtown semi-detached", "8 Bedford St, Newtown NSW 2042", "NSW", "house", "Newtown", "2042", 1420000, 1390000, 41, 75, "accepted", 4, "Good communication throughout."],
+      ["p4", "priya", "daniel", "james", "Surry Hills loft apartment", "3/90 Crown St, Surry Hills NSW 2010", "NSW", "unit", "Surry Hills", "2010", 1280000, 1310000, 19, 110, "accepted", 5, "Excellent. Offer, exchange and settlement all on schedule."],
+      ["p5", "priya", "sarah", "emma", "Manly apartment near the Corso", "6/33 The Corso, Manly NSW 2095", "NSW", "unit", "Manly", "2095", 1350000, 1280000, 63, 150, "accepted", 4, "Took a while, but Priya stayed realistic and patient."],
+      ["t1", "tom", "daniel", "james", "Brunswick workers cottage", "14 Albert St, Brunswick VIC 3056", "VIC", "house", "Brunswick", "3056", 1050000, 1020000, 47, 30, "accepted", 3, "Fine overall, but communication was slow at times."],
+      ["t2", "tom", "sarah", "emma", "Northcote period home", "61 High St, Northcote VIC 3070", "VIC", "house", "Northcote", "3070", 1480000, 1460000, 58, 88, "accepted", 4, "Knows the area well and was easy to deal with."],
+      ["t3", "tom", "daniel", "liam", "Richmond one-bedroom unit", "11/200 Bridge Rd, Richmond VIC 3121", "VIC", "unit", "Richmond", "3121", 720000, 700000, 70, 120, "fallen_through", null, ""],
+      ["t4", "tom", "sarah", "liam", "Carlton terrace", "27 Rathdowne St, Carlton VIC 3053", "VIC", "house", "Carlton", "3053", 1600000, 1580000, 39, 160, "accepted", 3, "Okay result, though some updates came late."]
+    ];
+    const deal = {};
+    for (const [key, agent, owner, buyer, title, address, st, type, suburb, postcode, listD, offerD, dom, ago, status, rating, comment] of deals) {
+      const listedAt = `now() - ($1::int + $2::int) * interval '1 day'`;
+      const lid = (await q(
+        `INSERT INTO property_listing (owner_user_id, jurisdiction, transaction_type, use_class, property_type, title, address_text, suburb, postcode, price_cents, bedrooms, bathrooms, parking, status, listing_fee_paid, terms_accepted, created_at)
+         VALUES ($3, $4, 'sale', 'residential', $5, $6, $7, $8, $9, $10, 3, 2, 1, 'published', true, true, ${listedAt}) RETURNING id`,
+        [ago, dom, who[owner], st, type, title, address, suburb, postcode, listD * 100]))[0].id;
+      await q(`INSERT INTO listing_agent_appointment (listing_id, agent_user_id, appointed_by, appointed_at) VALUES ($1, $2, $3, now() - ($4::int + $5::int) * interval '1 day')`, [lid, who[agent], who[owner], ago, dom]);
+      if (ta) await q(`INSERT INTO trust_account_check (listing_id, trust_account_id, decision, evidence, reasons) VALUES ($1, $2, 'approved', '{}', '["Demo data"]')`, [lid, ta]);
+      const hash = randomBytes(32).toString("hex");
+      await q(`INSERT INTO offer_link (token_hash, listing_id, buyer_user_id, expires_at, used_at) VALUES ($1, $2, $3, now() + interval '7 days', now() - $4::int * interval '1 day')`, [hash, lid, who[buyer], ago]);
+      const oid = (await q(
+        `INSERT INTO formal_offer (listing_id, buyer_user_id, price_cents, conditions, settlement_days, deposit_cents, confirmed_final, link_token_hash, status, submitted_at)
+         VALUES ($1, $2, $3, '["Subject to finance","Subject to building and pest inspection"]'::jsonb, 42, $4, true, $5, $6, now() - $7::int * interval '1 day') RETURNING id`,
+        [lid, who[buyer], offerD * 100, Math.round(offerD * 10), hash, status, ago]))[0].id;
+      await q(`INSERT INTO offer_event (offer_id, event_type, actor_kind, actor_user_id, price_cents, settlement_days, occurred_at) VALUES ($1, 'submitted', 'buyer', $2, $3, 42, now() - $4::int * interval '1 day')`, [oid, who[buyer], offerD * 100, ago]);
+      await q(`INSERT INTO offer_event (offer_id, event_type, actor_kind, actor_user_id, occurred_at) VALUES ($1, 'accepted', 'owner', $2, now() - $3::int * interval '1 day' + interval '6 hours')`, [oid, who[owner], ago]);
+      if (rating) await q(`INSERT INTO agent_ratings (agent_id, listing_id, buyer_id, rating, comment, created_at) VALUES ($1, $2, $3, $4, $5, now() - ($6::int - 3) * interval '1 day')`, [who[agent], lid, who[buyer], rating, comment, Math.max(ago, 4)]);
+      deal[key] = { lid, oid, agent, owner, buyer, st, ago };
+    }
+
+    // Settlements with conversations: key, stage reached, [sender|null, type, hours ago, text], participants left fully unread.
+    const STAGES = ["offer_accepted", "deposit_received", "cooling_off_expires", "inspection_completed", "finance_approval", "lawyer_exchange", "settlement_scheduled", "settlement_completed"];
+    const threads = [
+      ["m1", "inspection_completed", [], [
+        [null, "system", 19 * 24, "Settlement tracker started for 31 Latrobe Tce, Paddington."],
+        ["mia", "text", 19 * 24 - 1, "Hi Sarah and James, congratulations on the accepted offer at $1,455,000. I will keep this thread updated as each step is completed."],
+        ["james", "text", 18 * 24, "Thanks Mia. The $145,500 deposit has gone across to the trust account this morning. Can you confirm it arrived?"],
+        ["mia", "text", 18 * 24 - 3, "Confirmed, the trust account shows the deposit received. I have ticked it off on the tracker."],
+        [null, "system", 18 * 24 - 4, "Settlement stage advanced: Offer accepted → Deposit received"],
+        ["sarah", "text", 14 * 24, "Mia, the buyer's inspector is coming Thursday at 9am. I will leave the side gate unlocked and make sure the pool fence certificate is on the kitchen bench."],
+        ["mia", "mention", 14 * 24 - 2, "@seller thank you, I will meet the inspector there. @buyer you are welcome to attend the walkthrough from 9:30am."],
+        ["james", "text", 7 * 24, "The building and pest report is in. Only minor items: two loose roof tiles and some termite damage to the rear deck rail. I am happy to proceed with no price change."],
+        ["sarah", "text", 7 * 24 - 5, "That is good news. I will have a handyman look at the tiles before settlement."],
+        [null, "system", 7 * 24 - 6, "Settlement stage advanced: Cooling-off expires → Inspection completed"],
+        ["mia", "mention", 26, "@buyer next up is finance approval. Has your broker received the valuation yet?"],
+        ["james", "text", 3, "Valuation came back at $1,460,000 so we are comfortable. Unconditional approval should land by Friday."]
+      ]],
+      ["p1", "deposit_received", ["james"], [
+        [null, "system", 11 * 24, "Settlement tracker started for 9/14 Dolphin St, Coogee."],
+        ["priya", "text", 11 * 24 - 1, "Hi Sarah and James, I am Priya and will coordinate the settlement. The contract was sent to both solicitors today."],
+        ["james", "text", 10 * 24, "Thanks Priya. Could you send the strata report and the last two years of body corporate minutes?"],
+        ["priya", "text", 10 * 24 - 4, "Sending both now. The special levy for the roof was paid in full in March, so there are no outstanding charges on the lot."],
+        ["sarah", "text", 6 * 24, "Priya, just confirming the washing machine and the blinds are included in the sale as per the contract."],
+        ["priya", "mention", 6 * 24 - 2, "@seller yes, both are listed as inclusions on page 3. @buyer a final walkthrough can be booked the week before settlement."],
+        ["james", "text", 2 * 24, "Deposit has been paid. Please can you check the receipt came through."],
+        [null, "system", 2 * 24 - 1, "Settlement stage advanced: Offer accepted → Deposit received"]
+      ]],
+      ["m2", "finance_approval", ["emma"], [
+        [null, "system", 50 * 24, "Settlement tracker started for 5/18 Oxford St, Bulimba."],
+        ["mia", "text", 50 * 24 - 1, "Hi Daniel and Emma, welcome to the settlement thread for the Bulimba townhouse. I will post key dates here."],
+        ["emma", "text", 45 * 24, "Hi Mia, our broker needs the body corporate insurance certificate for the lender. Can you get a copy?"],
+        ["daniel", "text", 45 * 24 - 6, "I have attached the certificate to the document checklist. It runs until 30 June next year."],
+        ["mia", "text", 30 * 24, "The lender's valuer visits on Tuesday at 11am. Daniel, can the townhouse be left accessible?"],
+        ["daniel", "text", 30 * 24 - 2, "Yes, I will be at work but the lockbox code is with you."],
+        ["emma", "text", 8 * 24, "Finance is approved subject to the valuation, which came in at $965,000. Thank you all."],
+        [null, "system", 8 * 24 - 1, "Settlement stage advanced: Inspection completed → Finance approval"],
+        ["mia", "mention", 5, "@seller @buyer both solicitors have the final contract. Exchange is booked for Monday afternoon."]
+      ]],
+      ["t1", "settlement_scheduled", ["james"], [
+        [null, "system", 28 * 24, "Settlement tracker started for 14 Albert St, Brunswick."],
+        ["tom", "text", 27 * 24, "Hi Daniel and James. Your solicitors have the contract. I will track the dates below."],
+        ["james", "text", 20 * 24, "Tom, our solicitor raised a query about the fence on the eastern boundary. Do you have a survey?"],
+        ["daniel", "text", 20 * 24 - 8, "The boundary was surveyed in 2019. I have uploaded the survey plan to documents."],
+        [null, "system", 9 * 24, "Settlement stage advanced: Finance approval → Lawyer exchange"],
+        ["tom", "mention", 4 * 24, "@seller @buyer contracts are exchanged. Settlement is set for 11am on the 18th at the solicitors' office."],
+        ["james", "text", 4 * 24 - 3, "Perfect, we will book the removalists for the 19th."],
+        [null, "system", 4 * 24 - 4, "Settlement stage advanced: Lawyer exchange → Settlement scheduled"],
+        ["tom", "text", 6, "Reminder: please arrange building insurance from the settlement date. Let me know if you need a recommended provider."]
+      ]],
+      ["p2", "cooling_off_expires", ["noah"], [
+        [null, "system", 38 * 24, "Settlement tracker started for 22 Illawarra Rd, Marrickville."],
+        ["priya", "text", 38 * 24 - 1, "Hi Noah and Daniel. Congratulations on agreeing terms at $1,620,000. I will keep project updates and the settlement timeline here."],
+        ["noah", "text", 37 * 24, "Thanks Priya. As this is for my investment portfolio, can I get the current lease and rent ledger?"],
+        ["daniel", "text", 37 * 24 - 5, "The tenant is on a lease until March at $780 a week. I have uploaded the lease and 12 months of rent ledger."],
+        ["noah", "text", 30 * 24, "Rent ledger looks clean. I will ask my property manager to take over the tenancy on settlement."],
+        ["priya", "mention", 21 * 24, "@seller the buyer's accountant has asked for a depreciation schedule if one exists. @buyer cooling-off expires on Friday at 5pm."],
+        ["daniel", "text", 21 * 24 - 7, "I do not have one, sorry. The last renovation was in 2022 and the invoices are in the documents folder."],
+        ["noah", "text", 28, "Thanks both. I will not exercise cooling-off. Please send the transfer forms when ready."]
+      ]]
+    ];
+    for (const [key, stage, fresh, msgs] of threads) {
+      const d = deal[key];
+      const sid = randomUUID();
+      await q(`INSERT INTO settlement_timeline (id, offer_id, listing_id, buyer_id, seller_id, agent_id, state, current_stage, stage_entered_at, created_by, created_at)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, now() - interval '1 day', $5, now() - $9::int * interval '1 day')`, [sid, d.oid, d.lid, who[d.buyer], who[d.owner], who[d.agent], d.st, stage, d.ago]);
+      const reached = STAGES.indexOf(stage);
+      for (const [i, s] of STAGES.entries()) {
+        const done = i < reached || i === 0;
+        await q(`INSERT INTO settlement_milestones (settlement_id, stage, target_date, actual_date, status)
+                 VALUES ($1, $2, (now() + $3::int * interval '1 day')::date, CASE WHEN $5 = 'completed' THEN (now() - $4::int * interval '1 day')::date END, $5)`,
+          [sid, s, (i - reached) * 7, Math.max(d.ago - i * 3, 1), done ? "completed" : "pending"]);
+      }
+      await q(`INSERT INTO message_threads (id, kind, settlement_id) VALUES ($1, 'transaction', $1)`, [sid]);
+      for (const [from, type, hrs, body] of msgs) {
+        const sender = from ? who[from] : null;
+        const mentions = type === "mention" ? [...body.matchAll(/@(buyer|seller|agent)\b/g)].map(m => m[1]).filter((v, i, a) => a.indexOf(v) === i) : [];
+        await q(`INSERT INTO transaction_messages (thread_id, sender_id, message_type, body, mentions, created_at) VALUES ($1, $2, $3, $4, $5, now() - $6::int * interval '1 hour')`, [sid, sender, type, body, mentions, hrs]);
+      }
+      // Everyone has read up to the last message not written by them, except the second-to-last: one unread each unless listed in `fresh`.
+      for (const person of [d.owner, d.buyer, d.agent]) {
+        const read = fresh.includes(person) ? "'epoch'" : `(SELECT COALESCE(max(created_at), 'epoch') - interval '1 minute' FROM transaction_messages WHERE thread_id = $1 AND sender_id IS DISTINCT FROM $2)`;
+        await q(`INSERT INTO message_participants (thread_id, user_id, last_read_at) VALUES ($1, $2, ${read})`, [sid, who[person]]);
+      }
+    }
+    await client.query("COMMIT");
+    console.log("Demo agent performance and messages created: 3 agents, 13 sales (2 fell through), 11 ratings, 5 conversations.");
+  } catch (e) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    throw e;
+  }
+}
+
 const db = new pg.Client({ connectionString: url });
 await db.connect();
 try {
@@ -142,8 +377,10 @@ try {
   if (exists.rows.length) {
     console.log("Demo data already present. (Use local-reset to start again.)");
     await seedInvestor(db);
+    await seedPerformanceAndMessages(db);
     await seedPhotos(db);
     await seedLocations(db);
+    await seedFiles(db);
     await db.end();
     process.exit(0);
   }
@@ -266,8 +503,10 @@ try {
   await db.query("COMMIT");
   console.log(`Demo data created: 6 staff, 2 owners, 1 agent, 3 buyers, ${listing.length} listings, 3 enquiries, 3 offers, 2 invoices, 2 ID reviews. (run ${randomUUID().slice(0, 8)})`);
   await seedInvestor(db);
+  await seedPerformanceAndMessages(db);
   await seedPhotos(db);
   await seedLocations(db);
+  await seedFiles(db);
 } catch (e) {
   await db.query("ROLLBACK").catch(() => undefined);
   console.error(`Seed failed: ${e.message}`);
