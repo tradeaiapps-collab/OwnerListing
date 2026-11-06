@@ -576,3 +576,6 @@ button.role-item:hover:not(:disabled), a.role-item:hover, .role-item:focus-visib
 .elena-findings .elena-msg { min-width: 0; overflow-wrap: anywhere; }
 .elena-findings .elena-fix { grid-column: 2; justify-self: start; display: inline-flex; align-items: center; min-height: 44px; }
 .elena-check h4 { margin: var(--space-4) 0 var(--space-2); }
+
+.ss-cta { margin-top: var(--space-6); }
+@media (max-width: 479px) { .ss-cta .button { width: 100%; } }
