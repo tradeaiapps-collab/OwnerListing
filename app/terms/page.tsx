@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { ENGLISH_PREVAILS_NOTICE } from "../../src/domain/i18n";
+import { TERMS_LAST_UPDATED, TERMS_PARTS, TERMS_SUMMARY } from "../../src/domain/terms-content";
 import { JSON_HEADERS } from "../listings/ui";
 import "../styles/settings.css";
 
@@ -39,16 +40,32 @@ export default function Terms() {
   return (
     <main>
       <h1>Terms and privacy</h1>
+      <p className="muted">Last updated {TERMS_LAST_UPDATED}</p>
       <section className="terms-box" aria-label="Summary">
-        <p><strong>Draft, pending review by Australian counsel.</strong> This summary is not the final legal text.</p>
+        <p><strong>Draft, pending review by Australian counsel.</strong> The summary below is not the legal text; the full terms follow it.</p>
         <ul>
-          <li>The platform holds no money. Deposits go to the solicitor&apos;s trust account.</li>
-          <li>AI helps with replies and reports, but only you decide on offers. AI never accepts an offer.</li>
-          <li>Chat messages and published files are kept permanently and cannot be deleted.</li>
-          <li>We collect personal information only as needed and handle it under the Privacy Act.</li>
+          {TERMS_SUMMARY.map(t => <li key={t}>{t}</li>)}
         </ul>
         <p className="muted">{ENGLISH_PREVAILS_NOTICE}</p>
       </section>
+      <nav className="terms-toc" aria-label="Contents">
+        <ol>
+          {TERMS_PARTS.map(p => <li key={p.id}><a href={`#${p.id}`}>{p.title.replace(/^\d+\.\s*/, "")}</a></li>)}
+        </ol>
+      </nav>
+      <article className="terms-full">
+        {TERMS_PARTS.map(part => (
+          <section key={part.id} id={part.id} aria-labelledby={`${part.id}-h`}>
+            <h2 id={`${part.id}-h`}>{part.title}</h2>
+            {part.sections.map(sec => (
+              <div key={sec.id} id={sec.id}>
+                <h3>{sec.title}</h3>
+                {sec.paragraphs.map((t, i) => <p key={i}>{t}</p>)}
+              </div>
+            ))}
+          </section>
+        ))}
+      </article>
       {state === "loading" && <p className="muted" role="status">Loading…</p>}
       {state === "signedOut" && <p role="alert"><a href="/login?next=/terms">Sign in</a> to accept the terms.</p>}
       {state === "error" && <p role="alert">Could not load the terms.</p>}
