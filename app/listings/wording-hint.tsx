@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import { PROFANITY_MESSAGE, findProfanity } from "../../src/domain/profanity-filter";
 import { JSON_HEADERS } from "./ui";
 
 export interface WordingFlagView { match: string; severity: "block" | "warn"; message: string; suggestion: string }
@@ -40,5 +41,17 @@ export function WordingHint({ text, field }: { text: string; field?: string }) {
     }, 400);
     return () => { clearTimeout(timer); ctrl.abort(); };
   }, [text]);
-  return <WordingFlagList flags={flags} {...(field ? { field } : {})} />;
+  const [allow, setAllow] = useState(false);
+  const rude = findProfanity(text);
+  return (
+    <>
+      <WordingFlagList flags={flags} {...(field ? { field } : {})} />
+      {rude.length > 0 && (
+        <div className="wording-flags is-block" role="alert">
+          <p><strong>{PROFANITY_MESSAGE}{field ? ` (${field})` : ""}</strong></p>
+          <label className="check"><input type="checkbox" name="allowFlagged" value={field ?? "text"} checked={allow} onChange={e => setAllow(e.target.checked)} /> Post anyway (for example a product or street name)</label>
+        </div>
+      )}
+    </>
+  );
 }

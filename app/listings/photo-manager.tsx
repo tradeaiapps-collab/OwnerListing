@@ -72,7 +72,9 @@ export function PhotoManager({ listingId, projectId }: { listingId?: string; pro
   useEffect(() => { void load(); }, [load]);
 
   const change = (next: Row[]) => { setRows(next); setDirty(true); setStatus(""); };
-  const flagged = (r: Row) => !isProject && findProfanity([r.caption, r.alt, ...r.features].join(" . ")).length > 0;
+  const flagged = (r: Row): boolean => findProfanity([r.caption, r.alt, ...r.features].join(" . ")).length > 0;
+  /** aria-invalid for one field: only the field that holds the flagged wording, once the owner has left the photo's fields. */
+  const shown = (r: Row, text: string) => (checked.has(r.id) && !allowed.has(r.id) && findProfanity(text).length > 0 ? true : undefined);
   const markChecked = (id: string) => setChecked(prev => new Set(prev).add(id));
   const patch = (i: number, p: Partial<Row>) => change(rows.map((r, j) => (j === i ? { ...r, ...p } : r)));
   const move = (from: number, to: number) => {
@@ -148,8 +150,8 @@ export function PhotoManager({ listingId, projectId }: { listingId?: string; pro
     setBusy(true); setError(""); setStatus("");
     try {
       const entries = rows.map(r => ({ photoId: r.id, caption: r.caption, alt: r.alt, hidden: r.hidden, ...(isProject ? {} : { category: r.category, features: r.features }) }));
-      const override = rows.some(r => flagged(r));
-      const body = isProject ? { version: data.version, entries } : { version: data.version, tourUrl: tour.trim() || null, entries, ...(override ? { allowFlagged: true } : {}) };
+      const override = rows.some(r => flagged(r)) ? { allowFlagged: true } : {};
+      const body = isProject ? { version: data.version, entries, ...override } : { version: data.version, tourUrl: tour.trim() || null, entries, ...override };
       const r = await fetch(layoutUrl, { method: "PUT", headers: JSON_HEADERS, body: JSON.stringify(body) });
       if (r.ok) {
         const review = isProject && (await r.json().catch(() => ({}))).backToReview === true;
@@ -277,10 +279,10 @@ export function PhotoManager({ listingId, projectId }: { listingId?: string; pro
                       </label>
                     )}
                     <label>Caption (shown under the photo)
-                      <input value={r.caption} maxLength={PHOTO_LIMITS.captionMax} onChange={e => patch(i, { caption: e.target.value })} onBlur={() => markChecked(r.id)} aria-invalid={checked.has(r.id) && flagged(r) && !allowed.has(r.id) ? true : undefined} placeholder="e.g. Kitchen with stone benchtop" />
+                      <input value={r.caption} maxLength={PHOTO_LIMITS.captionMax} onChange={e => patch(i, { caption: e.target.value })} onBlur={() => markChecked(r.id)} aria-invalid={shown(r, r.caption)} placeholder="e.g. Kitchen with stone benchtop" />
                     </label>
                     <label>Description for screen readers
-                      <input value={r.alt} maxLength={PHOTO_LIMITS.altMax} onChange={e => patch(i, { alt: e.target.value })} onBlur={() => markChecked(r.id)} aria-invalid={checked.has(r.id) && flagged(r) && !allowed.has(r.id) ? true : undefined} placeholder="What the photo shows" />
+                      <input value={r.alt} maxLength={PHOTO_LIMITS.altMax} onChange={e => patch(i, { alt: e.target.value })} onBlur={() => markChecked(r.id)} aria-invalid={shown(r, r.alt)} placeholder="What the photo shows" />
                     </label>
                     {!isProject && r.kind === "photo" && (
                       <label>Features (comma separated, up to {FEATURE_LIMITS.maxPerPhoto})
