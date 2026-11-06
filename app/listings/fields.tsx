@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { AMENITIES, AMENITY_LABELS } from "../../src/domain/listing-details";
-import { BOND_PATHWAY_LABELS, centsToInput } from "./ui";
+import { BOND_PATHWAY_LABELS, centsToInput, type FieldErrors } from "./ui";
 import { AddressField } from "./address-field";
 import { WordingHint } from "./wording-hint";
 import { ElenaListingAssistant, ElenaTip } from "./elena-listing-assistant";
@@ -26,14 +26,22 @@ export interface ListingDefaults {
 }
 
 /** The draft fields, shared by the create and edit pages. Read the values with listingFormBody(FormData). */
-export function ListingFields({ defaults = {}, photoCount }: { defaults?: ListingDefaults; photoCount?: number }) {
+/** Message under a field, wired to the input by aria-describedby. */
+function FieldError({ name, errors }: { name: string; errors: FieldErrors }) {
+  return errors[name] ? <small id={`err-${name}`} className="field-error">{errors[name]}</small> : null;
+}
+
+export function ListingFields({ defaults = {}, photoCount, errors = {} }: { defaults?: ListingDefaults; photoCount?: number; errors?: FieldErrors }) {
+  const bad = (name: string) => (errors[name] ? { "aria-invalid": true as const, "aria-describedby": `err-${name}` } : {});
+  const cls = (name: string, extra = "") => `field${extra}${errors[name] ? " has-error" : ""}`;
   const [tx, setTx] = useState(defaults.transactionType ?? "sale");
   const [title, setTitle] = useState(defaults.title ?? "");
   const [description, setDescription] = useState(defaults.description ?? "");
   const tips = fieldTips({ transactionType: tx === "rent" ? "rent" : "sale", propertyType: "house" });
   const num = (name: string, label: string, v: number | undefined, tip: string) => (
-    <label className="field"><span>{label} <ElenaTip text={tip} /></span>
-      <input name={name} type="number" inputMode="numeric" min={0} max={20} step={1} defaultValue={v ?? ""} />
+    <label className={cls(name)}><span>{label} <ElenaTip text={tip} /></span>
+      <input name={name} type="number" inputMode="numeric" min={0} max={20} step={1} defaultValue={v ?? ""} {...bad(name)} />
+      <FieldError name={name} errors={errors} />
     </label>
   );
   return (
@@ -41,12 +49,14 @@ export function ListingFields({ defaults = {}, photoCount }: { defaults?: Listin
       <ElenaListingAssistant {...(photoCount !== undefined ? { photoCount } : {})} />
       <fieldset className="form-section">
         <legend>The basics</legend>
-        <label className="field"><span>Title <ElenaTip text={tips.title} /></span>
-          <input name="title" placeholder="e.g. Renovated home with pool" maxLength={200} required value={title} onChange={e => setTitle(e.target.value)} />
+        <label className={cls("title")}><span>Title <ElenaTip text={tips.title} /></span>
+          <input name="title" placeholder="e.g. Renovated home with pool" maxLength={200} required value={title} onChange={e => setTitle(e.target.value)} {...bad("title")} />
+          <FieldError name="title" errors={errors} />
         </label>
         <WordingHint text={title} field="title" />
-        <label className="field"><span>Street address <ElenaTip text={tips.address} /></span>
-          <AddressField defaultValue={defaults.address ?? ""} />
+        <label className={cls("address")}><span>Street address <ElenaTip text={tips.address} /></span>
+          <AddressField defaultValue={defaults.address ?? ""} invalid={!!errors["address"]} />
+          <FieldError name="address" errors={errors} />
         </label>
       </fieldset>
       <fieldset className="form-section">
@@ -79,14 +89,16 @@ export function ListingFields({ defaults = {}, photoCount }: { defaults?: Listin
       <fieldset className="form-section">
         <legend>Location and price</legend>
         <div className="form-grid">
-          <label className="field"><span>Suburb <ElenaTip text={tips.suburb} /></span>
+          <label className={cls("suburb")}><span>Suburb <ElenaTip text={tips.suburb} /></span>
             <input name="suburb" maxLength={80} defaultValue={defaults.suburb ?? ""} autoComplete="address-level2" />
           </label>
-          <label className="field">Postcode
-            <input name="postcode" inputMode="numeric" pattern="[0-9]{4}" maxLength={4} defaultValue={defaults.postcode ?? ""} autoComplete="postal-code" />
+          <label className={cls("postcode")}>Postcode
+            <input name="postcode" inputMode="numeric" pattern="[0-9]{4}" maxLength={4} defaultValue={defaults.postcode ?? ""} autoComplete="postal-code" {...bad("postcode")} />
+            <FieldError name="postcode" errors={errors} />
           </label>
-          <label className="field span-all"><span>{tx === "rent" ? "Rent per week (AUD)" : "Asking price (AUD)"} <ElenaTip text={tips.price} /></span>
-            <input name="price" inputMode="decimal" placeholder={tx === "rent" ? "650" : "850000"} defaultValue={defaults.priceCents !== undefined ? centsToInput(defaults.priceCents) : ""} />
+          <label className={cls("price", " span-all")}><span>{tx === "rent" ? "Rent per week (AUD)" : "Asking price (AUD)"} <ElenaTip text={tips.price} /></span>
+            <input name="price" inputMode="decimal" placeholder={tx === "rent" ? "650" : "850000"} defaultValue={defaults.priceCents !== undefined ? centsToInput(defaults.priceCents) : ""} {...bad("price")} />
+            <FieldError name="price" errors={errors} />
           </label>
         </div>
       </fieldset>

@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { BondPathwayField, ListingFields, type BondState, type ListingDefaults } from "../../fields";
-import { JSON_HEADERS, listingFormBody } from "../../ui";
+import { JSON_HEADERS, focusFirstError, listingFormBody, type FieldErrors } from "../../ui";
 import { PhotoManager } from "../../photo-manager";
 import { PriceGuidanceCard } from "../../price-guidance-card";
 import { WordingFlagList, type WordingFlagView } from "../../wording-hint";
@@ -51,6 +51,7 @@ export default function EditListing() {
   const [listing, setListing] = useState<Loaded | null>(null);
   const [loadError, setLoadError] = useState("");
   const [error, setError] = useState("");
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [saved, setSaved] = useState(false);
   const [busy, setBusy] = useState(false);
   const [check, setCheck] = useState<Check | null>(null);
@@ -76,7 +77,8 @@ export default function EditListing() {
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const parsed = listingFormBody(new FormData(e.currentTarget));
-    if ("error" in parsed) { setError(parsed.error); return; }
+    if ("error" in parsed) { setError(parsed.error); setFieldErrors(parsed.errors); focusFirstError(e.currentTarget, parsed.errors); return; }
+    setFieldErrors({});
     const body = parsed.body;
     setBusy(true);
     setError("");
@@ -135,8 +137,8 @@ export default function EditListing() {
       {listing && listing.status !== "draft" && <p role="alert">Only a draft can be edited.</p>}
       {listing && listing.status === "draft" && (
         <>
-          <form className="stack" onSubmit={onSubmit}>
-            <ListingFields defaults={listing} />
+          <form className="stack" noValidate onInput={e => { const n = (e.target as HTMLInputElement).name; if (n && fieldErrors[n]) { const { [n]: _gone, ...rest } = fieldErrors; setFieldErrors(rest); if (Object.keys(rest).length === 0) setError(""); } }} onSubmit={onSubmit}>
+            <ListingFields defaults={listing} errors={fieldErrors} />
             <div className="form-bar"><button type="submit" disabled={busy}>Save changes</button></div>
           </form>
           {saved && <p role="status">Changes saved.</p>}

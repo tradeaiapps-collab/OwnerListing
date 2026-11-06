@@ -3,7 +3,7 @@ import { useState } from "react";
 import { BondPathwayField, ListingFields, type BondState, type ListingDefaults } from "../fields";
 import { TemplatePicker } from "../template-picker";
 import type { TemplateView } from "../../../src/domain/listing-template";
-import { JSON_HEADERS, listingFormBody } from "../ui";
+import { JSON_HEADERS, focusFirstError, listingFormBody, type FieldErrors } from "../ui";
 import { dollarsToCents } from "../../../src/domain/listing-details";
 import { PhotoManager } from "../photo-manager";
 import { QuickSetupPanel, type QuickFiles } from "../quick-setup";
@@ -16,6 +16,7 @@ type Check = { allowed: boolean; reasons: string[] };
 
 export default function NewListing() {
   const [error, setError] = useState("");
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [draftId, setDraftId] = useState("");
   const [check, setCheck] = useState<Check | null>(null);
   const [busy, setBusy] = useState(false);
@@ -89,7 +90,8 @@ export default function NewListing() {
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const parsed = listingFormBody(new FormData(e.currentTarget));
-    if ("error" in parsed) { setError(parsed.error); return; }
+    if ("error" in parsed) { setError(parsed.error); setFieldErrors(parsed.errors); focusFirstError(e.currentTarget, parsed.errors); return; }
+    setFieldErrors({});
     const body = parsed.body;
     setBusy(true);
     setError("");
@@ -163,8 +165,8 @@ export default function NewListing() {
           </section>
         )}
         <TemplatePicker onApply={t => { const f = document.getElementById("new-listing-form"); if (f instanceof HTMLFormElement) applyTemplate(t, f); }} />
-        <form id="new-listing-form" className="stack" onSubmit={onSubmit}>
-          <ListingFields key={fieldsKey} defaults={defaults} />
+        <form id="new-listing-form" className="stack" noValidate onInput={e => { const n = (e.target as HTMLInputElement).name; if (n && fieldErrors[n]) { const { [n]: _gone, ...rest } = fieldErrors; setFieldErrors(rest); if (Object.keys(rest).length === 0) setError(""); } }} onSubmit={onSubmit}>
+          <ListingFields key={fieldsKey} defaults={defaults} errors={fieldErrors} />
           <div className="form-bar"><button type="submit" disabled={busy}>Save draft</button></div>
         </form>
       </div>

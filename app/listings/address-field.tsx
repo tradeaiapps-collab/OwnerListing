@@ -21,7 +21,7 @@ function setFormField(form: HTMLFormElement | null, name: string, value: string 
  * Street address with suggestions while typing (combobox pattern). Picking one fills the address and the suburb, postcode
  * and state fields. The owner can always ignore the list and type the address in full; nothing here blocks saving.
  */
-export function AddressField({ defaultValue = "" }: { defaultValue?: string }) {
+export function AddressField({ defaultValue = "", invalid = false }: { defaultValue?: string; invalid?: boolean }) {
   const id = useId();
   const listId = `${id}-list`;
   const inputRef = useRef<HTMLInputElement>(null);
@@ -99,6 +99,7 @@ export function AddressField({ defaultValue = "" }: { defaultValue?: string }) {
         ref={inputRef} name="address" placeholder="Start typing, e.g. 12 Jacaranda St" maxLength={300} required
         value={value} autoComplete="off" role="combobox" aria-autocomplete="list" aria-expanded={showList} aria-controls={listId}
         aria-activedescendant={activeId}
+        {...(invalid ? { "aria-invalid": true, "aria-describedby": "err-address" } : {})}
         onChange={e => { setValue(e.target.value); setQuery(e.target.value); setOpen(true); }}
         onFocus={() => { if (items.length > 0) setOpen(true); }}
         onBlur={() => setOpen(false)}

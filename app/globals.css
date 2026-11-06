@@ -360,6 +360,11 @@ button.secondary:hover:not(:disabled), .button.secondary:hover { background: var
 .form-section > .form-hint { margin: calc(-1 * var(--space-1)) 0 0; color: var(--muted); font-size: 0.9375rem; }
 .form-grid { display: grid; gap: var(--space-3) var(--space-4); grid-template-columns: 1fr; }
 .field { display: flex; flex-direction: column; gap: 6px; font-size: 0.875rem; font-weight: 600; color: var(--text); letter-spacing: 0.01em; }
+.field.has-error { color: var(--danger); }
+.field.has-error input, .field.has-error select, .field.has-error textarea { border-color: var(--danger); box-shadow: 0 0 0 1px var(--danger); background: var(--danger-tint); }
+.field.has-error input:focus-visible, .field.has-error textarea:focus-visible { outline: 2px solid var(--danger); outline-offset: 2px; }
+.field-error { display: flex; gap: var(--space-1); align-items: flex-start; color: var(--danger); font-weight: 600; font-size: 0.8125rem; overflow-wrap: anywhere; }
+.field-error::before { content: "!"; flex: none; width: 1rem; height: 1rem; border-radius: 50%; background: var(--danger); color: var(--bg); font-size: 0.7rem; line-height: 1rem; text-align: center; }
 .field > .hint { font-weight: 400; color: var(--muted); font-size: 0.8125rem; }
 /* Street address suggestions (app/listings/address-field.tsx). */
 .addr-combo { position: relative; }
