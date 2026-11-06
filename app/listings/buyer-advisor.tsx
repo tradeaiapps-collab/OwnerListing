@@ -2,10 +2,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ADVISOR_NOTE, ADVISOR_START, advance, openingMessage, widenBudget, type AdvisorState } from "../../src/domain/buyer-advisor";
 import { useSearchPersona } from "./persona-context";
+import { pickVoice, speechChunks } from "../../src/domain/advisor-speech";
 import { SaveSearch } from "./save-search";
 
 type Msg = { from: "elena" | "you"; text: string };
-type Rec = { lang: string; interimResults: boolean; onresult: ((e: { results: ArrayLike<ArrayLike<{ transcript: string }> & { isFinal?: boolean }> }) => void) | null; onend: (() => void) | null; onerror: (() => void) | null; start: () => void; stop: () => void };
+type Rec = { lang: string; interimResults: boolean; onresult: ((e: { results: ArrayLike<ArrayLike<{ transcript: string }> & { isFinal?: boolean }> }) => void) | null; onend: (() => void) | null; onerror: ((e?: { error?: string }) => void) | null; start: () => void; stop: () => void };
 type RecCtor = new () => Rec;
 const recognition = (): RecCtor | undefined => {
   const w = window as unknown as { SpeechRecognition?: RecCtor; webkitSpeechRecognition?: RecCtor };
@@ -40,9 +41,15 @@ export function BuyerAdvisor({ query, total, startOpen, onApply }: {
   const live = useRef({ voice, state });
   live.current = { voice, state };
   const sendRef = useRef<(t: string) => void>(() => undefined);
+  const voiceRef = useRef<SpeechSynthesisVoice | undefined>(undefined);
+  const silent = useRef(0);
 
   useEffect(() => {
     setCanTalk(Boolean(recognition()) && "speechSynthesis" in window);
+    // Voices load late in most browsers; pick the most natural English one (Australian first) when they arrive.
+    const pickNow = () => { voiceRef.current = pickVoice(window.speechSynthesis?.getVoices() ?? [], navigator.language || "en-AU"); };
+    pickNow();
+    window.speechSynthesis?.addEventListener?.("voiceschanged", pickNow);
     const motion = window.matchMedia("(prefers-reduced-motion: reduce)"), scheme = window.matchMedia("(prefers-color-scheme: dark)");
     const sync = () => {
       setCalm(motion.matches);
@@ -53,7 +60,7 @@ export function BuyerAdvisor({ query, total, startOpen, onApply }: {
     motion.addEventListener("change", sync); scheme.addEventListener("change", sync);
     const mo = new MutationObserver(sync);
     mo.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme-mode"] });
-    return () => { motion.removeEventListener("change", sync); scheme.removeEventListener("change", sync); mo.disconnect(); rec.current?.stop(); window.speechSynthesis?.cancel(); };
+    return () => { motion.removeEventListener("change", sync); scheme.removeEventListener("change", sync); mo.disconnect(); window.speechSynthesis?.removeEventListener?.("voiceschanged", pickNow); rec.current?.stop(); window.speechSynthesis?.cancel(); };
   }, []);
   useEffect(() => { log.current?.scrollTo({ top: log.current.scrollHeight }); }, [msgs]);
 
@@ -61,34 +68,55 @@ export function BuyerAdvisor({ query, total, startOpen, onApply }: {
     const Ctor = recognition();
     if (!Ctor) { setNote("Speaking isn't supported in this browser. You can type instead."); return; }
     rec.current?.stop();
+    window.speechSynthesis?.cancel(); setSpeaking(false); // talking over her stops her, like a call
     const r = new Ctor();
     r.lang = navigator.language || "en-AU";
     r.interimResults = true;
     let heard = "";
     setNote(""); setListening(true);
     r.onresult = e => { heard = Array.from(e.results).map(x => x[0]?.transcript ?? "").join(" ").slice(0, 300); setText(heard); };
-    r.onend = () => { setListening(false); rec.current = null; if (heard.trim()) { setText(""); sendRef.current(heard); } };
-    r.onerror = () => { setListening(false); setNote("I couldn't hear that. Check the microphone is allowed, or type instead."); };
+    r.onend = () => {
+      setListening(false); rec.current = null;
+      if (heard.trim()) { silent.current = 0; setText(""); sendRef.current(heard); return; }
+      // In a voice call, one quiet moment is fine: she gently asks again once, then waits for a tap.
+      if (live.current.voice && silent.current++ < 1) speak("Take your time. I'm listening.");
+    };
+    r.onerror = (e?: { error?: string }) => {
+      setListening(false);
+      if (e?.error === "no-speech" || e?.error === "aborted") return;
+      setNote(e?.error === "not-allowed" || e?.error === "service-not-allowed" ? "The microphone is blocked. Allow it in your browser settings, or type instead." : "I couldn't hear that. Check the microphone, or type instead.");
+    };
     rec.current = r;
     r.start();
   }, []);
 
-  function speak(line: string) {
+  /** Speak sentence by sentence with a short breath between them and a rising tone on questions. `thenListen` turns the mic on after, like a call. */
+  function speak(line: string, thenListen = true) {
     if (!live.current.voice || !("speechSynthesis" in window)) return;
-    window.speechSynthesis.cancel();
-    const u = new SpeechSynthesisUtterance(line);
-    u.lang = "en-AU";
-    u.onstart = () => setSpeaking(true);
-    // Like a call: when she finishes a question, she listens for the answer.
-    u.onend = () => { setSpeaking(false); if (live.current.voice && live.current.state.step !== "done") listen(); };
-    u.onerror = () => setSpeaking(false);
-    window.speechSynthesis.speak(u);
+    const synth = window.speechSynthesis;
+    synth.cancel();
+    const chunks = speechChunks(line);
+    if (chunks.length === 0) return;
+    setSpeaking(true);
+    const finish = () => { setSpeaking(false); if (thenListen && live.current.voice && live.current.state.step !== "done") listen(); };
+    const next = (i: number) => {
+      const c = chunks[i];
+      if (!c) { finish(); return; }
+      const u = new SpeechSynthesisUtterance(c.text);
+      u.lang = voiceRef.current?.lang ?? "en-AU";
+      if (voiceRef.current) u.voice = voiceRef.current;
+      u.rate = 1.0; u.pitch = c.question ? 1.15 : i === 0 ? 1.05 : 1.0; u.volume = 1;
+      u.onend = () => { if (!live.current.voice) { setSpeaking(false); return; } window.setTimeout(() => next(i + 1), c.pause); };
+      u.onerror = () => setSpeaking(false);
+      synth.speak(u);
+    };
+    next(0);
   }
 
   function send(raw: string) {
     const said = raw.trim();
     if (!said) return;
-    const turn = advance(live.current.state, said);
+    const turn = advance(live.current.state, said, persona.name);
     setMsgs(m => [...m, { from: "you", text: said }, { from: "elena", text: turn.reply }]);
     setState(turn.state);
     live.current.state = turn.state;
@@ -133,6 +161,7 @@ export function BuyerAdvisor({ query, total, startOpen, onApply }: {
         <header className="adv-head">
           <h2>{persona.name} <span className="adv-tag">AI assistant</span></h2>
           <div className="adv-tools">
+            {speaking && <button type="button" className="secondary" onClick={() => { window.speechSynthesis?.cancel(); setSpeaking(false); }}>Stop talking</button>}
             {canTalk && <button type="button" className="secondary" aria-pressed={voice} onClick={toggleVoice}>{voice ? "Voice on" : "Talk to " + persona.name}</button>}
             <button type="button" className="secondary" onClick={() => { setOpen(false); window.speechSynthesis?.cancel(); rec.current?.stop(); }}>Hide</button>
           </div>
@@ -152,7 +181,7 @@ export function BuyerAdvisor({ query, total, startOpen, onApply }: {
           </div>
         )}
         <form className="adv-form" onSubmit={e => { e.preventDefault(); const t = text; setText(""); send(t); }}>
-          <input aria-label={`Answer ${persona.name}`} placeholder="Type your answer" maxLength={300} value={listening ? "" : text} onChange={e => setText(e.target.value)} autoComplete="off" />
+          <input aria-label={`Answer ${persona.name}`} placeholder="Type or say anything" maxLength={300} value={listening ? "" : text} onChange={e => setText(e.target.value)} autoComplete="off" />
           {canTalk && <button type="button" className={`secondary adv-mic${listening ? " is-on" : ""}`} aria-pressed={listening} aria-label={listening ? "Stop listening" : "Speak your answer"} onClick={() => (listening ? rec.current?.stop() : listen())}>{listening ? "Stop" : "Speak"}</button>}
           <button type="submit" disabled={!text.trim()}>Send</button>
         </form>

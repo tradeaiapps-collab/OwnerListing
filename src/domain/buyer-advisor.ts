@@ -19,7 +19,55 @@ const NO = /^(no|nope|nah|nothing|none|that'?s all|all good|not really)\b/;
 const WORDS: Record<string, number> = { one: 1, two: 2, three: 3, four: 4, five: 5 };
 
 export const openingMessage = (name: string) =>
-  `Hi, I'm ${name}. I'll ask a few questions, the same as an agent would on a call, so we can narrow the search. Are you looking to buy or to rent?`;
+  `Hi, I'm ${name}! Lovely to meet you. I'll ask a few quick questions, the same as an agent would on a call, so we can narrow the search. You can just talk to me normally. To start, are you looking to buy or to rent?`;
+
+const norm = (t: string) => t.toLowerCase().replace(/[’`]/g, "'").replace(/[!?.,;:]+/g, " ").replace(/\s+/g, " ").trim();
+const GREET = /^(?:(?:hi+|hel+o+|hey+|heya|hiya|howdy|yo+|hola|g'?day|sup|what'?s up|good (?:morning|afternoon|evening|day))(?: (?:there|elena|everyone|again|mate))?|hey (?:there|elena)|hello (?:there|elena))(?: how are (?:you|u))?$/;
+const HOW_ARE_YOU = /\b(?:how (?:are|r) (?:you|u|ya)|how'?s it going|how is it going|how do you do|how have you been|you (?:ok|okay|well|good)|hru|how'?s your (?:day|morning|afternoon|evening|week))\b/;
+
+/**
+ * Small talk and the things a buyer says on a call that are not an answer: a greeting, "how are you", thanks, "what do you suggest",
+ * "can you negotiate for me", "is it a good time to buy". Returns a warm line to put in front of the current question, or undefined.
+ * She never negotiates, values a property, predicts the market or says what someone can afford.
+ */
+export function conversational(raw: string, step: AdvisorStep, name = "Elena"): string | undefined {
+  const t = norm(raw);
+  if (!t) return undefined;
+  const words = t.split(" ").length;
+  if (/\b(?:suggest|recommend|advice|advise|ideas?|tips?)\b/.test(t) && /\b(?:what|any|some|do you|would you|can you|give|help)\b/.test(t)) return suggestionFor(step);
+  if (/\b(?:negotiat\w*|haggl\w*|barter|bargain\w*|lowball|best price|knock (?:it )?down|get (?:it|them) (?:cheaper|down)|make an offer|counter ?offer)\b/.test(t))
+    return `I can't negotiate for you, but once you find a home you like I can help in the enquiry chat: I'll explain an offer, settlement and the deposit, and suggest ways to close a gap on price. First, let's find the right place.`;
+  if (/\b(?:good time to (?:buy|rent|sell)|worth|valu(?:e|ation)|overpriced|fair price|market|prices? (?:going|trend)|will prices|bubble|afford|borrow|mortgage|loan|interest rates?|invest\w*|analy[sz]\w*)\b/.test(t))
+    return `Good question. I can't value a home, predict the market or say what you can afford, because that needs a lender or a valuer. What I can do is show you what's listed and how it compares on the search page.`;
+  if (words <= 6 && GREET.test(t)) {
+    const part = /morning/.test(t) ? "Good morning" : /afternoon/.test(t) ? "Good afternoon" : /evening/.test(t) ? "Good evening" : "Hi there";
+    return HOW_ARE_YOU.test(t) ? `${part}! I'm doing great, thanks for asking.` : `${part}! Lovely to hear from you.`;
+  }
+  if (HOW_ARE_YOU.test(t)) return "I'm doing great, thanks for asking, and happy to help.";
+  if (/\b(?:who|what) (?:are|r) (?:you|u)\b|\byour name\b|\bare you (?:a )?(?:real|human|robot|bot|ai|person)\b/.test(t))
+    return `I'm ${name}, an AI assistant here to help you find a home. I'm not a person and not a licensed agent, but I can ask the same questions an agent would and set up your search.`;
+  if (/\bwhat (?:can|do) you (?:do|help)|\bhow can you help|\bhow does this work|\bwhat is this\b/.test(t))
+    return "I ask a few questions, like buy or rent, budget, type of home, bedrooms and where, then I fill in the search for you. You can answer in your own words, and change anything later.";
+  if (/\b(?:thanks|thank you|thank u|thx|cheers|much appreciated|appreciate it)\b/.test(t) && !/\bno\b/.test(t)) return "You're very welcome!";
+  if (/\b(?:you'?re|youre|that'?s|thats|you are) (?:great|awesome|amazing|helpful|brilliant|lovely|good|nice)\b|^(?:great|awesome|nice|perfect|lovely|brilliant)$/.test(t)) return "Thank you, that's kind of you!";
+  if (/\b(?:bye|goodbye|see you|see ya|cya|talk later|gotta go|have a (?:good|great|nice) (?:day|one|night|weekend))\b/.test(t)) return "No worries, take care! I'm here whenever you want to pick this up again.";
+  if (words <= 5 && /^(?:i'?m|im|i am|feeling|doing)?\s*(?:good|great|fine|well|awesome|fantastic|wonderful|happy|not bad|pretty good|alright)(?: thanks| thank you)?$/.test(t)) return "Glad to hear it!";
+  if (words <= 5 && /^(?:i'?m|im|i am|feeling|doing)?\s*(?:bad|terrible|awful|tired|stressed|busy|not great|not good|so so|meh)$/.test(t)) return "Sorry to hear that. Hopefully finding a place gets a bit easier from here.";
+  if (/^(?:what|huh|pardon|sorry|come again|say that again|repeat that|can you repeat(?: that)?|i didn'?t (?:hear|get) (?:that|you)|one more time)$/.test(t) || /\b(?:repeat|say (?:that )?again)\b/.test(t)) return "No problem, let me say that again.";
+  return undefined;
+}
+
+function suggestionFor(step: AdvisorStep): string {
+  switch (step) {
+    case "intent": return "Happy to help. If you're not sure, renting is a flexible way to try a suburb, and buying suits you if you plan to stay a while.";
+    case "budget": return "A good start is a range rather than one number, like 600k to 900k, so you see a few options. You can tighten it later, or say \"any\".";
+    case "type": return "If you're unsure, say \"any\" and we'll look at everything. Houses give more space, apartments and townhouses usually cost less to keep up.";
+    case "beds": return "Think about who lives there and whether you need a study. Two or three bedrooms suits most people, and you can always change it.";
+    case "where": return "Think about work, schools and transport, then pick a suburb or two. Or say \"anywhere\" and I'll show you everything first.";
+    case "extras": return "Popular must-haves are a garage, air conditioning, a garden, a pool or being pet friendly. Pick just the ones you can't live without.";
+    default: return "You could narrow by price, suburb, bedrooms or something like a pool, and I'll update the search as we go.";
+  }
+}
 
 export function questionFor(step: AdvisorStep, tx: string | undefined, retry = false): string {
   const pre = retry ? "Sorry, I didn't catch that. " : "";
@@ -114,12 +162,22 @@ export function summaryMessage(p: Record<string, string>): string {
 }
 
 /** One buyer answer in, one reply out. Anything extra in the answer ("3 bed house in Paddington") is picked up too, so she never asks twice. */
-export function advance(state: AdvisorState, raw: string): AdvisorTurn {
+export function advance(state: AdvisorState, raw: string, name = "Elena"): AdvisorTurn {
   const text = raw.replace(/\s+/g, " ").trim().slice(0, 300);
   if (!text) return { state, reply: questionFor(state.step, state.params["transactionType"], true) };
   const p = { ...state.params };
   const lower = text.toLowerCase();
   const found = interpretSearch(text).params;
+
+  // Chat first: a greeting, thanks, "what do you suggest" or a negotiation question gets a warm answer, then the question again (never a "didn't catch that").
+  const answeringSkip = SKIP.test(lower) || NO.test(lower);
+  if (Object.keys(found).filter(k => k !== "transactionType").length === 0 && !/\d/.test(text) && (!answeringSkip || /suggest|recommend|advice|idea|negotiat/.test(lower))) {
+    const lead = conversational(text, state.step, name);
+    if (lead) {
+      const ask = state.step === "done" ? "Tell me if you'd like to change anything about the search." : questionFor(state.step, state.params["transactionType"]);
+      return { state, reply: `${lead} ${ask}`.trim() };
+    }
+  }
   const asked = [...state.asked];
   let ok = true;
 
@@ -178,20 +236,22 @@ export function advance(state: AdvisorState, raw: string): AdvisorTurn {
     const changed = Object.keys(found).filter(k => k !== "transactionType" || !p[k]);
     for (const k of changed) p[k] = found[k]!;
     const d = describeParams(p);
-    return { state: { ...state, params: p }, reply: changed.length > 0 ? `Done. Your search is now: ${d.join(", ")}.` : "I didn't find a filter in that. You can say things like \"under 700k\", \"with a pool\" or \"in Brisbane\"." };
+    return { state: { ...state, params: p }, reply: changed.length > 0 ? `Done. Your search is now: ${d.join(", ")}.` : "I didn't pick up a filter in that, but I'm happy to keep refining. You can say things like \"under 700k\", \"with a pool\" or \"in Brisbane\"." };
   }
   if (!ok) return { state: { ...state, params: p, asked }, reply: questionFor(state.step, tx, true) };
   const next = nextStep(asked, p);
   if (next === "done") return { state: { step: "done", params: p, asked }, reply: summaryMessage(p) };
-  return { state: { step: next, params: p, asked }, reply: `${ackFor(state.step, p)} ${questionFor(next, tx)}`.trim() };
+  return { state: { step: next, params: p, asked }, reply: `${ackFor(state.step, p, asked.length)} ${questionFor(next, tx)}`.trim() };
 }
 
-function ackFor(step: AdvisorStep, p: Record<string, string>): string {
+const LEADS = ["Got it", "Lovely", "Perfect", "Sounds good", "Great"];
+function ackFor(step: AdvisorStep, p: Record<string, string>, turn = 0): string {
   const d = describeParams(p);
+  const lead = LEADS[turn % LEADS.length]!;
   const pick = (re: RegExp) => d.find(x => re.test(x));
   switch (step) {
-    case "intent": return p["transactionType"] === "rent" ? "Great, a rental." : "Great, buying.";
-    case "budget": return pick(/^(up to|from|\$)/) ? `Got it, ${pick(/^(up to|from|\$)/)}.` : "No problem, I'll keep the price open.";
+    case "intent": return p["transactionType"] === "rent" ? `${lead}, a rental.` : `${lead}, buying.`;
+    case "budget": return pick(/^(up to|from|\$)/) ? `${lead}, ${pick(/^(up to|from|\$)/)}.` : "No problem, I'll keep the price open.";
     case "type": return p["propertyType"] ? `${pick(/^[A-Z][a-z]+$/) ?? "That type"}, noted.` : "Any type, no problem.";
     case "beds": return p["minBedrooms"] ? `${p["minBedrooms"]}+ bedrooms, noted.` : "Any number of bedrooms, no problem.";
     case "where": return pick(/^(Postcode|[A-Z])/) && (p["suburb"] || p["postcode"] || p["jurisdiction"]) ? `${p["suburb"] ?? (p["postcode"] ? `Postcode ${p["postcode"]}` : p["jurisdiction"])}, good.` : "I'll look everywhere.";
