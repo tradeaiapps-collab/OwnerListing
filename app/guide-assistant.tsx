@@ -4,7 +4,7 @@ import { personaLabel, personaPose, type Persona } from "../src/domain/assistant
 import { GUIDE_LIMITS, type GuideChip, type GuideIntent, type GuideLink } from "../src/domain/guide-assistant";
 import { PRESENTER_SPEAK_EVENT } from "./presenter/presenter-core";
 import { useElenaContext } from "./elena-context";
-import { isListingForm, isWhereQuestion, sectionHint, whereAnswer } from "../src/domain/elena-context";
+import { contextAnswer, contextFallback, isListingForm, isWhereQuestion, sectionHint, whereAnswer } from "../src/domain/elena-context";
 import "./styles/assistant.css";
 
 interface Msg { id: number; from: "guide" | "you"; text: string; links?: GuideLink[] }
@@ -92,12 +92,17 @@ export default function GuideAssistant({ greeting, disclaimer, persona }: {
     setBusy(true);
     setMsgs(m => [...m, { id: seq.current++, from: "you", text: said }]);
     if (!("intent" in q) && isWhereQuestion(said)) { setMsgs(m => [...m, { id: seq.current++, from: "guide", text: whereAnswer(here) }]); setBusy(false); return; }
+    if (!("intent" in q)) {
+      const local = contextAnswer(said, here);
+      if (local) { window.dispatchEvent(new CustomEvent(PRESENTER_SPEAK_EVENT, { detail: { text: local } })); setMsgs(m => [...m, { id: seq.current++, from: "guide", text: local }]); setBusy(false); return; }
+    }
     const body = "intent" in q ? { intent: q.intent, path: window.location.pathname } : { text: said, path: window.location.pathname };
     const r = await fetch("/api/assistant", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }).catch(() => null);
     const d = r ? await r.json().catch(() => null) : null;
     if (r?.ok && d && typeof d.text === "string") {
-      window.dispatchEvent(new CustomEvent(PRESENTER_SPEAK_EVENT, { detail: { text: d.text } }));
-      setMsgs(m => [...m, { id: seq.current++, from: "guide", text: d.text, links: Array.isArray(d.links) ? d.links : [] }]);
+      const reply = d.intent === "unknown" && !("intent" in q) ? contextFallback(here) : d.text;
+      window.dispatchEvent(new CustomEvent(PRESENTER_SPEAK_EVENT, { detail: { text: reply } }));
+      setMsgs(m => [...m, { id: seq.current++, from: "guide", text: reply, links: Array.isArray(d.links) ? d.links : [] }]);
     } else {
       setMsgs(m => [...m, { id: seq.current++, from: "guide", text: d?.error ?? "Sorry, the guide is unavailable right now. Try again shortly." }]);
     }
@@ -158,7 +163,7 @@ export default function GuideAssistant({ greeting, disclaimer, persona }: {
           </ol>
           <form className="ga-form" onSubmit={e => { e.preventDefault(); const t = text; setText(""); void ask({ text: t }); }}>
             <label className="ga-sr" htmlFor={`${titleId}-q`}>Ask a question</label>
-            <input ref={input} id={`${titleId}-q`} value={text} maxLength={GUIDE_LIMITS.message} onChange={e => setText(e.target.value)} placeholder="Ask about listing, offers, fees…" autoComplete="off" />
+            <input ref={input} id={`${titleId}-q`} value={text} maxLength={GUIDE_LIMITS.message} onChange={e => setText(e.target.value)} placeholder={here.pageLabel ? `Ask me anything about ${here.pageLabel}…` : "Ask about listing, offers, fees…"} autoComplete="off" />
             <button type="submit" disabled={busy || text.trim() === ""}>Send</button>
           </form>
           <p className="ga-disclaimer">{disclaimer} Don&apos;t type personal details such as ID or bank numbers.</p>

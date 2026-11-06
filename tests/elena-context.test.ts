@@ -43,3 +43,34 @@ describe("Elena context", () => {
     expect(roomsFromText("99 bedrooms")).toEqual({});
   });
 });
+
+import { contextAnswer, contextFallback } from "../src/domain/elena-context";
+describe("Elena free conversation", () => {
+  const edit = { path: "/listings/abc/edit", pageLabel: "Edit listing", section: "description", sectionLabel: "Description", field: "" };
+  it("answers the form topic named, without a button", () => {
+    expect(contextAnswer("choose the image", edit)).toMatch(/Choose images/);
+    expect(contextAnswer("how do I add floor plans", edit)).toMatch(/Floor plans/);
+    expect(contextAnswer("what should I put for price?", edit)).toMatch(/price guidance/i);
+  });
+  it("uses the current section for vague help", () => {
+    expect(contextAnswer("I'm stuck", edit)).toMatch(/in Description/);
+  });
+  it("greets and thanks, and helps on other pages", () => {
+    expect(contextAnswer("hi", edit)).toMatch(/Edit listing/);
+    expect(contextAnswer("thanks", edit)).toMatch(/welcome/);
+    const dash = { path: "/dashboard", pageLabel: "Dashboard", section: "", sectionLabel: "", field: "" };
+    expect(contextAnswer("what can I do here?", dash)).toMatch(/dashboard/i);
+    expect(contextAnswer("what are the fees", dash)).toBeNull();
+  });
+  it("falls back to the place, never a dead end", () => {
+    expect(contextFallback(edit)).toMatch(/Edit listing, in Description/);
+  });
+});
+
+describe("Elena fix and duplicates", () => {
+  const photos = { path: "/listings/abc/edit", pageLabel: "Edit listing", section: "photos", sectionLabel: "Photos", field: "" };
+  it("answers fix and repeated photos", () => {
+    expect(contextAnswer("fix", photos)).toMatch(/Hide or Remove/);
+    expect(contextAnswer("why are my photos repeated", photos)).toMatch(/Keep both/);
+  });
+});
