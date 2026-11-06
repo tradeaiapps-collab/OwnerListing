@@ -116,7 +116,7 @@ export function answerQuestion(question: string, ctx: ElenaAppContext, data: Bra
       const wk = (c: number) => `${c < 0 ? "-" : ""}${formatPrice(Math.abs(c), "rent")}`;
       const text = [
         `On ${formatPrice(price!, "sale")} with ${formatPrice(rent!, "rent")} rent: gross yield ${a.grossYieldPercent}%, net yield ${a.netYieldPercent}% after costs.`,
-        `Cash flow is about ${wk(a.weeklyCashFlowCents)} a week; it breaks even at ${formatPrice(a.breakEvenWeeklyRentCents, "rent")} rent. At 2 points higher interest it would be ${wk(a.rateStress[1]!.weeklyCashFlowCents)} a week.`,
+        `Cash flow is about ${wk(a.weeklyCashFlowCents)}; it breaks even at ${formatPrice(a.breakEvenWeeklyRentCents, "rent")} rent. At 2 points higher interest it would be ${wk(a.rateStress[1]!.weeklyCashFlowCents)}.`,
         a.risks.length ? `Things to weigh: ${a.risks.join(" ")}` : "",
         `Assumed: ${a.assumed.join(", ") || "nothing"}. ${a.note}`
       ].filter(Boolean).join(" ");

@@ -96,6 +96,17 @@ export default function GuideAssistant({ greeting, disclaimer, persona }: {
       const local = contextAnswer(said, here);
       if (local) { window.dispatchEvent(new CustomEvent(PRESENTER_SPEAK_EVENT, { detail: { text: local } })); setMsgs(m => [...m, { id: seq.current++, from: "guide", text: local }]); setBusy(false); return; }
     }
+    if (!("intent" in q)) {
+      // Typed questions go to Elena's knowledge brain first (signed-in people only; a 401 or "I don't know" falls back to the fixed guide below).
+      const br = await fetch("/api/elena/ask", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ question: said.slice(0, 500), context: { page: window.location.pathname } }) }).catch(() => null);
+      const bd = br?.ok ? await br.json().catch(() => null) : null;
+      if (bd && typeof bd.text === "string" && bd.text.trim() && bd.intent !== "unknown") {
+        window.dispatchEvent(new CustomEvent(PRESENTER_SPEAK_EVENT, { detail: { text: bd.text } }));
+        setMsgs(m => [...m, { id: seq.current++, from: "guide", text: bd.text }]);
+        setBusy(false);
+        return;
+      }
+    }
     const body = "intent" in q ? { intent: q.intent, path: window.location.pathname } : { text: said, path: window.location.pathname };
     const r = await fetch("/api/assistant", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }).catch(() => null);
     const d = r ? await r.json().catch(() => null) : null;
