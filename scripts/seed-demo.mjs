@@ -1,6 +1,7 @@
 // Demo data for the LOCAL TEST KIT (docs/LOCAL_TEST.md). Idempotent: does nothing if the demo accounts already exist.
 // Refuses to run unless NODE_ENV is not "production" AND DATABASE_URL points at localhost / 127.0.0.1. Usage: npm run seed:demo
 import { createHash, randomBytes, randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { deflateSync } from "node:zlib";
 import pg from "pg";
 import { localDevStorageDir, putLocalObject } from "../src/adapters/local-disk-core.mjs";
@@ -69,6 +70,10 @@ function floorplan() {
   });
 }
 
+/** Labelled floor plan and a short walkthrough video (scripts/demo-media), so the gallery shows both kinds. */
+const MEDIA_DIR = new URL("./demo-media/", import.meta.url);
+const floorplanImage = () => readFileSync(new URL("floorplan.png", MEDIA_DIR));
+
 const CAPTIONS = ["Street view", "Living room", "Kitchen and dining", "Main bedroom", "Backyard"];
 
 async function seedPhotos(client) {
@@ -82,7 +87,7 @@ async function seedPhotos(client) {
   for (const [i, l] of rows.entries()) {
     const entries = [];
     const pictures = [exterior(i), interior(i, 0), interior(i, 1), interior(i, 2), exterior(i + 1)].map((bytes, k) => ({ bytes, kind: "photo", caption: CAPTIONS[k] }));
-    pictures.push({ bytes: floorplan(), kind: "floorplan", caption: "Floor plan" });
+    pictures.push({ bytes: floorplanImage(), kind: "floorplan", caption: "Floor plan" });
     for (const pic of pictures) {
       const id = randomUUID(), key = `listings/${l.id}/${randomUUID()}`;
       await putLocalObject(dir, key, pic.bytes);
@@ -186,6 +191,42 @@ async function seedFiles(client) {
     }
   }
   if (linked || made) console.log(`Demo files: ${linked} listings given a property record, ${made} example files added${dir ? "" : " (no bytes: LOCAL_STORAGE_DIR is not set)"}.`);
+}
+
+// ---- Demo floor plan + video on every demo listing (also listings seeded before this existed) -------------------------
+// Adds a floor plan to the current gallery (a new layout version) and a public video file where missing. Idempotent.
+async function seedMedia(client) {
+  const dir = localDevStorageDir(process.env);
+  if (!dir) return;
+  const plan = floorplanImage(), video = readFileSync(new URL("demo-tour.mp4", MEDIA_DIR));
+  const rows = (await client.query(
+    `SELECT l.id, l.owner_user_id, l.property_id FROM property_listing l JOIN app_user u ON u.id = l.owner_user_id
+      WHERE u.email LIKE '%@demo.invalid' ORDER BY l.created_at, l.id`)).rows;
+  let plans = 0, videos = 0;
+  for (const l of rows) {
+    const lay = (await client.query(`SELECT version, entries, tour_url FROM listing_photo_layout WHERE listing_id = $1 ORDER BY version DESC LIMIT 1`, [l.id])).rows[0];
+    if (lay && !(await client.query(`SELECT 1 FROM listing_photo WHERE listing_id = $1 AND kind = 'floorplan'`, [l.id])).rowCount) {
+      const id = randomUUID(), key = `listings/${l.id}/${randomUUID()}`;
+      await putLocalObject(dir, key, plan);
+      await client.query(
+        `INSERT INTO listing_photo (id, listing_id, kind, uploaded_by, content_type, width, height, size_bytes, sha256, storage_key)
+         VALUES ($1, $2, 'floorplan', $3, 'image/png', 1600, 1067, $4, $5, $6)`, [id, l.id, l.owner_user_id, plan.length, createHash("sha256").update(plan).digest("hex"), key]);
+      const entries = [...lay.entries, { photoId: id, caption: "Floor plan", alt: "", hidden: false }];
+      await client.query(`INSERT INTO listing_photo_layout (listing_id, version, entries, tour_url, changed_by) VALUES ($1, $2, $3::jsonb, $4, $5)`,
+        [l.id, lay.version + 1, JSON.stringify(entries), lay.tour_url, l.owner_user_id]);
+      plans++;
+    }
+    if (l.property_id && !(await client.query(`SELECT 1 FROM property_document WHERE listing_id = $1 AND kind = 'video'`, [l.id])).rowCount) {
+      const id = randomUUID(), key = `listings/${l.id}/${randomUUID()}`;
+      await putLocalObject(dir, key, video);
+      await client.query(
+        `INSERT INTO property_document (id, property_id, listing_id, kind, storage_key, sha256, uploaded_by, source, declared_mime, size_bytes, visibility, status, uploaded_at)
+         VALUES ($1, $2, $3, 'video', $4, $5, $6, 'owner_supplied', 'video/mp4', $7, 'public', 'active', now())`,
+        [id, l.property_id, l.id, key, createHash("sha256").update(video).digest("hex"), l.owner_user_id, video.length]);
+      videos++;
+    }
+  }
+  if (plans || videos) console.log(`Demo media: ${plans} floor plans and ${videos} videos added.`);
 }
 
 const url = process.env.DATABASE_URL;
@@ -381,6 +422,7 @@ try {
     await seedPhotos(db);
     await seedLocations(db);
     await seedFiles(db);
+    await seedMedia(db);
     await db.end();
     process.exit(0);
   }
@@ -507,6 +549,7 @@ try {
   await seedPhotos(db);
   await seedLocations(db);
   await seedFiles(db);
+  await seedMedia(db);
 } catch (e) {
   await db.query("ROLLBACK").catch(() => undefined);
   console.error(`Seed failed: ${e.message}`);
