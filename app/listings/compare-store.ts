@@ -35,5 +35,7 @@ export function useCompare() {
   }, []);
   const remove = useCallback((id: string) => write(readCompare().filter(x => x.id !== id)), []);
   const clear = useCallback(() => write([]), []);
-  return { items, toggle, remove, clear, full: items.length >= MAX_COMPARE };
+  /** Replaces the picks (a shared link opened on the compare page). */
+  const replace = useCallback((next: CompareItem[]) => write(next.slice(0, MAX_COMPARE)), []);
+  return { items, toggle, remove, clear, replace, full: items.length >= MAX_COMPARE };
 }

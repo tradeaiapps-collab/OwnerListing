@@ -2,7 +2,8 @@
 import { useEffect, useState } from "react";
 import { MAX_COMPARE, parseCompareIds, type Comparison } from "../../src/domain/listing-compare";
 import { photoUrl, type CardPhoto } from "../../src/domain/listing-photos";
-import { readCompare } from "../listings/compare-store";
+import { readCompare, useCompare } from "../listings/compare-store";
+import { ComparePicker } from "./compare-picker";
 import { useSearchPersona } from "../listings/persona-context";
 import { JSON_HEADERS } from "../listings/ui";
 import "../styles/cards.css";
@@ -22,6 +23,7 @@ export default function ComparePage() {
   const [error, setError] = useState("");
   const [narration, setNarration] = useState("");
   const [asking, setAsking] = useState(false);
+  const store = useCompare();
 
   useEffect(() => {
     const fromUrl = parseCompareIds(new URLSearchParams(window.location.search).get("ids"));
@@ -35,17 +37,17 @@ export default function ComparePage() {
     setData(null); setError(""); setNarration("");
     if (ids.length < 2) return;
     fetch(`/api/listings/compare?ids=${ids.join(",")}`)
-      .then(async r => { const d = await r.json(); if (!r.ok) throw new Error(d.error ?? "Could not load the comparison."); setData(d); })
+      .then(async r => { const d = await r.json(); if (!r.ok) throw new Error(d.error ?? "Could not load the comparison."); setData(d); store.replace(d.listings.map((l: Card) => ({ id: l.id, title: l.title }))); })
       .catch((e: Error) => setError(e.message));
   }, [ids]);
 
-  const drop = (id: string) => {
-    const next = (ids ?? []).filter(x => x !== id);
+  const apply = (next: string[]) => {
     setIds(next);
     const u = new URL(window.location.href);
     u.searchParams.set("ids", next.join(","));
     window.history.replaceState(null, "", u);
   };
+  const drop = (id: string) => { store.remove(id); apply((ids ?? []).filter(x => x !== id)); };
 
   async function ask() {
     if (!ids) return;
@@ -62,14 +64,9 @@ export default function ComparePage() {
   return (
     <main className="cmp-page">
       <h1>Compare properties</h1>
-      <p className="muted">Up to {MAX_COMPARE} properties side by side. <a href="/listings">Back to listings</a></p>
-      {ids !== null && ids.length < 2 && (
-        <div className="cmp-empty empty">
-          <p>Pick at least 2 properties to compare. Tick <strong>Compare</strong> on listings, then press the Compare button.</p>
-          <a className="button" href="/listings">Browse listings</a>
-        </div>
-      )}
-      {error && <p role="alert">{error} <a href="/listings">Choose again</a></p>}
+      <p className="muted">Pick 2 to {MAX_COMPARE} properties and see them side by side. <a href="/listings">Back to listings</a></p>
+      {ids !== null && <ComparePicker onCompare={apply} />}
+      {error && <p role="alert">{error}</p>}
       {ids !== null && ids.length >= 2 && !data && !error && <p className="muted" role="status">Loading...</p>}
       {data && c && (
         <>

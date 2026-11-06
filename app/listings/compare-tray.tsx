@@ -1,17 +1,19 @@
 "use client";
-import { MIN_COMPARE } from "../../src/domain/listing-compare";
+import { MAX_COMPARE, MIN_COMPARE } from "../../src/domain/listing-compare";
 import { useCompare } from "./compare-store";
 
-/** "Compare" tick on a listing card. Disabled (with the reason) once four are picked. */
+/** "Add to compare" button on a listing card. Shows when the listing is in the comparison and how many are picked. */
 export function CompareToggle({ id, title }: { id: string; title: string }) {
   const { items, toggle, full } = useCompare();
   const on = items.some(x => x.id === id);
   const blocked = full && !on;
   return (
-    <label className={`cmp-toggle${on ? " on" : ""}`} title={blocked ? "You can compare up to 4 properties. Remove one first." : undefined}>
-      <input type="checkbox" checked={on} disabled={blocked} onChange={() => toggle({ id, title })} aria-label={`Compare ${title}`} />
-      <span>Compare</span>
-    </label>
+    <button type="button" className={`cmp-toggle${on ? " on" : ""}`} aria-pressed={on} disabled={blocked}
+      title={blocked ? "You can compare up to 4 properties. Remove one first." : undefined}
+      onClick={() => toggle({ id, title })} aria-label={`${on ? "Remove from comparison" : "Add to compare"}: ${title}`}>
+      <span aria-hidden="true">{on ? "\u2713" : "+"}</span>
+      <span>{on ? `In comparison (${items.length} of ${MAX_COMPARE})` : blocked ? "Comparison full (4)" : "Add to compare"}</span>
+    </button>
   );
 }
 
@@ -31,7 +33,7 @@ export function CompareTray() {
         ))}
       </ul>
       <div className="cmp-actions">
-        <span className="muted" role="status">{ready ? `${items.length} of 4 picked` : "Pick one more to compare"}</span>
+        <span className="muted" role="status">{ready ? `${items.length} of ${MAX_COMPARE} picked` : `${items.length} of ${MAX_COMPARE} picked. Add ${MIN_COMPARE - items.length} more to compare.`}</span>
         <button type="button" className="secondary" onClick={clear}>Clear</button>
         {ready
           ? <a className="button" href={`/compare?ids=${items.map(i => i.id).join(",")}`}>Compare {items.length}</a>
