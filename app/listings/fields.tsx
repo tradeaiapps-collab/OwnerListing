@@ -41,21 +41,17 @@ export function ListingFields({ defaults = {}, photoCount }: { defaults?: Listin
   const onDescription = (text: string) => {
     setDescription(text);
     const f = extractFeatures(text);
-    const notes: string[] = [];
-    setCounts(c => {
-      const next = { ...c };
-      for (const k of ["bedrooms", "bathrooms", "parking"] as const) {
-        const v = f[k];
-        if (v !== undefined && !touched.current.has(k) && next[k] !== String(v)) { next[k] = String(v); notes.push(k); }
-      }
-      return next;
-    });
-    setAmenities(cur => {
-      const add = f.amenities.filter(a => !cur.includes(a) && !touched.current.has(`a:${a}`));
-      if (add.length) notes.push("extras");
-      return add.length ? [...cur, ...add] : cur;
-    });
-    setFilled(notes.length ? "Elena filled the Features below from your description. You can change any of them." : "");
+    const nextCounts = { ...counts };
+    let changed = false;
+    for (const k of ["bedrooms", "bathrooms", "parking"] as const) {
+      const v = f[k];
+      if (v !== undefined && !touched.current.has(k) && nextCounts[k] !== String(v)) { nextCounts[k] = String(v); changed = true; }
+    }
+    const add = f.amenities.filter(a => !amenities.includes(a) && !touched.current.has(`a:${a}`));
+    if (changed) setCounts(nextCounts);
+    if (add.length) setAmenities([...amenities, ...add]);
+    const notes = changed || add.length > 0;
+    setFilled(notes ? "Elena filled the Features below from your description. You can change any of them." : filled);
   };
   const mismatches = featureMismatches(description, { ...counts, amenities });
   const applyFix = (m: (typeof mismatches)[number]) => {
