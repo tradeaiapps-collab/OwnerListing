@@ -41,8 +41,8 @@ export default function Dashboard() {
   return (
     <main>
       {crumbs}
-      <h1>Dashboard</h1>
-      <p className="muted">Your tasks as {{ owner: "an owner", agent: "an agent", buyer: "a buyer", investor: "an investor", staff: "staff" }[role]}.</p>
+      <h1 className="dash-title">Dashboard</h1>
+      <p className="muted dash-sub">Your tasks as {{ owner: "an owner", agent: "an agent", buyer: "a buyer", investor: "an investor", staff: "staff" }[role]}.</p>
       {journey && (
         <section className="jr" aria-labelledby="jr-title">
           <div className="jr-head">
