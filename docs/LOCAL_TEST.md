@@ -54,6 +54,8 @@ Wipes the local database and reloads the demo data (type YES to confirm). Mac/Li
 
 All demo email addresses end in `@demo.invalid` (not real).
 
+Signing in through `/dev-login` also unlocks gated features for testing: an agent account gets a verified licence in every state, and a buyer account gets email, phone and ID verified (so Emma and Liam become fully verified once you sign in as them). This runs only in the dev sign-in route, which is already refused off localhost and in production.
+
 | Account | Site | What it can do |
 |---|---|---|
 | Sarah Mitchell (owner) | public | Owns 4 listings (Paddington QLD sale, New Farm QLD rent, Bondi NSW sale, Randwick NSW rent), 1 paid invoice, 3 offers from James (two on Paddington: an earlier one she asked him to improve, then a higher one), enquiries |
