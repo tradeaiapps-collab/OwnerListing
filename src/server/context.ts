@@ -12,6 +12,7 @@ import { staffFromRequest } from "./staff-auth";
 import { createPgPublishAlertHook } from "./publish-alerts-db";
 import { syndicateListing, syndicationDeps } from "./syndication-db";
 import { hasCurrentTermsPg } from "./terms-db";
+import { elenaPhotoFactsPg, queueForModerationPg } from "./elena-review-db";
 import { clearedWordingFlagsPg, recordWordingFlagsPg } from "./wording-flags-db";
 import { disclosureRequirementsPg, markListingDisclosureVersionPg } from "./disclosure-config-db";
 import { appendAuditPg, appointmentForPg, createPgListingRepository, trustAccountDecisionPg, verifiedLicencesPg, type Queryable } from "./db";
@@ -69,6 +70,8 @@ function wire(): Wired {
         // Share on the portals the owner opted into; best effort, the scheduled run retries anything that fails.
         return async (listing: Parameters<typeof alerts>[0]) => { await alerts(listing); await syndicateListing(db, syndicationDeps(), listing.id); };
       })(),
+      elenaFacts: listingId => elenaPhotoFactsPg(db, listingId),
+      queueForModeration: (listing, review, actorUserId) => queueForModerationPg(db, listing.id, review, actorUserId),
       clearedWordingFlags: listingId => clearedWordingFlagsPg(db, listingId),
       recordWordingFlags: (listingId, actorUserId, fields) => recordWordingFlagsPg(db, listingId, actorUserId, fields)
     }

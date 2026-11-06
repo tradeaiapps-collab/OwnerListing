@@ -27,3 +27,6 @@ Table `listing_assistant_feedback` stores only a fixed-vocabulary key (tag id, q
 - Pricing needs a comparables source (`PRICE_DATA_SOURCE`, see docs/PROVIDER_KEYS.md); without it the card says so.
 - Rewriting and tagging are rules, not a language model. A self-hosted model pass behind `AiEnginePort` can be added later behind the same checks.
 - The photo count is not passed on the form yet, so the photo question is not asked.
+
+## Publish check (Elena as on-the-spot admin)
+`src/domain/listing-validation.ts` (`reviewListing`, pure) checks required fields, photos, site plan (blocking for land), description vs form (bedrooms, bathrooms, parking, price, features), wording and the publish gate's compliance reasons. Blockers stop publishing; advice does not. `publishListing` runs it when `deps.elenaFacts` is wired (production) and returns `elena` in the response; a real publish with blockers is refused server-side. A cleared publish goes live and is added to `listing_moderation_queue` for staff. UI: `app/listings/elena-publish-check.tsx` on the new and edit pages. Staff screen for the queue is not built yet.

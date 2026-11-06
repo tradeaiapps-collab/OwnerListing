@@ -9,6 +9,7 @@ import { transitionListing } from "./listing-transitions";
 import type { TrustAccountDecision } from "./trust-account";
 import type { AgentLicence } from "./licence";
 import { scanFields, wordingBlockReasons, type FieldFlags } from "./discrimination-filter";
+import { reviewListing, type ElenaPhotoFacts, type ElenaReview } from "./listing-validation";
 
 export const PROPERTY_TYPES = [
   "house", "unit", "townhouse", "land",
@@ -73,6 +74,13 @@ export interface ListingServiceDeps {
   disclosureRequirements?: (listing: PropertyListing) => Promise<{ versionId: string; keys: readonly string[] } | null>;
   /** Stores the requirements version a listing passed when it was published, so later versions never unpublish it. */
   markDisclosureVersion?: (listingId: string, versionId: string) => Promise<void>;
+  /**
+   * Elena's publish review (listing-validation.ts). When wired, a real publish also needs her to clear the listing, and a failure to read
+   * the gallery blocks publishing (fails closed). Unwired, only the older gate runs.
+   */
+  elenaFacts?: (listingId: string) => Promise<ElenaPhotoFacts>;
+  /** Puts a listing Elena cleared and published into staff's moderation queue. Best effort; never undoes or blocks a publish. */
+  queueForModeration?: (listing: PropertyListing, review: ElenaReview, actorUserId: string) => Promise<void>;
 }
 
 /** Hook budget: a slow hook is abandoned (not awaited further) so publishing returns promptly. */
@@ -312,7 +320,7 @@ async function complianceGate(
  */
 export async function publishListing(
   deps: ListingServiceDeps, actor: Actor, id: string, dryRun: boolean
-): Promise<Result<{ decision: PublishDecision; listing: PropertyListing; wordingFlags: FieldFlags[] }>> {
+): Promise<Result<{ decision: PublishDecision; listing: PropertyListing; wordingFlags: FieldFlags[]; elena?: ElenaReview }>> {
   const rec = await deps.repo.get(id);
   if (!rec) return fail("not_found", "Listing not found.");
   const l = rec.listing;
@@ -331,10 +339,24 @@ export async function publishListing(
   if (l.status === "suspended") return fail("conflict", "This listing has been suspended by our staff. Contact support to have it reviewed.");
 
   const now = deps.now();
-  const { decision, wordingFlags, wordingBlocked, requirementsVersionId } = await runPublishGate(deps, rec, now, actor.userId, actingAgent);
+  const gate = await runPublishGate(deps, rec, now, actor.userId, actingAgent);
+  const { wordingFlags, wordingBlocked, requirementsVersionId } = gate;
+  let decision = gate.decision;
+  // Elena looks at the whole listing the way a staff admin would. Her blockers stop a real publish and show in a dry run.
+  let elena: ElenaReview | undefined;
+  if (deps.elenaFacts) {
+    try {
+      const cleared = deps.clearedWordingFlags ? await deps.clearedWordingFlags(l.id).catch(() => new Set<string>()) : new Set<string>();
+      elena = reviewListing({ listing: l, photos: await deps.elenaFacts(l.id), wordingFlags, clearedWording: cleared, gateReasons: gate.decision.reasons });
+      const extra = elena.findings.filter(f => f.severity === "block" && !gate.decision.reasons.includes(f.message)).map(f => f.message);
+      if (extra.length > 0) decision = { allowed: false, reasons: [...decision.reasons, ...extra] };
+    } catch {
+      decision = { allowed: false, reasons: [...decision.reasons, "Elena could not check the listing's photos just now. Try again in a moment."] };
+    }
+  }
   if (wordingBlocked && !dryRun && deps.recordWordingFlags) await deps.recordWordingFlags(l.id, actor.userId, wordingFlags).catch(() => undefined);
 
-  if (dryRun || !decision.allowed) return { ok: true, value: { decision, listing: l, wordingFlags } };
+  if (dryRun || !decision.allowed) return { ok: true, value: { decision, listing: l, wordingFlags, ...(elena ? { elena } : {}) } };
 
   const ctx = { correlationId: deps.newId(), actorType: "user" as const, actorId: actor.userId, now };
   let current = l;
@@ -348,7 +370,8 @@ export async function publishListing(
   await deps.repo.save({ ...rec, listing: done.listing });
   if (requirementsVersionId && deps.markDisclosureVersion) await deps.markDisclosureVersion(l.id, requirementsVersionId);
   if (deps.afterPublish) await runAfterPublish(deps.afterPublish, done.listing);
-  return { ok: true, value: { decision, listing: done.listing, wordingFlags } };
+  if (deps.queueForModeration && elena) await deps.queueForModeration(done.listing, elena, actor.userId).catch(() => undefined);
+  return { ok: true, value: { decision, listing: done.listing, wordingFlags, ...(elena ? { elena } : {}) } };
 }
 
 /** Wording flags (block and warn) for the listing's owner-written text. */
