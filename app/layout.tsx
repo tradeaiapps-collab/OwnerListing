@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { cookies, headers } from "next/headers";
 import "./globals.css";
 import GuideAssistant from "./guide-assistant";
+import { ElenaContextTracker } from "./elena-context";
 import AdminShell from "./admin-shell";
 import SiteNav from "./site-nav";
 import { THEME_INIT_SCRIPT } from "./theme-toggle";
@@ -118,6 +119,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
             </footer>
           </>
         )}
+        <ElenaContextTracker />
         {guide?.enabled && <GuideAssistant greeting={guide.greeting} chips={guide.chips} disclaimer={GUIDE_DISCLAIMER} persona={{ name: persona.name, icon: persona.icon, portrait: persona.portrait, poses: persona.poses }} />}
         {bridgeOrigin && <ThemePreviewBridge allowedOrigin={bridgeOrigin} />}
       </body>

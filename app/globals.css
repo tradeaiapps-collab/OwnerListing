@@ -539,3 +539,6 @@ button.role-item:hover:not(:disabled), a.role-item:hover, .role-item:focus-visib
 .qs-nav { display: flex; gap: var(--space-2); }
 .qs-result { margin-bottom: var(--space-4); }
 @media (max-width: 479px) { .qs-foot { flex-direction: column-reverse; align-items: stretch; } .qs-nav { flex-direction: column-reverse; } .qs-nav > button, .qs-foot > button { width: 100%; } }
+.ela-now { border-left: 3px solid var(--gold); padding-left: var(--space-3); }
+.ela-now p { margin: 0 0 var(--space-2); }
+.ela-tell textarea { width: 100%; margin-bottom: var(--space-2); }
