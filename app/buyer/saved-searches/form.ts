@@ -22,7 +22,7 @@ export function savedSearchFormBody(fd: FormData): { body: Record<string, unknow
   }
   const beds = text("minBedrooms");
   if (beds !== "") {
-    if (!/^\d{1,2}$/.test(beds)) return { error: "Minimum bedrooms must be a whole number from 0 to 20." };
+    if (!/^\d{1,2}$/.test(beds)) return { error: "Minimum bedrooms must be a whole number from 1 to 20." };
     body["minBedrooms"] = Number(beds);
   }
   for (const [field, key, label] of [["minBathrooms", "minBathrooms", "bathrooms"], ["minParking", "minParking", "parking"]] as const) {
@@ -35,4 +35,13 @@ export function savedSearchFormBody(fd: FormData): { body: Record<string, unknow
   if (amenities.length > 0) body["amenities"] = amenities;
   const checked = parseSavedSearchInput(body);
   return checked.ok ? { body } : { error: checked.message };
+}
+
+/** Non-blocking hints for the saved-search form, shown as the buyer edits. */
+export function savedSearchHints(fd: FormData): string[] {
+  const text = (k: string) => String(fd.get(k) ?? "").trim();
+  const hints: string[] = [];
+  if (text("jurisdiction") && text("suburbs") === "") hints.push("No suburbs chosen, so this search covers the whole state. Add suburbs to narrow it.");
+  if (text("minBathrooms") === "0" || text("minParking") === "0") hints.push("0 bathrooms or parking means no minimum, so it is left out of the saved search.");
+  return hints;
 }
