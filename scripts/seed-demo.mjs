@@ -369,6 +369,112 @@ async function seedMedia(client) {
   if (plans || videos) console.log(`Demo media: ${plans} floor plans and ${videos} videos added.`);
 }
 
+// ---- Example listings for one demo owner (My listings) --------------------------------------------------------------------------
+// Marcus Bell (marcus.owner) owns six fully populated sale listings: 3 NSW, 2 VIC, 1 QLD. Each has an owner-written description, map pin, a property
+// record, state-specific documents with verified disclosures, a trust account check, and open inspection times. Photos, floor plan and tour video are
+// added by seedPhotos and seedMedia (this owner is a demo account). Council and water rates and the finance example are written into the description:
+// the listing has no separate fields for them. Idempotent: a listing is skipped when this owner already has that address.
+const EXAMPLE_OWNER = "marcus.owner";
+const loan = (price, rate = 0.062) => { const p = price * 0.8, r = rate / 12, n = 360; return Math.round(p * r / (1 - (1 + r) ** -n)); };
+const money = n => `$${n.toLocaleString("en-AU")}`;
+const EXAMPLES = [
+  { state: "NSW", suburb: "Bondi Beach", postcode: "2026", type: "unit", address: "12/88 Campbell Parade, Bondi Beach NSW 2026", lat: -33.8915, lng: 151.2767, beds: 2, baths: 1, cars: 1,
+    title: "Bright two-bedroom apartment steps from Bondi Beach", price: 1450000, amenities: ["balcony", "air_conditioning", "lift", "security"],
+    intro: "A light-filled apartment on the third floor, two minutes' walk to the sand. North-facing balcony, polished timber floors, a renovated kitchen with stone benchtops and a secure car space in the basement.",
+    rates: { council: 412, water: 168, strata: 1180 }, docs: "nsw", times: [[6, 600, 660], [3, 1050, 1110]] },
+  { state: "NSW", suburb: "Manly", postcode: "2095", type: "house", address: "21 Raglan Street, Manly NSW 2095", lat: -33.7969, lng: 151.2840, beds: 4, baths: 3, cars: 2,
+    title: "Family home with a pool and a short walk to Manly Wharf", price: 2980000, amenities: ["pool", "garden", "solar", "garage", "air_conditioning", "ensuite"],
+    intro: "A generous four-bedroom home on a quiet street. Open-plan living flows to a north-facing garden and heated pool, the main bedroom has an ensuite and walk-in robe, and the double garage has internal access. Solar panels keep power bills low.",
+    rates: { council: 548, water: 196, strata: 0 }, docs: "nsw", times: [[6, 570, 630], [0, 600, 660]] },
+  { state: "NSW", suburb: "Parramatta", postcode: "2150", type: "townhouse", address: "5/31 Macarthur Street, Parramatta NSW 2150", lat: -33.8150, lng: 151.0011, beds: 3, baths: 2, cars: 2,
+    title: "Modern three-bedroom townhouse near the river", price: 945000, amenities: ["air_conditioning", "garage", "balcony", "study"],
+    intro: "A low-maintenance townhouse in a small complex of eight. Three bedrooms upstairs, a study nook, a sunny courtyard and a double lock-up garage. Walk to the light rail, the river and the Westfield.",
+    rates: { council: 386, water: 154, strata: 760 }, docs: "nsw", times: [[6, 660, 720], [4, 1080, 1140]] },
+  { state: "VIC", suburb: "Brunswick", postcode: "3056", type: "house", address: "63 Albert Street, Brunswick VIC 3056", lat: -37.7664, lng: 144.9600, beds: 3, baths: 2, cars: 1,
+    title: "Renovated Victorian terrace in the heart of Brunswick", price: 1325000, amenities: ["garden", "air_conditioning", "solar", "study"],
+    intro: "A beautifully renovated terrace that keeps its period details: high ceilings, timber floors and original fireplaces. A rear extension adds an open kitchen and dining room opening to a leafy garden, and there is off-street parking at the back.",
+    rates: { council: 462, water: 171, strata: 0 }, docs: "vic", times: [[6, 600, 660], [2, 1050, 1110]] },
+  { state: "VIC", suburb: "Richmond", postcode: "3121", type: "unit", address: "9/14 Bridge Road, Richmond VIC 3121", lat: -37.8183, lng: 144.9984, beds: 2, baths: 2, cars: 1,
+    title: "Stylish two-bedroom apartment close to Swan Street", price: 780000, amenities: ["balcony", "air_conditioning", "lift", "security", "ensuite"],
+    intro: "A contemporary apartment in a boutique block of twelve. Two bedrooms with built-in robes, an ensuite to the main, a covered balcony and a secure car space. Cafes, trams and the MCG precinct are on your doorstep.",
+    rates: { council: 301, water: 142, strata: 1020 }, docs: "vic", times: [[6, 630, 690], [3, 1080, 1140]] },
+  { state: "QLD", suburb: "Bulimba", postcode: "4171", type: "house", address: "34 Oxford Street, Bulimba QLD 4171", lat: -27.4502, lng: 153.0586, beds: 4, baths: 2, cars: 2,
+    title: "Elevated Queenslander with a pool, minutes to Oxford Street", price: 1895000, amenities: ["pool", "garden", "air_conditioning", "garage", "balcony"],
+    intro: "A character Queenslander raised high on a 607 sqm block. Wide verandahs, VJ walls and polished hoop pine floors sit alongside a modern kitchen. Downstairs has a second living area, a laundry and a double garage, and the saltwater pool is fenced to current standards.",
+    rates: { council: 623, water: 214, strata: 0 }, docs: "qld", times: [[6, 600, 660], [3, 1050, 1110]] }
+];
+const DOC_SETS = {
+  nsw: [["contract", "Contract for the sale of land (with section 10.7 planning certificate)", "nsw_contract_of_sale"], ["title_search", "Title search", "title_search"],
+    ["building_inspection", "Building inspection report", "building_pest_report"], ["pest_report", "Timber pest report", null]],
+  vic: [["contract", "Vendor's statement (section 32) and contract of sale", "vic_section_32"], ["title_search", "Title search and plan of subdivision", "title_search"],
+    ["building_inspection", "Building inspection report", "building_pest_report"], ["pest_report", "Timber pest report", null]],
+  qld: [["contract", "Seller disclosure statement (Form 2) and contract", "qld_seller_disclosure_statement"], ["title_search", "Current title search", "qld_title_search"],
+    ["other", "Registered survey plan", "qld_registered_plan"], ["other", "Pool safety certificate", "qld_pool_safety_sale"], ["other", "Smoke alarm compliance declaration", "qld_smoke_alarm_compliance_sale"],
+    ["building_inspection", "Building inspection report", null], ["pest_report", "Timber pest report", null]]
+};
+const describe = e => {
+  const f = e.rates, repay = loan(e.price);
+  return [e.intro,
+    `Rates and outgoings (approximate, per quarter): council rates ${money(f.council)}, water and sewerage ${money(f.water)}${f.strata ? `, strata levies ${money(f.strata)}` : ""}.`,
+    `Finance example: with a 20% deposit (${money(Math.round(e.price * 0.2))}) and a 30-year loan at an example rate of 6.20% a year, repayments would be about ${money(repay)} a month. This is an illustration only, not an offer of credit; rates change.`,
+    `Open inspections are bookable on the listing page. Sold direct by the owner, so you deal with the person who knows the property best. Demo data.`].join("\n\n");
+};
+
+async function seedOwnerExamples(client) {
+  const email = `${EXAMPLE_OWNER}${D}`;
+  let owner = (await client.query(`SELECT id FROM app_user WHERE email = $1`, [email])).rows[0]?.id;
+  if (!owner) {
+    owner = (await client.query(`INSERT INTO app_user (email, display_name, user_type, status) VALUES ($1, 'Marcus Bell (owner, 6 example listings)', 'owner', 'active') RETURNING id`, [email])).rows[0].id;
+    await client.query(`INSERT INTO terms_acceptance (user_id, version) VALUES ($1, '2026-10-24')`, [owner]);
+  }
+  const boss = (await client.query(`SELECT id FROM app_user WHERE email = $1`, [`staff.super_admin${D}`])).rows[0]?.id;
+  if (!boss) { console.log("Example listings skipped: demo staff are missing."); return; }
+  let ta = (await client.query(`SELECT id FROM trust_account WHERE approved_at IS NOT NULL ORDER BY approved_at LIMIT 1`)).rows[0]?.id;
+  if (!ta) {
+    const firm = (await client.query(`INSERT INTO law_firm (name, jurisdiction, tier) VALUES ('Harbour Legal (demo)', 'QLD', 'registered') RETURNING id`)).rows[0].id;
+    ta = (await client.query(
+      `INSERT INTO trust_account (firm_id, account_name, bsb, account_number_encrypted, details_fingerprint, last_human_approved_fingerprint, approved_by, approved_at)
+       VALUES ($1, 'Harbour Legal Trust (demo)', '064000', '\\x00', 'demo-fp', 'demo-fp', $2, now()) RETURNING id`, [firm, boss])).rows[0].id;
+  }
+  const dir = localDevStorageDir(process.env);
+  const iso = days => new Date(Date.now() + days * 864e5).toISOString().slice(0, 10);
+  let made = 0;
+  for (const [i, e] of EXAMPLES.entries()) {
+    if ((await client.query(`SELECT 1 FROM property_listing WHERE owner_user_id = $1 AND address_text = $2`, [owner, e.address])).rowCount) continue;
+    const cfg = (await client.query(`SELECT id FROM disclosure_config_version WHERE jurisdiction = $1 AND transaction_type = 'sale' AND use_class = 'residential' AND status = 'approved'`, [e.state])).rows[0]?.id ?? null;
+    const pid = (await client.query(
+      `INSERT INTO property (address_text, state, suburb, postcode, use_class, property_type, bedrooms, bathrooms, car_spaces, latitude, longitude)
+       VALUES ($1, $2, $3, $4, 'residential', $5, $6, $7, $8, $9, $10) RETURNING id`, [e.address, e.state, e.suburb, e.postcode, e.type, e.beds, e.baths, e.cars, e.lat, e.lng])).rows[0].id;
+    const lid = (await client.query(
+      `INSERT INTO property_listing (owner_user_id, jurisdiction, transaction_type, use_class, property_type, title, description, address_text, suburb, postcode, price_cents,
+         bedrooms, bathrooms, parking, amenities, latitude, longitude, property_id, status, listing_fee_paid, terms_accepted, disclosure_config_version_id, created_at)
+       VALUES ($1, $2, 'sale', 'residential', $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, 'published', true, true, $17, now() - $18::int * interval '1 day') RETURNING id`,
+      [owner, e.state, e.type, e.title, describe(e), e.address, e.suburb, e.postcode, e.price * 100, e.beds, e.baths, e.cars, e.amenities, e.lat, e.lng, pid, cfg, 3 + i * 2])).rows[0].id;
+    await client.query(`INSERT INTO trust_account_check (listing_id, trust_account_id, decision, evidence, reasons) VALUES ($1, $2, 'approved', '{}', '["Demo data"]')`, [lid, ta]);
+    for (const [kind, name, key] of DOC_SETS[e.docs]) {
+      const bytes = makePdf(name, [e.address, `State: ${e.state}`, "Example document for the demo owner. Not a real certificate or report."]);
+      const id = randomUUID(), storageKey = `listings/${lid}/${randomUUID()}`;
+      if (dir) await putLocalObject(dir, storageKey, bytes);
+      // Contracts and disclosures are public so buyers can read them before an offer; reports are shared with parties only.
+      await client.query(
+        `INSERT INTO property_document (id, property_id, listing_id, kind, storage_key, sha256, uploaded_by, source, declared_mime, size_bytes, visibility, status, uploaded_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, 'owner_supplied', 'application/pdf', $8, $9, 'active', now() - interval '2 days')`,
+        [id, pid, lid, kind, storageKey, createHash("sha256").update(bytes).digest("hex"), owner, bytes.length, key ? "public" : "parties"]);
+      if (key) {
+        await client.query(
+          `INSERT INTO listing_disclosure (listing_id, jurisdiction, disclosure_key, satisfied, evidence_reference, verified_by, verified_at, state, evidence_document_id, submitted_by, submitted_at, config_version_id)
+           VALUES ($1, $2, $3, true, $4, $5, now() - interval '1 day', 'verified', $6, $7, now() - interval '2 days', $8)`, [lid, e.state, key, name, boss, id, owner, cfg]);
+      }
+    }
+    for (const [dow, start, end] of e.times) {
+      await client.query(`INSERT INTO open_inspection_availability (listing_id, created_by, recurrence, day_of_week, start_min, end_min, slot_minutes, capacity) VALUES ($1, $2, 'weekly', $3, $4, $5, 15, 2)`, [lid, owner, dow, start, end]);
+    }
+    await client.query(`INSERT INTO open_inspection_availability (listing_id, created_by, recurrence, on_date, start_min, end_min, slot_minutes, capacity) VALUES ($1, $2, 'once', $3, 720, 780, 30, 3)`, [lid, owner, iso(5 + i)]);
+    made++;
+  }
+  console.log(made ? `Example listings created: ${made} for ${email}.` : `Example listings already present for ${email}.`);
+}
+
 // ---- Open inspection times for the Bondi demo listing ----------------------------------------------------------------
 // Published by the owner (Sarah): a weekly Saturday morning session plus a few one-off dates over the next three weeks
 // (evening, morning and afternoon). Dates are relative to today in Sydney time. Idempotent: skipped once the listing has times.
@@ -585,6 +691,7 @@ try {
     console.log("Demo data already present. (Use local-reset to start again.)");
     await seedInvestor(db);
     await seedPerformanceAndMessages(db);
+    await seedOwnerExamples(db);
     await seedPhotos(db);
     await seedLocations(db);
     await seedFiles(db);
@@ -714,6 +821,7 @@ try {
   console.log(`Demo data created: 6 staff, 2 owners, 1 agent, 3 buyers, ${listing.length} listings, 3 enquiries, 3 offers, 2 invoices, 2 ID reviews. (run ${randomUUID().slice(0, 8)})`);
   await seedInvestor(db);
   await seedPerformanceAndMessages(db);
+  await seedOwnerExamples(db);
   await seedPhotos(db);
   await seedLocations(db);
   await seedFiles(db);
