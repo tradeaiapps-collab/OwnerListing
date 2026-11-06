@@ -48,6 +48,36 @@ describe("buyer advisor", () => {
     expect(r.s.step).toBe("done");
     expect(r.s.params["maxPriceCents"]).toBe("70000000");
   });
+  it("answers small talk warmly and asks the same question again", () => {
+    for (const hi of ["hi", "Hello there", "hey Elena, how are you?", "good morning"]) {
+      const r = run(hi);
+      expect(r.s.step).toBe("intent");
+      expect(r.reply).not.toMatch(/didn't catch/);
+      expect(r.reply).toMatch(/buy or to rent/);
+    }
+    expect(run("hi").reply).toMatch(/^Hi there!/);
+    expect(run("buy", "thanks").reply).toMatch(/welcome.*budget/i);
+    expect(run("buy", "how are you?").s.step).toBe("budget");
+  });
+  it("talks about negotiation, suggestions and the market without overstepping", () => {
+    expect(run("buy", "can you negotiate for me?").reply).toMatch(/can't negotiate.*budget/i);
+    expect(run("buy", "is it a good time to buy?").reply).toMatch(/can't value a home.*budget/i);
+    expect(run("buy", "what do you suggest?").reply).toMatch(/range/);
+    expect(run("buy", "800k", "any", "what would you suggest").reply).toMatch(/bedrooms/i);
+    expect(run("buy", "800k").s.step).toBe("type");
+  });
+  it("still lets 'no thanks' and 'any' answer the question", () => {
+    expect(run("buy", "any", "any", "any", "anywhere", "no thanks").s.step).toBe("done");
+    expect(run("buy", "I'm not sure, any").s.step).toBe("type");
+  });
+  it("chats after the search is set up", () => {
+    const r = run("buy", "any", "any", "any", "anywhere", "no", "thank you");
+    expect(r.s.step).toBe("done");
+    expect(r.reply).toMatch(/welcome/i);
+  });
+  it("varies the acknowledgements", () => {
+    expect(run("rent").reply).toMatch(/^Lovely, a rental\./);
+  });
   it("widens a budget by 15% rounded up", () => {
     expect(widenBudget({ transactionType: "sale", maxPriceCents: "90000000" })?.["maxPriceCents"]).toBe("105000000");
     expect(widenBudget({ transactionType: "sale" })).toBeNull();
