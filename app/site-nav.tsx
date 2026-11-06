@@ -1,10 +1,11 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Icon } from "./icons";
 import RoleSwitcher, { loadRoles } from "./role-switcher";
 import { roleNav } from "../src/domain/role-nav";
 import type { UserRole } from "../src/domain/roles";
 import ThemeToggle from "./theme-toggle";
+import { NAV_CACHE_KEY, parseNavSnapshot, serializeNavSnapshot } from "../src/domain/nav-cache";
 import { NAV_CATALOG, type IconStyle, type NavItem } from "../src/domain/site-theme";
 
 type Who = "loading" | "out" | "staff" | "owner" | "buyer";
@@ -26,6 +27,21 @@ export default function SiteNav({ items, iconStyle, signInHref, themeToggle }: {
 
   useEffect(() => setReady(true), []);
 
+  // Draw the last known menu before the first paint; the checks below then confirm or correct it.
+  useLayoutEffect(() => {
+    try {
+      const c = parseNavSnapshot(window.sessionStorage.getItem(NAV_CACHE_KEY));
+      if (c && c.who !== "out") { setWho(c.who); setRole(c.role as UserRole | null); }
+    } catch { /* storage blocked: the menu simply waits for the checks */ }
+  }, []);
+  const remember = (w: Who, r: UserRole | null) => {
+    try {
+      if (w === "loading") return;
+      if (w === "out") window.sessionStorage.removeItem(NAV_CACHE_KEY);
+      else window.sessionStorage.setItem(NAV_CACHE_KEY, serializeNavSnapshot({ who: w, role: r }));
+    } catch { /* ignore */ }
+  };
+
   useEffect(() => {
     if (firstRender.current) { firstRender.current = false; return; }
     if (open) navRef.current?.querySelector<HTMLElement>(".site-nav-links a, .site-nav-links button")?.focus();
@@ -45,19 +61,24 @@ export default function SiteNav({ items, iconStyle, signInHref, themeToggle }: {
     // 404 unless the investor module is live (both keys), so nothing about investing shows while it is off.
     void get("/api/investments/status").then(s => setInvest(s?.live === true));
     Promise.all([get("/api/auth/me"), get("/api/staff/me")]).then(([me, staff]) => {
-      if (staff?.staff) setWho("staff");
+      if (staff?.staff) { setWho("staff"); remember("staff", null); }
       else if (me?.mfaPending && window.location.pathname !== "/mfa") {
         // Signed in with Google but the second step is still to do: every API treats the session as signed out until then.
         window.location.assign(`/mfa?next=${encodeURIComponent(window.location.pathname + window.location.search)}`);
       } else if (me?.user) {
-        setWho(me.user.userType === "buyer" ? "buyer" : "owner");
-        void loadRoles().then(r => setRole(r?.currentRole ?? (me.user.userType === "buyer" ? "buyer" : me.user.userType === "agent" ? "agent" : "owner")));
+        const w: Who = me.user.userType === "buyer" ? "buyer" : "owner";
+        setWho(w);
+        void loadRoles().then(r => {
+          const cr = (r?.currentRole ?? (me.user.userType === "buyer" ? "buyer" : me.user.userType === "agent" ? "agent" : "owner")) as UserRole;
+          setRole(cr); remember(w, cr);
+        });
       }
-      else setWho("out");
+      else { setWho("out"); remember("out", null); }
     });
   }, []);
 
   const signOut = async () => {
+    try { window.sessionStorage.removeItem(NAV_CACHE_KEY); } catch { /* ignore */ }
     await fetch("/api/auth/logout", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" }).catch(() => null);
     window.location.assign("/");
   };
