@@ -1,6 +1,8 @@
 import type { JobAssignment } from "./job-chat";
 import type { PhotoMime } from "./image-meta";
 import { classifyTour, type TourKind } from "./virtual-tour";
+import { PROFANITY_MESSAGE, findProfanity, hasProfanity } from "./profanity-filter";
+export { PROFANITY_MESSAGE, findProfanity };
 
 /**
  * Listing photo gallery rules (pure). Two records:
@@ -188,6 +190,7 @@ export function checkLayoutChange(
   current: Layout, photos: ReadonlyMap<string, PhotoRecord>, body: unknown, ctx: { everPublished: boolean }
 ): LayoutCheck {
   if (typeof body !== "object" || body === null) return { ok: false, message: "Invalid gallery." };
+  const allowFlagged = (body as Record<string, unknown>)["allowFlagged"] === true;
   const raw = (body as Record<string, unknown>)["entries"];
   if (!Array.isArray(raw) || raw.length > PHOTO_LIMITS.maxEntries) return { ok: false, message: "Invalid gallery." };
   const inCurrent = new Set(current.entries.map(e => e.photoId));
@@ -208,6 +211,7 @@ export function checkLayoutChange(
     if (cat !== undefined && cat !== null && cat !== "" && !isPhotoCategory(cat)) return { ok: false, message: "Unknown room or category." };
     const features = cleanFeatures(o["features"]);
     if (features === null) return { ok: false, message: `Features must be up to ${FEATURE_LIMITS.maxPerPhoto} short tags of ${FEATURE_LIMITS.maxChars} characters or fewer.` };
+    if (!allowFlagged && hasProfanity(caption, alt, ...features)) return { ok: false, message: PROFANITY_MESSAGE };
     entries.push({
       photoId: id, caption, alt, hidden: o["hidden"] === true,
       ...(isPhotoCategory(cat) ? { category: cat } : {}), ...(features.length ? { features } : {})
