@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { ENGLISH_PREVAILS_NOTICE } from "../../src/domain/i18n";
 import { JSON_HEADERS } from "../listings/ui";
+import BackLink from "../back-link";
 import "../styles/settings.css";
 
 type Current = { version: string; textReference: string; includesAiLearningClause: boolean };
@@ -38,6 +39,7 @@ export default function Terms() {
 
   return (
     <main>
+      <BackLink />
       <h1>Terms and privacy</h1>
       <section className="terms-box" aria-label="Summary">
         <p><strong>Draft, pending review by Australian counsel.</strong> This summary is not the final legal text.</p>
