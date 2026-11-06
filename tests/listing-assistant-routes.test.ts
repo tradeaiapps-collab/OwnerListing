@@ -80,3 +80,18 @@ describe("listing assistant routes", () => {
     expect((await feedback.DELETE(new Request("http://test/x", { method: "DELETE", headers: { origin: "http://evil" } }))).status).toBe(403);
   });
 });
+
+describe("quick setup route", () => {
+  it("needs a signed-in owner or agent and returns the filled fields without saving anything", async () => {
+    vi.doMock("../src/server/ai", () => ({ getAiEngine: async () => (await import("../src/domain/ai-engine")).rulesOnlyEngine }));
+    const qs = await import("../app/api/listings/assistant/quick-setup/route");
+    state.actor = null;
+    expect((await qs.POST(post({ notes: "3 bedroom house in Paddington QLD 4064 asking $900k" }))).status).toBe(401);
+    state.actor = { userId: "u1", userType: "owner" };
+    expect((await qs.POST(post({ notes: 5 }))).status).toBe(400);
+    const res = await qs.POST(post({ notes: "3 bedroom house at 1 Test Street, Paddington QLD 4064 asking $900k" }));
+    const d = await res.json();
+    expect(res.status).toBe(200);
+    expect(d.state).toBe("ready"); expect(d.fields.bedrooms).toBe(3);
+  });
+});

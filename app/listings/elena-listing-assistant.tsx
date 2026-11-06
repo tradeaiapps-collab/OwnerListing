@@ -1,6 +1,6 @@
 "use client";
 import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
-import type { AssistantPlan, FeedbackEvent, RewriteMode, Rewrite } from "../../src/domain/listing-assistant";
+import type { AssistantPlan, AssistantQuestion, FeedbackEvent, RewriteMode, Rewrite } from "../../src/domain/listing-assistant";
 import { dollarsToCents, formatAud } from "../../src/domain/listing-details";
 import { useSearchPersona } from "./persona-context";
 import { JSON_HEADERS } from "./ui";
@@ -44,6 +44,63 @@ function setControl(form: HTMLFormElement, name: string, value: string) {
   Object.getOwnPropertyDescriptor(proto, "value")?.set?.call(el, value);
   el.dispatchEvent(new Event("input", { bubbles: true }));
   el.dispatchEvent(new Event("change", { bubbles: true }));
+}
+
+type Answer = { kind: "text"; value: string } | { kind: "number"; value: number } | { kind: "yes" } | { kind: "no" } | { kind: "open" };
+
+const FLAG: Record<string, string> = { furnished: "furnished", pets: "pet_friendly" };
+const FIELD_LABEL: Record<string, string> = { suburb: "Suburb", bedrooms: "Bedrooms", bathrooms: "Bathrooms", parking: "Parking spaces", price: "Price" };
+const SENTENCE_LEAD: Record<string, string> = { love: "", outdoor: "Outdoors: ", renovation: "Recent work: ", nearby: "Nearby: " };
+
+/** Puts an answer into the form the way a person typing it would. Returns a one-line confirmation. */
+function applyAnswer(form: HTMLFormElement, q: AssistantQuestion, a: Answer): string {
+  if (a.kind === "number") { setControl(form, q.id, String(a.value)); return `${FIELD_LABEL[q.id]} set to ${a.value}. You can change it in the form.`; }
+  if (a.kind === "text" && (q.id === "suburb" || q.id === "price")) { setControl(form, q.id, a.value.replace(/^\$/, "")); return `${FIELD_LABEL[q.id]} filled in.`; }
+  if (a.kind === "text") {
+    const now = String(new FormData(form).get("description") ?? "").trim();
+    const sentence = `${SENTENCE_LEAD[q.id] ?? ""}${a.value.trim().replace(/^./, c => c.toUpperCase())}${/[.!?]$/.test(a.value.trim()) ? "" : "."}`;
+    setControl(form, "description", now ? `${now}\n\n${sentence}` : sentence);
+    return "Added to your description.";
+  }
+  if (a.kind === "yes" && FLAG[q.id]) {
+    const box = form.querySelector<HTMLInputElement>(`input[name="amenities"][value="${FLAG[q.id]}"]`);
+    if (box && !box.checked) box.click();
+    return "Ticked in the features list.";
+  }
+  return "Noted.";
+}
+
+/** The answer control for one of Elena's questions, shown inside her card. Number chips, a text box, or yes/no. */
+function ElenaAnswer({ q, rent, onAnswer, onSkip }: { q: AssistantQuestion; rent: boolean; onAnswer: (a: Answer) => void; onSkip: () => void }) {
+  const [text, setText] = useState("");
+  const id = useId();
+  const skip = <button type="button" className="secondary" onClick={onSkip}>{q.essential ? "Skip for now" : "Not now"}</button>;
+  if (q.id === "bedrooms" || q.id === "bathrooms" || q.id === "parking") {
+    return (
+      <div className="ela-actions" role="group" aria-label={q.question}>
+        {[0, 1, 2, 3, 4, 5].map(n => <button key={n} type="button" className="ela-num" onClick={() => onAnswer({ kind: "number", value: n })}>{n === 5 ? "5+" : n}</button>)}
+        {skip}
+      </div>
+    );
+  }
+  if (q.id === "furnished" || q.id === "pets") {
+    return <div className="ela-actions"><button type="button" onClick={() => onAnswer({ kind: "yes" })}>Yes</button><button type="button" className="secondary" onClick={() => onAnswer({ kind: "no" })}>No</button>{skip}</div>;
+  }
+  if (q.id === "photos") {
+    return <div className="ela-actions"><button type="button" onClick={() => onAnswer({ kind: "open" })}>Show me where</button>{skip}</div>;
+  }
+  const short = q.id === "suburb" || q.id === "price";
+  const submit = () => { if (text.trim()) onAnswer({ kind: "text", value: text.trim() }); };
+  return (
+    <div className="ela-answer">
+      <label htmlFor={id} className="sr-only">{q.question}</label>
+      {short
+        ? <input id={id} value={text} onChange={e => setText(e.target.value)} onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); submit(); } }}
+            inputMode={q.id === "price" ? "decimal" : "text"} placeholder={q.id === "price" ? (rent ? "650" : "850000") : "e.g. Paddington"} autoComplete="off" />
+        : <textarea id={id} rows={3} value={text} onChange={e => setText(e.target.value)} placeholder="Type it in your own words. Elena adds it to your description." maxLength={500} />}
+      <div className="ela-actions"><button type="button" disabled={!text.trim()} onClick={submit}>Add answer</button>{skip}</div>
+    </div>
+  );
 }
 
 /**
@@ -121,6 +178,20 @@ export function ElenaListingAssistant({ photoCount }: { photoCount?: number }) {
     else if (target === "photos") document.querySelector(".gl-mgr")?.scrollIntoView({ block: "center", behavior: "smooth" });
   };
   const hide = (key: string) => setGone(g => new Set(g).add(key));
+  const [done, setDone] = useState("");
+  /** Elena fills the form for the person: the answer goes straight into the field, nothing scrolls. */
+  function answer(q: AssistantQuestion, a: Answer) {
+    const f = form();
+    if (!f) return;
+    const msg = applyAnswer(f, q, a);
+    send([{ kind: "question", key: q.id, action: "answered" }]);
+    hide(`q-${q.id}`); setDone(msg);
+    if (q.id === "photos") focus("photos");
+  }
+  function skip(q: AssistantQuestion) {
+    if (!q.essential) send([{ kind: "question", key: q.id, action: "dismissed" }]);
+    hide(`q-${q.id}`); setDone("");
+  }
   async function forget() {
     await fetch("/api/listings/assistant/feedback", { method: "DELETE", headers: JSON_HEADERS }).catch(() => undefined);
     setForgot(true); void refresh();
@@ -138,22 +209,22 @@ export function ElenaListingAssistant({ photoCount }: { photoCount?: number }) {
       {open && !plan && !error && <p role="status" className="muted">Elena is looking at your details…</p>}
       {open && plan && (
         <div className="ela-body">
-          {plan.questions.filter(q => !gone.has(`q-${q.id}`)).length > 0 && (
-            <section aria-label="Questions from Elena">
-              <h3>Elena asks</h3>
-              <ul className="ela-list">
-                {plan.questions.filter(q => !gone.has(`q-${q.id}`)).map(q => (
-                  <li key={q.id}>
+          {(() => {
+            const qs = plan.questions.filter(q => !gone.has(`q-${q.id}`));
+            const q = qs[0];
+            return (
+              <section aria-label="Questions from Elena" aria-live="polite">
+                {done && <p role="status" className="ela-done">{done}</p>}
+                {q && (
+                  <>
+                    <h3>Elena asks <span className="muted ela-count">{qs.length === 1 ? "last question" : `${qs.length} questions left`}</span></h3>
                     <p><strong>{q.question}</strong><br /><span className="muted">{q.why}</span></p>
-                    <div className="ela-actions">
-                      <button type="button" onClick={() => { send([{ kind: "question", key: q.id, action: "answered" }]); focus(q.target); }}>Answer</button>
-                      {!q.essential && <button type="button" className="secondary" onClick={() => { send([{ kind: "question", key: q.id, action: "dismissed" }]); hide(`q-${q.id}`); }}>Not now</button>}
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          )}
+                    <ElenaAnswer key={q.id} q={q} rent={rent} onAnswer={a => answer(q, a)} onSkip={() => skip(q)} />
+                  </>
+                )}
+              </section>
+            );
+          })()}
 
           <section aria-label="Description">
             <h3>Description</h3>
