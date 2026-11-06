@@ -539,6 +539,9 @@ button.role-item:hover:not(:disabled), a.role-item:hover, .role-item:focus-visib
 .qs-nav { display: flex; gap: var(--space-2); }
 .qs-result { margin-bottom: var(--space-4); }
 @media (max-width: 479px) { .qs-foot { flex-direction: column-reverse; align-items: stretch; } .qs-nav { flex-direction: column-reverse; } .qs-nav > button, .qs-foot > button { width: 100%; } }
+.ela-now { border-left: 3px solid var(--gold); padding-left: var(--space-3); }
+.ela-now p { margin: 0 0 var(--space-2); }
+.ela-tell textarea { width: 100%; margin-bottom: var(--space-2); }
 
 /* Readable text on tinted (gold, beige) boxes. Muted grey on the champagne tint is only about 5:1, which reads faint at small sizes.
    Boxes that sit on --gold-tint, --surface or --tint get body text in --text, secondary text in --muted-strong (7:1 or better in light and dark)
