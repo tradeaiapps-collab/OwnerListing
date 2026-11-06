@@ -26,7 +26,7 @@ describe("navigation memory", () => {
     let s = visit(visit(visit(emptyNav("/a"), "/b", "push"), "/c", "push"), "/d", "push");
     s = visit(s, "/a", "pop");
     expect(s.index).toBe(0);
-    expect(visit(s, "/a?x=1", "replace").stack[0].url).toBe("/a?x=1");
+    expect(visit(s, "/a?x=1", "replace").stack[0]!.url).toBe("/a?x=1");
   });
   it("caps the stack", () => {
     let s = emptyNav("/0");
