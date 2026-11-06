@@ -4,6 +4,7 @@ import { AMENITY_LABELS, formatPrice, isAmenity } from "../../src/domain/listing
 import { parseSearchQuery } from "../../src/domain/listing-search";
 import { BLANK_FILTERS, filterParams, filtersFromParams, formFromQuery, type FilterForm } from "./url-params";
 import { CompareToggle, CompareTray } from "./compare-tray";
+import { BuyerAdvisor } from "./buyer-advisor";
 import { ElenaSearch } from "./elena-search";
 import { MoreFilters } from "./search-extras";
 import { SaveSearch } from "./save-search";
@@ -46,6 +47,9 @@ function describeFilters(f: FilterForm): string[] {
     f.lat && f.radiusKm && `Within ${f.radiusKm} km`
   ].filter((x): x is string => Boolean(x));
 }
+
+/** The filters the buyer advisor owns; her answers replace these and leave the rest (words, distance, bathrooms) alone. */
+const ADVISOR_KEYS = ["transactionType", "minPriceCents", "maxPriceCents", "propertyType", "minBedrooms", "jurisdiction", "suburb", "postcode", "amenities"];
 
 const queryString = (f: FilterForm) => filterParams(f).toString();
 
@@ -94,6 +98,12 @@ export default function Listings() {
     setForm(f); setApplied(f); setPage(1);
     if (sort === "distance" && !f.lat) setSort("newest");
   };
+  // The buyer advisor adds what the buyer says on top of the filters already applied.
+  const advise = (params: Record<string, string>) => {
+    const keep = filterParams(applied);
+    for (const k of ADVISOR_KEYS) keep.delete(k);
+    applyParams({ ...Object.fromEntries(keep), ...params });
+  };
   const clearParams = (names: string[]) => {
     const p = filterParams(applied);
     for (const n of names) p.delete(n);
@@ -137,6 +147,7 @@ export default function Listings() {
         <h1>Find a property</h1>
         <a className="button secondary" href="/listings/new">List your property</a>
       </div>
+      {ready && <BuyerAdvisor query={appliedQuery} total={rows === null ? null : total} startOpen={describeFilters(applied).length === 0} onApply={advise} />}
       <form id="listing-search" className="search-form" aria-label="Search listings" onSubmit={e => { e.preventDefault(); setPage(1); setApplied(form); }}>
         <input className="wide search-words" type="search" aria-label="Search by street, suburb or feature" placeholder="Search by street, suburb or feature, e.g. saltwater pool" maxLength={100} value={form.q} onChange={set("q")} />
         <select aria-label="Sale or rent" value={form.transactionType} onChange={e => setForm(f => ({ ...f, transactionType: e.target.value, minPrice: "", maxPrice: "" }))}>
@@ -177,7 +188,7 @@ export default function Listings() {
         </div>
       )}
       <ElenaSearch query={appliedQuery} total={rows === null ? null : total} onApply={applyParams} onClear={clearParams} />
-      <div className="result-bar">
+      <div className="result-bar" id="listing-results">
         <div className="view-toggle" role="group" aria-label="Show results as">
           <button type="button" className="secondary" aria-pressed={view === "list"} onClick={() => pick("list")}><span className="vt-icon vt-list" aria-hidden="true" />List</button>
           <button type="button" className="secondary" aria-pressed={view === "map"} onClick={() => pick("map")}><span className="vt-icon vt-map" aria-hidden="true" />Map</button>

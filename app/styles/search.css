@@ -105,3 +105,32 @@
 .ss-trash:hover:not(:disabled) { color: var(--danger); border-color: var(--danger); }
 .ss-confirm { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
 .ss-confirm button { min-height: 44px; }
+
+/* Elena as buyer advisor: figure with no frame beside the conversation (below it on phones). */
+.adv { display: grid; grid-template-columns: 1fr; gap: var(--space-3); align-items: end; margin-bottom: var(--space-4); }
+.adv-figure { justify-self: center; height: 200px; aspect-ratio: 408 / 414; }
+.adv-video { display: block; height: 100%; width: auto; max-width: 100%; object-fit: contain; background: transparent; border: 0; }
+.adv-chat { min-width: 0; border: 1px solid var(--line); border-radius: calc(var(--radius) + 2px); background: var(--elevated); box-shadow: var(--shadow-1); padding: var(--space-3) var(--space-4); display: grid; gap: var(--space-2); }
+.adv-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2); }
+.adv-head h2 { margin: 0; font-size: 1.05rem; }
+.adv-tag { font-size: 0.75rem; font-weight: 500; color: var(--muted); margin-left: var(--space-1); }
+.adv-tools { display: flex; gap: var(--space-2); }
+.adv-tools button, .adv-actions button, .adv-actions .button, .adv-form button { min-height: 44px; }
+.adv-log { display: grid; gap: var(--space-2); max-height: 260px; overflow-y: auto; align-content: start; }
+.adv-msg { margin: 0; padding: var(--space-2) var(--space-3); border-radius: var(--radius); max-width: 92%; overflow-wrap: anywhere; }
+.adv-her { background: color-mix(in srgb, var(--gold) 14%, var(--elevated)); justify-self: start; }
+.adv-you { background: var(--surface, var(--elevated)); border: 1px solid var(--line); justify-self: end; }
+.adv-live { opacity: 0.75; }
+.adv-form { display: grid; grid-template-columns: 1fr auto auto; gap: var(--space-2); }
+.adv-form input { min-width: 0; }
+.adv-mic.is-on { outline: 2px solid var(--gold); }
+.adv-done { display: grid; gap: var(--space-2); }
+.adv-done p, .adv-note { margin: 0; }
+.adv-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.adv-closed { grid-template-columns: auto 1fr auto; align-items: center; border: 1px solid var(--line); border-radius: calc(var(--radius) + 2px); background: var(--elevated); padding: var(--space-3) var(--space-4); }
+.adv-closed p { margin: 0; }
+.adv-closed button { min-height: 44px; }
+@media (max-width: 599px) { .adv-closed { grid-template-columns: auto 1fr; } .adv-closed button { grid-column: 1 / -1; } .adv-form { grid-template-columns: 1fr auto; } .adv-form input { grid-column: 1 / -1; } }
+@media (min-width: 768px) { .adv { grid-template-columns: 200px 1fr; } .adv-figure { height: 280px; justify-self: start; } }
+@media (min-width: 1100px) { .adv { grid-template-columns: 240px 1fr; } .adv-figure { height: 320px; } }
+@media (prefers-reduced-motion: reduce) { .adv-video { animation: none; } }
