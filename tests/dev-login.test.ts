@@ -5,7 +5,8 @@ import { isAllowed } from "../src/config/app-mode";
 import { proxy } from "../proxy";
 
 const ROWS: { current: Record<string, unknown>[] } = { current: [] };
-vi.mock("../src/server/context", () => ({ getDb: () => ({ query: async () => ({ rows: ROWS.current }) }), getActor: () => null, getDeps: () => null, getStaff: async () => null }));
+const SQL: string[] = [];
+vi.mock("../src/server/context", () => ({ getDb: () => ({ query: async (sql: string) => { SQL.push(sql); return { rows: ROWS.current }; } }), getActor: () => null, getDeps: () => null, getStaff: async () => null }));
 
 import { POST } from "../app/api/dev/login/route";
 
@@ -90,6 +91,20 @@ describe("POST /api/dev/login", () => {
     expect(res.status).toBe(200);
     expect(res.headers.get("set-cookie")).toContain("ol_session=");
     expect((await res.json()).redirect).toBe("/dashboard");
+  });
+  it("gives a dev agent a verified licence in every state, and a dev buyer full verification; owners get neither", async () => {
+    SQL.length = 0;
+    ROWS.current = [{ id: "11111111-1111-1111-1111-111111111111", user_type: "agent", roles: ["agent"], active_role: "agent", role: null }];
+    expect((await call()).status).toBe(200);
+    expect(SQL.filter(q => q.includes("INSERT INTO agent_licence"))).toHaveLength(8);
+    SQL.length = 0;
+    ROWS.current = [{ id: "11111111-1111-1111-1111-111111111111", user_type: "buyer", roles: ["buyer"], active_role: "buyer", role: null }];
+    expect((await call()).status).toBe(200);
+    expect(SQL.filter(q => q.includes("INSERT INTO buyer_verification"))).toHaveLength(1);
+    SQL.length = 0;
+    ROWS.current = [{ id: "11111111-1111-1111-1111-111111111111", user_type: "owner", role: null }];
+    expect((await call()).status).toBe(200);
+    expect(SQL.some(q => q.includes("agent_licence") || q.includes("buyer_verification"))).toBe(false);
   });
   it("signs a demo investor in as an investor (buyer account holding the investor role)", async () => {
     ROWS.current = [{ id: "11111111-1111-1111-1111-111111111111", user_type: "buyer", roles: ["buyer", "investor"], active_role: "investor", role: null }];

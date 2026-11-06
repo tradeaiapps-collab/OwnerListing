@@ -70,7 +70,7 @@ export default function Settings() {
         {msg ? <p role={ok ? "status" : "alert"}>{msg}</p> : null}
         <button type="submit" disabled={busy}>{busy ? "Saving…" : "Save settings"}</button>
       </form>
-      <p><a href="/terms">Terms and privacy</a> · <a href="/dashboard">Dashboard</a></p>
+      <p><a href="/terms?from=/settings">Terms and privacy</a> · <a href="/dashboard">Dashboard</a></p>
     </main>
   );
 }

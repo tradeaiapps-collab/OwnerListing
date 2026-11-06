@@ -2,6 +2,9 @@
 .oi { display: grid; gap: var(--space-4); min-width: 0; }
 .oi > * { min-width: 0; }
 .oi h1, .oi h2, .oi h3, .oi p { margin: 0; }
+/* Page title sized like the other workspace pages, so it does not dominate the booking card. */
+.oi h1 { font-size: clamp(1.5rem, 1.2rem + 1.2vw, 2rem); letter-spacing: -0.015em; }
+.oi > header { display: grid; gap: var(--space-1); }
 .oi li { max-width: none; }
 .oi-card { display: grid; gap: var(--space-3); padding: var(--space-4); border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); box-shadow: var(--shadow-1); align-content: start; }
 .oi-card > * { min-width: 0; overflow-wrap: anywhere; }
@@ -22,6 +25,8 @@
 .oi-day { flex: none; min-width: 4.5rem; display: grid; place-items: center; line-height: 1.2; scroll-snap-align: start; }
 .oi-day small { color: var(--muted); }
 .oi-times { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-2); }
+.oi-time { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; padding-block: var(--space-2); line-height: 1.25; text-align: center; }
+.oi-time span { white-space: nowrap; font-weight: 600; }
 .oi-time small { display: block; color: var(--muted); font-size: 0.75rem; }
 .oi-day[aria-pressed="true"], .oi-time[aria-pressed="true"], .oi-tab[aria-pressed="true"] { background: var(--brand); color: var(--brand-text); border-color: transparent; }
 .oi-day[aria-pressed="true"] small, .oi-time[aria-pressed="true"] small { color: inherit; }

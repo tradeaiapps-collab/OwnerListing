@@ -14,7 +14,7 @@ type Who = "loading" | "out" | "staff" | "owner" | "buyer";
  * Links follow the signed-in type. This only hides links; every route still enforces access on the server.
  * `items` is the admin's navigation setting (order, labels, hidden items); targets and icons come from the fixed catalogue.
  */
-export default function SiteNav({ items, iconStyle, signInHref, themeToggle }: { items?: NavItem[]; iconStyle?: IconStyle; signInHref?: "/dev-login"; themeToggle?: boolean }) {
+export default function SiteNav({ items, iconStyle, themeToggle }: { items?: NavItem[]; iconStyle?: IconStyle; themeToggle?: boolean }) {
   const [who, setWho] = useState<Who>("loading");
   const [invest, setInvest] = useState(false);
   const [role, setRole] = useState<UserRole | null>(null);
@@ -105,7 +105,7 @@ export default function SiteNav({ items, iconStyle, signInHref, themeToggle }: {
       {signedIn ? roleNav(role).filter(it => invest || (it.id !== "projects" && it.id !== "portfolio")).map(it => <a key={it.id} href={it.href}>{it.label}</a>) : pending ? null : list.map(it => {
         const def = NAV_CATALOG.find(n => n.id === it.id);
         if (!def || !it.visible || !shown[it.id]) return null;
-        const href = it.id === "signin" && signInHref ? signInHref : def.href;
+        const href = def.href;
         return <a key={it.id} href={href}><Icon name={def.icon} style={style} />{it.label}</a>;
       })}
       {(who === "owner" || who === "buyer" || who === "staff") && <button type="button" className="nav-signout" onClick={signOut}>Sign out</button>}

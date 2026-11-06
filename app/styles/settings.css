@@ -43,3 +43,6 @@
 .dev-checks label { align-items: flex-start; padding-block: var(--space-1); }
 .dev-check-text { display: grid; gap: 2px; min-width: 0; overflow-wrap: normal; }
 .dev-check-text .muted { font-size: 0.875rem; }
+
+.back-link { display: inline-flex; align-items: center; gap: var(--space-2, 0.5rem); min-height: 44px; margin-bottom: var(--space-2, 0.5rem); color: var(--muted); text-decoration: none; font-weight: 600; }
+.back-link:hover, .back-link:focus-visible { color: inherit; text-decoration: underline; }

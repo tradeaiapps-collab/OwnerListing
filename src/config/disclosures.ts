@@ -1,4 +1,5 @@
 import type { DisclosureItem } from "../domain/disclosure-config";
+import type { Jurisdiction } from "../domain/jurisdiction";
 
 /**
  * Queensland draft disclosure requirements (beta state). Seeded as DRAFT versions by db/20261025200000_state_disclosures.sql;
@@ -108,7 +109,7 @@ const RETAIL_LESSOR: DisclosureItem = {
   notApplicableAllowed: true
 };
 
-export interface SeedVersion { jurisdiction: "QLD"; transactionType: "sale" | "rent"; useClass: "residential" | "commercial"; items: readonly DisclosureItem[] }
+export interface SeedVersion { jurisdiction: Jurisdiction; transactionType: "sale" | "rent"; useClass: "residential" | "commercial"; items: readonly DisclosureItem[] }
 
 export const SEED_NOTE = "Draft by engineering from public sources on 25 Oct 2026. Compliance and counsel must confirm items, wording and references before approving.";
 

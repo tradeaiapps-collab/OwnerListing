@@ -1,7 +1,8 @@
 import type { ReactNode } from "react";
-import { cookies, headers } from "next/headers";
+import { cookies } from "next/headers";
 import "./globals.css";
 import GuideAssistant from "./guide-assistant";
+import { ElenaContextTracker } from "./elena-context";
 import AdminShell from "./admin-shell";
 import SiteNav from "./site-nav";
 import { THEME_INIT_SCRIPT } from "./theme-toggle";
@@ -15,7 +16,6 @@ import { personaById } from "../src/domain/assistant-persona";
 import { GUIDE_DISCLAIMER } from "../src/domain/guide-assistant";
 import { assetUrl, buildThemeCss, fontStylesheetUrl } from "../src/domain/site-theme";
 import { tenantAssetUrl } from "../src/domain/white-label";
-import { devLoginAllowed } from "../src/server/dev-login";
 import { getLivePersona } from "../src/server/assistant-persona-db";
 import { getLiveGuide } from "../src/server/guide-assistant-db";
 import { getRequestTheme } from "../src/server/request-theme";
@@ -65,9 +65,6 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   const bridgeOrigin = t.source === "draft" ? appOriginFor(admin ? "admin" : "all") : null;
   const [guide, personaId] = admin ? [null, null] : await Promise.all([getLiveGuide(), getLivePersona()]);
   const persona = personaById(personaId);
-  // "Sign in" goes to the local test kit's dev sign-in only where devLoginAllowed() holds (never in production); otherwise unchanged.
-  const h = await headers();
-  const devSignIn = !admin && devLoginAllowed({ url: `http://${h.get("host") ?? ""}/`, headers: { get: n => h.get(n) } });
 
   // The saved language (set on /settings) drives <html lang> and text direction. Page text stays English until a language is enabled.
   const savedLocale = (await cookies()).get(LOCALE_COOKIE)?.value;
@@ -89,7 +86,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
             <header className="site-header">
               <div className="site-header-inner">
                 <a className="brand" href="/">{logo ?? brand.name}</a>
-                <SiteNav items={settings.navigation} iconStyle={settings.layout.iconStyle} themeToggle={!fixedLight} {...(devSignIn ? { signInHref: "/dev-login" as const } : {})} />
+                <SiteNav items={settings.navigation} iconStyle={settings.layout.iconStyle} themeToggle={!fixedLight} />
               </div>
             </header>
             <div className="page" id="main-content" tabIndex={-1}>{children}</div>
@@ -118,6 +115,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
             </footer>
           </>
         )}
+        <ElenaContextTracker />
         {guide?.enabled && <GuideAssistant greeting={guide.greeting} chips={guide.chips} disclaimer={GUIDE_DISCLAIMER} persona={{ name: persona.name, icon: persona.icon, portrait: persona.portrait, poses: persona.poses }} />}
         {bridgeOrigin && <ThemePreviewBridge allowedOrigin={bridgeOrigin} />}
       </body>

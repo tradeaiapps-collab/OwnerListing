@@ -44,7 +44,7 @@ export default function Login() {
 
   return (
     <AuthCard title="Sign in" lead="Welcome back. Sign in to manage your listings, offers and saved searches."
-      foot={<>New here? <a href={`/signup${qs({ as })}`}>Create an account</a></>}>
+      foot={<>New here? <a href={`/signup${qs({ as })}`}>Create an account</a>{providers?.dev && <> · <a href="/dev-login">Local test accounts</a></>}</>}>
       {providers === null ? <p className="muted" role="status">Loading…</p> : (
         <>
           {providers.google && <GoogleButton href={`/api/auth/google/start${qs({ as })}`} label="Continue with Google" />}

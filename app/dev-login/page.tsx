@@ -40,6 +40,7 @@ export default async function DevLogin() {
       </div>
       <h1>{surface.staff && !surface.users ? "Sign in as a staff member" : "Sign in as a demo user"}</h1>
       <p>Click an account to sign in without Google. Demo accounts only ({DEV_EMAIL_DOMAIN}).</p>
+      <p>Want your own account? <a href="/login">Sign in</a> or <a href="/signup">create an account</a>.</p>
       {accounts.length === 0 ? <p>No demo accounts found. Run the seed (see docs/LOCAL_TEST.md).</p> : <DevLoginButtons accounts={accounts} />}
     </main>
   );
