@@ -21,6 +21,8 @@ export interface AlertConsentInput { channel: AlertChannel; consent: boolean }
 export interface SavedSearchRepository {
   list(buyerUserId: string): Promise<SavedSearch[]>;
   insert(buyerUserId: string, input: SavedSearchInput): Promise<SavedSearch>;
+  /** Removes one of the buyer's own searches. Returns false when it does not exist or belongs to someone else. */
+  remove(buyerUserId: string, searchId: string): Promise<boolean>;
   listPreferences(buyerUserId: string): Promise<AlertPreference[]>;
   giveConsent(buyerUserId: string, channel: AlertChannel, nowIso: string): Promise<void>;
   unsubscribe(buyerUserId: string, channel: AlertChannel, nowIso: string): Promise<void>;
@@ -162,4 +164,14 @@ export async function setAlertConsent(
   if (input.consent) await repo.giveConsent(buyerUserId, input.channel, nowIso);
   else await repo.unsubscribe(buyerUserId, input.channel, nowIso);
   return repo.listPreferences(buyerUserId);
+}
+
+/** Deletes a saved search the buyer owns. A saved search is a preference, not chat or a published file. */
+export async function deleteSavedSearch(
+  repo: SavedSearchRepository, buyerUserId: string, searchId: string
+): Promise<Result<{ deleted: true }>> {
+  if (searchId.length === 0 || searchId.length > 64) return fail("not_found", "Saved search not found.");
+  return (await repo.remove(buyerUserId, searchId))
+    ? { ok: true, value: { deleted: true } }
+    : fail("not_found", "Saved search not found.");
 }

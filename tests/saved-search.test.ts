@@ -14,6 +14,7 @@ vi.mock("../src/server/context", () => ({ getActor: () => state.actor }));
 vi.mock("../src/server/saved-search-context", () => ({ getSavedSearchRepo: () => state.repo }));
 
 import { GET as listRoute, POST as createRoute } from "../app/api/buyer/saved-searches/route";
+import { DELETE as deleteRoute } from "../app/api/buyer/saved-searches/[searchId]/route";
 import { GET as prefsGet, PUT as prefsPut } from "../app/api/buyer/alert-preferences/route";
 process.env["APP_URL"] = "http://test";
 
@@ -28,6 +29,7 @@ function memoryRepo(): SavedSearchRepository & { prefs: AlertPreference[]; searc
     searches, prefs,
     async list(buyer) { return searches.filter(s => s.buyerUserId === buyer); },
     async insert(buyer, input) { const s: SavedSearch = { id: `s-${++n}`, buyerUserId: buyer, active: true, ...input }; searches.push(s); return s; },
+    async remove(buyer, id) { const i = searches.findIndex(s => s.id === id && s.buyerUserId === buyer); if (i < 0) return false; searches.splice(i, 1); return true; },
     async listPreferences() { return [...prefs]; },
     async giveConsent(_b, channel, now) {
       const i = prefs.findIndex(p => p.channel === channel);
@@ -129,7 +131,8 @@ describe("createPgSavedSearchRepository", () => {
     await repo.listPreferences("u1");
     await repo.giveConsent("u1", "email", "2026-10-24T00:00:00.000Z");
     await repo.unsubscribe("u1", "sms", "2026-10-24T00:00:00.000Z");
-    expect(calls).toHaveLength(5);
+    await repo.remove("u1", "s1");
+    expect(calls).toHaveLength(6);
     for (const c of calls) {
       expect(c.params?.[0]).toBe("u1");
       expect(c.text).not.toContain("u1");
@@ -173,6 +176,19 @@ describe("buyer routes", () => {
     expect((await createRoute(req("POST", { ...valid, age: 30 }))).status).toBe(400);
     expect(((await (await listRoute(req("GET"))).json()) as { searches: unknown[] }).searches).toHaveLength(1);
     state.actor = { userId: "u2", userType: "agent" };
+    expect(((await (await listRoute(req("GET"))).json()) as { searches: unknown[] }).searches).toHaveLength(0);
+  });
+
+  it("deletes only the signed-in user's own search", async () => {
+    const ctx = (id: string) => ({ params: Promise.resolve({ searchId: id }) });
+    expect((await deleteRoute(req("DELETE"), ctx("s-1"))).status).toBe(401);
+    state.actor = { userId: "u1", userType: "owner" };
+    await createRoute(req("POST", valid));
+    state.actor = { userId: "u2", userType: "agent" };
+    expect((await deleteRoute(req("DELETE"), ctx("s-1"))).status).toBe(404);
+    state.actor = { userId: "u1", userType: "owner" };
+    expect((await deleteRoute(req("DELETE"), ctx("s-1"))).status).toBe(200);
+    expect((await deleteRoute(req("DELETE"), ctx("s-1"))).status).toBe(404);
     expect(((await (await listRoute(req("GET"))).json()) as { searches: unknown[] }).searches).toHaveLength(0);
   });
 
