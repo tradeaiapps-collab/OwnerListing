@@ -2,7 +2,8 @@
 import { useEffect, useState } from "react";
 import { MAX_COMPARE, parseCompareIds, type Comparison } from "../../src/domain/listing-compare";
 import { photoUrl, type CardPhoto } from "../../src/domain/listing-photos";
-import { readCompare } from "../listings/compare-store";
+import { readCompare, useCompare } from "../listings/compare-store";
+import { ComparePicker } from "./compare-picker";
 import { useSearchPersona } from "../listings/persona-context";
 import { JSON_HEADERS } from "../listings/ui";
 import "../styles/cards.css";
@@ -22,6 +23,8 @@ export default function ComparePage() {
   const [error, setError] = useState("");
   const [narration, setNarration] = useState("");
   const [asking, setAsking] = useState(false);
+  const [choosing, setChoosing] = useState(false);
+  const { replace } = useCompare();
 
   useEffect(() => {
     const fromUrl = parseCompareIds(new URLSearchParams(window.location.search).get("ids"));
@@ -39,6 +42,16 @@ export default function ComparePage() {
       .catch((e: Error) => setError(e.message));
   }, [ids]);
 
+  const go = (next: string[]) => {
+    setIds(next); setChoosing(false);
+    const u = new URL(window.location.href);
+    u.searchParams.set("ids", next.join(","));
+    window.history.pushState(null, "", u);
+  };
+  const change = () => {
+    replace((data?.listings ?? []).map(l => ({ id: l.id, title: l.title })));
+    setChoosing(true);
+  };
   const drop = (id: string) => {
     const next = (ids ?? []).filter(x => x !== id);
     setIds(next);
@@ -62,19 +75,15 @@ export default function ComparePage() {
   return (
     <main className="cmp-page">
       <h1>Compare properties</h1>
-      <p className="muted">Up to {MAX_COMPARE} properties side by side. <a href="/listings">Back to listings</a></p>
-      {ids !== null && ids.length < 2 && (
-        <div className="cmp-empty empty">
-          <p>Pick at least 2 properties to compare. Tick <strong>Compare</strong> on listings, then press the Compare button.</p>
-          <a className="button" href="/listings">Browse listings</a>
-        </div>
-      )}
-      {error && <p role="alert">{error} <a href="/listings">Choose again</a></p>}
-      {ids !== null && ids.length >= 2 && !data && !error && <p className="muted" role="status">Loading...</p>}
-      {data && c && (
+      <p className="muted">Pick 2 to {MAX_COMPARE} properties and see them side by side.</p>
+      {ids !== null && (ids.length < 2 || choosing) && <ComparePicker onCompare={go} />}
+      {error && !choosing && <p role="alert">{error} <button type="button" className="secondary" onClick={change}>Choose again</button></p>}
+      {ids !== null && ids.length >= 2 && !choosing && !data && !error && <p className="muted" role="status">Loading...</p>}
+      {data && c && !choosing && (
         <>
           <section className="cmp-summary" aria-labelledby="cmp-sum-h">
             <h2 id="cmp-sum-h">Summary</h2>
+            <p><button type="button" className="secondary" onClick={change}>Change properties</button></p>
             {c.highlights.length === 0 ? <p>{c.summary}</p> : <ul>{c.highlights.map(h => <li key={h}>{h}</li>)}</ul>}
             {narration && <p><strong>{persona.name}:</strong> {narration}</p>}
             <button type="button" className="secondary" disabled={asking} onClick={ask}>{asking ? `${persona.name} is writing...` : `Ask ${persona.name} to explain`}</button>

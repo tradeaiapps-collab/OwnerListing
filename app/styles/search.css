@@ -34,6 +34,21 @@
 .cmp-toggle { position: relative; z-index: 2; align-self: flex-start; display: inline-flex; align-items: center; gap: var(--space-2); min-height: 44px; margin-top: var(--space-2); font-size: 0.9rem; cursor: pointer; }
 .cmp-toggle input { width: 20px; height: 20px; margin: 0; }
 .cmp-toggle.on span { font-weight: 600; }
+.cmp-toggle { padding: 0 var(--space-3); border: 1px solid var(--line); border-radius: 999px; background: var(--bg); }
+.cmp-toggle.on { border-color: var(--gold); background: color-mix(in srgb, var(--gold) 14%, transparent); }
+.cmp-toggle:focus-within { outline: 2px solid var(--gold); outline-offset: 2px; }
+.cmp-picker-bar { display: grid; gap: var(--space-3); margin: var(--space-4) 0; padding: var(--space-3) var(--space-4); background: var(--elevated); border: 1px solid var(--line); border-radius: var(--radius); }
+.cmp-picker-bar h2 { margin: 0; font-size: 1.05rem; }
+.cmp-picker-bar .cmp-actions { justify-content: space-between; }
+.cmp-slots { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2); }
+@media (min-width: 768px) { .cmp-slots { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.cmp-slot { display: flex; align-items: center; justify-content: space-between; gap: var(--space-1); min-height: 44px; padding-left: var(--space-3); border: 1px dashed var(--line); border-radius: var(--radius); color: var(--muted, inherit); font-size: 0.9rem; min-width: 0; }
+.cmp-slot.filled { border-style: solid; border-color: var(--gold); background: var(--bg); color: inherit; }
+.cmp-slot .cmp-name { max-width: none; flex: 1; min-width: 0; }
+.cmp-search { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-bottom: var(--space-4); }
+.cmp-search input { flex: 1 1 14rem; min-width: 0; }
+.lcard.picked { outline: 2px solid var(--gold); outline-offset: 2px; }
+.cmp-add { margin-top: var(--space-2); min-height: 44px; width: 100%; }
 .cmp-tray { position: sticky; bottom: 0; z-index: 20; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2) var(--space-4); margin-top: var(--space-4); padding: var(--space-3) var(--space-4); background: var(--elevated); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow-3); }
 .cmp-picked { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--space-2); min-width: 0; }
 .cmp-picked li { display: inline-flex; align-items: center; gap: var(--space-1); max-width: 100%; padding-left: var(--space-3); border: 1px solid var(--line); border-radius: 999px; background: var(--bg); }
@@ -77,3 +92,6 @@
 /* Global table rules set nowrap on headers and on tables outside .table-wrap; comparison columns must wrap. */
 .cmp-table :is(th, td), .cmp-table thead th { white-space: normal; }
 .cmp-remove { width: 100%; min-width: 0; padding-inline: var(--space-2); }
+.cmp-add[aria-pressed="true"], .cmp-add[aria-pressed="true"]:hover:not(:disabled) { background: color-mix(in srgb, var(--gold) 16%, var(--elevated)); color: var(--text); border: 1px solid var(--gold); }
+.cmp-tray .cmp-actions { flex: 1 1 100%; justify-content: space-between; }
+@media (max-width: 599px) { .cmp-tray .cmp-actions { padding-left: 52px; } .cmp-tray .cmp-actions > .muted { flex: 1 1 100%; } }
