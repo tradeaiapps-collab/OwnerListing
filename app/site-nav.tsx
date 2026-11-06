@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "./icons";
+import ThemeToggle from "./theme-toggle";
 import { NAV_CATALOG, type IconStyle, type NavItem } from "../src/domain/site-theme";
 
 type Who = "loading" | "out" | "staff" | "owner" | "buyer";
@@ -9,7 +10,7 @@ type Who = "loading" | "out" | "staff" | "owner" | "buyer";
  * Links follow the signed-in type. This only hides links; every route still enforces access on the server.
  * `items` is the admin's navigation setting (order, labels, hidden items); targets and icons come from the fixed catalogue.
  */
-export default function SiteNav({ items, iconStyle, signInHref }: { items?: NavItem[]; iconStyle?: IconStyle; signInHref?: "/dev-login" }) {
+export default function SiteNav({ items, iconStyle, signInHref, themeToggle }: { items?: NavItem[]; iconStyle?: IconStyle; signInHref?: "/dev-login"; themeToggle?: boolean }) {
   const [who, setWho] = useState<Who>("loading");
   const [invest, setInvest] = useState(false);
   const [unread, setUnread] = useState(0);
@@ -81,7 +82,7 @@ export default function SiteNav({ items, iconStyle, signInHref }: { items?: NavI
         return <a key={it.id} href={href}><Icon name={def.icon} style={style} />{it.label}</a>;
       })}
       {/* Not in the admin nav catalogue on purpose: shown only while the investor module is live (status answers 404 when off). */}
-      {invest && (who === "owner" || who === "buyer") && <a href="/investments">Investor projects</a>}
+      {invest && who !== "loading" && <a href="/investments">Investor projects</a>}
       {/* Not in the admin nav catalogue: adding an id there would invalidate every saved theme's navigation list. */}
       {who === "buyer" && <a href="/offers">My offers</a>}
       {(who === "owner" || who === "buyer") && <a href="/client/portal">My portal</a>}
@@ -95,6 +96,7 @@ export default function SiteNav({ items, iconStyle, signInHref }: { items?: NavI
       {who === "buyer" && <a href="/buyer/rate-agent">Rate your agent</a>}
       {(who === "owner" || who === "buyer" || who === "staff") && <button type="button" className="nav-signout" onClick={signOut}>Sign out</button>}
       </div>
+      {themeToggle && <ThemeToggle />}
     </nav>
   );
 }
