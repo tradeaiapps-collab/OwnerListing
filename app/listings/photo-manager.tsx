@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { classifyTour } from "../../src/domain/virtual-tour";
 import { FEATURE_LIMITS, PHOTO_BASE, PHOTO_CATEGORIES, PHOTO_LIMITS, PROJECT_PHOTO_MAX, isPhotoCategory, makeCover, moveEntry, photoUrl, type PhotoKind, type PhotoView } from "../../src/domain/listing-photos";
+import { HASH_COLS, HASH_ROWS, dHash, findDuplicates } from "../../src/domain/photo-duplicates";
 import { JSON_HEADERS } from "./ui";
 import "../styles/gallery.css";
 
@@ -19,6 +20,28 @@ function precheck(f: File): string | null {
   if (f.size > PHOTO_LIMITS.maxBytes) return `Larger than ${MB} MB.`;
   if (f.size === 0) return "Empty file.";
   return null;
+}
+
+/** Loads an image from our own origin and returns its difference hash, or null if it cannot be read. */
+function hashImage(url: string): Promise<string | null> {
+  return new Promise(resolve => {
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const c = document.createElement("canvas");
+        c.width = HASH_COLS; c.height = HASH_ROWS;
+        const g = c.getContext("2d", { willReadFrequently: true });
+        if (!g) return resolve(null);
+        g.drawImage(img, 0, 0, HASH_COLS, HASH_ROWS);
+        const px = g.getImageData(0, 0, HASH_COLS, HASH_ROWS).data;
+        const grey: number[] = [];
+        for (let i = 0; i < px.length; i += 4) grey.push(px[i]! * 0.299 + px[i + 1]! * 0.587 + px[i + 2]! * 0.114);
+        resolve(dHash(grey));
+      } catch { resolve(null); }
+    };
+    img.onerror = () => resolve(null);
+    img.src = url;
+  });
 }
 
 async function errorOf(r: Response): Promise<string> {
@@ -54,6 +77,9 @@ export function PhotoManager({ listingId, projectId }: { listingId?: string; pro
   const input = useRef<HTMLInputElement>(null);
   const [elena, setElena] = useState<{ busy: boolean; message: string; items: Suggestion[]; label: string }>({ busy: false, message: "", items: [], label: "" });
 
+  const [hashes, setHashes] = useState<Record<string, string | null>>({});
+  const [kept, setKept] = useState<string[]>([]);
+
   const load = useCallback(async () => {
     setLoadError("");
     try {
@@ -67,6 +93,20 @@ export function PhotoManager({ listingId, projectId }: { listingId?: string; pro
     }
   }, [listUrl, isProject]);
   useEffect(() => { void load(); }, [load]);
+
+  // Fingerprint each photo in the browser so repeats are flagged as soon as they appear (before Elena writes captions).
+  useEffect(() => {
+    if (isProject) return;
+    let live = true;
+    const todo = rows.filter(r => r.kind === "photo" && !(r.id in hashes));
+    if (todo.length === 0) return;
+    void Promise.all(todo.map(async r => [r.id, await hashImage(photoUrl(r.id, r.sizes.includes("thumb") ? "thumb" : "full", base))] as const))
+      .then(done => { if (live) setHashes(h => ({ ...h, ...Object.fromEntries(done) })); });
+    return () => { live = false; };
+  }, [rows, hashes, base, isProject]);
+  const dupes = findDuplicates(rows.filter(r => r.kind === "photo" && !r.hidden).map(r => ({ id: r.id, hash: hashes[r.id] ?? null })))
+    .filter(d => !kept.includes(d.second));
+  const roomLabel = (r: Row) => PHOTO_CATEGORIES.find(c => c.key === r.category)?.label;
 
   const change = (next: Row[]) => { setRows(next); setDirty(true); setStatus(""); };
   const patch = (i: number, p: Partial<Row>) => change(rows.map((r, j) => (j === i ? { ...r, ...p } : r)));
@@ -113,6 +153,7 @@ export function PhotoManager({ listingId, projectId }: { listingId?: string; pro
   /** Asks Elena for captions and feature tags. Suggestions are shown for review; nothing changes until the owner applies them. */
   async function askElena() {
     if (!listingId) return;
+    if (dupes.length > 0) { setElena({ busy: false, message: "Fix or keep the repeated photos below first, then ask Elena again.", items: [], label: "" }); return; }
     const sendable = rows.filter(r => r.kind === "photo" && !r.hidden).slice(0, 12);
     setElena({ busy: true, message: "", items: [], label: "" });
     try {
@@ -207,6 +248,25 @@ export function PhotoManager({ listingId, projectId }: { listingId?: string; pro
             <button type="button" className="secondary" onClick={() => void askElena()} disabled={busy || elena.busy}>{elena.busy ? "Elena is thinking..." : "Ask Elena for captions"}</button>
             <span className="muted">Elena can't see your photos. She writes from the room and description you give each one, so choose a room first.</span>
           </div>
+          {dupes.length > 0 && (
+            <div role="alert" className="gl-dupes">
+              <p><strong>{dupes.length === 1 ? "A photo looks repeated." : `${dupes.length} photos look repeated.`}</strong> Using the same shot twice makes the gallery look padded.</p>
+              <ul className="gl-sugg">
+                {dupes.map(d => {
+                  const a = rows.findIndex(r => r.id === d.first), b = rows.findIndex(r => r.id === d.second);
+                  const room = rows[a] && roomLabel(rows[a]!);
+                  return (
+                    <li key={d.second}>
+                      <span>Photo {b + 1} {d.exact ? "is the same as" : "looks like"} photo {a + 1}{room ? ` (${room})` : ""}. Use a different photo for this room.</span>
+                      <button type="button" className="secondary" disabled={busy} onClick={() => { patch(b, { hidden: true }); setStatus(`Photo ${b + 1} hidden. Save to apply.`); }}>Hide photo {b + 1}</button>
+                      {!data.everPublished && <button type="button" className="secondary" disabled={busy} onClick={() => { change(rows.filter(x => x.id !== d.second)); }}>Remove photo {b + 1}</button>}
+                      <button type="button" className="secondary" onClick={() => setKept(k => [...k, d.second])}>Keep both</button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          )}
           {elena.message && <p role="status">{elena.message}</p>}
           {elena.items.length > 0 && (
             <div aria-live="polite">
