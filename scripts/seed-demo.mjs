@@ -188,6 +188,91 @@ async function seedFiles(client) {
   if (linked || made) console.log(`Demo files: ${linked} listings given a property record, ${made} example files added${dir ? "" : " (no bytes: LOCAL_STORAGE_DIR is not set)"}.`);
 }
 
+// ---- Demo agent leads (/agent/leads) ------------------------------------------------------------------------------------
+// Five extra buyers and about 20 leads for Mia, Priya and Tom in every status (new, viewing, offer, converted, lost) with interaction history,
+// follow-ups and notes. Needs the agents from seedPerformanceAndMessages. Idempotent: leads are unique per listing, agent and buyer.
+async function seedLeads(client) {
+  const find = async email => (await client.query(`SELECT id FROM app_user WHERE email = $1`, [email + D])).rows[0]?.id;
+  const who = { mia: await find("mia.agent"), priya: await find("priya.agent"), tom: await find("tom.agent"), james: await find("james.buyer"),
+    emma: await find("emma.buyer"), liam: await find("liam.buyer"), noah: await find("noah.investor") };
+  if (Object.values(who).some(v => !v)) return;
+  for (const [key, name, phone] of [["olivia", "Olivia Reyes", "+61400000011"], ["marcus", "Marcus Lee", "+61400000012"], ["aisha", "Aisha Rahman", "+61400000013"],
+    ["ben", "Ben Taylor", "+61400000014"], ["chloe", "Chloe Martin", "+61400000015"]]) {
+    let id = await find(`${key}.buyer`);
+    if (!id) {
+      id = (await client.query(`INSERT INTO app_user (email, display_name, user_type, status, roles, active_role) VALUES ($1, $2, 'buyer', 'active', ARRAY['buyer'], 'buyer') RETURNING id`, [`${key}.buyer${D}`, name])).rows[0].id;
+      await client.query(`INSERT INTO terms_acceptance (user_id, version) VALUES ($1, '2026-10-24')`, [id]);
+      await client.query(`INSERT INTO buyer_verification (user_id, email_verified_at, phone_verified_at, phone_e164) VALUES ($1, now(), now(), $2)`, [id, phone]);
+    }
+    who[key] = id;
+  }
+  const listing = async address => (await client.query(`SELECT id FROM property_listing WHERE address_text = $1`, [address])).rows[0]?.id;
+  const A = { jac: "12 Jacaranda St, Paddington QLD 4064", latrobe: "31 Latrobe Tce, Paddington QLD 4064", oxford: "5/18 Oxford St, Bulimba QLD 4171", haw: "77 Hawthorne Rd, Ascot QLD 4007",
+    comm: "12/40 Commercial Rd, Teneriffe QLD 4005", dolphin: "9/14 Dolphin St, Coogee NSW 2034", illa: "22 Illawarra Rd, Marrickville NSW 2204", bed: "8 Bedford St, Newtown NSW 2042",
+    crown: "3/90 Crown St, Surry Hills NSW 2010", alb: "14 Albert St, Brunswick VIC 3056", high: "61 High St, Northcote VIC 3070", bridge: "11/200 Bridge Rd, Richmond VIC 3121", rath: "27 Rathdowne St, Carlton VIC 3053" };
+  // [agent, listing, buyer, status, created h ago, last buyer h, last agent h|null, interactions [type, actor, text, h ago], extra]
+  const leads = [
+    ["mia", "jac", "olivia", "new_inquiry", 3, 3, null, [["inquiry", "buyer", "Sent an enquiry about the listing", 3]], {}],
+    ["mia", "jac", "marcus", "viewing_scheduled", 52, 30, 28, [["inquiry", "buyer", "Sent an enquiry about the listing", 52], ["message", "agent", "You replied to the buyer", 50], ["viewing", "buyer", "Asked to view the property on Saturday 10:00", 30], ["message", "agent", "You replied to the buyer", 28]], { follow: 20, fnote: "Confirm Saturday viewing and ask about finance pre-approval" }],
+    ["mia", "jac", "aisha", "offer_pending", 120, 6, 8, [["inquiry", "buyer", "Sent an enquiry about the listing", 120], ["viewing", "buyer", "Asked to view the property on Sunday 11:30", 90], ["message", "agent", "You replied to the buyer", 88], ["offer", "buyer", "Buyer submitted an offer", 6]], { notes: ["Pre-approved to $1.65m. Wants a quick settlement, 30 days.", "Spoke by phone: loves the pool, asked about solar."] }],
+    ["mia", "jac", "ben", "lost", 400, 300, 296, [["inquiry", "buyer", "Sent an enquiry about the listing", 400], ["message", "agent", "You replied to the buyer", 398], ["message", "buyer", "Buyer sent a message", 300]], { lost: "budget", lnote: "Looking under $1.4m." }],
+    ["mia", "jac", "chloe", "lost", 360, 340, 338, [["inquiry", "buyer", "Sent an enquiry about the listing", 360], ["message", "agent", "You replied to the buyer", 338]], { lost: "location", lnote: "Wants to stay closer to the CBD train line." }],
+    ["mia", "oxford", "marcus", "viewing_scheduled", 200, 190, 189, [["inquiry", "buyer", "Sent an enquiry about the listing", 200], ["inspection", "buyer", "Requested a property inspection", 190]], { follow: -6, fnote: "Overdue: send the strata report" }],
+    ["mia", "haw", "aisha", "lost", 2400, 2300, 2290, [["inquiry", "buyer", "Sent an enquiry about the listing", 2400], ["message", "agent", "You replied to the buyer", 2290]], { lost: "other", lnote: "Bought another property before the open home." }],
+    ["priya", "dolphin", "olivia", "viewing_scheduled", 70, 40, 38, [["inquiry", "buyer", "Sent an enquiry about the listing", 70], ["message", "agent", "You replied to the buyer", 68], ["viewing", "buyer", "Asked to view the property on Saturday 09:30", 40]], { follow: 30, fnote: "Send body corporate minutes before the viewing" }],
+    ["priya", "dolphin", "ben", "lost", 500, 420, 418, [["inquiry", "buyer", "Sent an enquiry about the listing", 500], ["message", "agent", "You replied to the buyer", 418]], { lost: "budget", lnote: "Needs two bedrooms under $1m." }],
+    ["priya", "dolphin", "aisha", "new_inquiry", 1, 1, null, [["inquiry", "buyer", "Sent an enquiry about the listing", 1]], {}],
+    ["priya", "crown", "marcus", "offer_pending", 150, 12, 14, [["inquiry", "buyer", "Sent an enquiry about the listing", 150], ["viewing", "buyer", "Asked to view the property on Thursday 17:30", 110], ["offer", "buyer", "Buyer submitted an offer", 12]], { notes: ["Cash buyer, no finance clause."] }],
+    ["tom", "rath", "chloe", "lost", 900, 800, 796, [["inquiry", "buyer", "Sent an enquiry about the listing", 900], ["message", "agent", "You replied to the buyer", 796]], { lost: "location", lnote: "Prefers the northern suburbs." }],
+    ["tom", "alb", "olivia", "new_inquiry", 20, 20, null, [["inquiry", "buyer", "Sent an enquiry about the listing", 20]], {}],
+    ["tom", "high", "ben", "viewing_scheduled", 80, 55, 50, [["inquiry", "buyer", "Sent an enquiry about the listing", 80], ["viewing", "buyer", "Asked to view the property on Friday 12:00", 55], ["message", "agent", "You replied to the buyer", 50]], { follow: 8, fnote: "Call after the viewing" }],
+    ["tom", "bridge", "liam", "lost", 1700, 1600, 1598, [["inquiry", "buyer", "Sent an enquiry about the listing", 1700], ["offer", "buyer", "Buyer submitted an offer", 1650], ["message", "agent", "You replied to the buyer", 1598]], { lost: "budget", lnote: "Finance fell through after the valuation." }]
+  ];
+  // Converted leads: the buyers whose offers were accepted on the sales seeded earlier.
+  const converted = [["mia", "latrobe", "james"], ["mia", "oxford", "emma"], ["mia", "haw", "liam"], ["priya", "dolphin", "james"], ["priya", "illa", "noah"], ["priya", "bed", "liam"],
+    ["priya", "crown", "james"], ["tom", "alb", "james"], ["tom", "high", "emma"], ["tom", "rath", "liam"]];
+  let made = 0;
+  await client.query("BEGIN");
+  try {
+    for (const [ag, ad, b, status, created, lastB, lastA, inter, x] of leads) {
+      const lid = await listing(A[ad]);
+      if (!lid) continue;
+      const lastInt = Math.min(...inter.map(i => i[3]));
+      const notes = (x.notes ?? []).map((text, k) => ({ id: randomUUID(), at: new Date(Date.now() - (lastInt + 2 + k) * 3600e3).toISOString(), by: who[ag], text }));
+      const r = (await client.query(
+        `INSERT INTO agent_lead (listing_id, agent_id, buyer_id, status, lost_reason, lost_note, created_at, last_interaction_at, last_buyer_at, last_agent_at, first_response_at, next_followup_at, followup_note, notes)
+         VALUES ($1, $2, $3, $4, $5, $6, now() - $7::int * interval '1 hour', now() - $8::int * interval '1 hour', now() - $9::int * interval '1 hour',
+                 CASE WHEN $10::int IS NULL THEN NULL ELSE now() - $10::int * interval '1 hour' END, CASE WHEN $10::int IS NULL THEN NULL ELSE now() - $10::int * interval '1 hour' END,
+                 CASE WHEN $11::int IS NULL THEN NULL ELSE now() + $11::int * interval '1 hour' END, $12, $13::jsonb)
+         ON CONFLICT (listing_id, agent_id, buyer_id) DO NOTHING RETURNING id`,
+        [lid, who[ag], who[b], status, x.lost ?? null, x.lnote ?? "", created, lastInt, lastB, lastA, x.follow ?? null, x.fnote ?? "", JSON.stringify(notes)])).rows[0];
+      if (!r) continue;
+      for (const [type, actor, text, h] of inter) {
+        await client.query(`INSERT INTO lead_interaction (lead_id, interaction_type, actor, description, created_at) VALUES ($1, $2, $3, $4, now() - $5::int * interval '1 hour')`, [r.id, type, actor, text, h]);
+      }
+      made++;
+    }
+    for (const [ag, ad, b] of converted) {
+      const lid = await listing(A[ad]);
+      if (!lid) continue;
+      const offer = (await client.query(`SELECT id FROM formal_offer WHERE listing_id = $1 AND buyer_user_id = $2 AND status = 'accepted' LIMIT 1`, [lid, who[b]])).rows[0]?.id;
+      if (!offer) continue;
+      const r = (await client.query(
+        `INSERT INTO agent_lead (listing_id, agent_id, buyer_id, status, converted_offer_id, created_at, last_interaction_at, last_buyer_at, last_agent_at, first_response_at)
+         VALUES ($1, $2, $3, 'converted', $4, now() - interval '30 days', now() - interval '10 days', now() - interval '11 days', now() - interval '10 days', now() - interval '30 days' + interval '2 hours')
+         ON CONFLICT (listing_id, agent_id, buyer_id) DO UPDATE SET status = 'converted', converted_offer_id = EXCLUDED.converted_offer_id, next_followup_at = NULL RETURNING id,
+           (xmax = 0) AS fresh`, [lid, who[ag], who[b], offer])).rows[0];
+      if (!r.fresh) continue;
+      for (const [type, actor, text, d] of [["inquiry", "buyer", "Sent an enquiry about the listing", 30], ["message", "agent", "You replied to the buyer", 30], ["viewing", "buyer", "Asked to view the property", 25], ["offer", "buyer", "Buyer submitted an offer", 12], ["offer", "system", "The owner accepted the buyer's offer", 10]]) {
+        await client.query(`INSERT INTO lead_interaction (lead_id, interaction_type, actor, description, created_at) VALUES ($1, $2, $3, $4, now() - $5::int * interval '1 day')`, [r.id, type, actor, text, d]);
+      }
+      made++;
+    }
+    await client.query("COMMIT");
+  } catch (e) { await client.query("ROLLBACK").catch(() => undefined); throw e; }
+  if (made) console.log(`Demo agent leads added: ${made} leads across Mia, Priya and Tom (new, viewing, offer, converted, lost).`);
+}
+
 const url = process.env.DATABASE_URL;
 if (process.env.NODE_ENV === "production") { console.error("Refusing to seed: NODE_ENV is production."); process.exit(2); }
 if (!url) { console.error("DATABASE_URL is required."); process.exit(2); }
@@ -381,6 +466,7 @@ try {
     await seedPhotos(db);
     await seedLocations(db);
     await seedFiles(db);
+    await seedLeads(db);
     await db.end();
     process.exit(0);
   }
@@ -507,6 +593,7 @@ try {
   await seedPhotos(db);
   await seedLocations(db);
   await seedFiles(db);
+  await seedLeads(db);
 } catch (e) {
   await db.query("ROLLBACK").catch(() => undefined);
   console.error(`Seed failed: ${e.message}`);
