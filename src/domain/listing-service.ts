@@ -1,4 +1,5 @@
 import type { AuditEvent } from "./audit";
+import { PROFANITY_MESSAGE, hasProfanity } from "./profanity-filter";
 import { isJurisdiction, type Jurisdiction } from "./jurisdiction";
 import type { PropertyListing, PropertyType, PublishDecision, UseClass } from "./listing";
 import { decidePublish, type BondPathway } from "./publish";
@@ -124,6 +125,10 @@ function description(v: unknown): { ok: true; value: string | null } | { ok: fal
   return { ok: true, value: t.length > 0 ? t : null };
 }
 
+/** Swearing, abuse, slurs or threats in a public text field, unless the owner chose to post it anyway (body.allowFlagged). */
+const wordsFlagged = (b: Record<string, unknown>, ...texts: unknown[]) =>
+  b["allowFlagged"] !== true && texts.some(t => typeof t === "string" && hasProfanity(t));
+
 const DESCRIPTION_ERROR = `Description must be text of up to ${MAX_DESCRIPTION_LENGTH} characters.`;
 
 function oneOf<T extends string>(v: unknown, allowed: readonly T[]): T | undefined {
@@ -143,6 +148,7 @@ export function parseDraftInput(body: unknown): Result<DraftCreate> {
   if (!title || !address || !jurisdiction || !transactionType || !useClass || !propertyType) {
     return fail("invalid", "Title, address, state, sale or rent, use and property type are all required.");
   }
+  if (wordsFlagged(b, title, b["description"])) return fail("invalid", PROFANITY_MESSAGE);
   const details = parseDetails(b, transactionType);
   if (!details.ok) return fail("invalid", details.message);
   const desc = b["description"] === undefined ? { ok: true as const, value: null } : description(b["description"]);
@@ -156,6 +162,7 @@ export function parseDraftPatch(body: unknown): Result<DraftPatch> {
   if (typeof body !== "object" || body === null) return fail("invalid", "Invalid input.");
   const b = body as Record<string, unknown>;
   const patch: DraftPatch = {};
+  if (wordsFlagged(b, b["title"], b["description"])) return fail("invalid", PROFANITY_MESSAGE);
   if ("title" in b) { const v = str(b["title"], 200); if (!v) return fail("invalid", "Invalid title."); patch.title = v; }
   if ("address" in b) { const v = str(b["address"], 300); if (!v) return fail("invalid", "Invalid address."); patch.address = v; }
   if ("jurisdiction" in b) {
