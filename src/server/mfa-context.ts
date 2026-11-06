@@ -58,7 +58,7 @@ export async function markMfaPassed(res: NextResponse, s: SessionState, nowSecon
     });
     return res;
   }
-  res.cookies.set(SESSION_COOKIE, signSession({ uid: s.payload.uid, ut: s.payload.ut, exp: s.payload.exp, mfa: nowSeconds }, auth.secret), {
+  res.cookies.set(SESSION_COOKIE, signSession({ uid: s.payload.uid, ut: s.payload.ut, exp: s.payload.exp, mfa: nowSeconds, ...(s.payload.cr ? { cr: s.payload.cr } : {}) }, auth.secret), {
     httpOnly: true, sameSite: "lax", secure: auth.secureCookies, path: "/", maxAge
   });
   return res;

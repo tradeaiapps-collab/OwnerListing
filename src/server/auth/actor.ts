@@ -1,6 +1,7 @@
 import { mfaClaimValid, mfaRequired } from "../../domain/mfa";
 import type { Actor } from "../../domain/listing-service";
 import type { Queryable } from "../db";
+import { heldRoles, sessionTypeFor } from "../../domain/roles";
 import { liveMobileSession } from "./mobile-session-db";
 import { mobileBearer, verifyMobileAccess } from "./mobile-token";
 import { SESSION_COOKIE, SESSION_TTL_SECONDS, readCookie, verifySession, type SessionPayload } from "./session";
@@ -41,18 +42,22 @@ export async function sessionFromRequestChecked(db: Queryable, req: Request, sec
     issuedAt = p.exp - SESSION_TTL_SECONDS;
   }
   const res = await db.query(
-    `SELECT u.id, u.user_type,
+    `SELECT u.id, u.user_type, u.roles,
             EXISTS (SELECT 1 FROM mfa_factor f WHERE f.user_id = u.id AND f.confirmed_at IS NOT NULL AND f.revoked_at IS NULL) AS mfa_enrolled,
             (SELECT floor(extract(epoch FROM max(f.revoked_at)))::bigint FROM mfa_factor f
               WHERE f.user_id = u.id AND f.confirmed_at IS NOT NULL) AS mfa_revoked_at,
             (SELECT floor(extract(epoch FROM max(r.reset_at)))::bigint FROM mfa_reset_log r WHERE r.user_id = u.id) AS mfa_reset_at,
             floor(extract(epoch FROM u.restored_at))::bigint AS restored_at,
             floor(extract(epoch FROM u.password_changed_at))::bigint AS password_changed_at
-       FROM app_user u WHERE u.id = $1 AND u.status = 'active' AND u.deleted_at IS NULL AND u.user_type = $2`,
+       FROM app_user u WHERE u.id = $1 AND u.status = 'active' AND u.deleted_at IS NULL AND (u.user_type = $2 OR $2 = ANY(u.roles) OR ($2 = 'buyer' AND 'investor' = ANY(u.roles)))`,
     [p.uid, p.ut]
   );
   const row = res.rows[0];
-  if (!row || row["id"] !== p.uid || row["user_type"] !== p.ut) return null;
+  if (!row || row["id"] !== p.uid) return null;
+  // The session may run as the account's primary type or as any role it has activated. An investor view needs the investor role held.
+  const held = heldRoles(String(row["user_type"]), Array.isArray(row["roles"]) ? row["roles"] : []);
+  if (!held.some(r => sessionTypeFor(r) === p.ut)) return null;
+  if (p.cr !== undefined && !held.includes(p.cr)) return null;
   // A staff reset of the second factor signs the user out everywhere: any session issued at or before it is refused, so a stolen or
   // still-signed-in session cannot enrol a new factor in the user's place.
   const resetAt = epoch(row["mfa_reset_at"]);
