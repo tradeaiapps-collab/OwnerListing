@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { applyDetails, dollarsToCents, formatPrice, parseDetails, priceError } from "../src/domain/listing-details";
+import { applyDetails, dollarsToCents, priceInputToCents, centsToDollarField, formatPrice, parseDetails, priceError } from "../src/domain/listing-details";
 import {
   createDraft, createInMemoryListingRepository, parseDraftInput, parseDraftPatch, updateDraft,
   type Actor, type DraftInput, type ListingServiceDeps
@@ -108,5 +108,21 @@ describe("updating details", () => {
   it("rejects a rent-sized limit breach sent without the type", () => {
     // Patch only: the type is unknown here, so the service check on the stored listing is the guard (previous test).
     expect(parseDraftPatch({ priceCents: -5 }).ok).toBe(false);
+  });
+});
+
+describe("priceInputToCents", () => {
+  it("takes whole dollars, shorthand and cents", () => {
+    expect(priceInputToCents("10000000")).toBe(1_000_000_000);
+    expect(priceInputToCents("650.50")).toBe(65_050);
+    expect(priceInputToCents("10m")).toBe(1_000_000_000);
+    expect(priceInputToCents("1.25M")).toBe(125_000_000);
+    expect(priceInputToCents("$850k")).toBe(85_000_000);
+    expect(priceInputToCents("$1,250,000")).toBe(125_000_000);
+    for (const bad of ["", "m", "abc", "1.2345k", "1.1234567m", "-5k", "1e5"]) expect(priceInputToCents(bad)).toBeUndefined();
+  });
+  it("formats with cents shown", () => {
+    expect(centsToDollarField(1_000_000_000)).toBe("10000000.00");
+    expect(centsToDollarField(65_050)).toBe("650.50");
   });
 });

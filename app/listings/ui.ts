@@ -1,4 +1,4 @@
-import { dollarsToCents, MAX_ROOMS } from "../../src/domain/listing-details";
+import { priceInputToCents, MAX_ROOMS } from "../../src/domain/listing-details";
 import type { BondPathway } from "../../src/domain/publish";
 
 export const JSON_HEADERS = { "content-type": "application/json" } as const;
@@ -25,8 +25,8 @@ export function listingFormBody(fd: FormData): { body: Record<string, unknown> }
   const price = String(fd.get("price") ?? "").trim();
   if (price === "") body["priceCents"] = null;
   else {
-    const cents = dollarsToCents(price);
-    if (cents === undefined) return { error: "Enter the price in dollars, for example 850000 or 650.50." };
+    const cents = priceInputToCents(price);
+    if (cents === undefined) return { error: "Enter the price in dollars, for example 850000, 850k or 650.50. Cents are optional." };
     body["priceCents"] = cents;
   }
   for (const [k, label] of ROOM_FIELDS) {
