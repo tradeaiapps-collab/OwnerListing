@@ -45,7 +45,7 @@ export function ListingFields({ defaults = {}, photoCount }: { defaults?: Listin
           <input name="title" placeholder="e.g. Renovated home with pool" maxLength={200} required value={title} onChange={e => setTitle(e.target.value)} />
         </label>
         <WordingHint text={title} field="title" />
-        <label className="field"><span>Street address <ElenaTip text={tips.address} /></span>
+        <label className="field"><span>Street address</span>
           <AddressField defaultValue={defaults.address ?? ""} />
         </label>
       </fieldset>
