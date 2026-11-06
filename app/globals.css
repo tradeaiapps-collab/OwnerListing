@@ -542,3 +542,18 @@ button.role-item:hover:not(:disabled), a.role-item:hover, .role-item:focus-visib
 .ela-now { border-left: 3px solid var(--gold); padding-left: var(--space-3); }
 .ela-now p { margin: 0 0 var(--space-2); }
 .ela-tell textarea { width: 100%; margin-bottom: var(--space-2); }
+
+/* Readable text on tinted (gold, beige) boxes. Muted grey on the champagne tint is only about 5:1, which reads faint at small sizes.
+   Boxes that sit on --gold-tint, --surface or --tint get body text in --text, secondary text in --muted-strong (7:1 or better in light and dark)
+   and links in --link-strong. The tokens are mixed from the live theme, so admin theme edits carry through. */
+:root, :root:root {
+  --muted-strong: color-mix(in srgb, var(--muted) 50%, var(--text));
+  --link-strong: color-mix(in srgb, var(--link) 70%, var(--heading, var(--text)));
+}
+:is(.notice, .staff-notice, .empty, .empty-state, .cmp-empty, .elena-search, .elena-card, .leads-secret, .at-invite, .dsp-elena, .el-answer, .feeds-token, .lv-elena, .syn-secret, .sg-explain, .nt-item[data-unread="true"], .admin-staff-only) { color: var(--text); }
+:is(.notice, .staff-notice, .empty, .empty-state, .cmp-empty, .elena-search, .elena-card, .leads-secret, .at-invite, .dsp-elena, .el-answer, .feeds-token, .lv-elena, .sg-explain, .nt-item[data-unread="true"]) :is(.muted, small, p:not([class])) { color: var(--muted-strong); }
+:is(.notice, .staff-notice, .empty, .empty-state, .cmp-empty, .elena-search, .elena-card, .dsp-elena, .el-answer, .sg-explain) a:not(.button) { color: var(--link-strong); }
+.elena-search .es-head p, .elena-search .muted { color: var(--muted-strong); font-size: 0.9375rem; }
+.elena-search .es-out p, .elena-search .es-out li { color: var(--text); }
+/* Empty-state copy was left-aligned inside a centred box because of the 72ch paragraph cap; centre the block. */
+.empty p, .cmp-empty p { margin-inline: auto; }
