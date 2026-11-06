@@ -4,7 +4,7 @@ import { personaLabel, personaPose, type Persona } from "../src/domain/assistant
 import { GUIDE_LIMITS, type GuideChip, type GuideIntent, type GuideLink } from "../src/domain/guide-assistant";
 import { PRESENTER_SPEAK_EVENT } from "./presenter/presenter-core";
 import { useElenaContext } from "./elena-context";
-import { isListingForm, sectionHint } from "../src/domain/elena-context";
+import { isListingForm, isWhereQuestion, sectionHint, whereAnswer } from "../src/domain/elena-context";
 import "./styles/assistant.css";
 
 interface Msg { id: number; from: "guide" | "you"; text: string; links?: GuideLink[] }
@@ -91,6 +91,7 @@ export default function GuideAssistant({ greeting, disclaimer, persona }: {
     if (!said) return;
     setBusy(true);
     setMsgs(m => [...m, { id: seq.current++, from: "you", text: said }]);
+    if (!("intent" in q) && isWhereQuestion(said)) { setMsgs(m => [...m, { id: seq.current++, from: "guide", text: whereAnswer(here) }]); setBusy(false); return; }
     const body = "intent" in q ? { intent: q.intent, path: window.location.pathname } : { text: said, path: window.location.pathname };
     const r = await fetch("/api/assistant", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }).catch(() => null);
     const d = r ? await r.json().catch(() => null) : null;

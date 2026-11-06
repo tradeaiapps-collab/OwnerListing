@@ -10,13 +10,31 @@ const PAGES: [RegExp, string][] = [
   [/^\/listings\/[^/]+/, "Listing"], [/^\/listings$/, "Browse listings"], [/^\/messages/, "Messages"], [/^\/enquiries/, "Enquiries"],
   [/^\/offers/, "Offers"], [/^\/plans/, "Plans and fees"], [/^\/dashboard/, "Dashboard"], [/^\/settings/, "Settings"], [/^\/billing/, "Billing"],
   [/^\/inspections/, "Inspections"], [/^\/settlements/, "Settlement"], [/^\/market/, "Market"], [/^\/buyer/, "Buyer area"], [/^\/agent/, "Agent area"],
-  [/^\/notifications/, "Notifications"]
+  [/^\/notifications/, "Notifications"], [/^\/staff\/?$/, "Staff home"], [/^\/staff\/investments\/settings/, "Investor module settings"],
+  [/^\/staff\/investments/, "Investor projects (staff)"], [/^\/staff\/disclosures/, "Disclosure requirements (staff)"], [/^\/staff/, "Staff console"]
 ];
+
+/** A readable name from the last meaningful path segments, for pages without a fixed name ("/foo/bar-baz" becomes "Foo, bar baz"). */
+function humanise(p: string): string {
+  const parts = p.split("/").filter(s => s && !/^(\d+|[0-9a-f-]{16,})$/i.test(s)).slice(-2).map(s => decodeURIComponent(s).replace(/[-_]+/g, " "));
+  const t = parts.join(", ");
+  return t ? t.charAt(0).toUpperCase() + t.slice(1) : "";
+}
 
 export function pageLabel(path: string): string {
   const p = path.split(/[?#]/)[0]!.replace(/\/+$/, "") || "/";
   for (const [re, label] of PAGES) if (re.test(p)) return label;
-  return "this page";
+  return humanise(p) || "this page";
+}
+
+/** True when the person is asking which page they are on. */
+export const isWhereQuestion = (text: string) => /\b(what|which)\s+(page|screen|section)\b|\bwhere\s+am\s+i\b|\bwhat\s+am\s+i\s+(looking|viewing)\b/i.test(text);
+
+/** Elena's answer to "what page am I on", from the in-tab place only. */
+export function whereAnswer(place: Pick<ElenaPlace, "path" | "pageLabel" | "sectionLabel">): string {
+  const name = place.pageLabel && place.pageLabel !== "this page" ? place.pageLabel : "";
+  const base = name ? `You are on ${name} (${place.path}).` : `You are on ${place.path}.`;
+  return place.sectionLabel ? `${base} You last touched ${place.sectionLabel}.` : base;
 }
 
 export const isListingForm = (path: string) => /^\/listings\/new\/?$/.test(path) || /^\/listings\/[^/]+\/edit\/?$/.test(path);

@@ -1,12 +1,23 @@
 import { describe, expect, it } from "vitest";
-import { isListingForm, pageLabel, roomsFromText, sectionHint, sectionOfField } from "../src/domain/elena-context";
+import { isListingForm, isWhereQuestion, pageLabel, whereAnswer, roomsFromText, sectionHint, sectionOfField } from "../src/domain/elena-context";
 
 describe("Elena context", () => {
   it("names the page", () => {
     expect(pageLabel("/listings/new")).toBe("Create a listing");
     expect(pageLabel("/listings/abc/edit")).toBe("Edit listing");
     expect(pageLabel("/messages/x?y=1")).toBe("Messages");
-    expect(pageLabel("/nowhere")).toBe("this page");
+    expect(pageLabel("/nowhere")).toBe("Nowhere");
+    expect(pageLabel("/staff")).toBe("Staff home");
+    expect(pageLabel("/staff/investments/settings")).toBe("Investor module settings");
+    expect(pageLabel("/staff/some-new/page-x")).toBe("Staff console");
+    expect(pageLabel("/zz/open-things/12345678-1234-1234-1234-123456789012")).toBe("Zz, open things");
+  });
+  it("answers where am I", () => {
+    expect(isWhereQuestion("what page am i on")).toBe(true);
+    expect(isWhereQuestion("Where am I?")).toBe(true);
+    expect(isWhereQuestion("what are the fees")).toBe(false);
+    expect(whereAnswer({ path: "/staff", pageLabel: "Staff home", sectionLabel: "" })).toBe("You are on Staff home (/staff).");
+    expect(whereAnswer({ path: "/x", pageLabel: "this page", sectionLabel: "Price" })).toBe("You are on /x. You last touched Price.");
   });
   it("knows the listing form", () => {
     expect(isListingForm("/listings/new")).toBe(true);
