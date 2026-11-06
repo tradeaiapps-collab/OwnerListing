@@ -38,5 +38,13 @@ export function securityHeaderRules(dev = process.env.NODE_ENV !== "production")
 /** @type {import('next').NextConfig} */
 export default {
   distDir: process.env.NEXT_DIST_DIR || ".next",
-  async headers() { return securityHeaderRules(); }
+  async headers() { return securityHeaderRules(); },
+  /** The investor projects module lives at /investments; these are the names people type. */
+  async redirects() {
+    return [
+      { source: "/investor/projects", destination: "/investments", permanent: false },
+      { source: "/investor/projects/:id", destination: "/investments/:id", permanent: false },
+      { source: "/investor/projects/:id/documents", destination: "/investments/:id/documents", permanent: false }
+    ];
+  }
 };
