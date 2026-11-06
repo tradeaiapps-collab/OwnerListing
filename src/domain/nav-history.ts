@@ -56,10 +56,21 @@ export function currentScroll(s: NavState): number {
   return s.stack[s.index]?.y ?? 0;
 }
 
-export function parseNav(raw: string | null, url: string): NavState {
+/** How the document was opened: a link or typed address ("navigate"), refresh ("reload") or browser back/forward ("back_forward"). */
+export type LoadKind = "navigate" | "reload" | "back_forward";
+
+/**
+ * Restores the stack after a full page load. Most links on the site are plain anchors, so every click is a full load and the
+ * stored current page no longer matches: a forward load pushes the new page (keeping what came before), a back/forward load moves to
+ * the matching neighbour. Only unreadable or missing data starts a fresh stack.
+ */
+export function parseNav(raw: string | null, url: string, load: LoadKind = "reload"): NavState {
   try {
     const p = raw ? (JSON.parse(raw) as NavState) : null;
-    if (p && Array.isArray(p.stack) && Number.isInteger(p.index) && p.stack[p.index]?.url === url && p.stack.every(e => typeof e?.url === "string" && typeof e?.y === "number")) return p;
+    if (p && Array.isArray(p.stack) && Number.isInteger(p.index) && p.stack[p.index] && p.stack.every(e => typeof e?.url === "string" && typeof e?.y === "number")) {
+      if (p.stack[p.index]?.url === url) return p;
+      return visit(p, url, load === "back_forward" ? "pop" : "push");
+    }
   } catch { /* fall through */ }
   return emptyNav(url);
 }

@@ -34,11 +34,21 @@ describe("navigation memory", () => {
     expect(s.stack.length).toBe(100);
     expect(s.stack[s.index]!.url).toBe("/149");
   });
-  it("rejects stored state for another page", () => {
+  it("keeps the trail across full page loads (plain links)", () => {
+    const raw = JSON.stringify(setScroll(visit(emptyNav("/listings"), "/listings", "replace"), 2756));
+    const forward = parseNav(raw, "/listings/1", "navigate");
+    expect(forward.stack.map(e => e.url)).toEqual(["/listings", "/listings/1"]);
+    expect(forward.index).toBe(1);
+    expect(forward.stack[0]!.y).toBe(2756);
+    const back = parseNav(JSON.stringify(forward), "/listings", "back_forward");
+    expect(back.index).toBe(0);
+    expect(currentScroll(back)).toBe(2756);
+  });
+  it("keeps stored state on reload and starts fresh only on unreadable data", () => {
     const raw = JSON.stringify(visit(emptyNav("/a"), "/b", "push"));
     expect(parseNav(raw, "/b").index).toBe(1);
-    expect(parseNav(raw, "/zzz").index).toBe(0);
     expect(parseNav("garbage", "/a").stack).toHaveLength(1);
+    expect(parseNav(null, "/a").stack).toHaveLength(1);
   });
   it("recognises back links", () => {
     expect(isBackLabel("Back to investor projects")).toBe(true);

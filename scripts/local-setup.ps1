@@ -87,6 +87,8 @@ node --env-file=.env.local scripts/migrate.mjs
 if ($LASTEXITCODE -ne 0) { Fail "Database setup (migrate) failed. See the message above." }
 node --env-file=.env.local scripts/seed-demo.mjs
 if ($LASTEXITCODE -ne 0) { Fail "Loading demo data failed. See the message above." }
+node --env-file=.env.local scripts/seed-admin-demo.mjs
+if ($LASTEXITCODE -ne 0) { Fail "Loading admin example data failed. See the message above." }
 
 Write-Host ""
 Write-Host "All set. Now run:  powershell -ExecutionPolicy Bypass -File scripts\local-start.ps1" -ForegroundColor Green

@@ -1,6 +1,6 @@
 "use client";
 import { useEffect } from "react";
-import { canGoBack, currentScroll, isBackLabel, parseNav, setScroll, visit, type NavKind, type NavState } from "../src/domain/nav-history";
+import { canGoBack, currentScroll, isBackLabel, parseNav, setScroll, visit, type LoadKind, type NavKind, type NavState } from "../src/domain/nav-history";
 
 const KEY = "ol-nav-history";
 const here = () => window.location.pathname + window.location.search;
@@ -14,7 +14,9 @@ export default function NavMemory() {
     const h = window.history;
     const prevRestoration = h.scrollRestoration;
     h.scrollRestoration = "manual";
-    let state: NavState = parseNav(sessionStorage.getItem(KEY), here());
+    const loadType = (performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming | undefined)?.type;
+    const load: LoadKind = loadType === "back_forward" || loadType === "reload" ? loadType : "navigate";
+    let state: NavState = parseNav(sessionStorage.getItem(KEY), here(), load);
     let lastUrl = here();
     let restoreToken = 0;
     const persist = () => { try { sessionStorage.setItem(KEY, JSON.stringify(state)); } catch { /* private mode: still works for this page view */ } };
