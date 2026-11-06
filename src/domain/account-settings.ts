@@ -28,3 +28,6 @@ export function parseSettingsInput(body: unknown): Result<AccountSettings> {
   if (typeof tz !== "string" || tz.length > 64 || !IANA_SHAPE.test(tz) || !isValidTimeZone(tz)) return bad("Choose a valid time zone.");
   return { ok: true, value: { locale, timeZone: tz } };
 }
+
+/** Cookie that carries the saved language to the server-rendered page, so <html lang> and direction follow the setting. */
+export const LOCALE_COOKIE = "ol_locale";

@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { headers } from "next/headers";
+import { cookies, headers } from "next/headers";
 import "./globals.css";
 import GuideAssistant from "./guide-assistant";
 import AdminShell from "./admin-shell";
@@ -9,6 +9,8 @@ import ThemePreviewBridge from "./theme-preview-bridge";
 import "./styles/a11y.css";
 import "./styles/inspections.css";
 import { appOriginFor, readAppMode } from "../src/config/app-mode";
+import { LOCALE_COOKIE } from "../src/domain/account-settings";
+import { DEFAULT_LOCALE, LOCALES, isRtl } from "../src/domain/i18n";
 import { personaById } from "../src/domain/assistant-persona";
 import { GUIDE_DISCLAIMER } from "../src/domain/guide-assistant";
 import { assetUrl, buildThemeCss, fontStylesheetUrl } from "../src/domain/site-theme";
@@ -67,8 +69,11 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   const h = await headers();
   const devSignIn = !admin && devLoginAllowed({ url: `http://${h.get("host") ?? ""}/`, headers: { get: n => h.get(n) } });
 
+  // The saved language (set on /settings) drives <html lang> and text direction. Page text stays English until a language is enabled.
+  const savedLocale = (await cookies()).get(LOCALE_COOKIE)?.value;
+  const locale = !admin && savedLocale && LOCALES.some(l => l.code === savedLocale) ? savedLocale : DEFAULT_LOCALE;
   return (
-    <html lang="en-AU" data-theme-mode={fixedLight ? "light" : undefined} suppressHydrationWarning>
+    <html lang={locale} dir={isRtl(locale) ? "rtl" : "ltr"} data-theme-mode={fixedLight ? "light" : undefined} suppressHydrationWarning>
       <head>
         {!admin && !fixedLight && <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />}
         {fontUrl && <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />}
