@@ -5,6 +5,7 @@ import { readFileSync } from "node:fs";
 import { deflateSync } from "node:zlib";
 import pg from "pg";
 import { localDevStorageDir, putLocalObject } from "../src/adapters/local-disk-core.mjs";
+import { seedAdminExamples } from "./seed-admin-demo.mjs";
 
 // ---- Demo photos (local test kit) --------------------------------------------------------------------------------
 // Small generated PNG pictures (no camera, so no metadata) written through the same local-disk storage code the app
@@ -871,6 +872,7 @@ try {
     await seedDisclosuresAndPublicDocs(db);
     await seedLeads(db);
     await seedMedia(db);
+    await seedAdminExamples(db);
     await db.end();
     process.exit(0);
   }
@@ -1003,6 +1005,7 @@ try {
   await seedLeads(db);
   await seedMedia(db);
   await seedInspectionTimes(db);
+  await seedAdminExamples(db);
 } catch (e) {
   await db.query("ROLLBACK").catch(() => undefined);
   console.error(`Seed failed: ${e.message}`);
