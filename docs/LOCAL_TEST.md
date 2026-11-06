@@ -62,6 +62,7 @@ All demo email addresses end in `@demo.invalid` (not real).
 | James Nguyen (buyer, fully verified) | public | Email, phone and ID verified; has enquiries and two offers |
 | Emma Wilson (buyer, email only) | public | Email verified only; ID review waiting |
 | Liam Brown (buyer, unverified) | public | Nothing verified; ID review waiting |
+| Noah Patel (investor) | public | Buyer account holding the investor role, fully verified; signs in viewing as an investor (investor projects) |
 | Priya Raman (super_admin) | admin | Everything, including staff invites and messaging settings |
 | Chris (compliance), Alex (accountant), Sam (support), Taylor (technical), Robin (reporting) | admin | Each sees only what its role allows (try them to check) |
 

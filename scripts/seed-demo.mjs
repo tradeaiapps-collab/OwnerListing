@@ -123,12 +123,25 @@ try { host = String(new pg.Client({ connectionString: url }).connectionParameter
 if (host !== "localhost" && host !== "127.0.0.1") { console.error(`Refusing to seed: database host "${host}" is not localhost or 127.0.0.1.`); process.exit(2); }
 
 const D = "@demo.invalid";
+
+// Demo investor (investors are buyer accounts holding the investor role, see src/domain/roles.ts). Idempotent so an already-seeded DB gets it too.
+async function seedInvestor(db) {
+  const email = `noah.investor${D}`;
+  if ((await db.query(`SELECT 1 FROM app_user WHERE email = $1`, [email])).rows.length) return;
+  const id = (await db.query(
+    `INSERT INTO app_user (email, display_name, user_type, status, roles, active_role) VALUES ($1, 'Noah Patel (investor)', 'buyer', 'active', ARRAY['buyer','investor'], 'investor') RETURNING id`, [email])).rows[0].id;
+  await db.query(`INSERT INTO terms_acceptance (user_id, version) VALUES ($1, '2026-10-24')`, [id]);
+  await db.query(`INSERT INTO buyer_verification (user_id, email_verified_at, phone_verified_at, phone_e164, id_verified_at, id_method)
+                  VALUES ($1, now(), now(), '+61400000002', now(), 'manual_review')`, [id]);
+  console.log("Demo investor created: Noah Patel (fully verified).");
+}
 const db = new pg.Client({ connectionString: url });
 await db.connect();
 try {
   const exists = await db.query(`SELECT 1 FROM app_user WHERE email = $1`, [`sarah.owner${D}`]);
   if (exists.rows.length) {
     console.log("Demo data already present. (Use local-reset to start again.)");
+    await seedInvestor(db);
     await seedPhotos(db);
     await seedLocations(db);
     await db.end();
@@ -252,6 +265,7 @@ try {
   }
   await db.query("COMMIT");
   console.log(`Demo data created: 6 staff, 2 owners, 1 agent, 3 buyers, ${listing.length} listings, 3 enquiries, 3 offers, 2 invoices, 2 ID reviews. (run ${randomUUID().slice(0, 8)})`);
+  await seedInvestor(db);
   await seedPhotos(db);
   await seedLocations(db);
 } catch (e) {

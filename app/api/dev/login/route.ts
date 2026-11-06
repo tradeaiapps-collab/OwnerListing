@@ -24,7 +24,7 @@ async function handlePost(req: Request) {
   const surface = devLoginSurface(readAppMode());
   // Only seeded demo accounts (reserved .invalid addresses) can ever be signed in this way.
   const row = (await getDb().query(
-    `SELECT u.id, u.user_type, i.role FROM app_user u
+    `SELECT u.id, u.user_type, u.roles, u.active_role, i.role FROM app_user u
        LEFT JOIN staff_invite i ON i.email = lower(u.email::text) AND i.revoked_at IS NULL AND i.accepted_at IS NOT NULL
       WHERE u.id = $1 AND u.status = 'active' AND u.email LIKE $2`,
     [userId, `%${DEV_EMAIL_DOMAIN}`]
@@ -44,9 +44,11 @@ async function handlePost(req: Request) {
   if (!surface.users || (ut !== "owner" && ut !== "agent" && ut !== "buyer" && ut !== "vendor")) {
     return NextResponse.json({ error: "User accounts sign in on the public site." }, { status: 400 });
   }
-  const res = NextResponse.json({ ok: true, redirect: ut === "buyer" ? "/buyer/saved-searches" : "/dashboard" });
+  // A buyer account that holds the investor role and last viewed as one signs in as that investor.
+  const asInvestor = ut === "buyer" && row["active_role"] === "investor" && Array.isArray(row["roles"]) && row["roles"].includes("investor");
+  const res = NextResponse.json({ ok: true, redirect: ut === "buyer" && !asInvestor ? "/buyer/saved-searches" : "/dashboard" });
   // Seeded demo accounts have no second factor; this local-only sign-in stands in for it (never reachable off localhost, see devLoginAllowed).
-  res.cookies.set(SESSION_COOKIE, signSession({ uid: userId, ut, exp: now + SESSION_TTL_SECONDS, mfa: now }, secret), { ...opts, maxAge: SESSION_TTL_SECONDS });
+  res.cookies.set(SESSION_COOKIE, signSession({ uid: userId, ut, ...(asInvestor ? { cr: "investor" as const } : {}), exp: now + SESSION_TTL_SECONDS, mfa: now }, secret), { ...opts, maxAge: SESSION_TTL_SECONDS });
   res.cookies.set(STAFF_COOKIE, "", { ...opts, maxAge: 0 });
   return res;
 }
