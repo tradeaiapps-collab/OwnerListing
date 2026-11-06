@@ -68,7 +68,7 @@ export default function SiteNav({ items, iconStyle, themeToggle }: { items?: Nav
   const owner = who === "owner" || who === "out";
   const buyer = who === "buyer" || who === "out";
   const shown: Record<string, boolean> = {
-    browse: true, plans: true, list: owner, mine: who === "owner", offers: who === "owner", searches: buyer,
+    browse: true, plans: true, projects: true, list: owner, mine: who === "owner", offers: who === "owner", searches: buyer,
     saved: who === "buyer", verification: who === "buyer", dashboard: who !== "loading" && who !== "out", staff: who === "staff", signin: who === "out"
   };
   const list = items ?? NAV_CATALOG.map(n => ({ id: n.id, label: n.label, visible: true }));
@@ -81,7 +81,7 @@ export default function SiteNav({ items, iconStyle, themeToggle }: { items?: Nav
         <span>Menu</span>
       </button>
       <div className="site-nav-links" id="site-nav-links">
-      {signedIn ? roleNav(role).filter(it => invest || (it.id !== "projects" && it.id !== "portfolio")).map(it => <a key={it.id} href={it.href}>{it.label}</a>) : pending ? null : list.map(it => {
+      {signedIn ? roleNav(role).filter(it => invest || it.id !== "portfolio").map(it => <a key={it.id} href={it.href}>{it.label}</a>) : pending ? null : list.map(it => {
         const def = NAV_CATALOG.find(n => n.id === it.id);
         if (!def || !it.visible || !shown[it.id]) return null;
         const href = def.href;
