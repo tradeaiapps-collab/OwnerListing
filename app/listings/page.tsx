@@ -36,6 +36,17 @@ type View = "list" | "map";
 /** Only the filters that have a value, so an empty one never wipes a filter read from a home page link. */
 const definedOnly = (f: FilterForm): Partial<FilterForm> => Object.fromEntries(Object.entries(f).filter(([, v]) => v !== "")) as Partial<FilterForm>;
 
+/** The applied filters in words, so the buyer sees what the results are narrowed by. */
+function describeFilters(f: FilterForm): string[] {
+  const cap = (v: string) => v.charAt(0).toUpperCase() + v.slice(1);
+  return [
+    f.transactionType === "sale" ? "Buy" : f.transactionType === "rent" ? "Rent" : "", f.useClass && cap(f.useClass), f.propertyType && cap(f.propertyType), f.jurisdiction,
+    f.location, f.minPrice && `From $${f.minPrice}`, f.maxPrice && `Up to $${f.maxPrice}`, f.minBedrooms && `${f.minBedrooms}+ bed`, f.minBathrooms && `${f.minBathrooms}+ bath`,
+    f.minParking && `${f.minParking}+ parking`, f.amenities && f.amenities.split(",").filter(isAmenity).map(a => AMENITY_LABELS[a]).join(", "), f.q && `"${f.q}"`,
+    f.lat && f.radiusKm && `Within ${f.radiusKm} km`
+  ].filter((x): x is string => Boolean(x));
+}
+
 const queryString = (f: FilterForm) => filterParams(f).toString();
 
 export default function Listings() {
@@ -48,6 +59,7 @@ export default function Listings() {
   const [pageSize, setPageSize] = useState(12);
   const [error, setError] = useState("");
   const [ready, setReady] = useState(false);
+  const [fromSaved, setFromSaved] = useState(false);
   const [view, setView] = useState<View>("list");
   const [projects, setProjects] = useState<Array<{ id: string; title: string; location: string }>>([]);
 
@@ -59,6 +71,7 @@ export default function Listings() {
     setForm(init);
     setApplied(init);
     if (url.get("view") === "map") setView("map");
+    if (url.get("saved") === "1") setFromSaved(true);
     const s = parseSearchQuery(url).sort;
     if (s !== "newest") setSort(s);
     setReady(true);
@@ -153,9 +166,16 @@ export default function Listings() {
         <MoreFilters form={form} setForm={setForm} />
         <div className="actions">
           <button type="submit">Search</button>
-          <button type="button" className="secondary" onClick={() => { setForm(BLANK); setApplied(BLANK); setPage(1); if (sort === "distance") setSort("newest"); }}>Clear</button>
+          <button type="button" className="secondary" onClick={() => { setForm(BLANK); setApplied(BLANK); setFromSaved(false); setPage(1); if (sort === "distance") setSort("newest"); }}>Clear</button>
         </div>
       </form>
+      {describeFilters(applied).length > 0 && (
+        <div className="active-filters" role="status" aria-label="Applied filters">
+          <span className="muted">{fromSaved ? "Showing your saved search:" : "Filtered by:"}</span>
+          <ul className="chips">{describeFilters(applied).map(t => <li key={t} className="chip">{t}</li>)}</ul>
+          <a href="/buyer/saved-searches">Saved searches</a>
+        </div>
+      )}
       <ElenaSearch query={appliedQuery} total={rows === null ? null : total} onApply={applyParams} onClear={clearParams} />
       <div className="result-bar">
         <div className="view-toggle" role="group" aria-label="Show results as">

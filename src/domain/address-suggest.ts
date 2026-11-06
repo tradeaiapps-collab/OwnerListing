@@ -15,11 +15,24 @@ export interface AddressSuggestion {
 
 export type AddressProvider = "google" | "osm";
 
+/** A map position inside Australia, rounded to 6 decimals (the precision the listing stores). */
+export interface GeoPoint { lat: number; lng: number }
+
 export interface AddressLookupPort {
   provider: AddressProvider;
   suggest(query: string, sessionToken: string): Promise<AddressSuggestion[]>;
   /** Parts for a suggestion that came without them. Null when the place is unknown or not in Australia. */
   resolve(id: string, sessionToken: string): Promise<AddressParts | null>;
+  /** Map position for a full typed address. Null when nothing in Australia matches. */
+  locate(address: string): Promise<GeoPoint | null>;
+}
+
+const AU_BOX = { south: -44, west: 112, north: -9, east: 154 };
+/** A finite lat/lng pair inside Australia, rounded to 6 decimals. Null otherwise. */
+export function auPoint(lat: unknown, lng: unknown): GeoPoint | null {
+  if (typeof lat !== "number" || typeof lng !== "number" || !Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  if (lat < AU_BOX.south || lat > AU_BOX.north || lng < AU_BOX.west || lng > AU_BOX.east) return null;
+  return { lat: Math.round(lat * 1e6) / 1e6, lng: Math.round(lng * 1e6) / 1e6 };
 }
 
 export const ADDRESS_QUERY_MIN = 3;

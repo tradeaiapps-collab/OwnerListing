@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { addressLookupFromEnv, createGooglePlaces, createPhoton, parseGooglePlace, parseGoogleSuggestions, parsePhoton } from "../src/adapters/address-lookup";
-import { addressParts, normaliseAddressQuery, sessionTokenOr, toAuState, type AddressLookupPort } from "../src/domain/address-suggest";
-import { ADDRESS_LOOKUP_RATE, runAddressResolve, runAddressSuggest, type AddressSuggestDeps } from "../src/server/address-suggest";
+import { addressLookupFromEnv, createGooglePlaces, createPhoton, parseGoogleLocation, parseGooglePlace, parseGoogleSuggestions, parsePhoton, parsePhotonLocation } from "../src/adapters/address-lookup";
+import { addressParts, auPoint, normaliseAddressQuery, sessionTokenOr, toAuState, type AddressLookupPort } from "../src/domain/address-suggest";
+import { ADDRESS_LOOKUP_RATE, runAddressGeocode, runAddressResolve, runAddressSuggest, type AddressSuggestDeps } from "../src/server/address-suggest";
 
 const reply = (body: unknown, ok = true) => async () => ({ ok, text: async () => JSON.stringify(body) });
 
@@ -117,6 +117,7 @@ describe("address lookup service", () => {
     provider: "google",
     suggest: async () => [{ id: "ChIJabc123", main: "6 Gable Street", secondary: "Bracken Ridge QLD" }],
     resolve: async () => ({ address: "6 Gable St, Bracken Ridge QLD 4017", suburb: "Bracken Ridge", state: "QLD", postcode: "4017" }),
+    locate: async () => ({ lat: -27.3155, lng: 153.0391 }),
     ...over
   });
   const deps = (p: AddressLookupPort | null, hits = 1): AddressSuggestDeps & { buckets: string[] } => {
@@ -149,5 +150,60 @@ describe("address lookup service", () => {
     expect(await runAddressSuggest(deps(port({ suggest: async () => { throw new Error("x"); } })), "u1", "6 Gable", null)).toMatchObject({ ok: false, code: "unavailable" });
     expect(await runAddressResolve(deps(port({ resolve: async () => null })), "u1", "ChIJabc123", null)).toMatchObject({ ok: false, code: "not_found" });
     expect(await runAddressResolve(deps(port()), "u1", "ChIJabc123", "tok12345")).toMatchObject({ ok: true, value: { postcode: "4017" } });
+  });
+});
+
+describe("address geocoding for the map pin", () => {
+  it("keeps only finite points inside Australia, rounded to 6 decimals", () => {
+    expect(auPoint(-27.31551234, 153.03912345)).toEqual({ lat: -27.315512, lng: 153.039123 });
+    expect(auPoint(-36.85, 174.76)).toBeNull(); // Auckland
+    expect(auPoint(Number.NaN, 150)).toBeNull();
+    expect(auPoint("1", "2")).toBeNull();
+  });
+
+  it("reads Photon's [lng, lat] and skips non-Australian features", () => {
+    const j = { features: [
+      { properties: { countrycode: "NZ" }, geometry: { coordinates: [174.76, -36.85] } },
+      { properties: { countrycode: "AU" }, geometry: { coordinates: [153.0391, -27.3155] } }
+    ] };
+    expect(parsePhotonLocation(j)).toEqual({ lat: -27.3155, lng: 153.0391 });
+    expect(parsePhotonLocation({ features: [] })).toBeNull();
+    expect(parsePhotonLocation({})).toBeNull();
+  });
+
+  it("reads the first Google place inside Australia", () => {
+    expect(parseGoogleLocation({ places: [{ location: { latitude: -33.8688, longitude: 151.2093 } }] })).toEqual({ lat: -33.8688, lng: 151.2093 });
+    expect(parseGoogleLocation({ places: [{ location: { latitude: 51.5, longitude: -0.12 } }] })).toBeNull();
+    expect(parseGoogleLocation({})).toBeNull();
+  });
+
+  it("queries Photon with the address and the house, street and suburb layers", async () => {
+    let url = "";
+    const port = createPhoton("https://photon.example.com", async u => { url = u; return { ok: true, text: async () => JSON.stringify({ features: [{ properties: { countrycode: "AU" }, geometry: { coordinates: [153.0, -27.4] } }] }) }; });
+    expect(await port.locate("6 Gable St, Bracken Ridge QLD 4017")).toEqual({ lat: -27.4, lng: 153 });
+    expect(url).toContain("q=6+Gable+St%2C+Bracken+Ridge+QLD+4017");
+    expect(url).toContain("layer=house");
+    expect(url).toContain("layer=locality");
+  });
+
+  it("sends Google a text search for the position only, with the key in a header", async () => {
+    let init: { headers: Record<string, string>; body?: string } | undefined;
+    const port = createGooglePlaces("AIza-x", async (_u, i) => { init = i; return { ok: true, text: async () => JSON.stringify({ places: [{ location: { latitude: -37.8, longitude: 144.96 } }] }) }; });
+    expect(await port.locate("1 Collins St, Melbourne VIC 3000")).toEqual({ lat: -37.8, lng: 144.96 });
+    expect(init?.headers["x-goog-fieldmask"]).toBe("places.location");
+    expect(init?.headers["x-goog-api-key"]).toBe("AIza-x");
+    expect(init?.body).toContain('"regionCode":"au"');
+  });
+
+  const d = (p: AddressLookupPort | null, hits = 1): AddressSuggestDeps => ({ port: p, hit: async () => hits });
+  const okPort: AddressLookupPort = { provider: "osm", suggest: async () => [], resolve: async () => null, locate: async () => ({ lat: -27.3155, lng: 153.0391 }) };
+
+  it("returns the position, and refuses bad input, rate limits, outages and unknown addresses", async () => {
+    expect(await runAddressGeocode(d(okPort), "u1", "6 Gable St, Bracken Ridge QLD 4017", "1.2.3.4")).toEqual({ ok: true, value: { lat: -27.3155, lng: 153.0391 } });
+    expect(await runAddressGeocode(d(okPort), "u1", "6")).toMatchObject({ ok: false, code: "invalid" });
+    expect(await runAddressGeocode(d(okPort, ADDRESS_LOOKUP_RATE.perPerson + 1), "u1", "6 Gable St")).toMatchObject({ ok: false, code: "rate_limited" });
+    expect(await runAddressGeocode(d(null), "u1", "6 Gable St")).toMatchObject({ ok: false, code: "unavailable" });
+    expect(await runAddressGeocode(d({ ...okPort, locate: async () => { throw new Error("x"); } }), "u1", "6 Gable St")).toMatchObject({ ok: false, code: "unavailable" });
+    expect(await runAddressGeocode(d({ ...okPort, locate: async () => null }), "u1", "6 Gable St")).toMatchObject({ ok: false, code: "not_found" });
   });
 });

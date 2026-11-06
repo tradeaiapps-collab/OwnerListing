@@ -156,6 +156,15 @@ describe("project gallery access", () => {
     return { id, ids };
   }
 
+  it("refuses swearing in a project photo caption unless the owner posts it anyway", async () => {
+    const { id, ids } = await withPhotos();
+    const entries = [{ photoId: ids[0], caption: "fuck", alt: "", hidden: false }, { photoId: ids[1], caption: "", alt: "", hidden: true }];
+    const blocked = await updateProjectLayout(deps, photos.store, owner, id, { version: 3, entries });
+    expect(blocked.ok).toBe(false);
+    const allowed = await updateProjectLayout(deps, photos.store, owner, id, { version: 3, entries, allowFlagged: true });
+    expect(allowed.ok).toBe(true);
+  });
+
   it("the owner and staff see every photo; nobody else sees a project in review", async () => {
     const { id } = await withPhotos();
     const mine = await listProjectPhotos(deps, photos.store, owner, id);

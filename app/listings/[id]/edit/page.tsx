@@ -7,10 +7,10 @@ import { PhotoManager } from "../../photo-manager";
 import { PriceGuidanceCard } from "../../price-guidance-card";
 import { WordingFlagList, type WordingFlagView } from "../../wording-hint";
 import { LocationPicker } from "../../location-picker";
+import { ElenaPublishCheck } from "../../elena-publish-check";
 
 type Loaded = ListingDefaults & { id: string; status: string; latitude?: number; longitude?: number };
 type FieldFlags = { field: string; flags: WordingFlagView[] };
-type Check = { allowed: boolean; reasons: string[]; wordingFlags: FieldFlags[] };
 type Suggestion = { state: "ready"; text: string; label: string } | { state: "unavailable"; message: string; reason?: string };
 
 /** Owner asks the self-hosted AI for a draft description. Shown as text to copy and edit; never saved or published from here. */
@@ -53,7 +53,6 @@ export default function EditListing() {
   const [error, setError] = useState("");
   const [saved, setSaved] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [check, setCheck] = useState<Check | null>(null);
   const [bond, setBond] = useState("");
   const [bondState, setBondState] = useState<BondState>("idle");
   const [savedFlags, setSavedFlags] = useState<FieldFlags[]>([]);
@@ -81,7 +80,6 @@ export default function EditListing() {
     setBusy(true);
     setError("");
     setSaved(false);
-    setCheck(null);
     try {
       const res = await fetch(`/api/listings/${id}`, { method: "PATCH", headers: JSON_HEADERS, body: JSON.stringify(body) });
       const d = await res.json();
@@ -103,27 +101,11 @@ export default function EditListing() {
     const value = e.target.value;
     setBond(value);
     setBondState("saving");
-    setCheck(null);
     try {
       const res = await fetch(`/api/listings/${id}`, { method: "PATCH", headers: JSON_HEADERS, body: JSON.stringify({ rentalBondPathway: value }) });
       setBondState(res.ok ? "saved" : "error");
     } catch {
       setBondState("error");
-    }
-  }
-
-  async function runCheck() {
-    setBusy(true);
-    setError("");
-    try {
-      const res = await fetch(`/api/listings/${id}/publish?dryRun=1`, { method: "POST", headers: JSON_HEADERS });
-      const d = await res.json();
-      if (!res.ok) setError(d.error ?? "Check failed.");
-      else setCheck({ allowed: d.decision.allowed, reasons: d.decision.reasons, wordingFlags: Array.isArray(d.wordingFlags) ? d.wordingFlags : [] });
-    } catch {
-      setError("Check failed.");
-    } finally {
-      setBusy(false);
     }
   }
 
@@ -143,18 +125,12 @@ export default function EditListing() {
           {saved && savedFlags.map(f => <WordingFlagList key={f.field} field={f.field} flags={f.flags} />)}
           {error && <p role="alert">{error}</p>}
           <PhotoManager listingId={listing.id} />
-          <LocationPicker listingId={listing.id} latitude={listing.latitude} longitude={listing.longitude} />
+          <LocationPicker listingId={listing.id} address={listing.address} latitude={listing.latitude} longitude={listing.longitude} />
           <section className="panel">
             {listing.transactionType === "rent" && <BondPathwayField value={bond} state={bondState} onChange={saveBond} />}
             <p><a href={`/listings/${listing.id}/disclosures`}>Required disclosures for your state</a></p>
-            <button type="button" className="secondary" disabled={busy} onClick={runCheck}>Check if it can be published</button>
-            {check && (
-              <div>
-                <h3>{check.allowed ? "Can be published" : "Blocked"}</h3>
-                <ul className="plain-list">{check.reasons.map(r => <li key={r}>{r}</li>)}</ul>
-              </div>
-            )}
           </section>
+          <ElenaPublishCheck listingId={listing.id} />
           <PriceGuidanceCard listingId={listing.id} rent={listing.transactionType === "rent"} />
           <SuggestDescription id={id} />
         </>

@@ -74,6 +74,14 @@ describe("layout changes", () => {
   const cur = layout(["a", "b", "c"]);
   const entries = (ids: string[], extra: Record<string, unknown> = {}) => ids.map(id => ({ photoId: id, caption: "", alt: "", hidden: false, ...extra }));
 
+  it("rejects swearing in caption, description or features unless the owner overrides", () => {
+    for (const field of [{ caption: "fuck" }, { alt: "what the f**k" }, { features: ["stone benchtop", "sh1t"] }]) {
+      const body = { entries: [{ photoId: "a", caption: "", alt: "", hidden: false, ...field }, ...entries(["b", "c"])] };
+      expect(checkLayoutChange(cur, photos, body, { everPublished: false })).toEqual({ ok: false, message: "Description contains inappropriate language. Please revise before posting." });
+      expect(checkLayoutChange(cur, photos, { ...body, allowFlagged: true }, { everPublished: false }).ok).toBe(true);
+    }
+  });
+
   it("reorders, sets captions and alt text, hides, and cleans text", () => {
     const r = checkLayoutChange(cur, photos, { entries: [{ photoId: "b", caption: "  Big\nkitchen ‮ ", alt: "Kitchen", hidden: true }, ...entries(["a", "c"])] }, { everPublished: true });
     expect(r).toEqual({ ok: true, tourUrl: null, entries: [{ photoId: "b", caption: "Big kitchen", alt: "Kitchen", hidden: true }, ...entries(["a", "c"])] });
