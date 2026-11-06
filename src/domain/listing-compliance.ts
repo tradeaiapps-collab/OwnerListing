@@ -49,7 +49,23 @@ const LABELS: Readonly<Record<string, string>> = {
   building_pest_report: "Building and pest report",
   strata_report: "Strata or body corporate report",
   title_search: "Title search",
-  energy_rating: "Energy rating"
+  energy_rating: "Energy rating",
+  nsw_section_66w: "Cooling-off waiver certificate, section 66W (NSW)",
+  nsw_sewer_service_diagram: "Sydney Water sewer service diagram (NSW)",
+  nsw_zoning_certificate: "Planning certificate, section 10.7 (NSW)",
+  nsw_flood_bushfire: "Flood and bushfire planning notes (NSW)",
+  nsw_strata_certificate: "Strata information certificate (NSW)",
+  vic_owners_corporation_certificate: "Owners corporation certificate (VIC)",
+  vic_building_permits: "Building permits, last 7 years (VIC)",
+  vic_heritage_overlay: "Heritage overlay check (VIC)",
+  vic_land_tax_certificate: "Land tax clearance certificate (VIC)",
+  qld_form_2: "Form 2 seller disclosure (QLD)",
+  qld_body_corporate_certificate: "Body corporate information certificate (QLD)",
+  qld_flood_search: "Brisbane flood awareness report (QLD)",
+  qld_smoke_alarm_compliance: "Smoke alarm compliance (QLD)",
+  qld_minimum_housing_standards: "Minimum housing standards (QLD rentals)",
+  vic_rental_minimum_standards: "Rental minimum standards (VIC rentals)",
+  nsw_smoke_alarm_rental: "Smoke alarm compliance (NSW rentals)"
 };
 
 export function disclosureLabel(key: string): string {

@@ -193,6 +193,61 @@ async function seedFiles(client) {
   if (linked || made) console.log(`Demo files: ${linked} listings given a property record, ${made} example files added${dir ? "" : " (no bytes: LOCAL_STORAGE_DIR is not set)"}.`);
 }
 
+// ---- Demo disclosures and public documents (property page: Disclosures and Documents sections) ---------------------------------
+// Each demo listing gets the disclosures and public documents that fit its state and kind (sale or rent), so buyers see realistic
+// trust signals. Illustrative demo data only: the keys and titles are not a statement of what a state requires (that comes from
+// compliance configuration, which counsel signs off). Idempotent: disclosures are unique per listing and key, documents per listing and title.
+const DEMO_DISCLOSURES = {
+  "12 Jacaranda St, Paddington QLD 4064": ["qld_seller_disclosure_statement", "qld_pool_safety_sale", "qld_flood_search", "qld_smoke_alarm_compliance_sale", "building_pest_report"],
+  "8/21 Moray St, New Farm QLD 4005": ["qld_smoke_alarm_compliance_rental", "qld_minimum_housing_standards", "energy_rating"],
+  "45 Beach Rd, Bondi NSW 2026": ["nsw_contract_of_sale", "nsw_zoning_certificate", "nsw_sewer_service_diagram", "nsw_flood_bushfire", "building_pest_report"],
+  "3/17 Darley Rd, Randwick NSW 2031": ["nsw_smoke_alarm_rental", "energy_rating"],
+  "28 Station St, Fitzroy North VIC 3068": ["vic_section_32", "vic_building_permits", "vic_heritage_overlay", "vic_land_tax_certificate", "building_pest_report"],
+  "6/102 Chapel St, Windsor VIC 3181": ["vic_rental_minimum_standards", "smoke_alarm_compliance", "energy_rating"],
+  "9/4 Park Ave, Chermside QLD 4032": ["qld_seller_disclosure_statement", "qld_body_corporate_certificate", "qld_smoke_alarm_compliance_sale", "title_search"],
+  "14/50 Kent St, Sydney NSW 2000": ["nsw_smoke_alarm_rental", "nsw_strata_certificate", "energy_rating"]
+};
+// [kind, title, extra lines on the PDF]
+const DEMO_PUBLIC_DOCS = {
+  "12 Jacaranda St, Paddington QLD 4064": [["other", "Form 2 seller disclosure summary", ["Zoning: Low-medium density residential", "Pool: certificate current", "Demo document"]], ["title_search", "Title search, Lot 7 on RP 21345", ["Freehold, one registered mortgage to be discharged on settlement"]], ["other", "Brisbane flood awareness report", ["Flood risk: low for river flooding, medium for creek flooding"]], ["building_inspection", "Building inspection summary", ["Overall condition: good"]]],
+  "8/21 Moray St, New Farm QLD 4005": [["other", "Smoke alarm compliance certificate", ["Interconnected photoelectric alarms in every bedroom and hallway"]], ["other", "Energy rating summary", ["Ceiling fans in all rooms, split system in living area"]], ["other", "Entry condition report (sample)", ["Provided at lease signing, 7 days to return"]]],
+  "45 Beach Rd, Bondi NSW 2026": [["other", "Planning certificate (section 10.7)", ["Zoning: R2 Low density residential", "Heritage conservation area: yes", "Bush fire prone: no"]], ["other", "Sydney Water sewer service diagram", ["Connected to the sewer main at the rear boundary"]], ["other", "Survey report, 2019", ["Boundaries pegged, no encroachments noted"]], ["pest_report", "Timber pest inspection summary", ["No active termite activity found"]]],
+  "3/17 Darley Rd, Randwick NSW 2031": [["other", "Smoke alarm compliance certificate", ["Hardwired alarms checked this year"]], ["other", "Energy rating summary", ["Dishwasher and split systems rated 4 star or higher"]], ["other", "Condition report (sample)", ["Provided at lease signing"]]],
+  "28 Station St, Fitzroy North VIC 3068": [["other", "Vendor's statement summary (section 32)", ["Title, rates, services and planning overlays attached", "Demo document"]], ["other", "Building permit history", ["Rear extension 2016, final certificate issued"]], ["other", "Heritage overlay summary", ["HO316 applies: external changes need a planning permit"]], ["title_search", "Certificate of title", ["Volume 10432, Folio 118"]]],
+  "6/102 Chapel St, Windsor VIC 3181": [["other", "Rental minimum standards declaration", ["Locks, heating, vents, mould and electrical safety checked"]], ["other", "Gas and electrical safety check", ["Completed within the last two years"]], ["other", "Energy rating summary", ["Efficient reverse-cycle heating installed"]]],
+  "9/4 Park Ave, Chermside QLD 4032": [["other", "Body corporate information certificate", ["Levies up to date, no special levies planned"]], ["other", "Survey plan (BUP 4471)", ["Community titles scheme, four lots"]], ["title_search", "Title search summary", ["Freehold lot in a community titles scheme"]], ["other", "Smoke alarm compliance certificate", ["Interconnected alarms tested"]]],
+  "14/50 Kent St, Sydney NSW 2000": [["other", "Strata information summary", ["Levies and by-laws, short stay not permitted"]], ["other", "Smoke alarm compliance certificate", ["Building fire safety statement current"]], ["other", "Energy rating summary", ["Efficient appliances, double glazed windows"]]]
+};
+async function seedDisclosuresAndPublicDocs(client) {
+  const staff = (await client.query(`SELECT id FROM app_user WHERE email = $1`, [`staff.super_admin${D}`])).rows[0]?.id
+    ?? (await client.query(`SELECT id FROM app_user WHERE email LIKE '%@demo.invalid' ORDER BY created_at LIMIT 1`)).rows[0]?.id;
+  const dir = localDevStorageDir(process.env);
+  let disclosures = 0, docs = 0;
+  for (const [address, keys] of Object.entries(DEMO_DISCLOSURES)) {
+    const l = (await client.query(`SELECT id, jurisdiction, owner_user_id, property_id FROM property_listing WHERE address_text = $1`, [address])).rows[0];
+    if (!l) continue;
+    for (const [i, key] of keys.entries()) {
+      disclosures += (await client.query(
+        `INSERT INTO listing_disclosure (listing_id, jurisdiction, disclosure_key, satisfied, evidence_reference, verified_by, verified_at, state)
+         VALUES ($1, $2, $3, true, 'demo-evidence', $4, now() - ($5::int * interval '1 day'), 'verified') ON CONFLICT (listing_id, disclosure_key) DO NOTHING`,
+        [l.id, l.jurisdiction.trim(), key, staff, i + 2])).rowCount ?? 0;
+    }
+    if (!l.property_id) continue;
+    for (const [kind, title, lines] of DEMO_PUBLIC_DOCS[address] ?? []) {
+      if ((await client.query(`SELECT 1 FROM property_document WHERE listing_id = $1 AND title = $2`, [l.id, title])).rowCount) continue;
+      const bytes = makePdf(title, [address, ...lines, "Demo document, not a real record"]);
+      const key = `listings/${l.id}/${randomUUID()}`;
+      if (dir) await putLocalObject(dir, key, bytes);
+      await client.query(
+        `INSERT INTO property_document (property_id, listing_id, kind, title, storage_key, sha256, uploaded_by, source, declared_mime, size_bytes, visibility, status, uploaded_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, 'owner_supplied', 'application/pdf', $8, 'public', 'active', now() - ($9::int * interval '1 day'))`,
+        [l.property_id, l.id, kind, title, key, createHash("sha256").update(bytes).digest("hex"), l.owner_user_id, bytes.length, 3 + docs % 20]);
+      docs++;
+    }
+  }
+  if (disclosures || docs) console.log(`Demo disclosures: ${disclosures} added. Public documents: ${docs} added${dir ? "" : " (no bytes: LOCAL_STORAGE_DIR is not set)"}.`);
+}
+
 // ---- Demo agent leads (/agent/leads) ------------------------------------------------------------------------------------
 // Five extra buyers and about 20 leads for Mia, Priya and Tom in every status (new, viewing, offer, converted, lost) with interaction history,
 // follow-ups and notes. Needs the agents from seedPerformanceAndMessages. Idempotent: leads are unique per listing, agent and buyer.
@@ -507,6 +562,7 @@ try {
     await seedPhotos(db);
     await seedLocations(db);
     await seedFiles(db);
+    await seedDisclosuresAndPublicDocs(db);
     await seedLeads(db);
     await seedMedia(db);
     await db.end();
@@ -635,6 +691,7 @@ try {
   await seedPhotos(db);
   await seedLocations(db);
   await seedFiles(db);
+  await seedDisclosuresAndPublicDocs(db);
   await seedLeads(db);
   await seedMedia(db);
 } catch (e) {
