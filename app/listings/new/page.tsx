@@ -9,6 +9,15 @@ import { PhotoManager } from "../photo-manager";
 import { QuickSetupPanel, type QuickFiles } from "../quick-setup";
 import type { QuickSetup } from "../../../src/domain/quick-setup";
 import { ElenaPublishCheck } from "../elena-publish-check";
+import { PhotosStep } from "./photos-step";
+import type { FieldStep } from "../fields";
+
+const STEPS = ["Basics", "Details", "Description", "Photos", "Location", "Publish"] as const;
+const SUBS = ["Title, price and type", "Rooms and extras", "Tell the story", "Show it off", "Address and map", "Review and save"] as const;
+const TITLES = ["What are you listing?", "Rooms and extras", "Describe the property", "Add photos", "Where is it?", "Review your listing"] as const;
+const INTROS = ["Start with the essentials buyers look at first.", "These power the filters buyers use to find your home.", "Plain, specific wording works best.", "Good photos are the biggest driver of enquiries.", "The map pin is placed from your address.", "Check the details, then save your draft."] as const;
+const FIELD_STEPS: (FieldStep | "none")[] = ["basics", "details", "description", "none", "location", "none"];
+const LAST = STEPS.length - 1;
 
 type Ready = Extract<QuickSetup, { state: "ready" }>;
 type Upload = { name: string; state: "waiting" | "uploading" | "done" | "error"; message?: string };
@@ -27,6 +36,10 @@ export default function NewListing() {
   const [filled, setFilled] = useState<Ready | null>(null);
   const [pending, setPending] = useState<QuickFiles>({ photos: [], plan: null });
   const [uploads, setUploads] = useState<Upload[]>([]);
+  const [step, setStep] = useState(0);
+  const [reached, setReached] = useState(0);
+  const [review, setReview] = useState<[string, string][]>([]);
+  const [live, setLive] = useState({ price: "Price not set", title: "Untitled listing", addr: "Address not set", rooms: "" });
   const uploading = uploads.some(u => u.state === "waiting" || u.state === "uploading");
 
   /** Elena's quick setup fills the form. Whatever the person had already typed is kept where Elena found nothing. */
@@ -47,7 +60,7 @@ export default function NewListing() {
       ...(f.priceCents !== undefined ? { priceCents: f.priceCents } : {})
     });
     setFieldsKey(k => k + 1);
-    setFilled(r); setPending(files); setMode("manual");
+    setFilled(r); setPending(files); setMode("manual"); setStep(0);
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
@@ -84,8 +97,50 @@ export default function NewListing() {
     setFieldsKey(k => k + 1);
   }
 
-  async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
+  /** What the preview card in the rail shows, read straight from the form. */
+  function readPreview(form: HTMLFormElement) {
+    const fd = new FormData(form), g = (k: string) => String(fd.get(k) ?? "").trim();
+    const rent = g("transactionType") === "rent";
+    const cents = dollarsToCents(g("price"));
+    const price = cents === undefined || g("price") === "" ? "Price not set" : `$${(cents / 100).toLocaleString("en-AU")}${rent ? " pw" : ""}`;
+    const rooms = ["bedrooms", "bathrooms", "parking"].map((k, i) => (g(k) === "" ? "" : `${g(k)} ${["bed", "bath", "car"][i]}`)).filter(Boolean).join(" · ");
+    const addr = [g("address"), [g("suburb"), g("jurisdiction"), g("postcode")].filter(Boolean).join(" ")].filter(Boolean).join(", ");
+    return { price, title: g("title") || "Untitled listing", addr: addr || "Address not set", rooms };
+  }
+
+  function reviewRows(form: HTMLFormElement): [string, string][] {
+    const fd = new FormData(form), g = (k: string) => String(fd.get(k) ?? "").trim();
+    const rooms = ["bedrooms", "bathrooms", "parking"].map((k, i) => (g(k) === "" ? "" : `${g(k)} ${["bed", "bath", "car"][i]}`)).filter(Boolean).join(" · ");
+    const place = [g("address"), [g("suburb"), g("jurisdiction"), g("postcode")].filter(Boolean).join(" ")].filter(Boolean).join(", ");
+    const rent = g("transactionType") === "rent";
+    return [
+      ["Basics", `${g("title") || "No title"} · ${rent ? "Rental" : "Sale"}, ${g("propertyType")} · ${g("price") ? `$${g("price")}${rent ? " pw" : ""}` : "no price"}`],
+      ["Details", rooms || "Not set"], ["Description", g("description").slice(0, 90) || "Not set"],
+      ["Photos", `${pending.photos.length} ${pending.photos.length === 1 ? "photo" : "photos"}${pending.plan ? " and a site plan" : ""}`],
+      ["Location", place || "Not set"]
+    ];
+  }
+
+  /** Moves to a step. Going forward checks the fields on the current step first. */
+  function goTo(next: number) {
+    const form = document.getElementById("new-listing-form");
+    if (!(form instanceof HTMLFormElement)) return;
+    if (next > step) {
+      const fields = Array.from(form.querySelectorAll<HTMLInputElement>(".wiz-step:not([hidden]) :is(input, select, textarea)"));
+      const bad = fields.find(el => !el.checkValidity());
+      if (bad) { bad.reportValidity(); return; }
+      if (step === 0) { const parsed = listingFormBody(new FormData(form)); if ("error" in parsed) { setError(parsed.error); return; } }
+    }
+    setError("");
+    if (next === LAST) setReview(reviewRows(form));
+    setStep(next); setReached(r => Math.max(r, next));
+    document.getElementById("wiz-top")?.scrollIntoView({ block: "start" });
+  }
+
+  async function onSubmit(e: React.FormEvent<HTMLFormElement>, force = false) {
     e.preventDefault();
+    if (step < LAST && !force) { goTo(step + 1); return; }
+    if (draftId) return;
     const parsed = listingFormBody(new FormData(e.currentTarget));
     if ("error" in parsed) { setError(parsed.error); return; }
     const body = parsed.body;
@@ -123,7 +178,7 @@ export default function NewListing() {
   }
 
   return (
-    <main className="narrow">
+    <main className="narrow wiz-main">
       <h1>Create a listing</h1>
       <p className="muted">Start with the basics. You can save a draft and finish later. Nothing is public until you publish.</p>
       <div className="qs-tabs" role="tablist" aria-label="How do you want to set up the listing?">
@@ -144,10 +199,53 @@ export default function NewListing() {
           </section>
         )}
         <TemplatePicker onApply={t => { const f = document.getElementById("new-listing-form"); if (f instanceof HTMLFormElement) applyTemplate(t, f); }} />
-        <form id="new-listing-form" className="stack" onSubmit={onSubmit}>
-          <ListingFields key={fieldsKey} defaults={defaults} />
-          <div className="form-bar"><button type="submit" disabled={busy}>Save draft</button></div>
-        </form>
+        <div className="wiz-layout">
+          <aside className="wiz-rail" aria-label="Listing progress">
+            <ol className="wiz-steps">
+              {STEPS.map((name, i) => (
+                <li key={name} className={i < step ? "done" : i === step ? "cur" : ""}>
+                  <button type="button" disabled={i > reached} aria-current={i === step ? "step" : undefined} aria-label={`Step ${i + 1}, ${name}`} onClick={() => goTo(i)}>
+                    <span className="wiz-dot" aria-hidden="true">{i < step ? "✓" : i + 1}</span>
+                    <span className="wiz-st"><b>{name}</b><span>{SUBS[i]}</span></span>
+                  </button>
+                </li>
+              ))}
+            </ol>
+            <div className="wiz-preview" aria-label="Listing preview">
+              <div className="wiz-ph"><em>Preview</em></div>
+              <div className="wiz-pb"><strong className="wiz-pp">{live.price}</strong><span className="wiz-pt">{live.title}</span><span className="muted">{live.addr}</span>{live.rooms && <span className="muted">{live.rooms}</span>}</div>
+            </div>
+          </aside>
+          <section className="wiz-card">
+            <header id="wiz-top" className="wiz-header">
+              <div className="wiz-eyebrow"><span aria-live="polite">Step {step + 1} of {STEPS.length}</span><span className="wiz-eb2">{STEPS[step]}</span></div>
+              <div className="wiz-seg" role="progressbar" aria-label="Listing progress" aria-valuemin={1} aria-valuemax={STEPS.length} aria-valuenow={step + 1}>
+                {STEPS.map((n, i) => <i key={n} className={i < step ? "ok" : i === step ? "on" : ""} />)}
+              </div>
+              <h2>{TITLES[step]}</h2>
+              <p className="muted">{INTROS[step]}</p>
+            </header>
+            <form id="new-listing-form" onSubmit={onSubmit} onInput={e => setLive(readPreview(e.currentTarget))} noValidate>
+              <div className="wiz-body">
+                <ListingFields key={fieldsKey} defaults={defaults} step={FIELD_STEPS[step] ?? "none"} />
+                <div hidden={step !== 3}><PhotosStep files={pending} onChange={setPending} /></div>
+                <div hidden={step !== LAST} className="wiz-review">
+                  {review.map(([k, v], i) => (
+                    <div key={k} className="wiz-rv"><h3>{k}</h3><p>{v}</p><button type="button" className="link-button" onClick={() => goTo(i)}>Edit</button></div>
+                  ))}
+                  <p className="muted">Saving creates a draft. Nothing is public until you publish.</p>
+                </div>
+              </div>
+              <div className="wiz-nav">
+                <button type="button" className="secondary" disabled={step === 0} onClick={() => goTo(step - 1)}>Previous</button>
+                {step < LAST && <button type="button" className="link-button wiz-exit" disabled={busy || !!draftId} onClick={() => { const f = document.getElementById("new-listing-form"); if (f instanceof HTMLFormElement) void onSubmit({ preventDefault() {}, currentTarget: f } as unknown as React.FormEvent<HTMLFormElement>, true); }}>Save draft and exit</button>}
+                {step < LAST
+                  ? <button type="button" onClick={() => goTo(step + 1)}>Next: {STEPS[step + 1]}</button>
+                  : <button type="submit" disabled={busy || !!draftId}>{draftId ? "Draft saved" : busy ? "Saving..." : "Save draft"}</button>}
+              </div>
+            </form>
+          </section>
+        </div>
       </div>
       {signedOut && <p role="alert"><a href="/login?as=owner&next=/listings/new">Sign in</a> to save a listing.</p>}
       {error && <p role="alert">{error}</p>}
