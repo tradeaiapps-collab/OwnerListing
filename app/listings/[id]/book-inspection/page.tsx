@@ -105,7 +105,7 @@ export default function BookInspection() {
             <div>
               <p id="oi-time-h" className="oi-label">{times[0] ? dateText(times[0].startsAt, tz) : "Time"}</p>
               <div className="oi-times" role="group" aria-labelledby="oi-time-h">
-                {times.map(s => <button type="button" key={s.startsAt} className="oi-time" aria-pressed={slot === s.startsAt} onClick={() => setSlot(s.startsAt)}>{timeText(s.startsAt, tz)}{s.spotsLeft > 1 && <small>{s.spotsLeft} spots</small>}</button>)}
+                {times.map(s => <button type="button" key={s.startsAt} className="oi-time" aria-pressed={slot === s.startsAt} onClick={() => setSlot(s.startsAt)}><span>{timeText(s.startsAt, tz)}</span><small>{Math.round((Date.parse(s.endsAt) - Date.parse(s.startsAt)) / 60000)} min{s.spotsLeft > 1 ? `, ${s.spotsLeft} spots` : ""}</small></button>)}
               </div>
             </div>
           </section>

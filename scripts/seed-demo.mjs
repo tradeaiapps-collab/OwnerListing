@@ -314,6 +314,32 @@ async function seedMedia(client) {
   if (plans || videos) console.log(`Demo media: ${plans} floor plans and ${videos} videos added.`);
 }
 
+// ---- Open inspection times for the Bondi demo listing ----------------------------------------------------------------
+// Published by the owner (Sarah): a weekly Saturday morning session plus a few one-off dates over the next three weeks
+// (evening, morning and afternoon). Dates are relative to today in Sydney time. Idempotent: skipped once the listing has times.
+async function seedInspectionTimes(client) {
+  const l = (await client.query(
+    `SELECT l.id, l.owner_user_id FROM property_listing l JOIN app_user u ON u.id = l.owner_user_id
+      WHERE l.address_text = '45 Beach Rd, Bondi NSW 2026' AND u.email LIKE '%@demo.invalid' LIMIT 1`)).rows[0];
+  if (!l || (await client.query(`SELECT 1 FROM open_inspection_availability WHERE listing_id = $1`, [l.id])).rowCount) return;
+  const fmt = new Intl.DateTimeFormat("en-CA", { timeZone: "Australia/Sydney" });
+  const inDays = n => fmt.format(new Date(Date.now() + n * 86400000));
+  const rule = [
+    // recurrence, day_of_week, on_date, start, end, slot minutes, capacity, end_date
+    ["weekly", 6, null, 600, 720, 30, 3, inDays(21)],            // Saturdays 10:00-12:00 for three weeks
+    ["once", null, inDays(4), 1050, 1140, 30, 2, null],          // evening 5:30-7:00pm
+    ["once", null, inDays(9), 540, 630, 30, 1, null],            // morning 9:00-10:30am
+    ["once", null, inDays(13), 780, 840, 30, 2, null],           // afternoon 1:00-2:00pm
+    ["once", null, inDays(17), 1020, 1080, 30, 2, null]          // evening 5:00-6:00pm
+  ];
+  for (const r of rule) {
+    await client.query(
+      `INSERT INTO open_inspection_availability (listing_id, created_by, recurrence, day_of_week, on_date, start_min, end_min, slot_minutes, capacity, end_date)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`, [l.id, l.owner_user_id, ...r]);
+  }
+  console.log(`Demo inspections: ${rule.length} open inspection times published for 45 Beach Rd, Bondi.`);
+}
+
 const url = process.env.DATABASE_URL;
 if (process.env.NODE_ENV === "production") { console.error("Refusing to seed: NODE_ENV is production."); process.exit(2); }
 if (!url) { console.error("DATABASE_URL is required."); process.exit(2); }
@@ -637,6 +663,7 @@ try {
   await seedFiles(db);
   await seedLeads(db);
   await seedMedia(db);
+  await seedInspectionTimes(db);
 } catch (e) {
   await db.query("ROLLBACK").catch(() => undefined);
   console.error(`Seed failed: ${e.message}`);
