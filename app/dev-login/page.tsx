@@ -5,6 +5,9 @@ import { DEV_EMAIL_DOMAIN, devLoginAllowed, devLoginSurface } from "../../src/se
 import { getDb } from "../../src/server/context";
 import DevLoginButtons, { type DevAccount } from "./buttons";
 
+/** A buyer account that holds the investor role and is currently viewing as one. */
+const isInvestor = (r: Record<string, unknown>) => r["user_type"] === "buyer" && r["active_role"] === "investor" && Array.isArray(r["roles"]) && r["roles"].includes("investor");
+
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Dev sign-in (local only)" };
 
@@ -15,7 +18,7 @@ export default async function DevLogin() {
   if (!devLoginAllowed({ url: `http://${host}/dev-login`, headers: { get: n => h.get(n) } })) notFound();
   const surface = devLoginSurface(readAppMode());
   const rows = (await getDb().query(
-    `SELECT u.id, u.display_name, u.user_type, u.email, i.role, bv.email_verified_at, bv.id_verified_at
+    `SELECT u.id, u.display_name, u.user_type, u.email, i.role, u.roles, u.active_role, bv.email_verified_at, bv.id_verified_at
        FROM app_user u
        LEFT JOIN staff_invite i ON i.email = lower(u.email::text) AND i.revoked_at IS NULL AND i.accepted_at IS NOT NULL
        LEFT JOIN buyer_verification bv ON bv.user_id = u.id
@@ -26,7 +29,7 @@ export default async function DevLogin() {
     .filter(r => (r["user_type"] === "admin" ? surface.staff && !!r["role"] : surface.users))
     .map(r => ({
       id: String(r["id"]), name: String(r["display_name"]), email: String(r["email"]),
-      kind: r["user_type"] === "admin" ? `staff: ${String(r["role"])}` : String(r["user_type"]),
+      kind: r["user_type"] === "admin" ? `staff: ${String(r["role"])}` : isInvestor(r) ? "investor" : String(r["user_type"]),
       note: r["user_type"] === "buyer" ? (r["id_verified_at"] ? "fully verified" : r["email_verified_at"] ? "email verified only" : "unverified") : ""
     }));
   console.warn("[dev-login] WARNING: dev sign-in page served. Local testing only; never enable DEV_LOGIN outside your own PC.");

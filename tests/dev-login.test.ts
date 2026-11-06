@@ -91,6 +91,15 @@ describe("POST /api/dev/login", () => {
     expect(res.headers.get("set-cookie")).toContain("ol_session=");
     expect((await res.json()).redirect).toBe("/dashboard");
   });
+  it("signs a demo investor in as an investor (buyer account holding the investor role)", async () => {
+    ROWS.current = [{ id: "11111111-1111-1111-1111-111111111111", user_type: "buyer", roles: ["buyer", "investor"], active_role: "investor", role: null }];
+    const res = await call();
+    expect(res.status).toBe(200);
+    const cookie = res.headers.get("set-cookie") ?? "";
+    const token = decodeURIComponent(/ol_session=([^;]+)/.exec(cookie)?.[1] ?? "");
+    expect(JSON.parse(Buffer.from(token.split(".")[0] ?? "", "base64url").toString())).toMatchObject({ ut: "buyer", cr: "investor" });
+    expect((await res.json()).redirect).toBe("/dashboard");
+  });
   it("404 in production, without DEV_LOGIN, on Vercel, and for a non-local host", async () => {
     process.env["NODE_ENV"] = "production"; expect((await call()).status).toBe(404);
     process.env["NODE_ENV"] = "development";
