@@ -4,11 +4,11 @@ import { countsIn, dollarAmountsIn, reviewListing, type ElenaInput } from "../sr
 import { createDraft, createInMemoryListingRepository, publishListing, type Actor, type ListingServiceDeps } from "../src/domain/listing-service";
 
 const photo = (o: Partial<ElenaInput["photos"]["photos"][number]> = {}) => ({ width: 1600, height: 1000, alt: "Front of the house", category: "", ...o });
-const good = (over: Partial<ElenaInput> = {}, listing: Partial<ElenaInput["listing"]> = {}): ElenaInput => ({
+const good = (over: Partial<ElenaInput> = {}, listing: { [K in keyof ElenaInput["listing"]]?: ElenaInput["listing"][K] | undefined } = {}): ElenaInput => ({
   listing: {
     id: "l1", title: "Renovated family home", address: "1 Example St", propertyType: "house", transactionType: "sale", useClass: "residential",
     suburb: "Paddington", postcode: "4064", priceCents: 85_000_000, bedrooms: 4, bathrooms: 2, parking: 2, amenities: ["pool"],
-    description: "A renovated 4 bedroom home with 2 bathrooms, 2 car spaces and a pool, close to cafes and the train. Priced at $850,000.", ...listing
+    description: "A renovated 4 bedroom home with 2 bathrooms, 2 car spaces and a pool, close to cafes and the train. Priced at $850,000.", ...(listing as object)
   },
   photos: { photos: [1, 2, 3, 4, 5].map(() => photo()), floorplans: 1 },
   wordingFlags: [], clearedWording: new Set(), gateReasons: [], ...over
