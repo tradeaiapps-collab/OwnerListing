@@ -114,6 +114,80 @@ async function seedLocations(client) {
   if (n) console.log(`Demo map locations added: ${n} listings.`);
 }
 
+// ---- Demo files (listing Files page) ------------------------------------------------------------------------------------
+// The upload form refuses a listing with no property record, so every demo listing gets one. The eight main demo listings then get example
+// files: floor plan, 360 photo, title search, building inspection, pest report and a contract with an earlier, superseded version.
+// Bytes are written only when LOCAL_STORAGE_DIR is set (same guard as the photos); rows are added either way. Idempotent.
+
+/** A one-page PDF with a title and text lines (Helvetica, no external fonts). */
+function makePdf(title, lines) {
+  const esc = s => s.replace(/[\\()]/g, m => `\\${m}`);
+  let stream = `BT /F1 18 Tf 56 780 Td (${esc(title)}) Tj ET\n`;
+  lines.forEach((t, i) => { stream += `BT /F1 11 Tf 56 ${740 - i * 18} Td (${esc(t)}) Tj ET\n`; });
+  const objs = ["<< /Type /Catalog /Pages 2 0 R >>", "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>",
+    `<< /Length ${Buffer.byteLength(stream)} >>\nstream\n${stream}endstream`, "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>"];
+  let out = "%PDF-1.4\n"; const offs = [];
+  objs.forEach((o, i) => { offs.push(Buffer.byteLength(out)); out += `${i + 1} 0 obj\n${o}\nendobj\n`; });
+  const xref = Buffer.byteLength(out);
+  out += `xref\n0 ${objs.length + 1}\n0000000000 65535 f \n${offs.map(o => `${String(o).padStart(10, "0")} 00000 n \n`).join("")}trailer\n<< /Size ${objs.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
+  return Buffer.from(out, "latin1");
+}
+/** A 2:1 equirectangular-style panorama: sky, distant ridge, lawn, with the horizon at mid height. */
+function panorama(p) {
+  const [accent] = PALETTES[p % PALETTES.length];
+  return makePng(1600, 800, (x, y) => {
+    const ridge = 330 + Math.sin(x / 90) * 24 + Math.sin(x / 31) * 8;
+    if (y > 400) return mix([96, 150, 78], [60, 110, 55], (y - 400) / 400);
+    if (y > ridge) return mix(accent, [60, 70, 80], 0.5);
+    return mix([120, 175, 235], [225, 238, 250], y / 400);
+  });
+}
+
+async function seedFiles(client) {
+  let linked = 0;
+  const bare = (await client.query(`SELECT id, address_text, jurisdiction, suburb, postcode, use_class, property_type, bedrooms, bathrooms, parking, latitude, longitude FROM property_listing WHERE property_id IS NULL AND owner_user_id IN (SELECT id FROM app_user WHERE email LIKE '%@demo.invalid')`)).rows;
+  for (const l of bare) {
+    const pid = (await client.query(
+      `INSERT INTO property (address_text, state, suburb, postcode, use_class, property_type, bedrooms, bathrooms, car_spaces, latitude, longitude)
+       VALUES ($1, TRIM($2), $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING id`,
+      [l.address_text, l.jurisdiction, l.suburb, l.postcode, l.use_class, l.property_type, l.bedrooms, l.bathrooms, l.parking, l.latitude, l.longitude])).rows[0].id;
+    await client.query(`UPDATE property_listing SET property_id = $2 WHERE id = $1`, [l.id, pid]);
+    linked++;
+  }
+  const dir = localDevStorageDir(process.env);
+  const targets = (await client.query(
+    `SELECT l.id, l.owner_user_id, l.property_id, l.address_text, l.transaction_type FROM property_listing l
+      WHERE l.address_text = ANY($1::text[]) AND l.property_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM property_document d WHERE d.listing_id = l.id)
+      ORDER BY l.created_at, l.id`, [DEMO_LOCATIONS.map(d => d[0])])).rows;
+  let made = 0;
+  for (const [i, l] of targets.entries()) {
+    const sale = l.transaction_type === "sale";
+    const files = [
+      ["floorplan", "image/png", "public", floorplan(), null],
+      ...(i % 2 === 0 ? [["photo_360", "image/png", "public", panorama(i), null]] : []),
+      ["title_search", "application/pdf", "owner_only", makePdf("Title search", [l.address_text, "Registered proprietor: as per owner account", "Encumbrances: none recorded", "Searched: demo data, not a real search"]), null],
+      ["building_inspection", "application/pdf", "parties", makePdf("Building inspection report", [l.address_text, "Overall condition: good", "Minor items: gutters, two loose roof tiles", "Demo document, not a real inspection"]), null],
+      ["pest_report", "application/pdf", "parties", makePdf("Timber pest report", [l.address_text, "No active termite activity found", "Re-inspect in 12 months", "Demo document, not a real report"]), null],
+      ...(sale ? [["contract", "application/pdf", "parties", makePdf("Contract of sale (draft 1)", [l.address_text, "Superseded by draft 2 after the owner's edits", "Demo document"]), "old"],
+                  ["contract", "application/pdf", "parties", makePdf("Contract of sale (draft 2)", [l.address_text, "Special conditions: finance and building inspection", "Demo document"]), "new"]] : [])
+    ];
+    let oldId = null;
+    for (const [kind, mime, visibility, bytes, ver] of files) {
+      const id = randomUUID(), key = `listings/${l.id}/${randomUUID()}`;
+      if (dir) await putLocalObject(dir, key, bytes);
+      await client.query(
+        `INSERT INTO property_document (id, property_id, listing_id, kind, storage_key, sha256, uploaded_by, source, declared_mime, size_bytes, visibility, status, supersedes_id, uploaded_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, 'owner_supplied', $8, $9, $10, $11, $12, now() - ($13::int * interval '1 day'))`,
+        [id, l.property_id, l.id, kind, key, createHash("sha256").update(bytes).digest("hex"), l.owner_user_id, mime, bytes.length, visibility,
+          ver === "old" ? "superseded" : "active", ver === "new" ? oldId : null, 12 - made % 9]);
+      if (ver === "old") oldId = id;
+      made++;
+    }
+  }
+  if (linked || made) console.log(`Demo files: ${linked} listings given a property record, ${made} example files added${dir ? "" : " (no bytes: LOCAL_STORAGE_DIR is not set)"}.`);
+}
+
 const url = process.env.DATABASE_URL;
 if (process.env.NODE_ENV === "production") { console.error("Refusing to seed: NODE_ENV is production."); process.exit(2); }
 if (!url) { console.error("DATABASE_URL is required."); process.exit(2); }
@@ -306,6 +380,7 @@ try {
     await seedPerformanceAndMessages(db);
     await seedPhotos(db);
     await seedLocations(db);
+    await seedFiles(db);
     await db.end();
     process.exit(0);
   }
@@ -431,6 +506,7 @@ try {
   await seedPerformanceAndMessages(db);
   await seedPhotos(db);
   await seedLocations(db);
+  await seedFiles(db);
 } catch (e) {
   await db.query("ROLLBACK").catch(() => undefined);
   console.error(`Seed failed: ${e.message}`);
