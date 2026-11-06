@@ -493,3 +493,26 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .ela-tip-btn { min-height: 28px; min-width: 28px; padding: 0; border-radius: 50%; font-size: 0.8125rem; line-height: 1; }
 .ela-tip-text { display: block; margin-top: var(--space-2); max-width: 36ch; padding: var(--space-2) var(--space-3); border: 1px solid var(--border); border-radius: 10px; background: var(--elevated, var(--surface)); font-weight: 400; font-size: 0.8125rem; color: var(--text); }
 @media (max-width: 479px) { .ela-actions > button { flex: 1 1 100%; } .ela-tip-text { max-width: none; } }
+
+/* Role switcher (header) and role management cards. Tokens only; colours come from existing theme variables. */
+.role-switch { position: relative; flex: none; align-self: center; margin-inline-start: var(--space-1); }
+button.role-switch-btn { display: inline-flex; align-items: center; gap: var(--space-2); min-height: 44px; max-width: 100%; padding: 0 var(--space-3); border: 1px solid var(--border); border-radius: 999px; background: transparent; color: var(--header-text, var(--text)); font: inherit; cursor: pointer; box-shadow: none; }
+button.role-switch-btn:hover:not(:disabled), button.role-switch-btn[aria-expanded="true"] { background: var(--tint-2); color: var(--header-text, var(--text)); }
+.role-switch-hint { color: inherit; opacity: 0.75; font-size: 0.85em; }
+.role-dot { width: 10px; height: 10px; flex: none; border-radius: 50%; background: var(--accent, currentColor); }
+.role-dot[data-role="owner"], .role-switch[data-role="owner"] .role-switch-btn .role-dot { background: var(--accent, #1f6feb); }
+.role-dot[data-role="agent"], .role-switch[data-role="agent"] .role-switch-btn .role-dot { background: #8a5cf6; }
+.role-dot[data-role="buyer"], .role-switch[data-role="buyer"] .role-switch-btn .role-dot { background: #1a9e6b; }
+.role-dot[data-role="investor"], .role-switch[data-role="investor"] .role-switch-btn .role-dot { background: #c98a12; }
+.role-menu { position: absolute; inset-inline-start: 0; top: calc(100% + var(--space-1)); z-index: 30; display: grid; min-width: 220px; max-width: calc(100vw - 2 * var(--space-4)); padding: var(--space-1); border: 1px solid var(--border); border-radius: 12px; background: var(--surface, var(--bg)); color: var(--text); box-shadow: 0 8px 24px rgb(0 0 0 / 0.18); }
+button.role-item, a.role-item { display: flex; justify-content: flex-start; width: 100%; align-items: center; gap: var(--space-2); min-height: 44px; padding: 0 var(--space-3); border: 0; border-radius: 8px; background: transparent; color: var(--text); font: inherit; text-align: start; text-decoration: none; cursor: pointer; box-shadow: none; }
+button.role-item:hover:not(:disabled), a.role-item:hover, .role-item:focus-visible { background: var(--tint-2); color: var(--text); }
+.role-manage { border-top: 1px solid var(--border); border-radius: 0 0 8px 8px; margin-top: var(--space-1); }
+.role-current { margin-inline-start: auto; padding: 0 var(--space-2); border: 1px solid var(--border); border-radius: 999px; font-size: 0.75em; font-weight: 500; }
+.role-err { margin: var(--space-1) var(--space-3); color: var(--danger, #c0392b); font-size: 0.85em; }
+.role-cards { display: grid; gap: var(--space-3); margin: var(--space-4) 0 0; padding: 0; list-style: none; }
+.role-card { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-3); padding: var(--space-4); border: 1px solid var(--border); border-radius: 12px; }
+.role-card[aria-current] { border-color: var(--accent, currentColor); }
+.role-card-text { display: grid; gap: var(--space-1); min-width: 0; flex: 1 1 220px; }
+.role-card-text strong { display: flex; align-items: center; gap: var(--space-2); }
+@media (max-width: 640px) { .role-switch-hint { display: none; } .role-switch-btn { padding: 0 var(--space-2); } }

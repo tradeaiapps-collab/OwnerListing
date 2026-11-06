@@ -17,9 +17,9 @@ export default function Dashboard() {
   useEffect(() => {
     const get = (url: string) => fetch(url).then(r => (r.ok ? r.json() : null)).catch(() => null);
     Promise.all([get("/api/auth/me"), get("/api/staff/me")]).then(([me, staff]) => {
-      const r = dashboardRole(Boolean(staff?.staff), me?.user?.userType);
+      const r = dashboardRole(Boolean(staff?.staff), me?.user?.userType, me?.user?.currentRole);
       setRole(r);
-      if (r === "owner" || r === "agent" || r === "buyer") void get("/api/journey").then(j => setJourney(j && Array.isArray(j.steps) && j.steps.length > 0 ? j : null));
+      if (r === "owner" || r === "agent" || r === "buyer" || r === "investor") void get("/api/journey").then(j => setJourney(j && Array.isArray(j.steps) && j.steps.length > 0 ? j : null));
     });
   }, []);
 
@@ -42,7 +42,7 @@ export default function Dashboard() {
     <main>
       {crumbs}
       <h1>Dashboard</h1>
-      <p className="muted">Your tasks as {{ owner: "an owner", agent: "an agent", buyer: "a buyer", staff: "staff" }[role]}.</p>
+      <p className="muted">Your tasks as {{ owner: "an owner", agent: "an agent", buyer: "a buyer", investor: "an investor", staff: "staff" }[role]}.</p>
       {journey && (
         <section className="jr" aria-labelledby="jr-title">
           <div className="jr-head">

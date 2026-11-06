@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "./icons";
+import RoleSwitcher from "./role-switcher";
 import ThemeToggle from "./theme-toggle";
 import { NAV_CATALOG, type IconStyle, type NavItem } from "../src/domain/site-theme";
 
@@ -96,6 +97,7 @@ export default function SiteNav({ items, iconStyle, signInHref, themeToggle }: {
       {who === "buyer" && <a href="/buyer/rate-agent">Rate your agent</a>}
       {(who === "owner" || who === "buyer" || who === "staff") && <button type="button" className="nav-signout" onClick={signOut}>Sign out</button>}
       </div>
+      {(who === "owner" || who === "buyer") && <RoleSwitcher />}
       {themeToggle && <ThemeToggle />}
     </nav>
   );
