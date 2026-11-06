@@ -149,7 +149,7 @@ export default function SavedSearches() {
 
       <section>
         <h2>Your searches</h2>
-        {searches.length === 0 ? <p className="empty">No saved searches yet.</p> : <ul className="card-list">{searches.map(s => <li key={s.id}>{summarise(s)} <a href={savedSearchHref(s)}>View matches</a></li>)}</ul>}
+        {searches.length === 0 ? <p className="empty">No saved searches yet.</p> : <ul className="card-list">{searches.map(s => <li key={s.id}><span>{summarise(s)}</span> <a className="button" href={savedSearchHref(s)}>View listings</a></li>)}</ul>}
       </section>
 
       <section>
@@ -167,7 +167,7 @@ export default function SavedSearches() {
           </label>
         ))}
       </section>
-      <p><a href="/listings">View listings</a></p>
+      <p><a href="/listings">Browse all listings</a></p>
     </main>
   );
 }

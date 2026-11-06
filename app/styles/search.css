@@ -95,3 +95,6 @@
 .cmp-add[aria-pressed="true"], .cmp-add[aria-pressed="true"]:hover:not(:disabled) { background: color-mix(in srgb, var(--gold) 16%, var(--elevated)); color: var(--text); border: 1px solid var(--gold); }
 .cmp-tray .cmp-actions { flex: 1 1 100%; justify-content: space-between; }
 @media (max-width: 599px) { .cmp-tray .cmp-actions { padding-left: 52px; } .cmp-tray .cmp-actions > .muted { flex: 1 1 100%; } }
+
+.active-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-block: 12px; }
+.active-filters .chips { margin: 0; padding: 0; }
