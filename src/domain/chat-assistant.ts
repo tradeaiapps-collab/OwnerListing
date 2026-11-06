@@ -388,6 +388,8 @@ export function parseQuestion(body: unknown): Result<string> {
   return { ok: true, value: t };
 }
 
+export const getAssistantContext = (deps: ChatAssistantDeps, actor: Actor, enquiryId: string) => context(deps, actor, enquiryId);
+
 async function context(deps: ChatAssistantDeps, actor: Actor, enquiryId: string): Promise<Result<{ enquiry: { id: string; buyerUserId: string; listingId: string }; role: ChatRole; facts: ChatFacts }>> {
   const p = await participantEnquiry(deps as unknown as EnquiryDeps, actor, enquiryId);
   if (!p.ok) return p;

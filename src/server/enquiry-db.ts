@@ -92,6 +92,11 @@ export function createPgEnquiryRepository(db: Queryable): EnquiryRepository {
          ON CONFLICT (enquiry_id, user_id) DO UPDATE SET last_read_at = GREATEST(enquiry_read.last_read_at, EXCLUDED.last_read_at)`,
         [enquiryId, userId, at]
       );
+    },
+    async lastReadByOthers(userId, enquiryId) {
+      const r = await db.query("SELECT max(last_read_at) AS at FROM enquiry_read WHERE enquiry_id = $1::uuid AND user_id <> $2::uuid", [enquiryId, userId]);
+      const at = r.rows[0]?.["at"];
+      return at ? iso(at) : undefined;
     }
   };
 }

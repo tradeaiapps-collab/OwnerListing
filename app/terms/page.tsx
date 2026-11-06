@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { ENGLISH_PREVAILS_NOTICE } from "../../src/domain/i18n";
 import { TERMS_LAST_UPDATED, TERMS_PARTS, TERMS_SUMMARY } from "../../src/domain/terms-content";
 import { JSON_HEADERS } from "../listings/ui";
+import BackLink from "../back-link";
 import "../styles/settings.css";
 
 type Current = { version: string; textReference: string; includesAiLearningClause: boolean };
@@ -39,6 +40,7 @@ export default function Terms() {
 
   return (
     <main>
+      <BackLink />
       <h1>Terms and privacy</h1>
       <p className="muted">Last updated {TERMS_LAST_UPDATED}</p>
       <section className="terms-box" aria-label="Summary">
