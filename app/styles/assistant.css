@@ -57,6 +57,10 @@
 .ga-pose { display: block; position: relative; overflow: hidden; aspect-ratio: 4 / 5; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--line); }
 .ga-pose img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: 50% 20%; }
 .ga-pose.is-full img { width: 200%; max-width: none; height: auto; margin-left: -50%; }
+.ga-listen { margin-top: var(--space-2); display: inline-flex; align-items: center; gap: var(--space-2); min-height: 44px; padding: 0 var(--space-3); border-radius: 999px; border: 1px solid var(--line); background: transparent; color: inherit; font: inherit; font-size: 0.875rem; cursor: pointer; }
+.ga-listen:hover { background: var(--tint-2); }
+.ga-listen[aria-pressed="true"] { border-color: var(--gold, var(--accent)); }
+.ga-listen:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
 .ga-links { list-style: none; margin: var(--space-2) 0 0; padding: 0; display: grid; gap: var(--space-1); }
 .ga-links a { display: inline-flex; align-items: center; gap: var(--space-1); min-height: 36px; font-weight: 700; }
 .ga-form { display: flex; gap: var(--space-2); padding: var(--space-2) var(--space-4); }
