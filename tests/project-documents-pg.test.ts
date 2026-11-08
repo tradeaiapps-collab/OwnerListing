@@ -45,4 +45,26 @@ describe.skipIf(!DATABASE_URL)("investor project documents on Postgres", () => {
     await expect(db.query("DELETE FROM investment_project_document")).rejects.toThrow(/append-only/);
     expect(await store.bytesUploadedSince(ownerId, new Date(Date.now() - 60_000).toISOString())).toBe(2468);
   });
+  it("masking revisions: latest wins, one save per revision, insert-only, and the review queue", async () => {
+    const store = createPgProjectDocStore(db);
+    const d = doc(10);
+    await store.addDocument(d);
+    expect((await store.unconfirmedInvestorDocs()).map(x => x.id)).toContain(d.record.id);
+    const rev = (n: number, confirmed: boolean) => ({
+      id: `33333333-3333-4333-8333-${String(n).padStart(12, "0")}`, documentId: d.record.id, revision: n, boxes: [{ page: 1, x: 0.1, y: 0.2, w: 0.3, h: 0.04, source: "auto" as const }],
+      terms: ["Harbour View"], pageCount: 2, textFound: true, confirmed, actorId: ownerId, createdAt: new Date().toISOString()
+    });
+    expect(await store.latestMask(d.record.id)).toBeUndefined();
+    expect(await store.addMask(rev(1, true))).toBe(true);
+    expect(await store.addMask({ ...rev(2, false), revision: 1 })).toBe(false);
+    expect((await store.latestMask(d.record.id))!.confirmed).toBe(true);
+    expect((await store.unconfirmedInvestorDocs()).map(x => x.id)).not.toContain(d.record.id);
+    expect(await store.addMask(rev(3, false))).toBe(true);
+    const latest = (await store.latestMask(d.record.id))!;
+    expect(latest).toMatchObject({ revision: 3, confirmed: false, terms: ["Harbour View"], pageCount: 2 });
+    expect(latest.boxes[0]).toMatchObject({ page: 1, source: "auto" });
+    expect((await store.unconfirmedInvestorDocs()).map(x => x.id)).toContain(d.record.id);
+    await expect(db.query("UPDATE investment_project_document_mask SET confirmed = true")).rejects.toThrow(/append-only/);
+    await expect(db.query("DELETE FROM investment_project_document_mask")).rejects.toThrow(/append-only/);
+  });
 });

@@ -33,3 +33,14 @@ export function documentResponse(bytes: Uint8Array, contentType: string, title: 
     }
   });
 }
+
+/** One rendered document page: shown in the page, never as a download, never cached, never run as a page. */
+export function pageImageResponse(image: Uint8Array, contentType: string) {
+  return new NextResponse(image as BodyInit, {
+    headers: {
+      "content-type": contentType, "content-length": String(image.length), "content-disposition": "inline",
+      "x-content-type-options": "nosniff", "content-security-policy": "default-src 'none'; sandbox",
+      "cross-origin-resource-policy": "same-origin", "cache-control": "private, no-store, max-age=0", "x-robots-tag": "noindex, noarchive"
+    }
+  });
+}
