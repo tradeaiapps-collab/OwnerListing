@@ -33,6 +33,8 @@ export interface EnquiryRepository {
   /** Count of messages from the other side newer than the viewer's last read, per thread. */
   unreadCounts(userId: string, enquiryIds: readonly string[]): Promise<Map<string, number>>;
   markRead(userId: string, enquiryId: string, at: string): Promise<void>;
+  /** The latest time anyone other than this user read the thread. Drives the two-tick read receipt. */
+  lastReadByOthers(userId: string, enquiryId: string): Promise<string | undefined>;
 }
 
 export interface EnquiryDeps {
@@ -164,12 +166,14 @@ export async function participantEnquiry(
   return { ok: true, value: { enquiry: e, ownerUserId, asAgent } };
 }
 
-export async function getThread(deps: EnquiryDeps, actor: Actor, id: string): Promise<Result<{ enquiry: Enquiry; messages: EnquiryMessage[] }>> {
+/** `readByOthersAt`: when the other side last opened the thread. A message of yours sent at or before it shows two ticks. */
+export async function getThread(deps: EnquiryDeps, actor: Actor, id: string): Promise<Result<{ enquiry: Enquiry; messages: EnquiryMessage[]; readByOthersAt?: string }>> {
   const p = await participantEnquiry(deps, actor, id);
   if (!p.ok) return p;
   const messages = await deps.enquiries.messages(id);
   await deps.enquiries.markRead(actor.userId, id, deps.now());
-  return { ok: true, value: { enquiry: p.value.enquiry, messages } };
+  const readByOthersAt = await deps.enquiries.lastReadByOthers(actor.userId, id);
+  return { ok: true, value: { enquiry: p.value.enquiry, messages, ...(readByOthersAt ? { readByOthersAt } : {}) } };
 }
 
 export async function reply(deps: EnquiryDeps, actor: Actor, id: string, body: string): Promise<Result<EnquiryMessage>> {
@@ -295,6 +299,10 @@ export function createInMemoryEnquiryRepository(): EnquiryRepository & { message
       }
       return out;
     },
-    async markRead(userId, enquiryId, at) { reads.set(`${userId}|${enquiryId}`, at); }
+    async markRead(userId, enquiryId, at) { reads.set(`${userId}|${enquiryId}`, at); },
+    async lastReadByOthers(userId, enquiryId) {
+      const times = [...reads].filter(([k]) => k.endsWith(`|${enquiryId}`) && !k.startsWith(`${userId}|`)).map(([, v]) => v);
+      return times.sort().at(-1);
+    }
   };
 }

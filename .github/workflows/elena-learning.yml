@@ -1,0 +1,51 @@
+name: Elena learning (weekly and monthly)
+
+# Weekly: records finished deals and refreshes each consenting person's pattern. Monthly (1st): also proposes a new config version, which staff activate at /staff/elena-training.
+# Repository secrets: APP_URL (public https origin, no trailing slash) and ELENA_LEARNING_CRON_SECRET (same value as the app, 32+ characters).
+# While both are unset the run is skipped with a warning; one without the other, or any non-2xx answer, fails the run. Safe to repeat.
+on:
+  schedule:
+    - cron: "30 17 * * 0"   # Sunday 17:30 UTC = Monday morning in Australia: weekly
+    - cron: "30 17 1 * *"   # 1st of the month: monthly
+  workflow_dispatch:
+    inputs:
+      job:
+        description: "weekly or monthly"
+        required: true
+        default: weekly
+        type: choice
+        options: [weekly, monthly]
+
+permissions: {}
+
+concurrency:
+  group: elena-learning
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Call the Elena learning job
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          CRON_SECRET: ${{ secrets.ELENA_LEARNING_CRON_SECRET }}
+          INPUT_JOB: ${{ inputs.job }}
+          SCHEDULE: ${{ github.event.schedule }}
+        run: |
+          if [ -z "$APP_URL" ] && [ -z "$CRON_SECRET" ]; then
+            echo "::warning::APP_URL and ELENA_LEARNING_CRON_SECRET are not set; skipping (no deployment to call yet)."
+            exit 0
+          fi
+          if [ -z "$APP_URL" ] || [ -z "$CRON_SECRET" ]; then
+            echo "::error::Set both APP_URL and ELENA_LEARNING_CRON_SECRET."
+            exit 1
+          fi
+          job="${INPUT_JOB:-weekly}"
+          if [ "$SCHEDULE" = "30 17 1 * *" ]; then job=monthly; fi
+          body=$(curl -sS --fail-with-body --retry 3 --retry-all-errors --max-time 300 -X POST \
+            -H "x-cron-secret: $CRON_SECRET" -H "content-type: application/json" \
+            -d "{\"job\":\"$job\"}" "$APP_URL/api/internal/elena-learning/run")
+          echo "$body"
+          echo "Elena learning ($job) $(date -u +%FT%TZ): $body" >> "$GITHUB_STEP_SUMMARY"

@@ -33,7 +33,7 @@ Which provider keys each feature needs: `docs/PROVIDER_KEYS.md`. Run `npm run ch
 
 ## 4a. In-house ID photo review (holds sensitive personal information)
 Do not turn this on for real users until counsel has approved the retention periods (7 days after approval, 30 after rejection), the privacy notice wording (`ID_IMAGE_CONSENT_TEXT`, versioned in `src/domain/id-image.ts`) and Privacy Act handling of ID images and selfies (biometric information is sensitive information), and a pen test has been done.
-- Needs all of: `STORAGE_DRIVER` + `STORAGE_LOCAL_DIR` (encrypted volume, not web-served), `CLAMD_HOST` + `CLAMD_PORT`, `ID_IMAGE_KEY` (`openssl rand -base64 32`), `ID_RETENTION_CRON_SECRET` (32+ chars). Any one missing = off.
+- Needs all of: `STORAGE_DRIVER=s3` + the S3 settings in section "File storage (S3)" below (production), or `STORAGE_DRIVER=local-disk` + `STORAGE_LOCAL_DIR` (dev and staging only; refused in production), `CLAMD_HOST` + `CLAMD_PORT`, `ID_IMAGE_KEY` (`openssl rand -base64 32`), `ID_RETENTION_CRON_SECRET` (32+ chars). Any one missing = off.
 - Schedule daily: `curl -fsS -X POST -H "x-cron-secret: $ID_RETENTION_CRON_SECRET" $APP_URL/api/internal/id-images/retention`. Safe to repeat; answers `{counts:{deleted,failed}}`; investigate any `failed`.
 - Never rotate `ID_IMAGE_KEY` while images are stored (they become unreadable); wait until the queue is empty and 30 days have passed.
 - Images are viewable only by the reviewer holding the 30-minute claim, through `/api/staff/id-review/[id]/image/[part]` (no-store, every view in `id_review_access`).
@@ -41,17 +41,27 @@ Do not turn this on for real users until counsel has approved the retention peri
 ## 4b. Account deletion retention (daily)
 - `.github/workflows/account-retention.yml` calls `POST $APP_URL/api/internal/accounts/retention` with header `x-cron-secret` every day at 02:00 UTC. Set repository secrets `APP_URL` (public address) and `ACCOUNT_RETENTION_CRON_SECRET` (same value as the app, 32+ chars). Until both are set the run is skipped with a warning.
 - `.github/workflows/scheduled-reports.yml` calls `POST $APP_URL/api/internal/reports/run` with header `x-cron-secret` every hour at :05. It sends the staff report schedules that are due (set up at `/staff/report-builder`) to their owners by email. Set repository secrets `APP_URL` and `REPORTS_CRON_SECRET` (same value as the app, 32+ chars). Until both are set the run is skipped with a warning; without email settings (`/staff/messaging`) runs are stored but not sent.
+- `.github/workflows/dispute-escalation.yml` calls `POST $APP_URL/api/internal/disputes/escalate` with header `x-cron-secret` hourly. It sends buyer-seller disputes still unresolved after 5 days to staff (they are also escalated whenever someone opens a dispute list). Generate the secret at `/staff/cron-secrets` or set `DISPUTES_CRON_SECRET` (32+ chars) and the repository secret of the same name beside `APP_URL`.
+- `.github/workflows/staff-automation.yml` calls `POST $APP_URL/api/internal/staff-automation/run` with header `x-cron-secret` every 15 minutes. It applies listing-age workflow rules, sends the next batch (100 messages per campaign) of campaigns that are due or part way through, and runs scheduled tasks that are due (set up at `/staff/automation` and `/staff/campaigns`). Set repository secret `STAFF_AUTOMATION_CRON_SECRET` (same value as the app, 32+ chars) beside `APP_URL`. Campaign email needs `ALERT_UNSUBSCRIBE_KEY` (32+ chars); campaign SMS needs the Twilio settings from docs/PROVIDER_KEYS.md.
 - Manual run: Actions > Account retention (daily) > Run workflow, or the same curl by hand. Safe to repeat; answers `{counts:{finalised,purged}}`.
 - Every run writes one `job.account_retention_run` audit event (aggregate `job` / `account-retention`, payload = counts), plus one event per account changed. A missing day in the audit trail means the scheduler stopped.
 
 ## 4c. Agent invitation reminders (hourly)
 - `.github/workflows/agent-invite-reminders.yml` calls `POST $APP_URL/api/internal/appointments/reminders` with header `x-cron-secret` at 15 past every hour. Set repository secrets `APP_URL` and `APPOINTMENT_REMINDER_CRON_SECRET` (same value as the app, 32+ chars). Until both are set the run is skipped with a warning.
+- `.github/workflows/signing-reminders.yml` calls `POST $APP_URL/api/internal/signing/reminders` with header `x-cron-secret` at 25 past every hour. Set repository secret `SIGNING_REMINDER_CRON_SECRET` (same value as the app, 32+ chars) next to `APP_URL`. Until both are set the run is skipped with a warning.
 - Each invitation unanswered for 48 hours gets one reminder to the agent. Safe to repeat; answers `{reminded}`.
+- Elena lead qualifier: `.github/workflows/lead-followups.yml` every 15 minutes; setup in `docs/ELENA_LEAD_QUALIFIER.md`.
 
 ## 4d. Scheduled agent reports (hourly)
 - `.github/workflows/agent-reports.yml` calls `POST $APP_URL/api/internal/agent-reports/run` with header `x-cron-secret` at 5 minutes past every hour. Set repository secrets `APP_URL` and `AGENT_REPORT_CRON_SECRET` (same value as the app, 32+ chars). Until both are set the run is skipped; the route answers 503 while the secret is unset.
 - Reports are emailed to the agent's own account email at 8am Brisbane time (daily, Mondays, or the 1st) through the normal email settings; the delivery log on /staff/messaging shows each one (template `agent_report`). With email not configured the schedule still advances and the run is marked "not sent".
 - Answers `{counts:{due,sent,notSent,skipped}}`. Safe to repeat: each report is claimed before it is sent, so overlapping runs never send twice. Reports hold counts, money and listing titles only, never buyer names.
+
+
+## 4e. Elena market-shift alerts (daily)
+- `.github/workflows/market-shifts.yml` calls `POST $APP_URL/api/internal/market-shifts/run` with header `x-cron-secret` at 21:30 UTC (7:30am Brisbane) every day. Set repository secrets `APP_URL` and `MARKET_SHIFT_CRON_SECRET` (same value as the app, 32+ chars). Until both are set the run is skipped; the route answers 503 while the secret is unset.
+- For every area where an agent has an active appointment on a published listing (suburb, property type, sale or rent) it compares the market now with a month ago and sends an in-app notification (kind `market_shift`, category Listings, so agents control it in notification settings). Each shift is sent once per agent, area, kind and month (table `market_shift_alert`), so re-runs are safe. Answers `{counts:{areas,shifts,notified}}`; one failing area never stops the rest.
+- Run it only after migration `20261105200000_market_shift_alerts.sql` has been applied (`npm run migrate`). Rollback: disable the workflow; the table is append-only and can stay.
 
 ## 5. Smoke test after deploy
 Home loads; Google sign-in works; `/plans` loads; an upload answers 503 (storage off, expected); checkout answers "not available yet" (expected); `/api/webhooks/payway`, `/api/webhooks/mls` and `/api/webhooks/push-status` reject unsigned posts (503 while their secret is unset). Staff can check provider keys at `GET /api/staff/providers/health`.
@@ -97,3 +107,23 @@ DATABASE_URL=... APP_URL=http://localhost:3004 SESSION_SECRET=<same as the serve
 ```
 It seeds users, a law firm and trust account, and buyer verification straight into the database and signs session cookies the way `src/server/auth/session.ts` does, so use a throwaway database: the append-only tables cannot be cleaned. Exit code 1 on any unexpected status (500, 502, 504 always fail).
 Blocked by design, so the script seeds the result in SQL: publishing needs compliance-approved disclosure config (`src/config/disclosures.ts` is empty, so the gate answers "no configuration" and fails closed), the listing fee paid (PayWay is a stub), and an approved trust account (normally two staff approvals). Also fail closed and expected: AI summary "unavailable", checkout refused, `/api/webhooks/payway` 503 while its secret is unset.
+
+## File storage (S3)
+
+Production file storage is `STORAGE_DRIVER=s3`: AWS S3 or any S3-compatible service (Wasabi, Backblaze B2, Cloudflare R2). It covers every upload: listing photos, inspection photos, ID images, signed documents and contract templates (keys `listings/`, `inspections/`, `id/`, `investments/`). Local disk is refused in production.
+
+Settings (`.env.example`): `S3_BUCKET`, `S3_REGION`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` are all required, otherwise uploads answer 503. Optional: `S3_ENDPOINT` (https origin of a compatible service; blank = AWS), `S3_FORCE_PATH_STYLE`, `S3_SSE` (`AES256` default, or `aws:kms`), `S3_KMS_KEY_ID`, `S3_CONDITIONAL_PUT=0` (only if the service rejects `If-None-Match`). An `http://` endpoint is refused in production.
+
+What the code does: every request is TLS and AWS Signature V4 signed; every write sends `x-amz-server-side-encryption` and fails if the service answers with a different mode; objects never overwrite (`If-None-Match: *`) and are stored with `Content-Disposition: attachment` and `Cache-Control: private, no-store`; only `id/` objects can be deleted. The app routes already serve bytes with the stored content type, `X-Content-Type-Options: nosniff` and a sandbox CSP after the access check. `signedUrl(key, { ttlSeconds, filename, contentType })` makes a link valid 1 to 3600 seconds (default 300) that forces `attachment`, for any route that wants to hand the browser a direct link after its own access check.
+
+Bucket setup (once, by whoever owns the account):
+1. Create a private bucket in the same region as the app. Turn on **Block all public access** (all four settings).
+2. Enable **versioning**. For `id/` objects add a lifecycle rule that expires non-current versions after 1 day, otherwise a "deleted" ID image survives as an old version and breaks the retention promise.
+3. Default encryption: SSE-S3 (`AES256`), or SSE-KMS with a customer key (`S3_SSE=aws:kms`, `S3_KMS_KEY_ID`). Add a bucket policy that denies `s3:PutObject` without encryption and denies any request with `aws:SecureTransport` false.
+4. Create one IAM user (or API key) for the app with only `s3:GetObject`, `s3:PutObject`, `s3:DeleteObject` on `arn:aws:s3:::BUCKET/*`. No list, no bucket-admin. With KMS, also `kms:GenerateDataKey` and `kms:Decrypt` on the key.
+5. Optional IP restriction: add a bucket-policy `Deny` with `NotIpAddress` `aws:SourceIp` set to the app's egress addresses (signed links are then only usable from those addresses; skip this if browsers use signed links directly).
+6. Backups: versioning is the first copy; add cross-region or cross-account replication for the second.
+
+CDN (optional, recommended for listing photos only): put CloudFront or Cloudflare in front of the app's `/api/photos/...` routes, not the bucket. The bucket stays private. Those routes send `Cache-Control: private`, so configure the CDN to respect origin cache headers and never cache ID images, documents or contracts (their routes send `no-store`). Do not make the bucket a CDN origin without an Origin Access Control.
+
+Check after deploy: upload a photo (200), confirm the object in the console shows the encryption setting, open a signed link (downloads, not displays), open it again after the expiry (403), and try the bucket URL without a signature (403).

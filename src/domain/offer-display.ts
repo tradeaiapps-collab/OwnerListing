@@ -3,7 +3,7 @@ export interface CounterSummary { fromParty: "owner" | "buyer"; status: string }
 
 const OFFER_LABEL: Record<string, string> = {
   submitted: "New", under_review: "Under review", countered: "Countered", buyer_countered: "Buyer countered",
-  accepted: "Accepted", rejected: "Rejected", withdrawn: "Withdrawn", expired: "Expired"
+  accepted: "Accepted", rejected: "Rejected", withdrawn: "Withdrawn", expired: "Expired", fallen_through: "Sale fell through"
 };
 
 /** A short status for the offer, told from one side. `latest` is the newest counter, if any. */

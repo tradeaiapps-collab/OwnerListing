@@ -4,16 +4,20 @@ import "../styles/market.css";
 
 type Tx = "sale" | "rent";
 interface Form { suburb: string; postcode: string; transactionType: Tx; propertyType: string; bedrooms: string; bathrooms: string; parking: string; areaSqm: string; condition: string }
-interface Valuation { state: "ready"; lowCents: number; midCents: number; highCents: number; confidence: number; confidenceLabel: string; intervalPercent: number; comparablesUsed: number; methodology: string[] }
+interface Breakdown { startCents: number; endCents: number; steps: { key: string; label: string; deltaCents: number; runningCents: number; detail: string }[]; topComparables: { id: string; suburb: string; date: string; sharePercent: number; label?: string }[] }
+interface Valuation { state: "ready"; lowCents: number; midCents: number; highCents: number; confidence: number; confidenceLabel: string; intervalPercent: number; comparablesUsed: number; methodology: string[]; breakdown?: Breakdown }
+interface Forecast { state: "ready"; horizons: { months: number; lowCents: number; midCents: number; highCents: number; changePercent: number }[]; annualisedPercent: number; direction: string; confidence: string; intervalPercent: number; basedOnMonths: number; note: string }
+interface Score { state: "ready"; score: number; label: string; confidence: string; grossYieldPercent?: number; components: { key: string; label: string; score: number; weight: number; reason: string }[]; note: string }
+interface Demand { state: "ready"; outlook: string; score: number; confidence: string; recentChangePercent?: number; interestPerListing: number; note: string }
 interface Market { state: "ready"; sampleSize: number; medianCents: number; p25Cents: number; p75Cents: number; change12mPercent?: number; change6mPercent?: number; salesPerMonth: number; salesLast3m: number; salesPrev3m: number; velocity?: string; medianDaysOnMarket?: number }
 interface Trend { state: "ready"; points: { month: string; medianCents: number; count: number }[]; changePercent?: number }
 interface Comp { id: string; suburb: string; propertyType: string; date: string; priceCents: number; adjustedCents: number; bedrooms?: number; daysOnMarket?: number; similarity: number; label?: string }
 interface Unavailable { state: "unavailable"; message: string }
-interface Result { tx: Tx; valuation: Valuation | Unavailable; market: Market | Unavailable; trend: Trend | Unavailable; comparables: Comp[]; note: string }
+interface Result { tx: Tx; valuation: Valuation | Unavailable; market: Market | Unavailable; trend: Trend | Unavailable; comparables: Comp[]; note: string; forecast?: Forecast | Unavailable | undefined; score?: Score | Unavailable | undefined; demand?: Demand | Unavailable | undefined }
 interface Turn { q: string; a: string; who: string; icon?: string }
 
 const CONDITIONS = ["poor", "fair", "good", "excellent"] as const;
-const FIRST_CHIPS = ["How was this value worked out?", "How confident is the estimate?", "What are the market trends?"];
+const FIRST_CHIPS = ["How was this value worked out?", "Where are prices heading?", "How is buyer demand?"];
 const TYPES = ["house", "unit", "townhouse", "land", "office", "retail", "industrial", "warehouse", "hospitality", "other"];
 const EMPTY: Form = { suburb: "", postcode: "", transactionType: "sale", propertyType: "house", bedrooms: "", bathrooms: "", parking: "", areaSqm: "", condition: "" };
 const aud = new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD", maximumFractionDigits: 0 });
@@ -97,7 +101,10 @@ export default function MarketPage() {
       const bad = [m!, t!, c!].find(r => !r.ok);
       if (bad) { setError(bad.status === 429 ? "You've looked up a lot of properties this hour. Try again later." : "Could not load property intelligence."); setRes(null); return; }
       const [vj, mj, tj, cj] = await Promise.all([v!.json(), m!.json(), t!.json(), c!.json()]);
-      setRes({ tx: f.transactionType, valuation: vj.valuation, market: mj.market, trend: tj.trend, comparables: cj.comparables, note: vj.note });
+      // The outlook panels are extras: if one fails the rest of the page still shows.
+      const extra = async (n: string, key: string) => { const r = await fetch(`/api/intelligence/${n}?${q}`).catch(() => null); return r && r.ok ? ((await r.json().catch(() => ({})))[key] as never) : undefined; };
+      const [forecast, score, demand] = await Promise.all([extra("forecast", "forecast"), extra("investment", "score"), extra("demand", "demand")]);
+      setRes({ tx: f.transactionType, valuation: vj.valuation, market: mj.market, trend: tj.trend, comparables: cj.comparables, note: vj.note, forecast, score, demand });
       setAsked(f);
     } catch { setError("Could not load property intelligence."); setRes(null); } finally { setBusy(false); }
   }, []);
@@ -158,6 +165,17 @@ export default function MarketPage() {
                 <p className="mk-big">{money(res.valuation.midCents, tx)}</p>
                 <RangeBar v={res.valuation} tx={tx} />
                 <p className="muted">Confidence: <strong>{res.valuation.confidenceLabel}</strong> ({Math.round(res.valuation.confidence * 100)}%), from {res.valuation.comparablesUsed} comparable results. The range covers about {res.valuation.intervalPercent}% of similar results.</p>
+                {res.valuation.breakdown && (
+                  <details><summary>What drove this value</summary>
+                    <div className="table-wrap"><table>
+                      <thead><tr><th>Step</th><th className="num">Change</th><th className="num">Running</th></tr></thead>
+                      <tbody>{res.valuation.breakdown.steps.map(st => (
+                        <tr key={st.key}><td>{st.label}<span className="mk-sub">{st.detail}</span></td><td className="num">{st.deltaCents === 0 ? "n/a" : `${st.deltaCents > 0 ? "+" : "-"}${money(Math.abs(st.deltaCents), tx)}`}</td><td className="num">{money(st.runningCents, tx)}</td></tr>
+                      ))}</tbody>
+                    </table></div>
+                    <p className="muted">Heaviest results: {res.valuation.breakdown.topComparables.slice(0, 3).map(c => `${c.label ?? c.suburb} ${c.date.slice(0, 7)} (${c.sharePercent}%)`).join(", ")}.</p>
+                  </details>
+                )}
                 <details><summary>How this was worked out</summary><ol className="mk-steps">{res.valuation.methodology.map(m => <li key={m}>{m.replace(/^\d+\.\s*/, "")}</li>)}</ol></details>
               </>
             ) : <p className="muted" role="status">{res.valuation.message}</p>}
@@ -180,6 +198,45 @@ export default function MarketPage() {
           <section className="panel mk-wide" aria-label="Value trend">
             <h2>Value trend</h2>
             {res.trend.state === "ready" ? <TrendChart points={res.trend.points} tx={tx} /> : <p className="muted" role="status">{res.trend.message}</p>}
+          </section>
+
+          <section className="panel" aria-label="Price outlook">
+            <h2>Price outlook</h2>
+            {!res.forecast ? <p className="muted" role="status">The outlook is not available right now.</p> : res.forecast.state === "ready" ? (
+              <>
+                <p className="muted">Trend is <strong>{res.forecast.direction}</strong>, about {res.forecast.annualisedPercent}% a year (confidence {res.forecast.confidence}, {res.forecast.basedOnMonths} months of history). Ranges cover {res.forecast.intervalPercent}%.</p>
+                <div className="table-wrap"><table>
+                  <thead><tr><th>In</th><th className="num">Middle</th><th className="num">Range</th><th className="num">Change</th></tr></thead>
+                  <tbody>{res.forecast.horizons.map(h => <tr key={h.months}><td>{h.months} months</td><td className="num">{money(h.midCents, tx)}</td><td className="num">{compact(h.lowCents)} to {compact(h.highCents)}</td><td className="num">{move(h.changePercent)}</td></tr>)}</tbody>
+                </table></div>
+                <p className="muted mk-note">{res.forecast.note}</p>
+              </>
+            ) : <p className="muted" role="status">{res.forecast.message}</p>}
+          </section>
+
+          <section className="panel" aria-label="Area fundamentals">
+            <h2>Area fundamentals</h2>
+            {!res.score ? <p className="muted" role="status">The score is not available right now.</p> : res.score.state === "ready" ? (
+              <>
+                <p className="mk-big">{res.score.score}<span className="mk-unit">/100</span> <span className="mk-cap mk-label">{res.score.label}</span></p>
+                <ul className="mk-bars">{res.score.components.map(c => (
+                  <li key={c.key}><div className="mk-bar-head"><span>{c.label}</span><span>{c.score}</span></div>
+                    <div className="mk-bar" role="img" aria-label={`${c.label} ${c.score} out of 100`}><span style={{ width: `${c.score}%` }} /></div>
+                    <span className="mk-sub">{c.reason}</span></li>
+                ))}</ul>
+                <p className="muted mk-note">Confidence {res.score.confidence}. {res.score.note}</p>
+              </>
+            ) : <p className="muted" role="status">{res.score.message}</p>}
+          </section>
+
+          <section className="panel mk-wide" aria-label="Buyer demand">
+            <h2>Buyer demand</h2>
+            {!res.demand ? <p className="muted" role="status">Buyer demand is not available right now.</p> : res.demand.state === "ready" ? (
+              <>
+                <p className="muted">Interest on this platform looks <strong>{res.demand.outlook}</strong> (score {res.demand.score}/100, confidence {res.demand.confidence}).{res.demand.recentChangePercent !== undefined && ` Recent weeks are ${move(res.demand.recentChangePercent)} on the weeks before.`} About {res.demand.interestPerListing} saves, enquiries and offers per listing over four weeks.</p>
+                <p className="muted mk-note">{res.demand.note}</p>
+              </>
+            ) : <p className="muted" role="status">{res.demand.message}</p>}
           </section>
 
           <section className="mk-wide" aria-label="Comparable properties">

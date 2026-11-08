@@ -1,0 +1,33 @@
+/* Buyer pre-approvals: buyer upload, seller badge, staff queue and review. Uses global tokens only; builds on globals (panel, table-wrap, badge, actions). */
+.pq-lede { max-width: 60ch; margin-bottom: var(--space-6); }
+.pq-form { display: grid; gap: var(--space-3); max-width: 36rem; }
+.pq-form label { display: grid; gap: var(--space-1); font-weight: 600; font-size: 0.9375rem; }
+.pq-form input:not([type="checkbox"]), .pq-form select { width: 100%; min-width: 0; }
+.pq-grid { display: grid; gap: var(--space-3); grid-template-columns: repeat(auto-fit, minmax(min(100%, 10rem), 1fr)); }
+.pq-check { display: flex !important; grid-auto-flow: column; gap: var(--space-2); align-items: flex-start; font-weight: 600; }
+.pq-check input { margin-top: 0.25rem; flex: 0 0 auto; }
+.pq-conds { border: 1px solid var(--border); border-radius: var(--radius); padding: var(--space-3); display: grid; gap: var(--space-2); }
+.pq-conds legend { font-weight: 600; padding: 0 var(--space-1); }
+.pq-pill { display: inline-block; padding: 2px var(--space-2); border-radius: 999px; border: 1px solid var(--border); font-size: 0.8125rem; font-weight: 600; white-space: nowrap; }
+.pq-pill.verified, .pq-pill.high { color: var(--ok); border-color: currentColor; background: var(--ok-tint); }
+.pq-pill.pending_review, .pq-pill.pending, .pq-pill.medium, .pq-pill.resubmit_requested { color: var(--warn); border-color: currentColor; background: var(--warn-tint); }
+.pq-pill.expired, .pq-pill.low { color: var(--danger); border-color: currentColor; background: var(--danger-tint); }
+.pq-pill.none { color: var(--muted); }
+.pq-item { display: grid; gap: var(--space-2); }
+.pq-item > * { margin: 0; }
+.pq-flags { margin: 0; padding-left: var(--space-6); display: grid; gap: var(--space-1); color: var(--warn); }
+.pq-seller { margin-top: var(--space-2); padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); display: grid; gap: var(--space-2); }
+.pq-seller > * { margin: 0; }
+.pq-seller summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+.pq-table { min-width: 56rem; }
+.pq-table th, .pq-table td { vertical-align: top; }
+.pq-table .pq-num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.pq-table .pq-sum { min-width: 16rem; max-width: 22rem; overflow-wrap: anywhere; }
+.pq-table td:nth-child(3) { min-width: 9rem; }
+.pq-table tr.pq-low td, .pq-table tr.pq-low th { background: var(--danger-tint); }
+.pq-facts { display: grid; gap: var(--space-3); grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); margin: 0 0 var(--space-4); }
+.pq-facts dt { color: var(--muted); font-size: 0.75rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; }
+.pq-facts dd { margin: var(--space-1) 0 0; font-weight: 600; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.pq-review { display: grid; gap: var(--space-4); grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr)); align-items: start; }
+.pq-seller small { display: block; }
+.pq-seller summary .pq-pill { white-space: normal; }

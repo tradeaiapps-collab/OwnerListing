@@ -1,0 +1,33 @@
+name: Production migrate
+
+# Manual only: applies db/*.sql to the production database. Run it after merging a PR that adds a migration, BEFORE or right after Vercel finishes deploying.
+# Create a GitHub Environment named "production" with required reviewers, then add the secret PROD_DATABASE_URL (the Supabase direct connection string, or the Session pooler string if the runner cannot reach the IPv6 direct host) to that environment.
+# Safe to repeat: scripts/migrate.mjs applies each file once.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-migrate
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Apply migrations
+        env:
+          DATABASE_URL: ${{ secrets.PROD_DATABASE_URL }}
+        run: |
+          if [ -z "$DATABASE_URL" ]; then echo "::error::PROD_DATABASE_URL is not set"; exit 1; fi
+          npm run migrate

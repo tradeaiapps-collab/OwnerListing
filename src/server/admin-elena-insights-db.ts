@@ -2,6 +2,7 @@ import { median } from "../domain/agent-workspace";
 import { ANALYTICS_TIME_ZONE, type Range } from "../domain/admin-analytics";
 import { UNANSWERED_HOURS, type AgentFact, type AreaFact, type InsightFacts, type PeriodCounts } from "../domain/admin-elena-insights";
 import type { Queryable } from "./db";
+import { loadTeamFacts } from "./team-analytics-db";
 
 const empty = (): PeriodCounts => ({ listings: 0, enquiries: 0, offers: 0, accepted: 0, decided: 0 });
 const METRIC_FIELD: Record<string, keyof PeriodCounts> = { listings: "listings", enquiries: "enquiries", offers: "offers", accepted: "accepted", decided: "decided" };
@@ -11,7 +12,7 @@ const METRIC_FIELD: Record<string, keyof PeriodCounts> = { listings: "listings",
  * currently appointed to listings. Constant SQL; dates and zone are bound parameters. Grouped counts and agent display names only
  * (no buyer or owner data, no money). Periods are whole calendar days in the reporting zone.
  */
-export async function loadInsightFacts(db: Queryable, r: Range, now: Date = new Date()): Promise<InsightFacts> {
+export async function loadInsightFacts(db: Queryable, r: Range, now: Date = new Date(), unansweredHours: number = UNANSWERED_HOURS): Promise<InsightFacts> {
   const win = `(SELECT 'current' AS w, ($1::date)::timestamp AT TIME ZONE $3 AS s, ($2::date + 1)::timestamp AT TIME ZONE $3 AS e
                 UNION ALL
                 SELECT 'previous', ($1::date - ($2::date - $1::date + 1))::timestamp AT TIME ZONE $3, ($1::date)::timestamp AT TIME ZONE $3) win`;
@@ -70,7 +71,7 @@ export async function loadInsightFacts(db: Queryable, r: Range, now: Date = new 
        FROM app_user u
       WHERE u.user_type = 'agent' AND EXISTS (SELECT 1 FROM listing_agent_appointment a WHERE a.agent_user_id = u.id AND a.revoked_at IS NULL)
       ORDER BY u.id LIMIT 200`,
-    [...params, now.toISOString(), UNANSWERED_HOURS]
+    [...params, now.toISOString(), unansweredHours]
   )).rows;
   const resp = (await db.query(
     `${cur}
@@ -87,5 +88,6 @@ export async function loadInsightFacts(db: Queryable, r: Range, now: Date = new 
     return { id, name: String(x["name"]), listings: Number(x["listings"]), enquiries: Number(x["enquiries"]), unanswered: Number(x["unanswered"]),
       offers: Number(x["offers"]), accepted: Number(x["accepted"]), decided: Number(x["decided"]), ...(med !== undefined ? { medianResponseMinutes: med } : {}) };
   });
-  return { current, previous, areas: [...byArea.values()], agents };
+  const { teams } = await loadTeamFacts(db, r, now);
+  return { current, previous, areas: [...byArea.values()], agents, teams };
 }

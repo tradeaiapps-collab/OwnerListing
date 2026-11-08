@@ -1,0 +1,43 @@
+/* Property data feeds (staff) and CRM imports (agent). Tokens only. */
+.feeds-setup { list-style: none; padding: 0; margin: 0 0 var(--space-4); display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-6); }
+.feeds-setup li { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+.feeds-msg { padding: var(--space-3) var(--space-4); border-radius: var(--radius); border: 1px solid var(--line); background: var(--surface); }
+.feeds-msg.bad { border-color: var(--danger); color: var(--danger); background: var(--danger-tint); }
+.feeds-token { display: grid; gap: var(--space-3); padding: var(--space-4); margin-bottom: var(--space-4); border: 1px solid var(--gold); border-radius: var(--radius); background: var(--gold-tint); }
+.feeds-token dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: var(--space-2) var(--space-3); margin: 0; }
+.feeds-token dt { font-weight: 600; }
+.feeds-token dd { margin: 0; min-width: 0; }
+.feeds-token code { overflow-wrap: anywhere; word-break: break-all; }
+.feeds-token button { justify-self: start; }
+.feeds-table .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.feeds-table .nowrap { white-space: nowrap; }
+.feeds-table td[data-label="Actions"] { min-width: 13rem; }
+.feeds-form { max-width: none; }
+/* Phones: each row becomes a labelled card instead of a sideways-scrolling table. */
+@media (max-width: 640px) {
+  .table-wrap > table.feeds-table { min-width: 0; }
+  .feeds-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .feeds-table tr { display: block; padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--line); }
+  .feeds-table tbody tr:last-child { border-bottom: 0; }
+  .feeds-table td { display: grid; grid-template-columns: 7.5rem minmax(0, 1fr); gap: 2px var(--space-3); padding: var(--space-1) 0; background: transparent; border: 0; text-align: left; white-space: normal; min-width: 0; }
+  .feeds-table td.num { text-align: left; }
+  .feeds-table td::before { content: attr(data-label); grid-column: 1; grid-row: 1 / span 3; color: var(--muted); font-size: 0.75rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; padding-top: 2px; }
+  .feeds-table td > * { grid-column: 2; justify-self: start; min-width: 0; }
+  .feeds-table td[data-label="Actions"] { min-width: 0; }
+}
+.feeds-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr)); gap: var(--space-3) var(--space-4); }
+.feeds-grid label { display: grid; gap: var(--space-1); font-weight: 600; font-size: 0.9375rem; min-width: 0; }
+.feeds-check { display: flex !important; align-items: flex-start; gap: var(--space-2); font-weight: 400 !important; }
+.feeds-check input { width: auto; margin-top: 3px; }
+
+.imports { list-style: none; padding: 0; margin: 0 0 var(--space-6); display: grid; gap: var(--space-3); grid-template-columns: repeat(auto-fill, minmax(min(100%, 20rem), 1fr)); }
+.import-card { display: grid; gap: var(--space-2); align-content: start; padding: var(--space-4); border: 1px solid var(--line); border-radius: var(--radius); background: var(--elevated); box-shadow: var(--shadow-1); min-width: 0; }
+.import-card h3 { margin: 0; font-size: 1.0625rem; overflow-wrap: anywhere; }
+.import-card p { margin: 0; overflow-wrap: anywhere; }
+.import-head { display: flex; justify-content: space-between; align-items: flex-start; gap: var(--space-2); }
+.import-facts { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-3); color: var(--muted); font-size: 0.9375rem; }
+.import-card .row-actions { margin-top: var(--space-1); }
+
+.feeds-domain { display: grid; gap: var(--space-2); margin-block: var(--space-4); }
+.feeds-domain h2, .feeds-domain p { margin: 0; overflow-wrap: anywhere; }
+.feeds-domain input { width: 100%; min-width: 0; }

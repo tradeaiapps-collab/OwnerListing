@@ -6,15 +6,18 @@ import { failed, type SendErrorCode, type SendResult } from "./messaging";
 export interface SmsPort {
   /** False until a real provider is configured. Sending is refused while false. */
   readonly configured: boolean;
-  /** `toE164` is an Australian mobile in +614XXXXXXXX form. Throws if delivery fails. */
+  /** `toE164` is an Australian (+614XXXXXXXX) or US (+1...) mobile. Throws if delivery fails. */
   sendCode(toE164: string, code: string): Promise<void>;
 }
 
 /** A provider-agnostic SMS port that can also send a general text (used by alerts). Another provider only has to implement this. */
 export interface SmsTextPort extends SmsPort {
   /** Never throws for delivery problems: reports them as a result with a fixed error code. */
-  sendText(toE164: string, text: string): Promise<SendResult>;
+  sendText(toE164: string, text: string, opts?: SmsSendOptions): Promise<SendResult>;
 }
+
+/** `statusCallback` is an https URL the provider posts delivery status to. */
+export interface SmsSendOptions { statusCallback?: string }
 
 /** Thrown by sendCode when delivery fails. Carries a fixed code only: no number, URL, credential or provider text. */
 export class SmsSendError extends Error {
@@ -62,10 +65,11 @@ export function createTwilioSms(cfg: SmsConfig, opts: { fetch?: typeof fetch; ti
   const authorization = `Basic ${Buffer.from(`${cfg.apiKeySid ?? cfg.accountSid}:${cfg.authToken}`).toString("base64")}`;
   const url = `${TWILIO_BASE}/${encodeURIComponent(cfg.accountSid)}/Messages.json`;
 
-  async function sendText(toE164: string, text: string): Promise<SendResult> {
+  async function sendText(toE164: string, text: string, sendOpts: SmsSendOptions = {}): Promise<SendResult> {
     if (!/^\+[1-9]\d{7,14}$/.test(toE164)) return failed("invalid_recipient", false);
     if (text.length === 0 || text.length > MAX_TEXT) return failed("invalid_message", false);
     const form = new URLSearchParams({ To: toE164, Body: text });
+    if (sendOpts.statusCallback && /^https:\/\/[^\s]{1,500}$/.test(sendOpts.statusCallback)) form.set("StatusCallback", sendOpts.statusCallback);
     form.set(isMessagingServiceSid(cfg.sender) ? "MessagingServiceSid" : "From", cfg.sender);
     let res: Response;
     try {

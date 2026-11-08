@@ -167,6 +167,15 @@ describe.skipIf(!DATABASE_URL)("email sign-up, sign-in and reset on Postgres", (
     expect(codes[8]).toBe("rate_limited");
   });
 
+  it("alerts the admins once when an address first goes over the limit, and at most once per window", async () => {
+    const locked: string[] = [];
+    const at = new Date("2031-03-03T03:01:00Z");
+    const d = deps({ onLockout: e => locked.push(e), now: () => at });
+    const [a, b] = [fresh(), fresh()];
+    for (const addr of [a, b]) for (let i = 0; i < 11; i++) await passwordSignIn(d, { email: addr, password: "wrong password!" }, `7.7.${i}.1`);
+    expect(locked).toEqual([a]);
+  });
+
   it("resets the password with a one-time link and signs the account out everywhere", async () => {
     const addr = fresh();
     await startSignup(deps(), { name: "Reset Me", email: addr, password: PW, userType: "owner" }, "4.4.4.1");

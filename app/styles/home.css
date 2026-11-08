@@ -251,7 +251,20 @@ a.home-link:hover::after { transform: translateX(4px); }
 .hl-modes a { position: relative; display: inline-flex; align-items: center; min-height: 44px; padding: 0 var(--space-1); color: inherit; text-decoration: none; font-size: 0.8125rem; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; }
 .hl-modes a::after { content: ""; position: absolute; left: 0; right: 0; bottom: 10px; height: 1px; background: var(--gold); transform: scaleX(0); transition: transform var(--dur-2) var(--ease); }
 .hl-modes a:hover { color: inherit; }
-.hl-modes a:hover::after, .hl-modes a:focus-visible::after { transform: scaleX(1); }
+.hl-modes a:hover::after, .hl-modes a:focus-visible::after, .hl-modes a[aria-current]::after { transform: scaleX(1); }
+.hl-modes a[aria-current] { font-weight: 800; }
+.hl-crumbs {
+  position: fixed; z-index: 18; top: calc(var(--hl-top, var(--header-h, 72px)) + 44px); left: 0; right: 0; display: none; justify-content: center; padding: var(--space-1) var(--space-4);
+  font-size: 0.8125rem; color: var(--muted); border-bottom: 1px solid var(--line);
+  background: color-mix(in srgb, var(--header-bg, var(--bg)) 97%, transparent); -webkit-backdrop-filter: saturate(1.4) blur(14px); backdrop-filter: saturate(1.4) blur(14px);
+}
+.site-header[data-solid] ~ .page .hl-crumbs { display: flex; }
+.hl-crumbs ol { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin: 0; padding: 0; list-style: none; min-width: 0; }
+.hl-crumbs li { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.hl-crumbs li + li::before { content: ""; width: 6px; height: 6px; flex: none; border-top: 1.5px solid currentColor; border-right: 1.5px solid currentColor; transform: rotate(45deg); opacity: 0.5; }
+.hl-crumbs a { color: var(--muted); text-decoration: none; }
+.hl-crumbs a:hover { color: var(--text); text-decoration: underline; }
+.hl-crumbs [aria-current] { color: var(--text); font-weight: 600; }
 .site-header:is([data-solid], :has([data-open])) ~ .page .hl-modes {
   color: var(--header-text, var(--text)); border-bottom-color: var(--line); box-shadow: 0 10px 30px -18px rgb(10 18 34 / 0.35);
   background: color-mix(in srgb, var(--header-bg, var(--bg)) 97%, transparent); -webkit-backdrop-filter: saturate(1.4) blur(14px); backdrop-filter: saturate(1.4) blur(14px);
@@ -313,3 +326,5 @@ a.home-link:hover::after { transform: translateX(4px); }
   .home-find { padding: var(--space-16) 0 var(--space-12); }
   .hl-modes { gap: var(--space-12); }
 }
+
+.home-invest-note { max-width: 70ch; margin-top: var(--space-6); font-size: 0.875rem; }

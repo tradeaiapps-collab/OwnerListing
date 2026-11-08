@@ -4,6 +4,7 @@ import { readAuthEnv } from "../src/server/auth/config";
 import { mfaKeyUsable } from "../src/domain/mfa";
 import { resolveMessaging } from "../src/domain/messaging-settings";
 import { mapTileSource } from "../src/domain/map-tiles";
+import { domainConfig } from "../src/adapters/feed-providers";
 
 const FULL: Record<string, string> = {
   APP_URL: "https://www.example.com.au",
@@ -42,6 +43,16 @@ const FULL: Record<string, string> = {
   PUSH_STATUS_WEBHOOK_SECRET: "p".repeat(40),
   PROVIDER_CREDENTIAL_KEY: Buffer.alloc(32, 9).toString("base64"),
   ABN_LOOKUP_GUID: "12345678-90ab-cdef-1234-567890abcdef",
+  DOCUSIGN_INTEGRATION_KEY: "11111111-2222-4333-8444-555555555555",
+  DOCUSIGN_USER_ID: "66666666-7777-4888-8999-000000000000",
+  DOCUSIGN_ACCOUNT_ID: "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+  DOCUSIGN_PRIVATE_KEY: "-----BEGIN RSA PRIVATE KEY-----\\nMIIB\\n-----END RSA PRIVATE KEY-----\\n",
+  DOCUSIGN_CONNECT_HMAC_KEY: "h".repeat(32),
+  DOMAIN_CLIENT_ID: "client_0123456789abcdef0123456789abcdef",
+  DOMAIN_CLIENT_SECRET: "secret_0123456789abcdef0123456789abcdef",
+  META_APP_SECRET: "0123456789abcdef0123456789abcdef",
+  META_WEBHOOK_VERIFY_TOKEN: "verify_0123456789abcdef0123456789abcdef",
+  META_PAGE_ACCESS_TOKEN: "EAAG0123456789abcdef0123456789abcdef0123456789",
   GOOGLE_PLACES_API_KEY: "AIza" + "b".repeat(35),
   NEXT_PUBLIC_MAP_TILE_URL: "https://tiles.example.com/{z}/{x}/{y}.png",
   NEXT_PUBLIC_MAP_ATTRIBUTION: "© Example Maps"
@@ -52,7 +63,7 @@ const by = (env: Record<string, string | undefined>, production = true) =>
 describe("provider readiness check", () => {
   it("reports every provider ready with a full set of real-looking keys", () => {
     const r = checkProviders(FULL, { production: true });
-    expect(r.map(x => x.id)).toEqual(["google", "mfa", "payway", "smtp", "sms", "webpush", "fcm", "apns", "mls", "zillow", "providercreds", "abn", "address", "maptiles"]);
+    expect(r.map(x => x.id)).toEqual(["google", "mfa", "payway", "smtp", "sms", "webpush", "fcm", "apns", "mls", "zillow", "providercreds", "abn", "docusign", "domain", "meta_leads", "address", "maptiles"]);
     expect(r.filter(x => x.status !== "ready")).toEqual([]);
     expect(r.some(x => x.blocking)).toBe(false);
   });
@@ -103,7 +114,7 @@ describe("provider readiness check", () => {
     const cases: Record<string, string | undefined>[] = [FULL, {}, { ...FULL, SESSION_SECRET: "short" }, { ...FULL, GOOGLE_CLIENT_SECRET: "" },
       { ...FULL, APP_MODE: "admin" }, { ...FULL, APP_MODE: "admin", ADMIN_APP_URL: "https://admin.example.com.au" },
       { ...FULL, MFA_SECRET_KEY: "abc" }, { ...FULL, SMS_ACCOUNT_SID: "AC123" }, { ...FULL, SMS_PROVIDER: "other" },
-      { ...FULL, SMTP_PORT: "2526" }, { ...FULL, SMTP_FROM: "nobody" }, { ...FULL, SMTP_USER: "" }];
+      { ...FULL, SMTP_PORT: "2526" }, { ...FULL, SMTP_FROM: "nobody" }, { ...FULL, SMTP_USER: "" }, { ...FULL, DOMAIN_CLIENT_SECRET: "" }];
     for (const env of cases) {
       const r = by(env, false);
       expect(r.google.status === "ready", JSON.stringify(env)).toBe(readAuthEnv(env) !== null);
@@ -113,6 +124,7 @@ describe("provider readiness check", () => {
       if (r.sms.status === "ready") expect(m.sms).not.toBeNull();
       if (m.sms === null) expect(r.sms.status).not.toBe("ready");
       expect(r.smtp.status === "ready").toBe(m.email !== null);
+      expect(r.domain.status === "ready").toBe(domainConfig(env) !== null);
     }
   });
 
@@ -149,5 +161,25 @@ describe("provider readiness check", () => {
       if (ready && env.NEXT_PUBLIC_MAP_PROVIDER !== "openstreetmap") expect(src.provider).toBe("custom");
       if (env.NEXT_PUBLIC_MAP_PROVIDER === "openstreetmap" || !env.NEXT_PUBLIC_MAP_TILE_URL) expect(src.provider).toBe("openstreetmap");
     }
+  });
+
+  it("DocuSign is off without keys, flags a half set, and rejects a non-DocuSign host", () => {
+    expect(by({}).docusign.status).toBe("off");
+    const { DOCUSIGN_PRIVATE_KEY: _k, ...partial } = FULL;
+    expect(by(partial).docusign.status).toBe("incomplete");
+    const bad = by({ ...FULL, DOCUSIGN_BASE_PATH: "https://evil.example.com/restapi" }).docusign;
+    expect(bad.status).toBe("invalid");
+    expect(by({ ...FULL, DOCUSIGN_ACCOUNT_ID: "nope" }).docusign.status).toBe("invalid");
+    expect(by({ ...FULL, SIGNING_PROVIDER: "docusign" }).docusign.status).toBe("ready");
+  });
+});
+
+describe("Meta lead ads provider", () => {
+  it("stays off with nothing set, is ready with all three, and warns when only some are set", () => {
+    expect(by({}).meta_leads).toMatchObject({ status: "off", blocking: false });
+    expect(by(FULL).meta_leads?.status).toBe("ready");
+    const partial = by({ META_APP_SECRET: FULL["META_APP_SECRET"] }).meta_leads;
+    expect(partial?.status).not.toBe("ready");
+    expect(JSON.stringify(partial)).not.toContain(FULL["META_APP_SECRET"]);
   });
 });

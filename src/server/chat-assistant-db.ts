@@ -1,12 +1,14 @@
 import { randomUUID } from "node:crypto";
 import { personaById } from "../domain/assistant-persona";
 import { CHAT_TOPICS, type AssistantTurn, type AssistantTurnRepository, type ChatAssistantDeps, type ChatFacts, type ChatMarket, type ChatOffer, type ChatPose, type ChatRole, type ChatTopic } from "../domain/chat-assistant";
+import { isChatLang } from "../domain/multilingual";
 import { marketInsights } from "../domain/property-intelligence";
 import { classifyTour } from "../domain/virtual-tour";
 import { loadLivePersona } from "./assistant-persona-db";
 import { getDb } from "./context";
 import type { Queryable } from "./db";
 import { getEnquiryDeps } from "./enquiry-db";
+import { getMultilingualDeps } from "./multilingual-db";
 import { getIntelligenceSource } from "./property-intelligence";
 
 // Constant SQL; user input only travels as bound parameters. No UPDATE or DELETE on enquiry_assistant_turn (db trigger too).
@@ -18,9 +20,9 @@ export function createPgTurnRepository(db: Queryable): AssistantTurnRepository {
   return {
     async add(t) {
       await db.query(
-        `INSERT INTO enquiry_assistant_turn (id, enquiry_id, asked_by_user_id, asked_by_role, question, topic, pose, answer, created_at)
-         VALUES ($1::uuid,$2::uuid,$3::uuid,$4,$5,$6,$7,$8,$9::timestamptz)`,
-        [t.id, t.enquiryId, t.askedByUserId, t.askedByRole, t.question, t.topic, t.pose, t.answer, t.createdAt]
+        `INSERT INTO enquiry_assistant_turn (id, enquiry_id, asked_by_user_id, asked_by_role, question, topic, pose, answer, created_at, language)
+         VALUES ($1::uuid,$2::uuid,$3::uuid,$4,$5,$6,$7,$8,$9::timestamptz,$10)`,
+        [t.id, t.enquiryId, t.askedByUserId, t.askedByRole, t.question, t.topic, t.pose, t.answer, t.createdAt, t.language ?? null]
       );
     },
     async list(enquiryId) {
@@ -28,7 +30,8 @@ export function createPgTurnRepository(db: Queryable): AssistantTurnRepository {
       return r.rows.map((x): AssistantTurn => ({
         id: String(x["id"]), enquiryId: String(x["enquiry_id"]), askedByUserId: String(x["asked_by_user_id"]),
         askedByRole: String(x["asked_by_role"]) as ChatRole, question: String(x["question"]), topic: topic(x["topic"]),
-        pose: String(x["pose"]) as ChatPose, answer: String(x["answer"]), createdAt: iso(x["created_at"])
+        pose: String(x["pose"]) as ChatPose, answer: String(x["answer"]), createdAt: iso(x["created_at"]),
+        ...(isChatLang(x["language"]) ? { language: x["language"] } : {})
       }));
     }
   };
@@ -85,6 +88,7 @@ export function getChatAssistantDeps(): ChatAssistantDeps {
     ...(e.appointmentFor ? { appointmentFor: e.appointmentFor } : {}),
     ...(e.licences ? { licences: e.licences } : {}),
     appendAudit: e.appendAudit,
+    multilingual: getMultilingualDeps(),
     turns: createPgTurnRepository(db),
     offerFor: (listingId, buyerUserId) => chatOfferPg(db, listingId, buyerUserId),
     verifiedDisclosures: listingId => verifiedDisclosuresPg(db, listingId),

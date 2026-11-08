@@ -47,3 +47,20 @@
   .insp-page .actions > * { width: 100%; text-align: center; }
   .insp-form > button { width: 100%; }
 }
+
+/* Inspection marketplace: slot picker, request cards, inspector status. Tokens only. */
+.insp-days { display: grid; gap: var(--space-3); margin: 0; padding: 0; border: 0; min-width: 0; }
+.insp-days legend { font-weight: 600; padding: 0; }
+.insp-day { display: grid; gap: var(--space-2); }
+.insp-day > span { font-size: 0.875rem; color: var(--muted); font-weight: 600; }
+.insp-times { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2); }
+@media (min-width: 480px) { .insp-times { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.insp-times button { min-height: 44px; white-space: nowrap; }
+.insp-times button[aria-pressed="true"] { background: var(--brand); color: var(--brand-text); border-color: var(--brand); }
+.insp-chosen { display: flex; flex-wrap: wrap; gap: var(--space-2); list-style: none; margin: 0; padding: 0; }
+.insp-pick { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-4); border: 0; padding: 0; margin: 0; min-width: 0; }
+.insp-pick label { display: inline-flex; align-items: center; gap: var(--space-2); font-weight: 400; min-height: 44px; }
+.insp-pick input { width: auto; min-height: 0; }
+.insp-states { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-4); border: 0; padding: 0; margin: 0; min-width: 0; }
+.insp-states label { display: inline-flex; align-items: center; gap: var(--space-2); font-weight: 400; min-height: 44px; }
+.insp-states input { width: auto; min-height: 0; }

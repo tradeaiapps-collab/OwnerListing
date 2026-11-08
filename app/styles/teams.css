@@ -59,3 +59,15 @@
 .payout-figures dd { margin: 0; font-variant-numeric: tabular-nums; }
 .payout-figures .total { border-top: 1px solid var(--border); padding-top: var(--space-2); font-weight: 600; }
 .payout-dialog-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--space-3); margin-top: var(--space-3); }
+
+.team-kpi .team-kpi-sub { margin: var(--space-1) 0 0; font-size: 0.8rem; font-weight: 400; color: var(--muted); }
+.team-charts { display: grid; gap: var(--space-4); grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr)); }
+.team-bars { margin: 0; padding: var(--space-4); border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); display: grid; gap: var(--space-2); align-content: start; }
+.team-bars figcaption { font-weight: 600; color: var(--heading); margin-bottom: var(--space-1); }
+.team-bar { display: grid; grid-template-columns: minmax(4rem, 7rem) 1fr auto; gap: var(--space-2); align-items: center; font-size: 0.9rem; }
+.team-bar span { overflow-wrap: anywhere; }
+.team-bar i { display: block; height: 0.75rem; min-width: 2px; border-radius: 99px; background: var(--gold); }
+.team-bar b { font-variant-numeric: tabular-nums; text-align: right; }
+
+.team-versus th, .team-versus td { white-space: nowrap; }
+.team-versus td[data-lead="true"] { font-weight: 700; color: var(--ok); }

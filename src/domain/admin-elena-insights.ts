@@ -1,6 +1,8 @@
 import { median } from "./agent-workspace";
 import { maskName } from "./admin-report-builder";
+import { defaultAlertSettings, type AlertSettings } from "./alert-config";
 import { staffCan, type StaffActor } from "./staff-access";
+import { buildTeamComparison, type TeamFact, type TeamRow } from "./team-compare";
 
 /**
  * Admin-side Elena insights: a rule-based read of platform performance, agent comparison, area trends, alerts and recommendations for
@@ -13,7 +15,7 @@ export const MIN_AREA_ENQUIRIES = 5;
 export const MIN_AGENT_DECIDED = 5;
 export const MIN_AGENT_ENQUIRIES = 5;
 export const MIN_PLATFORM_DECIDED = 10;
-/** An enquiry the agent has not answered within this many hours counts as unanswered. */
+/** Default for how long an enquiry may wait for an agent reply; staff can change it (see alert-config.ts). */
 export const UNANSWERED_HOURS = 24;
 
 export interface PeriodCounts { listings: number; enquiries: number; offers: number; accepted: number; decided: number }
@@ -22,7 +24,7 @@ export interface AgentFact {
   id: string; name: string; listings: number; enquiries: number; unanswered: number;
   offers: number; accepted: number; decided: number; medianResponseMinutes?: number;
 }
-export interface InsightFacts { current: PeriodCounts; previous: PeriodCounts; areas: AreaFact[]; agents: AgentFact[] }
+export interface InsightFacts { current: PeriodCounts; previous: PeriodCounts; areas: AreaFact[]; agents: AgentFact[]; teams?: TeamFact[] }
 
 export type Severity = "high" | "medium" | "info";
 export interface Trend { current: number; previous: number; changePct?: number }
@@ -31,11 +33,11 @@ export interface AgentRow {
   acceptanceRate?: number; medianResponseMinutes?: number; rank?: number; note: string;
 }
 export interface AreaRow { area: string; enquiries: Trend; offers: Trend; offersPerEnquiryPct?: number; publishedNow: number; note: string }
-export interface Alert { id: string; severity: Severity; kind: "area" | "agent"; subject: string; message: string }
+export interface Alert { id: string; severity: Severity; kind: "area" | "agent" | "team"; subject: string; message: string }
 export interface Insights {
   summary: string;
   platform: { listings: Trend; enquiries: Trend; offers: Trend; accepted: Trend; acceptanceRate?: number; offersPerEnquiryPct?: number };
-  agents: AgentRow[]; agentsNote?: string; areas: AreaRow[]; alerts: Alert[]; recommendations: string[];
+  agents: AgentRow[]; agentsNote?: string; areas: AreaRow[]; teams?: TeamRow[]; teamsNote?: string; alerts: Alert[]; recommendations: string[];
   teamNote: string; basis: string;
 }
 
@@ -52,7 +54,7 @@ export function agentLabel(actor: StaffActor, name: string, index: number): stri
   return `Agent ${index + 1}`;
 }
 
-export function buildInsights(actor: StaffActor, facts: InsightFacts): Insights {
+export function buildInsights(actor: StaffActor, facts: InsightFacts, config: AlertSettings = defaultAlertSettings()): Insights {
   const { current: c, previous: p } = facts;
   const platformRate = c.decided >= MIN_PLATFORM_DECIDED ? pct(c.accepted, c.decided) : undefined;
   const platformFunnel = pct(c.offers, c.enquiries);
@@ -66,20 +68,21 @@ export function buildInsights(actor: StaffActor, facts: InsightFacts): Insights 
     const rate = a.decided >= MIN_AGENT_DECIDED ? pct(a.accepted, a.decided) : undefined;
     const notes: string[] = [];
     if (rate === undefined) notes.push(`fewer than ${MIN_AGENT_DECIDED} decided offers, so no rate`);
-    if (platformRate !== undefined && rate !== undefined && rate <= platformRate - 20) {
+    if (config.agent_acceptance_gap.enabled && platformRate !== undefined && rate !== undefined && rate <= platformRate - config.agent_acceptance_gap.threshold) {
       notes.push(`acceptance ${platformRate - rate} points under the platform`);
       alerts.push({ id: `agent-rate-${a.id}`, severity: "medium", kind: "agent", subject: label,
         message: `${label}: ${rate}% of decided offers accepted against ${platformRate}% across the platform (${plural(a.decided, "decided offer")}).` });
     }
-    if (a.enquiries >= MIN_AGENT_ENQUIRIES && a.medianResponseMinutes !== undefined && respMedian !== undefined && respMedian > 0 && a.medianResponseMinutes >= respMedian * 2) {
-      notes.push("replies take about twice the usual time");
+    if (config.agent_slow_reply.enabled && a.enquiries >= MIN_AGENT_ENQUIRIES && a.medianResponseMinutes !== undefined && respMedian !== undefined && respMedian > 0 && a.medianResponseMinutes >= respMedian * config.agent_slow_reply.threshold) {
+      notes.push(`replies take ${config.agent_slow_reply.threshold} times the usual time or more`);
       alerts.push({ id: `agent-resp-${a.id}`, severity: "medium", kind: "agent", subject: label,
         message: `${label}: first replies take a median of ${a.medianResponseMinutes} minutes; agents with enough enquiries have a median of ${respMedian}.` });
     }
-    if (a.unanswered >= 3) {
-      notes.push(`${a.unanswered} enquiries unanswered after ${UNANSWERED_HOURS} hours`);
+    if (config.agent_unanswered.enabled && a.unanswered >= 3) {
+      const hours = config.agent_unanswered.threshold;
+      notes.push(`${a.unanswered} enquiries unanswered after ${hours} hours`);
       alerts.push({ id: `agent-unanswered-${a.id}`, severity: "high", kind: "agent", subject: label,
-        message: `${label}: ${plural(a.unanswered, "enquiry")} with no agent reply after ${UNANSWERED_HOURS} hours.` });
+        message: `${label}: ${plural(a.unanswered, "enquiry")} with no agent reply after ${hours} hours.` });
     }
     return {
       label, listings: a.listings, enquiries: a.enquiries, offers: a.offers, unanswered: a.unanswered,
@@ -98,18 +101,18 @@ export function buildInsights(actor: StaffActor, facts: InsightFacts): Insights 
     const name = `${titleCase(a.suburb)} ${a.jurisdiction}`;
     const rate = pct(a.current.offers, a.current.enquiries);
     const notes: string[] = [];
-    if (a.current.enquiries >= MIN_AREA_ENQUIRIES && platformFunnel !== undefined && c.enquiries >= 20 && rate !== undefined && rate * 2 <= platformFunnel) {
+    if (config.area_conversion.enabled && a.current.enquiries >= MIN_AREA_ENQUIRIES && platformFunnel !== undefined && c.enquiries >= 20 && rate !== undefined && rate * 100 <= platformFunnel * config.area_conversion.threshold) {
       notes.push("few enquiries turn into offers");
       alerts.push({ id: `area-conv-${a.jurisdiction}-${a.suburb}`, severity: "medium", kind: "area", subject: name,
         message: `${name}: ${plural(a.current.enquiries, "enquiry")} but ${plural(a.current.offers, "offer")} (${rate}% of enquiries) against ${platformFunnel}% platform-wide. Check pricing and listing quality.` });
     }
-    if (a.previous.enquiries >= MIN_AREA_ENQUIRIES && a.current.enquiries * 10 <= a.previous.enquiries * 6) {
+    if (config.area_enquiry_drop.enabled && a.previous.enquiries >= MIN_AREA_ENQUIRIES && a.current.enquiries * 100 <= a.previous.enquiries * (100 - config.area_enquiry_drop.threshold)) {
       const drop = Math.round((1 - a.current.enquiries / a.previous.enquiries) * 100);
       notes.push(`enquiries down ${drop}%`);
       alerts.push({ id: `area-drop-${a.jurisdiction}-${a.suburb}`, severity: drop >= 60 ? "high" : "medium", kind: "area", subject: name,
         message: `${name}: enquiries fell ${drop}% (${a.previous.enquiries} to ${a.current.enquiries}) against the previous period.` });
     }
-    if (a.publishedNow >= 3 && a.current.enquiries === 0) {
+    if (config.area_quiet.enabled && a.publishedNow >= config.area_quiet.threshold && a.current.enquiries === 0) {
       notes.push("live listings, no enquiries");
       alerts.push({ id: `area-quiet-${a.jurisdiction}-${a.suburb}`, severity: "high", kind: "area", subject: name,
         message: `${name}: ${plural(a.publishedNow, "live listing")} and no enquiries this period.` });
@@ -121,10 +124,13 @@ export function buildInsights(actor: StaffActor, facts: InsightFacts): Insights 
   for (const a of facts.areas) {
     const name = `${titleCase(a.suburb)} ${a.jurisdiction}`;
     const id = `area-quiet-${a.jurisdiction}-${a.suburb}`;
-    if (a.publishedNow >= 3 && a.current.enquiries === 0 && !alerts.some(x => x.id === id)) {
+    if (config.area_quiet.enabled && a.publishedNow >= config.area_quiet.threshold && a.current.enquiries === 0 && !alerts.some(x => x.id === id)) {
       alerts.push({ id, severity: "high", kind: "area", subject: name, message: `${name}: ${plural(a.publishedNow, "live listing")} and no enquiries this period.` });
     }
   }
+  // Teams: ranked on accepted offers once a team has enough offers. Counts only here; value and commission live on the team analytics screen.
+  const teamView = facts.teams && facts.teams.length > 0 ? buildTeamComparison(actor, facts.teams, undefined, { money: false }) : undefined;
+  for (const a of teamView?.alerts ?? []) alerts.push({ id: a.id, severity: a.severity, kind: "team", subject: a.subject, message: a.message });
   const rank: Record<Severity, number> = { high: 0, medium: 1, info: 2 };
   alerts.sort((a, b) => rank[a.severity] - rank[b.severity] || a.id.localeCompare(b.id));
 
@@ -135,6 +141,9 @@ export function buildInsights(actor: StaffActor, facts: InsightFacts): Insights 
   if (alerts.some(a => a.id.startsWith("area-conv"))) recommendations.push("For areas where enquiries do not become offers, ask owners to review price guides, photos and descriptions.");
   if (alerts.some(a => a.id.startsWith("area-drop"))) recommendations.push("For areas with falling enquiries, check seasonal effects first, then consider a local marketing push or a featured-listing offer.");
   if (alerts.some(a => a.id.startsWith("area-quiet"))) recommendations.push("Listings with no enquiries after going live may have a visibility problem: check publish status, photos and address accuracy.");
+  if (alerts.some(a => a.id.startsWith("team-sales"))) recommendations.push("For teams whose accepted offers fell, ask the manager what changed: listings that went off the market, agents away, or slower replies.");
+  if (alerts.some(a => a.id.startsWith("team-quiet") || a.id.startsWith("team-conv"))) recommendations.push("For teams with live listings but few enquiries or offers, review their price guides, photos and how quickly buyers get a first reply.");
+  if (alerts.some(a => a.id.startsWith("team-tasks"))) recommendations.push("Teams with many overdue tasks may be short of people; suggest the manager reassigns work or adds a member.");
   const grew = areas.filter(a => a.enquiries.changePct !== undefined && a.enquiries.changePct >= 50 && a.enquiries.current >= MIN_AREA_ENQUIRIES);
   if (grew.length > 0) recommendations.push(`Demand is rising in ${grew.slice(0, 3).map(a => a.area).join(", ")}; consider recruiting or assigning more agents there.`);
   if (recommendations.length === 0) recommendations.push(c.enquiries === 0 ? "No enquiries in this period; widen the date range to see trends." : "Nothing stands out this period. Keep an eye on the weekly trend.");
@@ -150,7 +159,8 @@ export function buildInsights(actor: StaffActor, facts: InsightFacts): Insights 
     platform: { listings: trend(c.listings, p.listings), enquiries: e, offers: o, accepted: trend(c.accepted, p.accepted),
       ...(platformRate !== undefined ? { acceptanceRate: platformRate } : {}), ...(platformFunnel !== undefined ? { offersPerEnquiryPct: platformFunnel } : {}) },
     agents, ...(agentsNote ? { agentsNote } : {}), areas, alerts, recommendations,
-    teamNote: "Teams are not part of the platform yet, so agents are compared individually. Team views arrive with team management.",
+    ...(teamView ? { teams: teamView.rows, ...(teamView.note ? { teamsNote: teamView.note } : {}) } : {}),
+    teamNote: teamView ? "Agents above are compared individually across the platform; teams below group agents by the team their manager set up." : "No agency teams have been set up yet, so agents are compared individually.",
     basis: `Rule-based and self-hosted, from platform counts only. Agents are compared on offers decided (min ${MIN_AGENT_DECIDED}); areas need ${MIN_AREA_ENQUIRIES}+ enquiries to be flagged.`
   };
 }

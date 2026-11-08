@@ -27,7 +27,7 @@ export const CATEGORY_INFO: Record<Category, CategoryInfo> = {
   offers: { label: "Offers", text: "Offers received, decisions and counter-offers.", locked: [], smsAllowed: true, defaults: { inApp: true, email: true, sms: false } },
   listings: { label: "Listings and saved searches", text: "New properties that match your saved searches.", locked: [], smsAllowed: false, defaults: { inApp: true, email: false, sms: false } },
   account: { label: "Account and security", text: "Sign-in, security and account notices. These are required.", locked: ["inApp", "email"], smsAllowed: false, defaults: { inApp: true, email: true, sms: false } },
-  marketing: { label: "News and offers", text: "Product news and promotions. Off until you opt in.", locked: [], smsAllowed: false, defaults: { inApp: false, email: false, sms: false } }
+  marketing: { label: "News and offers", text: "Product news and promotions. Off until you opt in.", locked: [], smsAllowed: true, defaults: { inApp: false, email: false, sms: false } }
 };
 
 export type ChannelPrefs = Record<Channel, boolean>;
@@ -93,20 +93,51 @@ export const KINDS = {
   appointment_accepted: "appointments",
   appointment_declined: "appointments",
   appointment_reminder: "appointments",
+  signature_requested: "account",
+  signature_reminder: "account",
+  consultation_booked: "appointments",
+  consultation_confirmed: "appointments",
+  consultation_cancelled: "appointments",
+  review_received: "messages",
+  booking_received: "appointments",
+  open_inspection_confirmed: "appointments",
+  open_inspection_new: "appointments",
+  open_inspection_reminder_24h: "appointments",
+  open_inspection_reminder_1h: "appointments",
+  open_inspection_cancelled: "appointments",
+  booking_conflict: "appointments",
   offer_received: "offers",
   offer_accepted: "offers",
   offer_rejected: "offers",
   offer_countered: "offers",
+  fall_through_proposed: "offers",
+  fall_through_update: "offers",
+  offer_fallen_through: "offers",
+  dispute_opened: "offers",
+  dispute_update: "offers",
+  deposit_held: "offers",
+  deposit_payout_pending: "offers",
+  deposit_released: "offers",
+  deposit_refunded: "offers",
+  deposit_split: "offers",
+  deposit_dispute_resolved: "offers",
   saved_search_match: "listings",
+  document_analysed: "listings",
+  market_shift: "listings",
   security_notice: "account",
   system_notice: "account",
-  marketing_news: "marketing"
+  marketing_news: "marketing",
+  automation_message: "marketing",
+  automation_alert: "messages",
+  scheduling_message: "messages",
+  scheduling_suggestion: "messages",
+  lead_followup_due: "messages"
 } as const satisfies Record<string, Category>;
 export type Kind = keyof typeof KINDS;
 export const isKind = (v: unknown): v is Kind => typeof v === "string" && Object.prototype.hasOwnProperty.call(KINDS, v);
 
 /** Kinds worth a text message when the user has opted in: they are time-critical and short. */
-const SMS_KINDS: ReadonlySet<Kind> = new Set<Kind>(["message_received", "appointment_invited", "appointment_reminder", "offer_received", "offer_accepted", "offer_rejected", "offer_countered"]);
+const SMS_KINDS: ReadonlySet<Kind> = new Set<Kind>(["message_received", "appointment_invited", "appointment_reminder", "consultation_booked", "consultation_cancelled", "offer_received", "offer_accepted", "offer_rejected", "offer_countered", "fall_through_proposed", "offer_fallen_through", "automation_alert"]);
 
 export interface NotificationParams { [key: string]: string | undefined }
 export interface RenderedNotification { kind: Kind; category: Category; title: string; body: string; link: string | null; smsText: string | null }
@@ -122,7 +153,12 @@ export const safeLink = (v: string | undefined): string | null => (typeof v === 
 export function renderNotification(kind: Kind, p: NotificationParams = {}): RenderedNotification {
   const listing = clip(p["listing"], 120, "your property");
   const name = clip(p["name"], 60, "Someone");
+  const doc = `"${clip(p["document"], 120, "a document")}"`;
   const link = safeLink(p["link"]);
+  const when = clip(p["when"], 80, "the booked time");
+  const amount = clip(p["amount"], 20, "the deposit");
+  const ref = clip(p["reference"], 30, "on file");
+  const payout = p["payout"] === "refund" ? "refund" : "release";
   const t = (title: string, body: string, sms: boolean = SMS_KINDS.has(kind)): RenderedNotification =>
     ({ kind, category: KINDS[kind], title, body, link, smsText: sms ? `${title}. ${body}` : null });
   switch (kind) {
@@ -131,14 +167,49 @@ export function renderNotification(kind: Kind, p: NotificationParams = {}): Rend
     case "appointment_accepted": return t("Appointment accepted", `${name} accepted the appointment for ${listing}.`);
     case "appointment_declined": return t("Appointment declined", `${name} declined the appointment for ${listing}.`);
     case "appointment_reminder": return t("Reminder: invitation waiting", `${name}'s invitation to act as agent for ${listing} is still waiting for your answer.`);
+    case "signature_requested": return t("Signature requested", `${name} has asked you to sign ${doc}. Open it to read the document and sign.`, false);
+    case "signature_reminder": return t("Reminder: signature waiting", `${name} is still waiting for your signature on ${doc}. Open it to read the document and sign.`, false);
+    case "consultation_booked": return t("New consultation booked", `${name} booked a consultation with you for ${when}.`);
+    case "consultation_confirmed": return t("Consultation confirmed", `Your consultation with ${name} is confirmed for ${when}.`);
+    case "consultation_cancelled": return t("Consultation cancelled", `${name} cancelled the consultation planned for ${when}.`);
+    case "review_received": return t("New review", `${name} left you a review.`);
+    case "open_inspection_confirmed": return t("Inspection booked", `You are booked to inspect ${listing} on ${when}. Contact: ${clip(p["contact"], 120, "the listing agent")}. Bring photo ID, and message the agent from the listing if your plans change.`);
+    case "open_inspection_new": return t("New inspection booked", `${name} booked to inspect ${listing} on ${when}.`);
+    case "open_inspection_reminder_24h": return t("Inspection tomorrow", `Your inspection of ${listing} is tomorrow: ${when}. Contact: ${clip(p["contact"], 120, "the listing agent")}.`);
+    case "open_inspection_reminder_1h": return t("Inspection in 1 hour", `Your inspection of ${listing} starts in about an hour: ${when}. Contact: ${clip(p["contact"], 120, "the listing agent")}.`);
+    case "open_inspection_cancelled": return t("Inspection cancelled", `The inspection of ${listing} on ${when} was cancelled. ${clip(p["next"], 200, "Open the listing to book another time.")}`);
+    case "booking_received": return t("New booking from a portal", `${name} booked ${listing} through a listing portal. The dates are now blocked on your calendar.`);
+    case "booking_conflict": return t("Booking clashes with another", `A booking from ${name} for ${listing} overlaps dates that are already booked. Contact the portal or the guest to sort it out.`);
     case "offer_received": return t("New offer received", `A new offer was made on ${listing}. Review it in your offers.`);
     case "offer_accepted": return t("Offer accepted", `Your offer on ${listing} was accepted by the owner.`);
     case "offer_rejected": return t("Offer not accepted", `Your offer on ${listing} was not accepted.`);
     case "offer_countered": return t("Counter-offer", `There is a counter-offer on ${listing}.`);
+    case "fall_through_proposed": return t("Sale of your property may have fallen through", `The other side says the contract on ${listing} will not go ahead (${clip(p["reason"], 80, "reason given")}). Open it to see the proposed outcome for the deposit and agree or dispute it.`);
+    case "fall_through_update": return t(clip(p["title"], 80, "Update on a sale that fell through"), clip(p["text"], 300, `There is an update on the deposit for ${listing}.`), false);
+    case "dispute_opened": return t("A dispute was raised on your sale", `A dispute about ${listing} was raised (${clip(p["title"], 80, "see the settlement")}). Elena will suggest a fair middle ground. Open it to add your side.`, false);
+    case "dispute_update": return t(clip(p["title"], 80, "Update on a dispute"), clip(p["text"], 300, `There is an update on the dispute about ${listing}.`), false);
+    case "offer_fallen_through": return t("Sale marked as fallen through", `The contract on ${listing} is now marked as fallen through. The deposit is returned or released by the solicitor's trust account once staff approve it. Nothing moves until then.`);
+    case "deposit_held": {
+      const due = clip(p["due"], 20, "");
+      const tail = p["party"] === "buyer" ? `Pay it into the trust account quoting ${ref}${due ? ` by ${due}` : ""}.` : `The buyer has ${due ? `until ${due}` : "the agreed time"} to pay it in.`;
+      return t("Deposit recorded in trust", `The ${amount} deposit for ${listing} (reference ${ref}) is recorded against the solicitor's trust account. ${tail} It is only paid out at settlement or by an agreed refund, and two staff approve every payout.`, false);
+    }
+    case "deposit_payout_pending": return t(`${payout === "refund" ? "Refund" : "Release"} waiting for approval`, `A ${payout === "refund" ? "refund to the buyer" : "release to the seller"} of ${amount} from the deposit for ${listing} (reference ${ref}) has been requested. A second staff member must approve it. Nothing moves until then and you do not need to do anything.`, false);
+    case "deposit_released": return t("Deposit released to the seller", `${amount} from the deposit for ${listing} (reference ${ref}) was approved for release to the seller from the solicitor's trust account.`, false);
+    case "deposit_refunded": return t("Deposit refunded to the buyer", `${amount} from the deposit for ${listing} (reference ${ref}) was approved for refund to the buyer from the solicitor's trust account.`, false);
+    case "deposit_split": return t("Deposit split after a dispute", `For ${listing} (reference ${ref}), staff recorded how the disputed deposit is divided: ${clip(p["text"], 200, "see the offer for the amounts")}. Each payment still needs a second staff approval before it is paid.`, false);
+    case "deposit_dispute_resolved": return t("Deposit outcome agreed", `The deposit outcome for ${listing} (reference ${ref}) is agreed: ${clip(p["text"], 200, "see the offer for the amounts")}. Staff will now request the payments and a second staff member approves each one.`, false);
+    case "document_analysed": return t("Elena summarised a document", `Elena has read ${doc} for ${listing}. Open it to see the summary, flags and next steps.`, false);
     case "saved_search_match": return t("New property matches your search", `${listing} matches one of your saved searches.`);
+    case "market_shift": return t(clip(p["title"], 80, "Market update"), clip(p["text"], 400, "There is a change in one of your areas."));
     case "security_notice": return t(clip(p["title"], 80, "Security notice"), clip(p["text"], 400, "Please review your account security settings."));
     case "system_notice": return t(clip(p["title"], 80, "Notice"), clip(p["text"], 400, "There is an update about your account."));
     case "marketing_news": return t(clip(p["title"], 80, "News"), clip(p["text"], 400, "There is news from us."));
+    case "automation_message": return t(clip(p["title"], 80, "A message about a property"), clip(p["text"], 600, "There is an update about a property you asked about."), false);
+    case "scheduling_message": return t(clip(p["title"], 80, "A message about your inspection"), clip(p["text"], 1500, "There is an update about your inspection."));
+    case "scheduling_suggestion": return t(clip(p["title"], 80, "Elena drafted a message"), clip(p["text"], 400, "Review the draft and send, edit or skip it."));
+    case "lead_followup_due": return t("Lead follow-up due", clip(p["text"], 300, `Follow up with ${name} about ${listing}.`), false);
+    case "automation_alert": return t(clip(p["title"], 80, "Automation update"), clip(p["text"], 400, "One of your automations ran."));
   }
 }
 
@@ -237,7 +308,7 @@ export function suggestPreferences(stats: readonly CategoryStats[], prefs: Prefe
     const rate = s.read / s.total;
     if (rate < 0.2 && prefs[s.category].email && !info.locked.includes("email"))
       out.push({ category: s.category, channel: "email", turnOn: false, reason: `You opened ${s.read} of ${s.total} ${info.label.toLowerCase()} notifications lately. Turning off email would cut the noise; they would still appear in the app.` });
-    else if (rate >= 0.8 && info.smsAllowed && !prefs[s.category].sms && hasVerifiedPhone && s.category !== "listings")
+    else if (rate >= 0.8 && info.smsAllowed && !prefs[s.category].sms && hasVerifiedPhone && s.category !== "listings" && s.category !== "marketing")
       out.push({ category: s.category, channel: "sms", turnOn: true, reason: `You open most of your ${info.label.toLowerCase()} notifications. A text would reach you faster. It's your choice, and you can turn it off any time.` });
   }
   return out;

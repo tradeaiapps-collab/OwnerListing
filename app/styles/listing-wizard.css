@@ -1,0 +1,53 @@
+/* Create-listing wizard. Desktop: sticky rail (vertical steps + live preview) beside one form card. Mobile: rail hidden, card header shows the step and a segmented bar. Tokens only. */
+.wiz-main { max-width: 1080px; }
+.wiz-layout { display: grid; gap: var(--space-6); margin-top: var(--space-4); }
+@media (min-width: 920px) { .wiz-layout { grid-template-columns: 272px minmax(0, 1fr); gap: 32px; align-items: start; } .wiz-rail { position: sticky; top: 96px; } }
+.wiz-rail { display: none; gap: var(--space-4); }
+@media (min-width: 920px) { .wiz-rail { display: grid; } }
+.wiz-steps { list-style: none; margin: 0; padding: 0; display: grid; }
+.wiz-steps li { position: relative; }
+.wiz-steps li:not(:last-child)::before { content: ""; position: absolute; left: 15px; top: 36px; bottom: -4px; width: 2px; background: var(--line); }
+.wiz-steps li.done:not(:last-child)::before { background: var(--accent); }
+.wiz-steps button { all: unset; box-sizing: border-box; width: 100%; min-height: 44px; display: grid; grid-template-columns: 32px minmax(0, 1fr); gap: var(--space-3); padding: 6px 8px 14px 0; cursor: pointer; border-radius: var(--radius-sm, 10px); }
+.wiz-steps button:disabled { cursor: default; }
+.wiz-steps button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.wiz-dot { width: 32px; height: 32px; border-radius: 50%; border: 2px solid var(--line); display: grid; place-items: center; font-weight: 700; font-size: 0.8125rem; background: var(--elevated); color: var(--muted); position: relative; z-index: 1; }
+.wiz-steps li.done .wiz-dot { background: var(--accent); border-color: var(--accent); color: var(--bg); }
+.wiz-steps li.cur .wiz-dot { background: var(--heading, var(--text)); border-color: var(--heading, var(--text)); color: var(--bg); box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 25%, transparent); }
+.wiz-st b { display: block; padding-top: 5px; line-height: 1.3; font-weight: 600; color: var(--muted); }
+.wiz-st span { display: block; font-size: 0.8125rem; color: var(--muted); }
+.wiz-steps li.cur .wiz-st b, .wiz-steps li.done .wiz-st b { color: var(--text); }
+.wiz-preview { border: 1px solid var(--line); border-radius: var(--radius); background: var(--elevated); box-shadow: var(--shadow-1); overflow: hidden; }
+.wiz-ph { aspect-ratio: 16 / 10; background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 18%, var(--elevated)), var(--line)); position: relative; }
+.wiz-ph em { position: absolute; left: 10px; top: 10px; font-style: normal; font-size: 0.6875rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; background: var(--elevated); padding: 3px 8px; border-radius: 999px; }
+.wiz-pb { padding: var(--space-3) var(--space-4); display: grid; gap: 2px; font-size: 0.8125rem; overflow-wrap: anywhere; }
+.wiz-pp { font-family: var(--font-display); font-size: 1.25rem; }
+.wiz-pt { font-weight: 600; font-size: 0.9375rem; }
+.wiz-card { border: 1px solid var(--line); border-radius: 20px; background: var(--elevated); box-shadow: var(--shadow-1); overflow: hidden; min-width: 0; }
+.wiz-header { padding: var(--space-6) var(--space-6) var(--space-4); display: grid; gap: var(--space-3); border-bottom: 1px solid var(--line); }
+@media (max-width: 559px) { .wiz-header { padding: var(--space-4); } }
+.wiz-header h2, .wiz-header p { margin: 0; }
+.wiz-eyebrow { display: flex; justify-content: space-between; gap: var(--space-2); font-size: 0.75rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); }
+.wiz-eb2 { color: var(--muted); letter-spacing: 0.02em; text-transform: none; font-weight: 600; }
+.wiz-seg { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; }
+.wiz-seg i { height: 6px; border-radius: 999px; background: var(--line); }
+.wiz-seg i.on { background: var(--accent); }
+.wiz-seg i.ok { background: color-mix(in srgb, var(--accent) 55%, var(--text)); }
+.wiz-body { padding: var(--space-6); display: grid; gap: var(--space-4); }
+@media (max-width: 559px) { .wiz-body { padding: var(--space-4); } }
+.wiz-body > div[hidden], .wiz-step[hidden] { display: none; }
+.wiz-body .form-section { border: 0; box-shadow: none; background: none; padding: 0; }
+.wiz-body .form-section > legend { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); padding: 0; margin: 0; border: 0; }
+.wiz-review { display: grid; gap: var(--space-3); }
+.wiz-rv { border: 1px solid var(--line); border-radius: var(--radius-sm, 12px); padding: var(--space-3) var(--space-4); display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px var(--space-3); }
+.wiz-rv h3 { margin: 0; font-size: 0.75rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); font-family: inherit; }
+.wiz-rv p { margin: 0; grid-column: 1; font-weight: 600; overflow-wrap: anywhere; max-width: none; }
+.wiz-rv button.link-button, .wiz-rv button.link-button:hover:not(:disabled), .wiz-nav button.wiz-exit, .wiz-nav button.wiz-exit:hover:not(:disabled) { background: none; border: 0; box-shadow: none; transform: none; min-width: 0; padding: 0 var(--space-2); font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
+.wiz-rv button.link-button, .wiz-rv button.link-button:hover:not(:disabled) { color: var(--accent); grid-row: 1 / 3; grid-column: 2; align-self: center; min-height: 44px; }
+.wiz-nav button.wiz-exit, .wiz-nav button.wiz-exit:hover:not(:disabled) { color: var(--muted); }
+.wiz-nav { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-4) var(--space-6); border-top: 1px solid var(--line); background: color-mix(in srgb, var(--bg) 60%, var(--elevated)); flex-wrap: wrap; }
+@media (max-width: 559px) { .wiz-nav { padding: var(--space-3) var(--space-4); position: sticky; bottom: 0; z-index: 5; } .wiz-nav > button:not(.link-button) { flex: 1; min-width: 0; } .wiz-exit { display: none; } }
+.wiz-nav button.wiz-exit { margin-left: auto; min-height: 44px; }
+.wiz-nav > button:last-child { min-width: 9rem; }
+.wiz-empty { margin: 0; }
+@media (prefers-reduced-motion: reduce) { .wiz-seg i, .wiz-steps button { transition: none; } }

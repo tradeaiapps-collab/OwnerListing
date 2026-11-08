@@ -4,6 +4,8 @@ import { reportInsights, formatMeasure, type Insights } from "../domain/report-i
 import { buildResult, measureOf, nextRunAfter, parseDefinition, previousPeriod, resolvePeriod, type ReportDefinition, type ReportResult } from "../domain/saved-reports";
 import { staffCan, type StaffActor } from "../domain/staff-access";
 import { localDateInZone } from "../domain/timezone";
+import { attachmentFileName, attachmentNote, fitAttachments, type EmailAttachment } from "../domain/report-attachments";
+import { CONTENT_TYPES, exportReport } from "../domain/saved-report-export";
 import { readBrand } from "../config/brand";
 import { loadReport } from "./admin-report-builder-db";
 import { appendAuditPg, type Queryable } from "./db";
@@ -25,16 +27,25 @@ export async function executeReport(db: Queryable, actor: StaffActor, def: Repor
 }
 
 /** Plain-text body of a scheduled report: Elena's summary, the top rows, and a link to the full report. */
-export function reportEmail(result: ReportResult, insights: Insights, appUrl: string | undefined, reportId: string): { subject: string; text: string } {
+export function reportEmail(result: ReportResult, insights: Insights, appUrl: string | undefined, reportId: string, note = ""): { subject: string; text: string } {
   const link = appUrl ? `${appUrl.replace(/\/+$/, "")}/staff/report-builder?report=${encodeURIComponent(reportId)}` : "";
   const lines = [`${result.name}`, `${result.range.from} to ${result.range.to}`, "", `Elena's summary: ${insights.headline}`, ...insights.points.map(p => `- ${p}`), ""];
   const top = result.rows.slice(0, 10);
   for (const r of top) lines.push(`${r.label}: ${result.measures.map(m => `${measureOf(m).label} ${formatMeasure(m, r.values[m] ?? 0)}`).join(", ")}`);
   if (result.rows.length > top.length) lines.push(`...and ${result.rows.length - top.length} more.`);
   lines.push("", `Total: ${result.measures.map(m => `${measureOf(m).label} ${formatMeasure(m, result.totals[m] ?? 0)}`).join(", ")}`);
+  if (note) lines.push("", note);
   if (link) lines.push("", `Open the full report, with CSV, Excel and PDF downloads: ${link}`);
   lines.push("", `You are receiving this because you scheduled this report on ${readBrand().name}. Change or stop it from the report builder.`);
   return { subject: `${result.name}: ${result.range.from} to ${result.range.to}`, text: lines.join("\n") + "\n" };
+}
+
+/** The PDF and Excel files for an emailed report; any that would push the total past 25 MB are left out and the email says so. */
+export function reportAttachments(result: ReportResult, insights: Insights, nowIso: string): { attachments: EmailAttachment[]; skipped: number } {
+  const sentOn = localDateInZone(nowIso, ANALYTICS_TIME_ZONE);
+  return fitAttachments((["pdf", "xlsx"] as const).map(f => ({
+    filename: attachmentFileName(result.name, result.range.from, result.range.to, sentOn, f), content: exportReport(result, f, insights), contentType: CONTENT_TYPES[f]
+  })));
 }
 
 export interface RunCounts { due: number; sent: number; notConfigured: number; failed: number; skipped: number }
@@ -59,8 +70,9 @@ export async function runDueReports(db: Queryable, nowIso: string, env: Env, lim
         const port = await getEmailPort(db, env, "scheduled_report");
         if (!port.configured || !d.ownerEmail) { status = "not_configured"; counts.notConfigured++; }
         else {
-          const msg = reportEmail(result, insights, env["APP_URL"], d.reportId);
-          status = (await port.send({ to: d.ownerEmail, ...msg })).status === "sent" ? "sent" : "failed";
+          const { attachments, skipped } = reportAttachments(result, insights, nowIso);
+          const msg = reportEmail(result, insights, env["APP_URL"], d.reportId, attachmentNote(attachments, skipped));
+          status = (await port.send({ to: d.ownerEmail, ...msg, ...(attachments.length ? { attachments } : {}) })).status === "sent" ? "sent" : "failed";
           if (status === "sent") counts.sent++; else counts.failed++;
         }
       }

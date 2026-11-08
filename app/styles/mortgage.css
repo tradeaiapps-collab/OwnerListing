@@ -1,0 +1,35 @@
+/* mortgage calculator */
+.mc { background: var(--elevated); border: 1px solid var(--line); border-radius: calc(var(--radius) + 4px); padding: var(--space-6) var(--space-4); box-shadow: var(--shadow-2); min-width: 0; }
+.mc-h { margin: 0 0 var(--space-4); font-family: var(--font-display); font-size: 1.25rem; }
+.mc-fields { display: grid; gap: var(--space-3); grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 520px) { .mc-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.mc-f { display: flex; flex-direction: column; gap: var(--space-1); font-size: 0.875rem; font-weight: 600; min-width: 0; }
+.mc-f input, .mc-f select { width: 100%; min-width: 0; }
+.mc-f small { font-weight: 400; color: var(--muted); }
+.mc-out { display: grid; gap: var(--space-3); margin: var(--space-4) 0 var(--space-3); padding: var(--space-4); border-radius: var(--radius-sm, 10px); background: var(--brand); color: var(--brand-text); }
+.mc-hero { font-size: 1rem; }
+.mc-hero strong { display: block; font-family: var(--font-display); font-size: clamp(1.75rem, 1.4rem + 1.6vw, 2.25rem); font-weight: 600; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.mc-rows { margin: 0; display: grid; gap: var(--space-2); }
+.mc-rows div { display: flex; justify-content: space-between; gap: var(--space-3); font-size: 0.875rem; }
+.mc-rows dt { min-width: 0; }
+.mc-rows dd { margin: 0; font-weight: 600; font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+.mc-bar { display: flex; height: 12px; border-radius: 999px; overflow: hidden; background: var(--line); }
+.mc-seg { min-width: 0; }
+.mc-principal.mc-seg { background: var(--brand); }
+.mc-interest.mc-seg { background: var(--gold); }
+.mc-other.mc-seg { background: var(--muted); }
+.mc-key { list-style: none; margin: var(--space-2) 0 var(--space-3); padding: 0; display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-4); font-size: 0.8125rem; color: var(--muted); }
+.mc-key li { max-width: none; display: flex; align-items: center; gap: var(--space-2); }
+.mc-key li::before { content: ""; width: 10px; height: 10px; border-radius: 3px; background: currentColor; }
+.mc-key .mc-principal::before { background: var(--brand); }
+.mc-key .mc-interest::before { background: var(--gold); }
+.mc-key .mc-other::before { background: var(--muted); }
+.mc-note { margin: 0 0 var(--space-2); font-size: 0.8125rem; color: var(--muted); }
+.mc-est { margin: calc(var(--space-2) * -1) 0 var(--space-4); font-size: 0.875rem; color: var(--muted); }
+.mc-est strong { color: var(--text); font-variant-numeric: tabular-nums; }
+.mc-est a { color: var(--link); }
+.mc-sec { margin-top: var(--space-12); }
+.mc-rate-table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.mc-rate-table th, .mc-rate-table td { padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--line); }
+.mc-rate-table th:first-child, .mc-rate-table td:first-child { text-align: left; }
+.mc-rate-table th:not(:first-child), .mc-rate-table td:not(:first-child) { text-align: right; }

@@ -164,7 +164,7 @@ describe.skipIf(!DATABASE_URL)("messaging settings and outbox on Postgres", () =
     vi.stubGlobal("fetch", f);
     const delivery = createDbAlertDelivery(db, process.env, { resolve: async () => ["93.184.216.34"], createTransport: ((o: Record<string, unknown>) => { made.push(o); return { sendMail, close() { /* none */ } } satisfies MailTransport; }) as never });
     const listingId = randomUUID();
-    const base = { buyerUserId: buyer, listingId, searchId: randomUUID(), unsubscribeUrl: "http://test/api/alerts/unsubscribe?t=abc" };
+    const base = { buyerUserId: buyer, listingId, searchId: randomUUID(), unsubscribeUrl: "http://test/api/alerts/unsubscribe?t=unsub-token" };
     const before = (await outbox()).length;
     expect(await delivery.send({ ...base, channel: "email" })).toBe("sent");
     expect(await delivery.send({ ...base, channel: "sms" })).toBe("sent");
@@ -172,13 +172,13 @@ describe.skipIf(!DATABASE_URL)("messaging settings and outbox on Postgres", () =
     const mail = (sendMail.mock.calls[0] as unknown as [{ to: string; text: string }])[0];
     expect(mail.to).toBe(email);
     expect(mail.text).toContain(`http://test/listings/${listingId}`);
-    expect(mail.text).toContain("Unsubscribe: http://test/api/alerts/unsubscribe?t=abc");
+    expect(mail.text).toContain("Unsubscribe: http://test/api/alerts/unsubscribe?t=unsub-token");
     const form = new URLSearchParams((f.mock.calls[0] as unknown as [string, RequestInit])[1].body as string);
     expect(form.get("To")).toBe("+61400000009");
-    expect(form.get("Body")).toContain("Opt out: http://test/api/alerts/unsubscribe?t=abc");
+    expect(form.get("Body")).toContain("Opt out: http://test/api/alerts/unsubscribe?t=unsub-token");
     const rows = (await outbox()).slice(before);
     expect(rows.map(r => [r["channel"], r["template"], r["status"]])).toEqual([["email", "alert_listing", "sent"], ["sms", "alert_listing", "sent"]]);
-    expect(JSON.stringify(rows)).not.toMatch(new RegExp(`${email}|61400000009|abc`));
+    expect(JSON.stringify(rows)).not.toMatch(new RegExp(`${email}|61400000009|unsub-token`));
   });
 
   it("maps provider failures to 'failed' with a code, and a missing recipient to 'failed' without sending", async () => {
@@ -237,5 +237,14 @@ describe.skipIf(!DATABASE_URL)("messaging settings and outbox on Postgres", () =
     const audit = (await db.query("SELECT payload FROM audit_event WHERE event_type = 'messaging.test_sent' AND actor_id = $1", [other])).rows;
     expect(audit.length).toBe(5);
     expect(JSON.stringify(audit)).not.toContain("61400000003");
+  });
+
+  // Last: the outbox is insert-only, so this row would show up in the tests above.
+  it("shows the newest delivery log rows on the settings page, without addresses", async () => {
+    await db.query("INSERT INTO messaging_outbox (channel, template, recipient_hash, status, error_code, created_at) VALUES ('email', 'offer_accepted', 'h', 'failed', 'auth_failed', now() + interval '1 day')");
+    state.staff = admin;
+    const body = await (await settingsRoute.GET(new Request("http://test/api/staff/messaging"))).json() as { log: { template: string; status: string; errorCode: string | null }[] };
+    expect(body.log[0]).toMatchObject({ channel: "email", template: "offer_accepted", status: "failed", errorCode: "auth_failed" });
+    expect(Object.keys(body.log[0]!).sort()).toEqual(["at", "channel", "errorCode", "status", "template"]);
   });
 });

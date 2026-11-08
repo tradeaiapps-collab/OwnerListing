@@ -4,7 +4,8 @@ import type { StaffActor } from "../domain/staff-access";
 import { normaliseStaffEmail } from "../domain/staff-invite";
 import { isRoleKey, resolveRoleAccess } from "../domain/staff-roles";
 import type { GoogleIdentity } from "./auth/google";
-import { staffTokenFromRequest, verifyStaffSession } from "./auth/staff-session";
+import { mfaClaimValid } from "../domain/mfa";
+import { STAFF_TTL_SECONDS, staffTokenFromRequest, verifyStaffSession, type StaffSessionPayload } from "./auth/staff-session";
 import { appendAuditPg, type Queryable } from "./db";
 
 /**
@@ -103,15 +104,46 @@ export async function loadStaffActor(db: Queryable, uid: string): Promise<StaffA
   return resolveRoleAccess(id, row["role"], { exists: row["role_exists"] === true, permissions: row["permissions"], disabled: row["disabled"] });
 }
 
+/** Where a staff session stands on the second sign-in step. Staff MFA is optional: an account that has not enrolled is never asked. */
+export interface StaffSessionState {
+  staff: StaffActor;
+  payload: StaffSessionPayload;
+  mfa: { enrolled: boolean; satisfied: boolean };
+}
+
+const epoch = (v: unknown): number | undefined => (v === null || v === undefined || !Number.isFinite(Number(v)) ? undefined : Number(v));
+
+/**
+ * The staff session for this request, confirmed against the database now, whether or not it has passed MFA yet (role and permissions as
+ * loadStaffActor). Same rules as user sessions: removing or resetting a factor ends every session that passed MFA before it, and a reset
+ * refuses any session issued at or before it. Only the MFA routes use this directly; staffFromRequest also requires the second step.
+ */
+export async function staffSessionFromRequest(db: Queryable, req: Request, secret: string, nowSeconds: number): Promise<StaffSessionState | null> {
+  if (readAppMode() === "public") return null; // defence in depth: a public deployment never honours a staff cookie
+  const p = verifyStaffSession(staffTokenFromRequest(req), secret, nowSeconds);
+  if (!p) return null;
+  const staff = await loadStaffActor(db, p.uid);
+  if (!staff) return null;
+  const row = (await db.query(
+    `SELECT EXISTS (SELECT 1 FROM mfa_factor f WHERE f.user_id = $1::uuid AND f.confirmed_at IS NOT NULL AND f.revoked_at IS NULL) AS enrolled,
+            (SELECT floor(extract(epoch FROM max(f.revoked_at)))::bigint FROM mfa_factor f WHERE f.user_id = $1::uuid AND f.confirmed_at IS NOT NULL) AS revoked_at,
+            (SELECT floor(extract(epoch FROM max(r.reset_at)))::bigint FROM mfa_reset_log r WHERE r.user_id = $1::uuid) AS reset_at`,
+    [p.uid]
+  )).rows[0];
+  const resetAt = epoch(row?.["reset_at"]);
+  if (resetAt !== undefined && p.exp - STAFF_TTL_SECONDS <= resetAt) return null;
+  const enrolled = row?.["enrolled"] === true;
+  return { staff, payload: p, mfa: { enrolled, satisfied: mfaClaimValid(p.mfa, epoch(row?.["revoked_at"])) } };
+}
+
 /**
  * The signed-in staff member for this request, or null. The role and its permissions are read from the database now, so revoking an
  * invite, changing its role or editing the role definition takes effect at once. Only an invite that has been signed in to counts
  * (accepted_at), so a cookie issued under an earlier, revoked invite for the same email never revives when the address is invited again
  * (for example after the mailbox was reassigned); that person must sign in again.
+ * A staff member who has set up two-step sign-in counts as signed in only after passing it (cookie without a valid check = null).
  */
 export async function staffFromRequest(db: Queryable, req: Request, secret: string, nowSeconds: number): Promise<StaffActor | null> {
-  if (readAppMode() === "public") return null; // defence in depth: a public deployment never honours a staff cookie
-  const p = verifyStaffSession(staffTokenFromRequest(req), secret, nowSeconds);
-  if (!p) return null;
-  return loadStaffActor(db, p.uid);
+  const s = await staffSessionFromRequest(db, req, secret, nowSeconds);
+  return s && (!s.mfa.enrolled || s.mfa.satisfied) ? s.staff : null;
 }
