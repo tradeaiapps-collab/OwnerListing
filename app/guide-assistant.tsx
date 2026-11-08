@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { personaLabel, personaPose, type Persona } from "../src/domain/assistant-persona";
 import { GUIDE_LIMITS, type GuideChip, type GuideIntent, type GuideLink } from "../src/domain/guide-assistant";
-import { PRESENTER_SPEAK_EVENT } from "./presenter/presenter-core";
+import { PRESENTER_SPEAK_EVENT, PRESENTER_STATE_EVENT, PRESENTER_STOP_EVENT, type PresenterState } from "./presenter/presenter-core";
 import { useElenaContext } from "./elena-context";
 import { contextAnswer, contextFallback, isListingForm, isWhereQuestion, sectionHint, whereAnswer } from "../src/domain/elena-context";
 import "./styles/assistant.css";
@@ -34,6 +34,19 @@ export default function GuideAssistant({ greeting, disclaimer, persona }: {
   const titleId = useId(), descId = useId();
   const welcome = personaPose(persona, "wave");
   const listening = persona.poses.listening ?? persona.icon;
+
+  // Listen: replay any of her answers aloud. Only one plays at a time; the presenter reports when she stops.
+  const [playing, setPlaying] = useState<number | null>(null);
+  useEffect(() => {
+    const on = (e: Event) => { if (!(e as CustomEvent<PresenterState>).detail?.talking) setPlaying(null); };
+    window.addEventListener(PRESENTER_STATE_EVENT, on);
+    return () => window.removeEventListener(PRESENTER_STATE_EVENT, on);
+  }, []);
+  const listen = (m: Msg) => {
+    if (playing === m.id) { window.dispatchEvent(new Event(PRESENTER_STOP_EVENT)); setPlaying(null); return; }
+    setPlaying(m.id);
+    window.dispatchEvent(new CustomEvent(PRESENTER_SPEAK_EVENT, { detail: { text: m.text } }));
+  };
 
   const close = useCallback(() => { setOpen(false); launcher.current?.focus(); }, []);
 
@@ -160,6 +173,11 @@ export default function GuideAssistant({ greeting, disclaimer, persona }: {
                 {m.from === "guide" && <img className="ga-mini" src={persona.icon} alt="" width={28} height={28} />}
                 <span className="ga-who">{m.from === "guide" ? persona.name : "You"}</span>
                 <p>{m.text}</p>
+                {m.from === "guide" && (
+                  <button type="button" className="ga-listen" aria-pressed={playing === m.id} onClick={() => listen(m)}>
+                    <span aria-hidden="true">{playing === m.id ? "■" : "🔊"}</span> {playing === m.id ? "Stop" : "Listen"}<span className="ga-sr"> to {persona.name}&apos;s answer</span>
+                  </button>
+                )}
                 {m.links && m.links.length > 0 && (
                   <ul className="ga-links">{m.links.map(l => <li key={l.href + l.label}><a href={l.href}>{l.label} <span aria-hidden="true">→</span></a></li>)}</ul>
                 )}
