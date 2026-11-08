@@ -66,6 +66,11 @@
 .ga-form { display: flex; gap: var(--space-2); padding: var(--space-2) var(--space-4); }
 .ga-form input { flex: 1; min-width: 0; min-height: 44px; }
 .ga-form button { min-height: 44px; }
+.ga-mic { min-width: 44px; border-radius: 999px; border: 1px solid var(--line); background: transparent; color: inherit; cursor: pointer; }
+.ga-mic:hover { background: var(--tint-2); }
+.ga-mic[aria-pressed="true"] { border-color: var(--gold, var(--accent)); background: var(--tint-2); }
+.ga-mic:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.ga-mic-note { margin: 0; padding: 0 var(--space-4) var(--space-2); font-size: 0.875rem; }
 .ga-disclaimer { margin: 0; padding: 0 var(--space-4) var(--space-3); font-size: 0.75rem; color: var(--muted); }
 .ga-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
 
