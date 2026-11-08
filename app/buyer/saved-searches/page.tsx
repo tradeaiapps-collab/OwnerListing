@@ -2,16 +2,26 @@
 import { useEffect, useState } from "react";
 import type { AlertPreference, SavedSearch } from "../../../src/domain/buyer";
 import { AU_JURISDICTIONS } from "../../../src/domain/jurisdiction";
+import { AMENITIES, AMENITY_LABELS, formatAud } from "../../../src/domain/listing-details";
 import { PROPERTY_TYPES } from "../../../src/domain/listing-service";
+import { savedSearchHref } from "../../../src/domain/saved-search-link";
 import { JSON_HEADERS } from "../../listings/ui";
-import { savedSearchFormBody } from "./form";
+import { savedSearchFormBody, savedSearchHints } from "./form";
+import "../../styles/search.css";
 
 const summarise = (s: SavedSearch) => [
   s.transactionType === "sale" ? "Buy" : "Rent",
   s.useClass,
   s.propertyTypes.length ? s.propertyTypes.join(", ") : "any type",
   s.jurisdictions.length ? s.jurisdictions.join(", ") : "any state",
-  s.suburbs.length ? s.suburbs.join(", ") : "any suburb"
+  s.suburbs.length ? s.suburbs.join(", ") : "any suburb",
+  ...(s.minPriceCents !== undefined || s.maxPriceCents !== undefined
+    ? [`${s.minPriceCents !== undefined ? formatAud(s.minPriceCents) : "any"} to ${s.maxPriceCents !== undefined ? formatAud(s.maxPriceCents) : "any"}`] : []),
+  ...(s.minBedrooms !== undefined ? [`${s.minBedrooms}+ bed`] : []),
+  ...(s.minBathrooms !== undefined ? [`${s.minBathrooms}+ bath`] : []),
+  ...(s.minParking !== undefined ? [`${s.minParking}+ parking`] : []),
+  ...(s.amenities?.length ? [s.amenities.map(a => AMENITY_LABELS[a]).join(", ")] : []),
+  ...(s.near ? [`within ${s.near.radiusKm} km of a saved point`] : [])
 ].join(" · ");
 
 const consented = (prefs: AlertPreference[], channel: "email" | "sms") => {
@@ -25,6 +35,18 @@ export default function SavedSearches() {
   const [signedOut, setSignedOut] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [hints, setHints] = useState<string[]>([]);
+
+  /** Checks the form with the server's rules as the buyer leaves a field, so mistakes show before saving. */
+  function validate(form: HTMLFormElement) {
+    const fd = new FormData(form);
+    const checked = savedSearchFormBody(fd);
+    setError("error" in checked ? checked.error : "");
+    setHints(savedSearchHints(fd));
+  }
+  const [confirmId, setConfirmId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState("");
 
   useEffect(() => {
     Promise.all([fetch("/api/buyer/saved-searches"), fetch("/api/buyer/alert-preferences")])
@@ -59,6 +81,21 @@ export default function SavedSearches() {
     }
   }
 
+  async function onDelete(id: string) {
+    setDeletingId(id);
+    setDeleteError("");
+    try {
+      const res = await fetch(`/api/buyer/saved-searches/${encodeURIComponent(id)}`, { method: "DELETE" });
+      if (res.status === 401) setSignedOut(true);
+      else if (res.ok || res.status === 404) { setSearches(list => list.filter(x => x.id !== id)); setConfirmId(null); }
+      else setDeleteError("Could not delete the search. Please try again.");
+    } catch {
+      setDeleteError("Could not delete the search. Please try again.");
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
   async function setConsent(channel: "email" | "sms", consent: boolean) {
     setBusy(true);
     setError("");
@@ -79,7 +116,7 @@ export default function SavedSearches() {
       <h1>Saved searches</h1>
       {signedOut && <p role="alert"><a href="/login?as=buyer&next=/buyer/saved-searches">Sign in</a> to save a search.</p>}
       <p className="muted">Save what you are looking for and we can tell you when a matching property is listed.</p>
-      <form className="stack" onSubmit={onSubmit} noValidate>
+      <form className="stack" onSubmit={onSubmit} onBlur={e => validate(e.currentTarget)} onChange={e => validate(e.currentTarget)} noValidate>
         <fieldset className="form-section">
           <legend>What are you looking for</legend>
           <div className="form-grid">
@@ -111,23 +148,57 @@ export default function SavedSearches() {
               <input name="suburbs" placeholder="Separate suburbs with commas" />
             </label>
             <label className="field">Minimum price ($)
-              <input name="minPrice" inputMode="decimal" />
+              <input name="minPrice" inputMode="decimal" placeholder="e.g. 500000 (rent: per week)" />
             </label>
             <label className="field">Maximum price ($)
-              <input name="maxPrice" inputMode="decimal" />
+              <input name="maxPrice" inputMode="decimal" placeholder="e.g. 900000 (rent: per week)" />
             </label>
             <label className="field">Minimum bedrooms
-              <input name="minBedrooms" inputMode="numeric" />
+              <input name="minBedrooms" inputMode="numeric" placeholder="1 or more (studios count as 1)" />
             </label>
+            <label className="field">Minimum bathrooms
+              <input name="minBathrooms" inputMode="numeric" placeholder="Optional, e.g. 1" />
+            </label>
+            <label className="field">Minimum parking
+              <input name="minParking" inputMode="numeric" placeholder="Optional, e.g. 1" />
+            </label>
+            <fieldset className="field span-all mf-group">
+              <legend>Must have</legend>
+              <div className="amenity-checks">
+                {AMENITIES.map(a => <label key={a} className="check"><input type="checkbox" name="amenities" value={a} /><span>{AMENITY_LABELS[a]}</span></label>)}
+              </div>
+            </fieldset>
           </div>
         </fieldset>
         <div className="form-bar"><button type="submit" disabled={busy}>Save search</button></div>
       </form>
       {error && <p role="alert">{error}</p>}
+      {hints.map(h => <p key={h} className="muted">{h}</p>)}
 
       <section>
         <h2>Your searches</h2>
-        {searches.length === 0 ? <p className="empty">No saved searches yet.</p> : <ul className="card-list">{searches.map(s => <li key={s.id}>{summarise(s)}</li>)}</ul>}
+        {searches.length === 0 ? <p className="empty">No saved searches yet.</p> : (
+          <ul className="card-list">
+            {searches.map(s => (
+              <li key={s.id} className="ss-row">
+                <span className="ss-text">{summarise(s)}</span>
+                 <a className="button" href={savedSearchHref(s)}>View listings</a>
+                {confirmId === s.id ? (
+                  <span className="ss-confirm" role="group" aria-label="Confirm delete">
+                    <span id={`ss-q-${s.id}`}>Delete this search?</span>
+                    <button type="button" className="secondary" disabled={deletingId === s.id} onClick={() => { setConfirmId(null); setDeleteError(""); }}>Cancel</button>
+                    <button type="button" className="danger" aria-describedby={`ss-q-${s.id}`} disabled={deletingId === s.id} onClick={() => void onDelete(s.id)}>{deletingId === s.id ? "Deleting…" : "Delete"}</button>
+                  </span>
+                ) : (
+                  <button type="button" className="secondary ss-trash" aria-label={`Delete saved search: ${summarise(s)}`} title="Delete" disabled={deletingId !== null} onClick={() => { setConfirmId(s.id); setDeleteError(""); }}>
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6" /></svg>
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+        {deleteError && <p role="alert">{deleteError}</p>}
       </section>
 
       <section>
@@ -145,7 +216,7 @@ export default function SavedSearches() {
           </label>
         ))}
       </section>
-      <p><a href="/listings">View listings</a></p>
+      <p className="ss-cta"><a className="button" href="/listings">Browse all listings →</a></p>
     </main>
   );
 }

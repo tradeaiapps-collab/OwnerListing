@@ -1,3 +1,4 @@
+import { AGENT_PERMISSIONS, agentPermissions, isAgentPermission, SCOPE_PERMISSIONS, type AgentPermission } from "./access";
 import type { AuditEvent } from "./audit";
 import type { Jurisdiction } from "./jurisdiction";
 import { hasVerifiedLicence, type AgentLicence } from "./licence";
@@ -15,6 +16,8 @@ export interface AppointmentInvite {
   ownerUserId: string;
   agentUserId: string;
   scope: AppointmentScope;
+  /** The owner's narrower choice inside the scope. Absent means everything the scope allows. */
+  permissions?: AgentPermission[];
   status: InviteStatus;
   createdAt: string;
 }
@@ -26,6 +29,7 @@ export interface AppointmentRecord {
   ownerUserId: string;
   agentUserId: string;
   scope: AppointmentScope;
+  permissions?: AgentPermission[];
   appointedAt: string;
   revokedAt?: string;
 }
@@ -36,8 +40,8 @@ export type AgentRef = { by: "id"; userId: string } | { by: "email"; email: stri
 
 /** What the owner sees for one listing. Agent email addresses are never returned. */
 export interface OwnerAgentView {
-  active: (AppointmentRecord & { agentName: string; licensed: boolean }) | null;
-  invites: (AppointmentInvite & { agentName: string; licensed: boolean })[];
+  active: (AppointmentRecord & { agentName: string; licensed: boolean; granted: readonly AgentPermission[] }) | null;
+  invites: (AppointmentInvite & { agentName: string; licensed: boolean; granted: readonly AgentPermission[] })[];
 }
 
 /** One line in the agent's list: an open invitation or an active appointment. */
@@ -49,7 +53,10 @@ export interface AgentAppointmentItem {
   jurisdiction: Jurisdiction;
   ownerName: string;
   scope: AppointmentScope;
+  permissions?: AgentPermission[];
   since: string;
+  /** What the agent may do on this listing (their responsibilities), after the owner's choices. */
+  granted: readonly AgentPermission[];
   /** Whether this agent holds a verified, unexpired licence for the listing's state today. */
   licensed: boolean;
 }
@@ -79,7 +86,9 @@ export interface AgentAppointmentRepository {
   /** Sets revoked_at and revoked_by when the appointment is active and on a listing the owner owns. */
   revoke(appointmentId: string, ownerUserId: string, at: string, audit: AuditEvent): Promise<boolean>;
   ownerView(listingId: string): Promise<{ active: (AppointmentRecord & { agentName: string }) | null; invites: (AppointmentInvite & { agentName: string })[] }>;
-  agentItems(agentUserId: string): Promise<Omit<AgentAppointmentItem, "licensed">[]>;
+  agentItems(agentUserId: string): Promise<Omit<AgentAppointmentItem, "licensed" | "granted">[]>;
+  /** Replaces the permission list of an active appointment on a listing the owner owns. */
+  setPermissions(appointmentId: string, ownerUserId: string, permissions: AgentPermission[], audit: AuditEvent): Promise<boolean>;
   verifiedLicences(): Promise<AgentLicence[]>;
 }
 
@@ -105,6 +114,22 @@ export function parseAgentRef(o: Record<string, unknown>): AgentRef | undefined 
     return e.length <= MAX_EMAIL && EMAIL.test(e) ? { by: "email", email: e } : undefined;
   }
   return undefined;
+}
+
+/**
+ * Optional owner choice of permissions inside the scope. Undefined keeps the whole scope. Unknown names, permissions
+ * the scope does not allow (publishing needs "full") and an empty list are refused. Returned in canonical order.
+ */
+export function parsePermissions(raw: unknown, scope: AppointmentScope): Result<AgentPermission[] | undefined> {
+  if (raw === undefined || raw === null) return { ok: true, value: undefined };
+  if (!Array.isArray(raw) || raw.length === 0 || raw.length > AGENT_PERMISSIONS.length * 2 || !raw.every(isAgentPermission)) {
+    return { ok: false, code: "invalid", message: "Choose at least one permission from the list." };
+  }
+  const ceiling = SCOPE_PERMISSIONS[scope];
+  if (raw.some(p => !ceiling.includes(p))) {
+    return { ok: false, code: "invalid", message: "That permission needs the full scope." };
+  }
+  return { ok: true, value: AGENT_PERMISSIONS.filter(p => raw.includes(p)) };
 }
 
 function audit(ids: AppointmentIds, actor: Actor, aggregateId: string, eventType: string, payload: Record<string, unknown>): AuditEvent {
@@ -139,6 +164,8 @@ export async function inviteAgent(
   if (!isScope(scope)) return { ok: false, code: "invalid", message: "Scope must be enquiries_and_offers or full." };
   const ref = parseAgentRef(o);
   if (!ref) return { ok: false, code: "invalid", message: "Give the agent's user id or email address." };
+  const perms = parsePermissions(o["permissions"], scope);
+  if (!perms.ok) return perms;
 
   if (await repo.activeForListing(listingId)) {
     return { ok: false, code: "conflict", message: "This listing already has an agent. Revoke the current appointment first." };
@@ -149,9 +176,11 @@ export async function inviteAgent(
   }
 
   const invite: AppointmentInvite = {
-    id: ids.newId(), listingId, ownerUserId: actor.userId, agentUserId: agent.id, scope, status: "proposed", createdAt: ids.now()
+    id: ids.newId(), listingId, ownerUserId: actor.userId, agentUserId: agent.id, scope,
+    ...(perms.value ? { permissions: perms.value } : {}), status: "proposed", createdAt: ids.now()
   };
-  const stored = await repo.insertInvite(invite, audit(ids, actor, invite.id, "agent_appointment.invited", { listingId, agentUserId: agent.id, scope }));
+  const stored = await repo.insertInvite(invite, audit(ids, actor, invite.id, "agent_appointment.invited",
+    { listingId, agentUserId: agent.id, scope, permissions: perms.value ?? null }));
   return stored ? { ok: true, value: invite } : { ok: false, code: "conflict", message: "This agent already has an open invitation for this listing." };
 }
 
@@ -187,7 +216,7 @@ export async function respondToInvite(
     }
     const appointment: AppointmentRecord = {
       id: ids.newId(), listingId: invite.listingId, ownerUserId: invite.ownerUserId, agentUserId: actor.userId,
-      scope: invite.scope, appointedAt: ids.now()
+      scope: invite.scope, ...(invite.permissions ? { permissions: invite.permissions } : {}), appointedAt: ids.now()
     };
     const outcome = await repo.acceptInvite(invite.id, actor.userId, appointment,
       audit(ids, actor, appointment.id, "agent_appointment.accepted", { listingId: invite.listingId, inviteId: invite.id, scope: invite.scope }));
@@ -218,6 +247,26 @@ export async function revokeAppointment(
   return done ? { ok: true, value: { ...a, revokedAt: at } } : { ok: false, code: "conflict", message: "This appointment changed. Refresh and try again." };
 }
 
+/**
+ * The owner changes what the active agent may do, within the appointment's scope. Takes effect on the agent's next
+ * request (every agent check reads the stored list). Audited with the old and new lists.
+ */
+export async function setAgentPermissions(
+  repo: AgentAppointmentRepository, actor: Actor, appointmentId: string, input: unknown, ids: AppointmentIds
+): Promise<Result<AppointmentRecord>> {
+  if (!UUID.test(appointmentId)) return notFound;
+  const a = await repo.getAppointment(appointmentId);
+  if (!a || a.ownerUserId !== actor.userId) return notFound;
+  if (a.revokedAt) return { ok: false, code: "conflict", message: "This appointment is revoked." };
+  const raw = typeof input === "object" && input !== null ? (input as Record<string, unknown>)["permissions"] : undefined;
+  const perms = parsePermissions(raw, a.scope);
+  if (!perms.ok) return perms;
+  if (!perms.value) return { ok: false, code: "invalid", message: "Choose at least one permission from the list." };
+  const done = await repo.setPermissions(a.id, actor.userId, perms.value, audit(ids, actor, a.id, "agent_appointment.permissions_changed",
+    { listingId: a.listingId, from: agentPermissions(a), to: perms.value }));
+  return done ? { ok: true, value: { ...a, permissions: perms.value } } : { ok: false, code: "conflict", message: "This appointment changed. Refresh and try again." };
+}
+
 /** The owner's view of a listing's agent: the active appointment and open invitations, each with licence status. */
 export async function ownerAgentView(
   repo: AgentAppointmentRepository, actor: Actor, listingId: string, now: string
@@ -230,8 +279,10 @@ export async function ownerAgentView(
   return {
     ok: true,
     value: {
-      active: view.active ? { ...view.active, licensed: licensed(view.active.agentUserId, listing.jurisdiction) } : null,
-      invites: view.invites.map(i => ({ ...i, licensed: licensed(i.agentUserId, listing.jurisdiction) }))
+      active: view.active
+        ? { ...view.active, licensed: licensed(view.active.agentUserId, listing.jurisdiction), granted: agentPermissions(view.active) }
+        : null,
+      invites: view.invites.map(i => ({ ...i, licensed: licensed(i.agentUserId, listing.jurisdiction), granted: agentPermissions(i) }))
     }
   };
 }
@@ -242,7 +293,8 @@ export async function agentAppointments(
 ): Promise<Result<AgentAppointmentItem[]>> {
   if (actor.userType !== "agent") return { ok: false, code: "forbidden", message: "Only agent accounts have appointments." };
   const licensed = await licensedFor(repo, now);
-  const items = (await repo.agentItems(actor.userId)).map(i => ({ ...i, licensed: licensed(actor.userId, i.jurisdiction) }));
+  const items = (await repo.agentItems(actor.userId))
+    .map(i => ({ ...i, granted: agentPermissions(i), licensed: licensed(actor.userId, i.jurisdiction) }));
   items.sort((a, b) => (a.kind === b.kind ? (a.since < b.since ? 1 : a.since > b.since ? -1 : 0) : a.kind === "invite" ? -1 : 1));
   return { ok: true, value: items };
 }
@@ -318,14 +370,21 @@ export function createInMemoryAgentAppointmentRepository(seed: {
       const open = invites.filter(i => i.agentUserId === agentUserId && i.status === "proposed").flatMap(i => {
         const l = listing(i.listingId);
         return l ? [{ kind: "invite" as const, id: i.id, listingId: i.listingId, listingTitle: l.title ?? "Listing", jurisdiction: l.jurisdiction,
-          ownerName: nameOf(i.ownerUserId), scope: i.scope, since: i.createdAt }] : [];
+          ownerName: nameOf(i.ownerUserId), scope: i.scope, ...(i.permissions ? { permissions: i.permissions } : {}), since: i.createdAt }] : [];
       });
       const live = appointments.filter(a => a.agentUserId === agentUserId && !a.revokedAt).flatMap(a => {
         const l = listing(a.listingId);
         return l ? [{ kind: "appointment" as const, id: a.id, listingId: a.listingId, listingTitle: l.title ?? "Listing", jurisdiction: l.jurisdiction,
-          ownerName: nameOf(a.ownerUserId), scope: a.scope, since: a.appointedAt }] : [];
+          ownerName: nameOf(a.ownerUserId), scope: a.scope, ...(a.permissions ? { permissions: a.permissions } : {}), since: a.appointedAt }] : [];
       });
       return [...open, ...live];
+    },
+    async setPermissions(appointmentId, ownerUserId, permissions, a) {
+      const x = appointments.find(y => y.id === appointmentId);
+      if (!x || x.revokedAt || x.ownerUserId !== ownerUserId) return false;
+      x.permissions = [...permissions];
+      audits.push(a);
+      return true;
     },
     async verifiedLicences() { return seed.licences ?? []; }
   };

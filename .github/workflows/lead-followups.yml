@@ -1,0 +1,39 @@
+name: Elena lead follow-ups (every 15 minutes)
+
+# Calls Elena's lead follow-up job every 15 minutes: closes idle chats, sends check-ins (8am to 8pm local, at most two, only to people who texted or emailed first),
+# flags agents who have not made first contact and deletes old conversation text. Safe to repeat: each follow-up is handled once.
+# Repository secrets: APP_URL (public https origin, no trailing slash) and LEAD_CRON_SECRET (same value as the app).
+# While both are unset the run is skipped with a warning; one without the other, or any non-2xx answer, fails the run.
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: lead-followups
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Call the follow-up job
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          CRON_SECRET: ${{ secrets.LEAD_CRON_SECRET }}
+        run: |
+          if [ -z "$APP_URL" ] && [ -z "$CRON_SECRET" ]; then
+            echo "::warning::APP_URL and LEAD_CRON_SECRET are not set; skipping (no deployment to call yet)."
+            exit 0
+          fi
+          if [ -z "$APP_URL" ] || [ -z "$CRON_SECRET" ]; then
+            echo "::error::Set both APP_URL and LEAD_CRON_SECRET."
+            exit 1
+          fi
+          body=$(curl -sS --fail-with-body --retry 3 --retry-all-errors --max-time 60 -X POST \
+            -H "x-cron-secret: $CRON_SECRET" "$APP_URL/api/internal/leads/followups")
+          echo "$body"
+          echo "Lead follow-ups $(date -u +%FT%TZ): $body" >> "$GITHUB_STEP_SUMMARY"

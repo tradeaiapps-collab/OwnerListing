@@ -1,0 +1,12 @@
+/* Facebook / Instagram lead ads keys (staff). Tokens only. */
+.meta-status { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); padding: var(--space-4); margin: var(--space-4) 0; border: 1px solid var(--line); border-radius: var(--radius); background: var(--elevated); box-shadow: var(--shadow-1); }
+.meta-status p { margin: 0; flex: 1 1 14rem; min-width: 0; overflow-wrap: anywhere; }
+.meta-status .meta-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.meta-form { display: grid; gap: var(--space-4); max-width: 40rem; }
+.meta-field { display: grid; gap: var(--space-1); font-weight: 600; min-width: 0; }
+.meta-field small { font-weight: 400; color: var(--muted); overflow-wrap: anywhere; }
+.meta-field .meta-row { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.meta-field .meta-row input { flex: 1 1 14rem; min-width: 0; }
+.meta-url { display: grid; gap: var(--space-2); max-width: 40rem; }
+.meta-url code { overflow-wrap: anywhere; word-break: break-all; padding: var(--space-2) var(--space-3); border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
+.meta-steps { max-width: 40rem; padding-left: var(--space-5); display: grid; gap: var(--space-2); }

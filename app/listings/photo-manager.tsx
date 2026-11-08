@@ -1,11 +1,14 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { PHOTO_BASE, PHOTO_LIMITS, PROJECT_PHOTO_MAX, makeCover, moveEntry, photoUrl, type PhotoKind, type PhotoView } from "../../src/domain/listing-photos";
+import { classifyTour } from "../../src/domain/virtual-tour";
+import { FEATURE_LIMITS, PHOTO_BASE, PHOTO_CATEGORIES, PHOTO_LIMITS, PROFANITY_MESSAGE, PROJECT_PHOTO_MAX, findProfanity, isPhotoCategory, makeCover, moveEntry, photoUrl, type PhotoKind, type PhotoView } from "../../src/domain/listing-photos";
+import { HASH_COLS, HASH_ROWS, dHash, findDuplicates } from "../../src/domain/photo-duplicates";
 import { JSON_HEADERS } from "./ui";
 import "../styles/gallery.css";
 
 type Gallery = { photos: PhotoView[]; tourUrl: string | null; version: number; canManage: boolean; canUpload: boolean; everPublished: boolean; editable: boolean };
 type Row = PhotoView;
+type Suggestion = { photoId: string; caption: string; features: string[] };
 type QueueItem = { name: string; state: "waiting" | "uploading" | "done" | "error"; message?: string };
 
 const TYPES = ["image/jpeg", "image/png", "image/webp"];
@@ -17,6 +20,28 @@ function precheck(f: File): string | null {
   if (f.size > PHOTO_LIMITS.maxBytes) return `Larger than ${MB} MB.`;
   if (f.size === 0) return "Empty file.";
   return null;
+}
+
+/** Loads an image from our own origin and returns its difference hash, or null if it cannot be read. */
+function hashImage(url: string): Promise<string | null> {
+  return new Promise(resolve => {
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const c = document.createElement("canvas");
+        c.width = HASH_COLS; c.height = HASH_ROWS;
+        const g = c.getContext("2d", { willReadFrequently: true });
+        if (!g) return resolve(null);
+        g.drawImage(img, 0, 0, HASH_COLS, HASH_ROWS);
+        const px = g.getImageData(0, 0, HASH_COLS, HASH_ROWS).data;
+        const grey: number[] = [];
+        for (let i = 0; i < px.length; i += 4) grey.push(px[i]! * 0.299 + px[i + 1]! * 0.587 + px[i + 2]! * 0.114);
+        resolve(dHash(grey));
+      } catch { resolve(null); }
+    };
+    img.onerror = () => resolve(null);
+    img.src = url;
+  });
 }
 
 async function errorOf(r: Response): Promise<string> {
@@ -50,6 +75,13 @@ export function PhotoManager({ listingId, projectId }: { listingId?: string; pro
   const [drag, setDrag] = useState<number | null>(null);
   const [target, setTarget] = useState<number | null>(null);
   const input = useRef<HTMLInputElement>(null);
+  /** Photos whose text the owner has checked (left a field) and photos where they chose to post flagged wording anyway. */
+  const [checked, setChecked] = useState<ReadonlySet<string>>(new Set());
+  const [allowed, setAllowed] = useState<ReadonlySet<string>>(new Set());
+  const [elena, setElena] = useState<{ busy: boolean; message: string; items: Suggestion[]; label: string }>({ busy: false, message: "", items: [], label: "" });
+
+  const [hashes, setHashes] = useState<Record<string, string | null>>({});
+  const [kept, setKept] = useState<string[]>([]);
 
   const load = useCallback(async () => {
     setLoadError("");
@@ -65,7 +97,25 @@ export function PhotoManager({ listingId, projectId }: { listingId?: string; pro
   }, [listUrl, isProject]);
   useEffect(() => { void load(); }, [load]);
 
+  // Fingerprint each photo in the browser so repeats are flagged as soon as they appear (before Elena writes captions).
+  useEffect(() => {
+    if (isProject) return;
+    let live = true;
+    const todo = rows.filter(r => r.kind === "photo" && !(r.id in hashes));
+    if (todo.length === 0) return;
+    void Promise.all(todo.map(async r => [r.id, await hashImage(photoUrl(r.id, r.sizes.includes("thumb") ? "thumb" : "full", base))] as const))
+      .then(done => { if (live) setHashes(h => ({ ...h, ...Object.fromEntries(done) })); });
+    return () => { live = false; };
+  }, [rows, hashes, base, isProject]);
+  const dupes = findDuplicates(rows.filter(r => r.kind === "photo" && !r.hidden).map(r => ({ id: r.id, hash: hashes[r.id] ?? null })))
+    .filter(d => !kept.includes(d.second));
+  const roomLabel = (r: Row) => PHOTO_CATEGORIES.find(c => c.key === r.category)?.label;
+
   const change = (next: Row[]) => { setRows(next); setDirty(true); setStatus(""); };
+  const flagged = (r: Row): boolean => findProfanity([r.caption, r.alt, ...r.features].join(" . ")).length > 0;
+  /** aria-invalid for one field: only the field that holds the flagged wording, once the owner has left the photo's fields. */
+  const shown = (r: Row, text: string) => (checked.has(r.id) && !allowed.has(r.id) && findProfanity(text).length > 0 ? true : undefined);
+  const markChecked = (id: string) => setChecked(prev => new Set(prev).add(id));
   const patch = (i: number, p: Partial<Row>) => change(rows.map((r, j) => (j === i ? { ...r, ...p } : r)));
   const move = (from: number, to: number) => {
     change(moveEntry(rows, from, to));
@@ -77,7 +127,7 @@ export function PhotoManager({ listingId, projectId }: { listingId?: string; pro
     if (dirty) { setError("Save or undo your changes before adding photos."); return; }
     setError("");
     const showing = rows.filter(r => !r.hidden && r.kind === kind).length;
-    const room = (isProject ? PROJECT_PHOTO_MAX : kind === "photo" ? PHOTO_LIMITS.maxPhotos : PHOTO_LIMITS.maxFloorplans) - showing;
+    const room = (isProject ? PROJECT_PHOTO_MAX : kind === "photo" ? PHOTO_LIMITS.maxPhotos : kind === "photo360" ? PHOTO_LIMITS.max360 : PHOTO_LIMITS.maxFloorplans) - showing;
     const items: QueueItem[] = files.map((f, i) => {
       const bad = precheck(f);
       if (bad) return { name: f.name, state: "error", message: bad };
@@ -107,12 +157,42 @@ export function PhotoManager({ listingId, projectId }: { listingId?: string; pro
     await load();
   }
 
+  /** Asks Elena for captions and feature tags. Suggestions are shown for review; nothing changes until the owner applies them. */
+  async function askElena() {
+    if (!listingId) return;
+    if (dupes.length > 0) { setElena({ busy: false, message: "Fix or keep the repeated photos below first, then ask Elena again.", items: [], label: "" }); return; }
+    const sendable = rows.filter(r => r.kind === "photo" && !r.hidden).slice(0, 12);
+    setElena({ busy: true, message: "", items: [], label: "" });
+    try {
+      const r = await fetch(`${listUrl}/suggest`, { method: "POST", headers: JSON_HEADERS, body: JSON.stringify({ photos: sendable.map(p => ({ photoId: p.id, category: p.category || undefined, note: p.alt || undefined })) }) });
+      if (!r.ok) { setElena({ busy: false, message: r.status === 429 ? "Too many requests. Try again later." : await errorOf(r), items: [], label: "" }); return; }
+      const d = await r.json();
+      if (d.state !== "ready") { setElena({ busy: false, message: d.message ?? "Elena is unavailable right now.", items: [], label: "" }); return; }
+      const skipped = (d.skipped ?? []).length;
+      setElena({ busy: false, items: d.suggestions, label: d.label, message: skipped ? `${skipped} ${skipped === 1 ? "photo was" : "photos were"} skipped: choose a room or add a description first.` : "" });
+    } catch {
+      setElena({ busy: false, message: "Could not reach Elena. Try again.", items: [], label: "" });
+    }
+  }
+  const apply = (items: Suggestion[]) => {
+    change(rows.map(r => { const s = items.find(x => x.photoId === r.id); return s ? { ...r, caption: s.caption, features: s.features, alt: r.alt || s.caption } : r; }));
+    setElena(e => ({ ...e, items: e.items.filter(x => !items.includes(x)) }));
+    setStatus(`${items.length} ${items.length === 1 ? "suggestion" : "suggestions"} applied. Check them, then save.`);
+  };
+
   async function save() {
     if (!data) return;
+    const blocked = rows.filter(r => flagged(r) && !allowed.has(r.id));
+    if (blocked.length) {
+      setChecked(prev => new Set([...prev, ...blocked.map(r => r.id)]));
+      setError(`${PROFANITY_MESSAGE} (${blocked.map(r => `photo ${rows.indexOf(r) + 1}`).join(", ")})`);
+      return;
+    }
     setBusy(true); setError(""); setStatus("");
     try {
-      const entries = rows.map(r => ({ photoId: r.id, caption: r.caption, alt: r.alt, hidden: r.hidden }));
-      const body = isProject ? { version: data.version, entries } : { version: data.version, tourUrl: tour.trim() || null, entries };
+      const entries = rows.map(r => ({ photoId: r.id, caption: r.caption, alt: r.alt, hidden: r.hidden, ...(isProject ? {} : { category: r.category, features: r.features }) }));
+      const override = rows.some(r => flagged(r)) ? { allowFlagged: true } : {};
+      const body = isProject ? { version: data.version, entries, ...override } : { version: data.version, tourUrl: tour.trim() || null, entries, ...override };
       const r = await fetch(layoutUrl, { method: "PUT", headers: JSON_HEADERS, body: JSON.stringify(body) });
       if (r.ok) {
         const review = isProject && (await r.json().catch(() => ({}))).backToReview === true;
@@ -136,7 +216,7 @@ export function PhotoManager({ listingId, projectId }: { listingId?: string; pro
     <section className="gl-mgr" aria-labelledby="gl-mgr-h">
       <h2 id="gl-mgr-h">{isProject ? "Gallery" : "Photos and floor plans"}</h2>
       <p className="muted">
-        {isProject ? `${counts.photo} of ${PROJECT_PHOTO_MAX} photos.` : `${counts.photo} of ${PHOTO_LIMITS.maxPhotos} photos, ${counts.floorplan} of ${PHOTO_LIMITS.maxFloorplans} floor plans.`} JPEG, PNG or WebP, up to {MB} MB each.
+        {isProject ? `${counts.photo} of ${PROJECT_PHOTO_MAX} photos.` : `${counts.photo} of ${PHOTO_LIMITS.maxPhotos} photos, ${counts.floorplan} of ${PHOTO_LIMITS.maxFloorplans} floor plans, ${rows.filter(r => !r.hidden && r.kind === "photo360").length} of ${PHOTO_LIMITS.max360} 360 photos.`} JPEG, PNG or WebP, up to {MB} MB each.
         Location and camera details are removed from every image. The first photo is the cover.
       </p>
       {isProject && <p className="muted">Photos are shown only to investors who can see the full project. They are kept on record: you can hide, reorder or replace them, but not delete them. Any change except hiding sends an approved project back to staff review.</p>}
@@ -156,6 +236,7 @@ export function PhotoManager({ listingId, projectId }: { listingId?: string; pro
                 <select id="gl-kind" value={kind} onChange={e => setKind(e.target.value as PhotoKind)} disabled={busy}>
                   <option value="photo">Photos</option>
                   <option value="floorplan">Floor plans</option>
+                  <option value="photo360">360 photos (2:1 panorama)</option>
                 </select>
               </>
             )}
@@ -175,10 +256,60 @@ export function PhotoManager({ listingId, projectId }: { listingId?: string; pro
         </div>
       )}
 
+      {manage && !isProject && counts.photo > 0 && (
+        <div className="gl-elena">
+          <div className="form-bar">
+            <button type="button" className="secondary" onClick={() => void askElena()} disabled={busy || elena.busy}>{elena.busy ? "Elena is thinking..." : "Ask Elena for captions"}</button>
+            <span className="muted">Elena can't see your photos. She writes from the room and description you give each one, so choose a room first.</span>
+          </div>
+          {dupes.length > 0 && (
+            <div role="alert" className="gl-dupes">
+              <p><strong>{dupes.length === 1 ? "A photo looks repeated." : `${dupes.length} photos look repeated.`}</strong> Using the same shot twice makes the gallery look padded.</p>
+              <ul className="gl-sugg">
+                {dupes.map(d => {
+                  const a = rows.findIndex(r => r.id === d.first), b = rows.findIndex(r => r.id === d.second);
+                  const room = rows[a] && roomLabel(rows[a]!);
+                  return (
+                    <li key={d.second}>
+                      <span>Photo {b + 1} {d.exact ? "is the same as" : "looks like"} photo {a + 1}{room ? ` (${room})` : ""}. Use a different photo for this room.</span>
+                      <button type="button" className="secondary" disabled={busy} onClick={() => { patch(b, { hidden: true }); setStatus(`Photo ${b + 1} hidden. Save to apply.`); }}>Hide photo {b + 1}</button>
+                      {!data.everPublished && <button type="button" className="secondary" disabled={busy} onClick={() => { change(rows.filter(x => x.id !== d.second)); }}>Remove photo {b + 1}</button>}
+                      <button type="button" className="secondary" onClick={() => setKept(k => [...k, d.second])}>Keep both</button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          )}
+          {elena.message && <p role="status">{elena.message}</p>}
+          {elena.items.length > 0 && (
+            <div aria-live="polite">
+              <p className="muted">{elena.label}</p>
+              <ul className="gl-sugg">
+                {elena.items.map(sg => {
+                  const n = rows.findIndex(r => r.id === sg.photoId) + 1;
+                  return (
+                    <li key={sg.photoId}>
+                      <strong>Photo {n}:</strong> {sg.caption}
+                      {sg.features.length > 0 && <span className="gl-feats">{sg.features.map(f => <span key={f} className="gl-feat">{f}</span>)}</span>}
+                      <button type="button" className="secondary" onClick={() => apply([sg])} aria-label={`Use suggestion for photo ${n}`}>Use</button>
+                    </li>
+                  );
+                })}
+              </ul>
+              <div className="form-bar">
+                <button type="button" onClick={() => apply(elena.items)}>Use all</button>
+                <button type="button" className="secondary" onClick={() => setElena(e => ({ ...e, items: [] }))}>Dismiss</button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {rows.length === 0 ? <p className="muted">No photos yet.</p> : (
         <ol className="gl-list" aria-label="Gallery order">
           {rows.map((r, i) => {
-            const label = `${r.kind === "floorplan" ? "Floor plan" : "Photo"} ${i + 1}`;
+            const label = `${r.kind === "floorplan" ? "Floor plan" : r.kind === "photo360" ? "360 photo" : "Photo"} ${i + 1}`;
             return (
               <li key={r.id} className={["gl-item", r.hidden && "is-hidden", drag === i && "is-dragging", target === i && drag !== i && "is-target"].filter(Boolean).join(" ")}
                 draggable={manage} onDragStart={e => { setDrag(i); e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", r.id); }}
@@ -192,17 +323,42 @@ export function PhotoManager({ listingId, projectId }: { listingId?: string; pro
                     <span className="gl-badge">{i + 1}</span>
                     {r.id === coverId && <span className="gl-badge is-cover">Cover</span>}
                     {r.kind === "floorplan" && <span className="gl-badge">Floor plan</span>}
+                    {r.kind === "photo360" && <span className="gl-badge">360</span>}
+                    {r.category && <span className="gl-badge">{PHOTO_CATEGORIES.find(c => c.key === r.category)?.label}</span>}
                     {r.hidden && <span className="gl-badge">Hidden</span>}
                   </span>
                 </div>
                 {manage && (
                   <>
+                    {!isProject && r.kind === "photo" && (
+                      <label>Room
+                        <select value={r.category} onChange={e => patch(i, { category: isPhotoCategory(e.target.value) ? e.target.value : "" })}>
+                          <option value="">Not sorted yet</option>
+                          {PHOTO_CATEGORIES.map(c => <option key={c.key} value={c.key}>{c.label}</option>)}
+                        </select>
+                      </label>
+                    )}
                     <label>Caption (shown under the photo)
-                      <input value={r.caption} maxLength={PHOTO_LIMITS.captionMax} onChange={e => patch(i, { caption: e.target.value })} placeholder="e.g. Kitchen with stone benchtop" />
+                      <input value={r.caption} maxLength={PHOTO_LIMITS.captionMax} onChange={e => patch(i, { caption: e.target.value })} onBlur={() => markChecked(r.id)} aria-invalid={shown(r, r.caption)} placeholder="e.g. Kitchen with stone benchtop" />
                     </label>
                     <label>Description for screen readers
-                      <input value={r.alt} maxLength={PHOTO_LIMITS.altMax} onChange={e => patch(i, { alt: e.target.value })} placeholder="What the photo shows" />
+                      <input value={r.alt} maxLength={PHOTO_LIMITS.altMax} onChange={e => patch(i, { alt: e.target.value })} onBlur={() => markChecked(r.id)} aria-invalid={shown(r, r.alt)} placeholder="What the photo shows" />
                     </label>
+                    {!isProject && r.kind === "photo" && (
+                      <label>Features (comma separated, up to {FEATURE_LIMITS.maxPerPhoto})
+                        <input defaultValue={r.features.join(", ")} key={`${r.id}:${r.features.join("|")}`} maxLength={FEATURE_LIMITS.maxPerPhoto * (FEATURE_LIMITS.maxChars + 2)} placeholder="e.g. stone benchtop, gas cooktop"
+                          onChange={() => setDirty(true)} onBlur={e => { patch(i, { features: e.target.value.split(",").map(x => x.trim()).filter(Boolean).slice(0, FEATURE_LIMITS.maxPerPhoto) }); markChecked(r.id); }} />
+                      </label>
+                    )}
+                    {checked.has(r.id) && flagged(r) && (
+                      allowed.has(r.id)
+                        ? <p className="muted" role="status">Posting this wording anyway. <button type="button" className="secondary" onClick={() => setAllowed(prev => { const n = new Set(prev); n.delete(r.id); return n; })}>Undo</button></p>
+                        : (
+                          <p className="gl-warn" role="alert">{PROFANITY_MESSAGE}{" "}
+                            <button type="button" className="secondary" onClick={() => setAllowed(prev => new Set(prev).add(r.id))}>Post anyway (for example a product or street name)</button>
+                          </p>
+                        )
+                    )}
                     <div className="gl-tools">
                       <button type="button" className="secondary" disabled={busy || i === 0} onClick={() => move(i, i - 1)} aria-label={`Move ${label} up`}>Up</button>
                       <button type="button" className="secondary" disabled={busy || i === rows.length - 1} onClick={() => move(i, i + 1)} aria-label={`Move ${label} down`}>Down</button>
@@ -231,9 +387,17 @@ export function PhotoManager({ listingId, projectId }: { listingId?: string; pro
 
       {manage && !isProject && (
         <div className="stack gl-tour">
-          <label>Video or virtual tour link (optional)
-            <input type="url" inputMode="url" placeholder="https://" maxLength={PHOTO_LIMITS.tourUrlMax} value={tour} onChange={e => { setTour(e.target.value); setDirty(true); }} />
+          <label>3D tour, video or virtual tour link (optional)
+            <input type="url" inputMode="url" placeholder="https://my.matterport.com/show/?m=..." maxLength={PHOTO_LIMITS.tourUrlMax} value={tour} onChange={e => { setTour(e.target.value); setDirty(true); }} aria-describedby="gl-tour-hint" />
           </label>
+          <p id="gl-tour-hint" className="muted">
+            {(() => {
+              const t = classifyTour(tour.trim());
+              if (!tour.trim()) return "Matterport, Kuula, YouTube and Vimeo links play right on your listing. Any other https link opens in a new tab.";
+              if (!t) return "Use a full https:// address.";
+              return t.embedUrl ? `Recognised as a ${t.label}. It will play on your listing page.` : "This link will open in a new tab. It cannot play on the page.";
+            })()}
+          </p>
         </div>
       )}
       {manage && (

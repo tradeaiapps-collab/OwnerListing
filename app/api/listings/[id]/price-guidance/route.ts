@@ -16,7 +16,7 @@ type Ctx = { params: Promise<{ id: string }> };
 const DAY_MS = 86_400_000;
 
 async function guidance(req: Request, id: string, explain: boolean) {
-  const handler = await requireListingHandler(req, id);
+  const handler = await requireListingHandler(req, id, "listing.describe");
   if (handler instanceof NextResponse) return handler;
   const db = getDb();
   const deps = getDeps();

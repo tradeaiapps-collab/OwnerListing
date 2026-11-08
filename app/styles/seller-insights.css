@@ -1,0 +1,14 @@
+/* Seller market insights. Site tokens only, so light and dark follow the theme; mobile first. */
+.si-slider { display: grid; gap: var(--space-2); }
+.si-slider label { display: flex; justify-content: space-between; gap: var(--space-2); flex-wrap: wrap; font-weight: 600; }
+.si-slider input[type="range"] { width: 100%; accent-color: var(--brand); }
+.si-goals { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-2); border: 0; padding: 0; margin: 0 0 var(--space-4); }
+.si-goals legend { font-weight: 600; margin-bottom: var(--space-2); padding: 0; }
+.si-goals label { display: flex; gap: var(--space-2); align-items: flex-start; padding: var(--space-3); border: 1px solid var(--line); border-radius: calc(var(--radius) - 4px); background: var(--tint); }
+.si-goals input { margin-top: 0.25rem; flex: none; }
+.si-goals span { min-width: 0; overflow-wrap: anywhere; }
+@media (min-width: 640px) { .si-goals { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.si-picked td { font-weight: 700; background: var(--tint); }
+.si-snapshot { margin-top: var(--space-4); }
+.si-links { display: flex; flex-wrap: wrap; gap: var(--space-3); margin-top: var(--space-3); }
+@media (max-width: 559px) { .si-hide-narrow { display: none; } }

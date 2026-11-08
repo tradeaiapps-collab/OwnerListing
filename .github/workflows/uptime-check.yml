@@ -1,0 +1,37 @@
+name: Uptime check
+
+# Every 15 minutes calls /api/health on the public and admin sites. A failed run emails the repo watchers (GitHub's default for failed scheduled workflows).
+# Repository secrets: APP_URL (public origin) and optionally ADMIN_APP_URL. Both unset: skipped with a warning.
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check health endpoints
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          ADMIN_APP_URL: ${{ secrets.ADMIN_APP_URL }}
+        run: |
+          if [ -z "$APP_URL" ] && [ -z "$ADMIN_APP_URL" ]; then
+            echo "::warning::APP_URL and ADMIN_APP_URL are not set; skipping."
+            exit 0
+          fi
+          fail=0
+          for base in "$APP_URL" "$ADMIN_APP_URL"; do
+            [ -z "$base" ] && continue
+            code=$(curl -s -o /tmp/h.json -w '%{http_code}' --max-time 20 --retry 2 --retry-delay 5 "${base%/}/api/health" || true)
+            if [ "$code" != "200" ] || ! grep -q '"ok":true' /tmp/h.json; then
+              echo "::error::Health check failed for ${base} (HTTP ${code})"
+              fail=1
+            else
+              echo "OK ${base}"
+            fi
+          done
+          exit $fail

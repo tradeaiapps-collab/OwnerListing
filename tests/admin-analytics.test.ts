@@ -92,7 +92,7 @@ describe("report builder", () => {
     const rows = [agent, { ...agent, key: "none", agentName: null, listingsCreated: 5, offers: 0, accepted: 0 }];
     const r = buildReport(reporting, q, rows);
     expect(r.rows.map(x => x.key)).toEqual(["none", agent.key]);
-    expect(r.totals).toEqual({ listingsCreated: 8, liveNow: 4, offers: 4, accepted: 1, acceptance: 25 });
+    expect(r.totals).toEqual({ listingsCreated: 8, liveNow: 4, enquiries: 0, offers: 4, accepted: 1, acceptance: 25 });
     expect(r.rows[0]).not.toHaveProperty("revenueCents");
     expect(reportCsv(r)).not.toContain("Platform fees");
     const money = buildReport(accountant, q, rows);

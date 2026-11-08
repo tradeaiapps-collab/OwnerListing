@@ -1,9 +1,11 @@
 "use client";
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
-import { altFor, PHOTO_BASE, photoUrl, srcSetFor, type PhotoView } from "../../src/domain/listing-photos";
+import { altFor, categoriesIn, PHOTO_BASE, photoUrl, srcSetFor, type PhotoView } from "../../src/domain/listing-photos";
+import { PRESENTER_SPEAK_EVENT } from "../presenter/presenter-core";
+import { classifyTour, tourSummary } from "../../src/domain/virtual-tour";
 import "../styles/gallery.css";
 
-type Tab = "photo" | "floorplan";
+type Tab = "photo" | "floorplan" | "photo360" | "tour" | "video";
 type Media = { id: string; label: string };
 
 /** True while the viewport is phone-sized (carousel instead of the hero grid). */
@@ -89,10 +91,10 @@ function Lightbox({ items, index, title, onIndex, onClose, info }: {
         <p className="gl-counter" aria-live="polite">{index + 1} of {total}</p>
         <div className="gl-top-tools">
           {info && <button type="button" className="gl-close gl-info-btn" aria-expanded={panel} onClick={() => setPanel(!panel)}>{panel ? "Hide details" : "Details"}</button>}
-          <button type="button" className="gl-close" onClick={onClose} aria-label="Close photo viewer">Close</button>
         </div>
       </div>
       <div className="gl-stage"
+        onClick={e => { const t = e.target as HTMLElement; if (t === e.currentTarget || t.classList.contains("gl-figure")) onClose(); }}
         onPointerDown={e => { if (e.pointerType !== "mouse") start.current = { x: e.clientX, y: e.clientY }; }}
         onPointerUp={e => {
           const s = start.current;
@@ -105,6 +107,7 @@ function Lightbox({ items, index, title, onIndex, onClose, info }: {
         <figure key={v.id} className={dir.current ? `gl-figure gl-from-${dir.current}` : "gl-figure"}>
           <Img key={v.id} v={v} sizes="100vw" alt={alt} eager className={v.kind === "floorplan" ? "gl-img gl-plan" : "gl-img"} />
           {v.caption && <figcaption>{v.caption}</figcaption>}
+          {v.features.length > 0 && <ul className="gl-feats" aria-label="Features">{v.features.map(f => <li key={f} className="gl-feat">{f}</li>)}</ul>}
         </figure>
         {total > 1 && <button type="button" className="gl-nav gl-next" onClick={() => go(1)} aria-label="Next photo">›</button>}
         {/* Preload the neighbours so arrows feel instant. */}
@@ -125,7 +128,7 @@ function Lightbox({ items, index, title, onIndex, onClose, info }: {
           {items.map((p, i) => (
             <button key={p.id} type="button" data-i={i} className="gl-thumb" aria-current={i === index ? "true" : undefined}
               aria-label={`Show ${p.kind === "floorplan" ? "floor plan" : "photo"} ${i + 1} of ${total}`} onClick={() => show(i)}>
-              <Img v={p} sizes="96px" alt="" />
+              <Img v={p} sizes="88px" alt="" />
             </button>
           ))}
         </div>
@@ -187,15 +190,72 @@ function HeroGrid({ items, title, onOpen, label }: { items: PhotoView[]; title: 
 }
 
 /**
- * Public gallery of a listing: Photos and Floor plan tabs, and a Video / virtual tour link when the owner added one.
- * Public video files from the listing's documents are offered as downloads in the same place.
+ * Pannable 360 photo. The 2:1 panorama fills the viewer's height and wraps around sideways: drag or swipe, use the arrow
+ * keys or the buttons. It drifts slowly until touched (not at all when the visitor prefers reduced motion).
  */
-export function ListingGallery({ listingId, title }: { listingId: string; title: string }) {
+function PanoViewer({ pano, title }: { pano: PhotoView; title: string }) {
+  const base = useContext(PhotoBase);
+  const box = useRef<HTMLDivElement>(null);
+  const [x, setX] = useState(0);
+  const [drift, setDrift] = useState(true);
+  const drag = useRef<{ x: number; from: number } | null>(null);
+  const span = () => (box.current?.clientHeight ?? 400) * (pano.width / pano.height);
+  const pan = (dx: number) => setX(v => v + dx);
+  useEffect(() => {
+    if (!drift || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const t = setInterval(() => setX(v => v - 0.6), 30);
+    return () => clearInterval(t);
+  }, [drift]);
+  return (
+    <div className="gl-pano">
+      <div ref={box} className="gl-pano-view" role="img" tabIndex={0} aria-label={`360 photo: ${pano.alt || pano.caption || title}. Drag or use the arrow keys to look around.`}
+        style={{ backgroundImage: `url(${photoUrl(pano.id, pano.sizes.includes("medium") ? "medium" : "full", base)})`, backgroundPosition: `${x % span()}px 50%` }}
+        onPointerDown={e => { drag.current = { x: e.clientX, from: x }; setDrift(false); e.currentTarget.setPointerCapture(e.pointerId); }}
+        onPointerMove={e => { const d = drag.current; if (d) setX(d.from + (e.clientX - d.x)); }}
+        onPointerUp={() => { drag.current = null; }} onPointerCancel={() => { drag.current = null; }}
+        onKeyDown={e => { if (e.key === "ArrowLeft") { e.preventDefault(); setDrift(false); pan(60); } else if (e.key === "ArrowRight") { e.preventDefault(); setDrift(false); pan(-60); } }} />
+      <div className="gl-pano-bar">
+        <button type="button" className="gl-tab" onClick={() => { setDrift(false); pan(160); }} aria-label="Look left">‹ Left</button>
+        <button type="button" className="gl-tab" onClick={() => setDrift(d => !d)} aria-pressed={drift}>{drift ? "Pause" : "Auto turn"}</button>
+        <button type="button" className="gl-tab" onClick={() => { setDrift(false); pan(-160); }} aria-label="Look right">Right ›</button>
+        {pano.caption && <span className="gl-pano-cap">{pano.caption}</span>}
+      </div>
+    </div>
+  );
+}
+
+/** Hosted 3D / 360 / video tour. Nothing loads from the tour host until the visitor presses the button. */
+function TourFrame({ src, label, title, poster }: { src: string; label: string; title: string; poster?: PhotoView | undefined }) {
+  const base = useContext(PhotoBase);
+  const [on, setOn] = useState(false);
+  return (
+    <div className="gl-tourbox">
+      {on
+        ? <iframe className="gl-tourframe" src={src} title={`${label}: ${title}`} loading="lazy" referrerPolicy="no-referrer"
+            sandbox="allow-scripts allow-same-origin allow-popups allow-presentation" allow="fullscreen; xr-spatial-tracking; gyroscope; accelerometer; autoplay" allowFullScreen />
+        : (
+          <button type="button" className="gl-tourstart" onClick={() => setOn(true)}
+            style={poster ? { backgroundImage: `linear-gradient(rgba(0,0,0,.35), rgba(0,0,0,.35)), url(${photoUrl(poster.id, poster.sizes.includes("medium") ? "medium" : "full", base)})` } : undefined}>
+            <span>Start {label.replace(/^(Video|Virtual)/, m => m.toLowerCase())}</span>
+            <span className="gl-tourhint">Loads from the tour provider</span>
+          </button>
+        )}
+    </div>
+  );
+}
+
+/**
+ * Public gallery of a listing: Photos, Floor plan and Video tabs, and a virtual tour link when the owner added one.
+ * Public video files from the listing's documents play in the Video tab.
+ */
+export function ListingGallery({ listingId, title, highlights }: { listingId: string; title: string; highlights?: string }) {
   const [photos, setPhotos] = useState<PhotoView[] | null>(null);
   const [tourUrl, setTourUrl] = useState<string | null>(null);
   const [videos, setVideos] = useState<Media[]>([]);
   const [tab, setTab] = useState<Tab>("photo");
   const [open, setOpen] = useState<number | null>(null);
+  const [panoIdx, setPanoIdx] = useState(0);
+  const [room, setRoom] = useState<string>("");
   const narrow = useNarrow();
 
   useEffect(() => {
@@ -212,32 +272,74 @@ export function ListingGallery({ listingId, title }: { listingId: string; title:
   }, [listingId]);
 
   if (photos === null) return <div className="gl-empty gl-loading" aria-hidden="true" />;
-  const byKind = { photo: photos.filter(p => p.kind === "photo"), floorplan: photos.filter(p => p.kind === "floorplan") };
-  const items = byKind[tab].length ? byKind[tab] : byKind.photo.length ? byKind.photo : byKind.floorplan;
-  const current: Tab = items === byKind.floorplan && byKind.floorplan.length ? "floorplan" : "photo";
-  const tabs = ([["photo", "Photos"], ["floorplan", "Floor plan"]] as const).filter(([k]) => byKind[k].length > 0);
+  const byKind = { photo: photos.filter(p => p.kind === "photo"), floorplan: photos.filter(p => p.kind === "floorplan"), photo360: photos.filter(p => p.kind === "photo360") };
+  const tour = classifyTour(tourUrl);
+  const framed = tour?.embedUrl !== undefined;
+  const wantsVideo = tab === "video" && videos.length > 0, wantsTour = tab === "tour" && framed, wants360 = tab === "photo360" && byKind.photo360.length > 0;
+  const all = byKind[tab === "floorplan" ? "floorplan" : "photo"].length ? byKind[tab === "floorplan" ? "floorplan" : "photo"] : byKind.photo.length ? byKind.photo : byKind.floorplan;
+  const current: Tab = wantsVideo ? "video" : wantsTour ? "tour" : wants360 ? "photo360" : all === byKind.floorplan && byKind.floorplan.length ? "floorplan" : "photo";
+  const rooms = current === "photo" ? categoriesIn(all) : [];
+  const activeRoom = rooms.some(r => r.key === room) ? room : "";
+  const items = activeRoom ? all.filter(p => p.category === activeRoom) : all;
+  const tabs = ([["photo", "Photos"], ["floorplan", "Floor plan"], ["photo360", "360 photos"]] as const).filter(([k]) => byKind[k].length > 0);
+  const allTabs: (readonly [Tab, string, number?])[] = [...tabs.map(([k, n]) => [k, n, byKind[k].length] as const), ...(framed ? [["tour", tour!.label] as const] : []), ...(videos.length ? [["video", "Video", videos.length] as const] : [])];
+  const pano = byKind.photo360[Math.min(panoIdx, byKind.photo360.length - 1)];
   const label = current === "floorplan" ? (items.length === 1 ? "floor plan" : "floor plans") : items.length === 1 ? "photo" : "photos";
 
   return (
     <section className="gl" aria-label="Photos and plans">
-      {items.length === 0
+      {current === "video" && videos[0]
+        ? (
+          <div className="gl-videobox">
+            {videos.map(m => <video key={m.id} className="gl-video" controls preload="metadata" playsInline src={`/api/documents/${m.id}/file`} aria-label={`${m.label}: ${title}`} />)}
+          </div>
+        )
+        : current === "tour" && tour?.embedUrl
+        ? <TourFrame src={tour.embedUrl} label={tour.label} title={title} poster={byKind.photo[0]} />
+        : current === "photo360" && pano
+        ? (
+          <>
+            <PanoViewer key={pano.id} pano={pano} title={title} />
+            {byKind.photo360.length > 1 && (
+              <div className="gl-tabs" role="group" aria-label="Choose a room">
+                {byKind.photo360.map((p, i) => <button key={p.id} type="button" className="gl-tab" aria-pressed={panoIdx === i} onClick={() => setPanoIdx(i)}>{p.caption || `Room ${i + 1}`}</button>)}
+              </div>
+            )}
+          </>
+        )
+        : items.length === 0
         ? <div className="gl-empty" role="img" aria-label="No photos added yet"><span>No photos yet</span></div>
         : narrow
-          ? <Carousel key={current} items={items} title={title} onOpen={setOpen} />
-          : <HeroGrid key={current} items={items} title={title} onOpen={setOpen} label={label} />}
-      {(tabs.length > 1 || tourUrl || videos.length > 0) && (
+          ? <Carousel key={current + activeRoom} items={items} title={title} onOpen={setOpen} />
+          : <HeroGrid key={current + activeRoom} items={items} title={title} onOpen={setOpen} label={label} />}
+      {(allTabs.length > 1 || tourUrl) && (
         <div className="gl-tabs">
-          {tabs.length > 1 && (
+          {allTabs.length > 1 && (
             <div role="group" aria-label="Show">
-              {tabs.map(([k, name]) => (
+              {allTabs.map(([k, name, n]) => (
                 <button key={k} type="button" aria-pressed={current === k} className="gl-tab" onClick={() => setTab(k)}>
-                  {name} <span className="gl-tab-n">{byKind[k].length}</span>
+                  {name}{n !== undefined && <> <span className="gl-tab-n">{n}</span></>}
                 </button>
               ))}
             </div>
           )}
-          {tourUrl && <a className="gl-tab gl-link" href={tourUrl} target="_blank" rel="noopener noreferrer nofollow">Video / virtual tour<span className="sr-only"> (opens a new tab)</span></a>}
-          {videos.map((m, i) => <a key={m.id} className="gl-tab gl-link" href={`/api/documents/${m.id}/file`}>{m.label} {videos.length > 1 ? i + 1 : ""} (download)</a>)}
+          {tourUrl && !framed && <a className="gl-tab gl-link" href={tourUrl} target="_blank" rel="noopener noreferrer nofollow">{tour?.label ?? "Virtual tour"}<span className="sr-only"> (opens a new tab)</span></a>}
+        </div>
+      )}
+      {(tour || byKind.photo360.length > 0) && (
+        <p className="gl-elena">
+          <button type="button" className="gl-tab" onClick={() => window.dispatchEvent(new CustomEvent(PRESENTER_SPEAK_EVENT, {
+            detail: { text: tourSummary({ title, tour, rooms: byKind.photo360.map(p => p.caption).filter(Boolean), panoramas: byKind.photo360.length, highlights }) } }))}>
+            Hear Elena describe this tour
+          </button>
+        </p>
+      )}
+      {rooms.length > 1 && (
+        <div className="gl-tabs" role="group" aria-label="Filter photos by room">
+          <button type="button" className="gl-tab" aria-pressed={activeRoom === ""} onClick={() => setRoom("")}>All <span className="gl-tab-n">{all.length}</span></button>
+          {rooms.map(r => (
+            <button key={r.key} type="button" className="gl-tab" aria-pressed={activeRoom === r.key} onClick={() => setRoom(r.key)}>{r.label} <span className="gl-tab-n">{r.count}</span></button>
+          ))}
         </div>
       )}
       {open !== null && items[open] && <Lightbox items={items} index={open} title={title} onIndex={setOpen} onClose={() => setOpen(null)} />}

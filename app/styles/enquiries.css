@@ -14,3 +14,143 @@
 .enq-safety ul { margin: var(--space-1) 0 0; padding-left: var(--space-4); }
 .enq-safety small { display: block; margin-top: var(--space-1); color: var(--muted); }
 .enq-safety-summary { margin-bottom: var(--space-3); }
+
+/* Assistant on stage (Elena): her figure beside the thread (above it on phones), her answers in the thread, and a pointer + glow on what she refers to. Theme variables only. */
+.el-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+.el-layout { display: grid; gap: var(--space-4); }
+.el-layout.has-stage { grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 880px) {
+  .el-layout.has-stage { grid-template-columns: 300px minmax(0, 1fr); gap: var(--space-8); align-items: start; }
+  .el-layout.has-stage > .el-stage { position: sticky; top: calc(var(--el-top, 72px) + var(--space-4)); }
+}
+.el-chat { min-width: 0; }
+body.el-chat-page .ga-launcher { display: none; }
+
+.el-stage { position: relative; display: grid; gap: var(--space-3); }
+.el-stage-figure { position: relative; height: 220px; border-radius: calc(var(--radius) + 4px); background: var(--gold-tint); border: 1px solid var(--border); overflow: hidden; }
+@media (min-width: 880px) { .el-stage-figure { height: clamp(220px, calc(100vh - var(--el-top, 72px) - 260px), 380px); } }
+.el-stage.is-collapsed .el-stage-figure { height: 72px; }
+.el-stage-img { position: absolute; inset: 0; width: 100%; height: 100%; display: block; object-fit: cover; object-position: 50% 6%; }
+.el-stage-img.is-portrait { object-position: 50% 12%; }
+.el-stage-img.is-flip { scale: -1 1; } /* separate from transform so the breathing animation keeps the flip */
+.el-stage.is-collapsed .el-stage-img { object-position: 50% 8%; }
+.el-pointer { position: absolute; top: 40%; right: var(--space-2); width: 36px; height: 36px; display: grid; place-items: center; border-radius: 50%; background: var(--gold); color: #fff; box-shadow: var(--shadow-1); opacity: 0; transform: translateX(-8px); transition: opacity var(--dur-2, 200ms) var(--ease), transform var(--dur-2, 200ms) var(--ease); }
+.el-stage.is-pointing .el-pointer { opacity: 1; transform: none; }
+.el-stage-card { padding: var(--space-3) var(--space-4); border-radius: var(--radius); background: var(--brand); color: var(--brand-text); display: grid; gap: var(--space-2); }
+.el-stage-who { display: grid; gap: 2px; }
+.el-stage-name { font-family: var(--font-display); font-size: 1.25rem; line-height: 1.2; }
+.el-stage-tag { font-size: 0.8125rem; opacity: 0.85; }
+.el-stage-status { display: flex; align-items: center; gap: var(--space-2); margin: 0; font-size: 0.9375rem; }
+.el-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); flex: none; }
+.el-dot-thinking, .el-dot-listening { background: var(--warn); }
+.el-dot-speaking { background: var(--gold); }
+.el-stage-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.el-stage-btn { display: inline-flex; align-items: center; gap: var(--space-2); min-height: 44px; padding: 0 var(--space-3); border-radius: 999px; border: 1px solid color-mix(in srgb, var(--brand-text) 40%, transparent); background: transparent; color: inherit; font: inherit; font-size: 0.875rem; cursor: pointer; }
+.el-stage-btn:hover { background: color-mix(in srgb, var(--brand-text) 14%, transparent); }
+.el-stage-btn:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.el-stage-btn[aria-pressed="true"] { background: color-mix(in srgb, var(--brand-text) 18%, transparent); }
+.el-stage.is-collapsed .el-stage-card { padding: var(--space-2) var(--space-3); }
+.el-stage.is-collapsed .el-stage-status, .el-stage.is-collapsed .el-stage-tag { display: none; }
+
+/* Facts she can see, kept in view so what she points at is on screen. */
+.el-facts { display: grid; gap: var(--space-2); margin-bottom: var(--space-4); padding: var(--space-3) var(--space-4); border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+.el-fact-listing { display: grid; gap: 2px; }
+.el-fact-title { font-weight: 600; color: var(--heading, var(--text)); }
+.el-fact-sub { font-size: 0.875rem; color: var(--muted); overflow-wrap: anywhere; }
+.el-fact-grid { align-items: start; display: grid; grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr)); gap: var(--space-2); margin: 0; }
+.el-fact-grid .el-fact { padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm, 8px); border: 1px solid transparent; }
+.el-fact dt { font-size: 0.8125rem; color: var(--muted); }
+.el-fact dd { margin: 0; font-weight: 600; overflow-wrap: anywhere; }
+.el-fact, .el-pill, .el-question, .el-chips { transition: box-shadow var(--dur-2, 200ms) var(--ease), background-color var(--dur-2, 200ms) var(--ease), border-color var(--dur-2, 200ms) var(--ease); }
+.is-pointed { background: var(--gold-tint); border-color: var(--gold) !important; box-shadow: 0 0 0 3px color-mix(in srgb, var(--gold) 35%, transparent); }
+
+.el-thread { margin-bottom: var(--space-4); }
+.el-turn { display: grid; gap: var(--space-2); }
+.el-question { max-width: 36rem; }
+.el-answer { max-width: 40rem; padding: var(--space-3) var(--space-4); border: 1px solid var(--gold); border-radius: var(--radius) var(--radius) var(--radius) 4px; background: var(--gold-tint); }
+.el-answer p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.el-answer-who { display: block; margin-bottom: var(--space-1); font-size: 0.8125rem; font-weight: 700; color: var(--link); }
+.el-pills { display: flex; flex-wrap: wrap; gap: var(--space-2); list-style: none; margin: var(--space-3) 0 0; padding: 0; }
+.el-pill { padding: var(--space-1) var(--space-3); border-radius: 999px; border: 1px solid var(--border); background: var(--bg); font-size: 0.875rem; max-width: none; }
+.el-chips { display: flex; flex-wrap: wrap; gap: var(--space-2); padding: var(--space-1); border-radius: var(--radius); border: 1px solid transparent; }
+.el-chip, .el-ask { min-height: 44px; padding: 0 var(--space-4); border-radius: 999px; border: 1px solid var(--gold); background: var(--bg); color: var(--link); font: inherit; font-size: 0.9375rem; cursor: pointer; }
+.el-chip:hover:not(:disabled), .el-ask:hover:not(:disabled) { background: var(--gold-tint); }
+.el-chip:disabled, .el-ask:disabled { opacity: 0.55; cursor: not-allowed; }
+.el-chip:focus-visible, .el-ask:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.el-thinking { color: var(--muted); }
+.el-composer { display: grid; gap: var(--space-2); margin-bottom: var(--space-4); }
+.el-composer textarea { width: 100%; box-sizing: border-box; }
+.el-composer-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); justify-content: flex-end; }
+.el-note { margin: 0; font-size: 0.8125rem; color: var(--muted); }
+
+/* Motion: clips move her, stills fade between poses. None of it runs when the device asks for reduced motion. */
+@media (prefers-reduced-motion: no-preference) {
+  .el-stage-img { animation: el-fade var(--dur-3, 320ms) var(--ease) both; }
+  /* At rest (full-length clip) she steps back and forward in place; after a question she cannot place she settles her weight onto one leg. */
+  .el-stage-img.is-step { transform-origin: 50% 55%; animation: el-fade var(--dur-3, 320ms) var(--ease) both, el-step 6s ease-in-out infinite; }
+  .el-stage-img.is-listen { transform-origin: 50% 100%; animation: el-fade var(--dur-3, 320ms) var(--ease) both, el-tilt 3.2s ease-in-out infinite; }
+  .el-stage-img.is-agree, .el-stage-img.is-explain, .el-stage-img.is-talking { transform-origin: 50% 100%; animation: el-fade var(--dur-3, 320ms) var(--ease) both, el-lean-in 2.6s ease-in-out infinite; }
+  .el-stage-img.is-lean { transform-origin: 50% 100%; animation: el-fade var(--dur-3, 320ms) var(--ease) both, el-lean 1.1s ease-out forwards; }
+  .el-stage.is-pointing .el-pointer { animation: el-nudge 0.9s ease-in-out infinite; }
+  .is-pointed { animation: el-glow 1.2s ease-in-out 3; }
+  .el-dot-thinking, .el-dot-listening, .el-dot-speaking { animation: el-pulse 1.2s ease-in-out infinite; }
+}
+@keyframes el-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes el-step { 0%, 100% { scale: 1.07; translate: 0 0; } 30%, 45% { scale: 1.05; translate: 2.5% -1%; } 75%, 90% { scale: 1.09; translate: -2.5% 0; } }
+@keyframes el-tilt { 0%, 100% { rotate: -1.6deg; scale: 1.06; translate: -1.5% 0; } 50% { rotate: 1.6deg; scale: 1.08; translate: 1.5% 0.5%; } }
+@keyframes el-lean-in { 0%, 100% { scale: 1.05; rotate: 0deg; translate: 0 0; } 30% { scale: 1.1; rotate: -1.2deg; translate: 1% 0.5%; } 65% { scale: 1.07; rotate: 1.2deg; translate: -1% 0; } }
+@keyframes el-lean { from { rotate: 0deg; scale: 1.04; translate: 0 0; } to { rotate: -2.4deg; scale: 1.1; translate: 1.2% 0; } }
+@keyframes el-nudge { 0%, 100% { transform: translateX(0); } 50% { transform: translateX(-6px); } }
+@keyframes el-glow { 0%, 100% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--gold) 35%, transparent); } 50% { box-shadow: 0 0 0 7px color-mix(in srgb, var(--gold) 20%, transparent); } }
+@keyframes el-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+
+/* Phones and small tablets: she stays pinned under the site header as a compact strip while the thread scrolls, so she is still there when her answer arrives. */
+@media (max-width: 879px) {
+  .el-layout.has-stage > .el-stage { position: sticky; top: calc(var(--el-top, 72px) + var(--space-2)); z-index: 5; grid-template-columns: 96px minmax(0, 1fr); align-items: center; gap: var(--space-3); padding: var(--space-2); margin: 0 calc(var(--space-2) * -1); border-radius: var(--radius); background: var(--bg); border: 1px solid var(--border); box-shadow: var(--shadow-1); }
+  .el-stage-figure, .el-stage.is-collapsed .el-stage-figure { height: 96px; }
+  .el-stage-card { padding: var(--space-2) var(--space-3); gap: var(--space-1); }
+  .el-stage-name { font-size: 1.0625rem; }
+  .el-stage-tag { font-size: 0.75rem; }
+  .el-stage-status { font-size: 0.8125rem; }
+  .el-stage-btn { min-height: 44px; font-size: 0.8125rem; padding: 0 var(--space-3); }
+  .el-pointer { top: auto; bottom: var(--space-2); right: var(--space-1); width: 28px; height: 28px; }
+  .el-stage-collapse { display: none; }
+}
+
+/* "Show me": her cut-out glides to the place she mentioned, points at it while it glows, then goes back. */
+.el-showme { justify-self: start; min-height: 44px; padding: 0 var(--space-4); border-radius: 999px; border: 1px solid var(--gold); background: var(--gold); color: #fff; font: inherit; font-size: 0.9375rem; font-weight: 600; cursor: pointer; }
+.el-showme:hover:not(:disabled) { background: var(--link); }
+.el-showme:disabled { opacity: 0.7; cursor: progress; }
+.el-showme:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.el-glider { position: fixed; z-index: 60; top: 0; left: 0; pointer-events: none; border-radius: 50%; overflow: hidden; border: 3px solid var(--gold); background: var(--gold-tint); box-shadow: var(--shadow-2, var(--shadow-1)); }
+.el-glider img { width: 100%; height: 100%; display: block; object-fit: cover; object-position: 30% 12%; }
+.el-offer-link { padding: var(--space-3); margin-inline: calc(var(--space-3) * -1); border-radius: var(--radius); border: 1px solid transparent; }
+.site-nav a.is-pointed { border-radius: 999px; }
+
+/* Languages: translated answers, per-message translation, language picker. Machine translation is always labelled. */
+.el-tr-note { margin: var(--space-2) 0 0; font-size: 0.8125rem; color: var(--muted); overflow-wrap: anywhere; }
+.el-tr-line { display: block; margin-top: var(--space-2); padding-top: var(--space-2); border-top: 1px dashed var(--border); overflow-wrap: anywhere; }
+.el-tr-orig { margin-top: var(--space-2); font-size: 0.875rem; }
+.el-tr-orig summary { cursor: pointer; color: var(--link); min-height: 44px; display: flex; align-items: center; }
+.el-tr-orig summary:focus-visible, .el-tr-btn:focus-visible, .el-lang select:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.el-translate { margin: var(--space-1) 0 var(--space-2); }
+.el-tr-btn { min-height: 44px; padding: 0 var(--space-3); border: 0; background: none; color: var(--link); font: inherit; font-size: 0.875rem; text-decoration: underline; cursor: pointer; }
+.el-tr-btn:disabled { opacity: 0.55; cursor: progress; }
+.el-tr-box { max-width: 40rem; padding: var(--space-2) var(--space-3); border: 1px dashed var(--border); border-radius: var(--radius); background: var(--bg); }
+.el-tr-box p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.el-tr-box small { display: block; margin-top: var(--space-1); color: var(--muted); }
+.el-lang { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.el-lang label { font-size: 0.875rem; }
+.el-lang select { min-height: 44px; max-width: 100%; padding: 0 var(--space-3); border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); color: inherit; font: inherit; }
+
+/* Elena message moderation panel (seller side) */
+.enq-mod { display: grid; gap: var(--space-2); margin-bottom: var(--space-3); }
+.enq-mod-note { margin: 0; padding: var(--space-2) var(--space-3); border-left: 4px solid var(--border, #d1d5db); background: var(--tint); border-radius: 0 var(--radius-sm, 8px) var(--radius-sm, 8px) 0; overflow-wrap: anywhere; }
+.enq-mod-note.risk-low, .enq-mod-note.risk-medium { border-left-color: var(--warning, #b45309); }
+.enq-mod-note.risk-high { border-left-color: var(--danger, #b91c1c); }
+.enq-mod-note ul { margin: var(--space-1) 0 0; padding-left: var(--space-4); }
+.enq-mod-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-2); }
+.enq-mod-templates summary, .enq-mod-note summary { cursor: pointer; }
+.enq-mod-templates label { display: grid; gap: var(--space-1); margin-top: var(--space-2); }
+.enq-mod-list { list-style: none; margin: var(--space-2) 0 0; padding: 0; display: grid; gap: var(--space-1); }
+.enq-mod-list li { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }

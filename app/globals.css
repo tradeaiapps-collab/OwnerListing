@@ -65,6 +65,9 @@
   }
 }
 
+/* Visitor-chosen dark (header toggle): the Site appearance theme CSS already sets the dark colour tokens for data-theme-mode="dark"; the rules below mirror the device-dark ones. */
+:root[data-theme-mode="dark"] { --shadow-1: 0 1px 2px rgb(0 0 0 / 0.4); --shadow-2: 0 18px 40px -18px rgb(0 0 0 / 0.8); --shadow-3: 0 40px 80px -32px rgb(0 0 0 / 0.9); }
+
 /* Tints derived from the live theme colours (resolved on the element, so they follow the theme and the mode). */
 :root, :root:root {
   --tint: color-mix(in srgb, var(--brand) 6%, var(--bg));
@@ -79,6 +82,7 @@
   --elevated: color-mix(in srgb, var(--bg) 70%, #fff);
 }
 @media (prefers-color-scheme: dark) { :root:root:where(:not([data-theme-mode="light"])) { --elevated: color-mix(in srgb, var(--surface) 80%, var(--bg)); } }
+:root:root[data-theme-mode="dark"] { --elevated: color-mix(in srgb, var(--surface) 80%, var(--bg)); }
 
 *, *::before, *::after { box-sizing: border-box; }
 
@@ -183,6 +187,9 @@ body > .page { flex: 1 0 auto; width: 100%; }
 .site-nav .icon { flex: none; opacity: 0.7; }
 .site-nav-links { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1); }
 .site-nav .nav-toggle { display: none; }
+.theme-toggle { flex: none; align-self: center; display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; padding: 0; border: 1px solid var(--border); border-radius: 999px; background: none; color: var(--header-text, var(--text)); cursor: pointer; box-shadow: none; transition: background-color var(--dur-1) var(--ease); }
+.theme-toggle:hover { background: var(--tint-2); }
+.site-nav .theme-toggle { margin-inline-start: var(--space-1); }
 @media (max-width: 719px) {
   .site-nav { flex: 1 0 100%; gap: 0 var(--space-1); }
   .site-nav a, .site-nav .nav-signout { padding-inline: var(--space-2); font-size: 0.875rem; }
@@ -232,6 +239,7 @@ body > .page { flex: 1 0 auto; width: 100%; }
   --footer-muted: color-mix(in srgb, var(--bg) 72%, var(--heading, var(--text)));
 }
 @media (prefers-color-scheme: dark) { :where(html:not([data-theme-mode="light"])) .site-footer { background: #070b16; color: #e7e2d8; --footer-ink: #e7e2d8; --footer-muted: #a6abb8; border-top: 1px solid var(--border); } }
+html[data-theme-mode="dark"] .site-footer { background: #070b16; color: #e7e2d8; --footer-ink: #e7e2d8; --footer-muted: #a6abb8; border-top: 1px solid var(--border); }
 .site-footer::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 2px; background: linear-gradient(90deg, transparent, var(--gold), transparent); opacity: 0.8; }
 .site-footer-inner { max-width: var(--container); margin: 0 auto; padding: var(--space-12) var(--space-4) var(--space-6); display: grid; gap: var(--space-6) var(--space-8); grid-template-columns: 1fr; }
 @media (min-width: 760px) { .site-footer-inner { grid-template-columns: minmax(14rem, 1fr) 2fr; } }
@@ -457,3 +465,117 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 
 /* Figures in the display face use lining numerals (Playfair defaults to old-style, which reads oddly in prices). */
 :is(.lcard-price, .detail-price, .pd-facts strong, .kpi-value, .sr-stat-n, .sc-out strong, .offer-summary, .od-vs strong, .pcard-figs dd, .inv-big) { font-variant-numeric: lining-nums tabular-nums; font-feature-settings: "lnum" 1; }
+
+/* Unread count on the Notifications nav link (the rest of the notification styles load with that page). */
+.nt-badge { display: inline-block; min-width: 1.5em; margin-left: var(--space-1); padding: 0 var(--space-2); border-radius: 999px; background: var(--brand); color: var(--brand-text); font-size: 0.8125rem; line-height: 1.5; text-align: center; }
+.nt-bell-badge { margin-left: var(--space-1); }
+
+/* Elena's listing assistant (guided creation) and her field tips. */
+.ela-assist { border: 1px solid var(--border); border-radius: var(--radius); background: var(--elevated, var(--surface)); padding: var(--space-4); margin-bottom: var(--space-6); }
+.ela-head { display: flex; gap: var(--space-3); align-items: center; width: 100%; text-align: left; background: transparent; border: 0; padding: 0; box-shadow: none; min-height: 44px; font-weight: 400; }
+.ela-head:hover:not(:disabled) { background: transparent; color: inherit; }
+.ela-head-text { flex: 1; display: block; }
+.ela-sub { display: block; }
+.ela-avatar { border-radius: 50%; object-fit: cover; flex: none; }
+.ela-sub { margin: 0; font-size: 0.875rem; }
+.ela-body { display: grid; gap: var(--space-4); margin-top: var(--space-4); }
+.ela-body h3 { margin: 0 0 var(--space-2); font-size: 1rem; }
+.ela-body details { border-top: 1px solid var(--line); padding-top: var(--space-3); }
+.ela-body summary { cursor: pointer; font-weight: 600; min-height: 44px; display: flex; align-items: center; }
+.ela-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-3); }
+.ela-list p { margin: 0 0 var(--space-2); }
+.ela-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.ela-chips { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.ela-chip { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); border: 1px solid var(--border); border-radius: var(--radius); padding: var(--space-2) var(--space-3); font-size: 0.875rem; }
+.ela-preview { white-space: pre-wrap; border-left: 3px solid var(--gold); padding-left: var(--space-3); margin: var(--space-2) 0; }
+.ela-fine { font-size: 0.8125rem; }
+.ela-tip { display: inline-block; position: relative; vertical-align: middle; }
+.ela-tip-btn { min-height: 28px; min-width: 28px; padding: 0; border-radius: 50%; font-size: 0.8125rem; line-height: 1; }
+.ela-tip-text { display: block; margin-top: var(--space-2); max-width: 36ch; padding: var(--space-2) var(--space-3); border: 1px solid var(--border); border-radius: 10px; background: var(--elevated, var(--surface)); font-weight: 400; font-size: 0.8125rem; color: var(--text); }
+@media (max-width: 479px) { .ela-actions > button { flex: 1 1 100%; } .ela-tip-text { max-width: none; } }
+
+/* Role switcher (header) and role management cards. Tokens only; colours come from existing theme variables. */
+.role-switch { position: relative; flex: none; align-self: center; margin-inline-start: var(--space-1); }
+button.role-switch-btn { display: inline-flex; align-items: center; gap: var(--space-2); min-height: 44px; max-width: 100%; padding: 0 var(--space-3); border: 1px solid var(--border); border-radius: 999px; background: transparent; color: var(--header-text, var(--text)); font: inherit; cursor: pointer; box-shadow: none; }
+button.role-switch-btn:hover:not(:disabled), button.role-switch-btn[aria-expanded="true"] { background: var(--tint-2); color: var(--header-text, var(--text)); }
+.role-switch-hint { color: inherit; opacity: 0.75; font-size: 0.85em; }
+.role-dot { width: 10px; height: 10px; flex: none; border-radius: 50%; background: var(--accent, currentColor); }
+.role-dot[data-role="owner"], .role-switch[data-role="owner"] .role-switch-btn .role-dot { background: var(--accent, #1f6feb); }
+.role-dot[data-role="agent"], .role-switch[data-role="agent"] .role-switch-btn .role-dot { background: #8a5cf6; }
+.role-dot[data-role="buyer"], .role-switch[data-role="buyer"] .role-switch-btn .role-dot { background: #1a9e6b; }
+.role-dot[data-role="investor"], .role-switch[data-role="investor"] .role-switch-btn .role-dot { background: #c98a12; }
+.role-menu { position: absolute; inset-inline-start: 0; top: calc(100% + var(--space-1)); z-index: 30; display: grid; min-width: 220px; max-width: calc(100vw - 2 * var(--space-4)); padding: var(--space-1); border: 1px solid var(--border); border-radius: 12px; background: var(--surface, var(--bg)); color: var(--text); box-shadow: 0 8px 24px rgb(0 0 0 / 0.18); }
+button.role-item, a.role-item { display: flex; justify-content: flex-start; width: 100%; align-items: center; gap: var(--space-2); min-height: 44px; padding: 0 var(--space-3); border: 0; border-radius: 8px; background: transparent; color: var(--text); font: inherit; text-align: start; text-decoration: none; cursor: pointer; box-shadow: none; }
+button.role-item:hover:not(:disabled), a.role-item:hover, .role-item:focus-visible { background: var(--tint-2); color: var(--text); }
+.role-manage { border-top: 1px solid var(--border); border-radius: 0 0 8px 8px; margin-top: var(--space-1); }
+.role-current { margin-inline-start: auto; padding: 0 var(--space-2); border: 1px solid var(--border); border-radius: 999px; font-size: 0.75em; font-weight: 500; }
+.role-err { margin: var(--space-1) var(--space-3); color: var(--danger, #c0392b); font-size: 0.85em; }
+.role-cards { display: grid; gap: var(--space-3); margin: var(--space-4) 0 0; padding: 0; list-style: none; }
+.role-card { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-3); padding: var(--space-4); border: 1px solid var(--border); border-radius: 12px; }
+.role-card[aria-current] { border-color: var(--accent, currentColor); }
+.role-card-text { display: grid; gap: var(--space-1); min-width: 0; flex: 1 1 220px; }
+.role-card-text strong { display: flex; align-items: center; gap: var(--space-2); }
+@media (max-width: 640px) { .role-switch-hint { display: none; } .role-switch-btn { padding: 0 var(--space-2); } }
+.ela-done { margin: 0 0 var(--space-3); padding: var(--space-2) var(--space-3); border-radius: var(--radius); background: var(--surface); border: 1px solid var(--border); font-size: 0.875rem; }
+.ela-count { font-weight: 400; font-size: 0.8125rem; margin-left: var(--space-2); }
+.ela-answer { display: grid; gap: var(--space-3); }
+.ela-answer input, .ela-answer textarea { width: 100%; }
+.ela-num { min-width: 44px; min-height: 44px; }
+.qs-tabs { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-bottom: var(--space-4); }
+.qs-tabs > button { flex: 1 1 14rem; min-height: 44px; }
+.qs-head { display: flex; gap: var(--space-3); align-items: flex-start; }
+.qs-head > div { flex: 1; min-width: 0; }
+.qs-steps { list-style: none; margin: var(--space-4) 0; padding: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-2); }
+.qs-steps button { width: 100%; min-height: 44px; font-size: 0.875rem; padding-inline: var(--space-2); }
+.qs-steps li.on button { background: var(--navy, #1a2040); color: #fff; }
+.qs-body { min-height: 12rem; }
+.qs-body h3 { margin: 0 0 var(--space-2); font-size: 1rem; }
+.qs-opt { font-weight: 400; font-size: 0.8125rem; margin-left: var(--space-2); }
+.qs-thumbs { list-style: none; margin: var(--space-3) 0 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(88px, 1fr)); gap: var(--space-2); }
+.qs-thumb { position: relative; aspect-ratio: 1; border-radius: var(--radius); overflow: hidden; border: 1px solid var(--border); }
+.qs-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.qs-thumb button { position: absolute; top: 4px; right: 4px; min-height: 32px; min-width: 32px; padding: 0; border-radius: 50%; line-height: 1; }
+.qs-foot { display: flex; flex-wrap: wrap; gap: var(--space-3); justify-content: space-between; align-items: center; margin-top: var(--space-4); padding-top: var(--space-4); border-top: 1px solid var(--line); }
+.qs-nav { display: flex; gap: var(--space-2); }
+.qs-result { margin-bottom: var(--space-4); }
+@media (max-width: 479px) { .qs-foot { flex-direction: column-reverse; align-items: stretch; } .qs-nav { flex-direction: column-reverse; } .qs-nav > button, .qs-foot > button { width: 100%; } }
+.ela-now { border-left: 3px solid var(--gold); padding-left: var(--space-3); }
+.ela-now p { margin: 0 0 var(--space-2); }
+.ela-tell textarea { width: 100%; margin-bottom: var(--space-2); }
+
+/* Readable text on tinted (gold, beige) boxes. Muted grey on the champagne tint is only about 5:1, which reads faint at small sizes.
+   Boxes that sit on --gold-tint, --surface or --tint get body text in --text, secondary text in --muted-strong (7:1 or better in light and dark)
+   and links in --link-strong. The tokens are mixed from the live theme, so admin theme edits carry through. */
+:root, :root:root {
+  --muted-strong: color-mix(in srgb, var(--muted) 50%, var(--text));
+  --link-strong: color-mix(in srgb, var(--link) 70%, var(--heading, var(--text)));
+}
+:is(.notice, .staff-notice, .empty, .empty-state, .cmp-empty, .elena-search, .elena-card, .leads-secret, .at-invite, .dsp-elena, .el-answer, .feeds-token, .lv-elena, .syn-secret, .sg-explain, .nt-item[data-unread="true"], .admin-staff-only) { color: var(--text); }
+:is(.notice, .staff-notice, .empty, .empty-state, .cmp-empty, .elena-search, .elena-card, .leads-secret, .at-invite, .dsp-elena, .el-answer, .feeds-token, .lv-elena, .sg-explain, .nt-item[data-unread="true"]) :is(.muted, small, p:not([class])) { color: var(--muted-strong); }
+:is(.notice, .staff-notice, .empty, .empty-state, .cmp-empty, .elena-search, .elena-card, .dsp-elena, .el-answer, .sg-explain) a:not(.button) { color: var(--link-strong); }
+.elena-search .es-head p, .elena-search .muted { color: var(--muted-strong); font-size: 0.9375rem; }
+.elena-search .es-out p, .elena-search .es-out li { color: var(--text); }
+/* Empty-state copy was left-aligned inside a centred box because of the 72ch paragraph cap; centre the block. */
+.empty p, .cmp-empty p { margin-inline: auto; }
+
+/* Create/edit listing form: extras checkboxes in a compact grid (search.css is not loaded on these pages). */
+.form-checks { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-1) var(--space-4); }
+@media (min-width: 720px) { .form-checks { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.form-checks .check { margin: 0; min-width: 0; gap: var(--space-2); }
+.form-warning { border: 1px solid var(--warning, #b45309); border-radius: var(--radius, 8px); padding: var(--space-3); margin: var(--space-3) 0; background: color-mix(in srgb, var(--warning, #b45309) 12%, transparent); overflow-wrap: anywhere; }
+.form-warning ul { margin: var(--space-2) 0 0; padding-left: var(--space-5, 1.25rem); }
+.form-warning .link-button { background: none; border: 0; padding: 0; min-height: 0; color: inherit; text-decoration: underline; cursor: pointer; font: inherit; }
+
+/* Elena publish check (app/listings/elena-publish-check.tsx) */
+.elena-checking { display: flex; align-items: center; gap: var(--space-3); margin: var(--space-3) 0; }
+.elena-spinner { flex: none; width: 1.25rem; height: 1.25rem; border: 2px solid var(--border); border-top-color: var(--accent, currentColor); border-radius: 50%; }
+@media (prefers-reduced-motion: no-preference) { .elena-spinner { animation: elena-spin 0.8s linear infinite; } }
+@keyframes elena-spin { to { transform: rotate(360deg); } }
+.elena-findings { list-style: none; margin: var(--space-3) 0; padding: 0; display: grid; gap: var(--space-2); }
+.elena-findings li { display: grid; grid-template-columns: auto 1fr; gap: var(--space-2) var(--space-3); align-items: start; padding: var(--space-3); border: 1px solid var(--border); border-radius: 8px; }
+.elena-findings .elena-msg { min-width: 0; overflow-wrap: anywhere; }
+.elena-findings .elena-fix { grid-column: 2; justify-self: start; display: inline-flex; align-items: center; min-height: 44px; }
+.elena-check h4 { margin: var(--space-4) 0 var(--space-2); }
+
+.ss-cta { margin-top: var(--space-6); }
+@media (max-width: 479px) { .ss-cta .button { width: 100%; } }

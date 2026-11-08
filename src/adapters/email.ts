@@ -1,10 +1,12 @@
 import { lookup } from "node:dns/promises";
 import nodemailer from "nodemailer";
+import { MAX_ATTACHMENT_BYTES, type EmailAttachment } from "../domain/report-attachments";
 import { isPublicAddress } from "../domain/net-guard";
 import { isEmailAddress, resolveMessaging, type SmtpConfig } from "../domain/messaging-settings";
 import { failed, type SendErrorCode, type SendResult } from "./messaging";
 
-export interface EmailMessage { to: string; subject: string; text: string }
+export type { EmailAttachment };
+export interface EmailMessage { to: string; subject: string; text: string; /** Optional HTML alternative; the plain text is always sent too. */ html?: string; attachments?: readonly EmailAttachment[] }
 
 /** Sends one plain-text email. Provider-agnostic: a transactional HTTP API adapter can implement the same port. */
 export interface EmailPort {
@@ -18,7 +20,7 @@ export function createUnconfiguredEmail(): EmailPort {
 }
 
 export interface MailTransport {
-  sendMail(m: { from: string; to: string; subject: string; text: string }): Promise<{ messageId?: string }>;
+  sendMail(m: { from: string; to: string; subject: string; text: string; html?: string; attachments?: { filename: string; content: Buffer; contentType: string }[] }): Promise<{ messageId?: string }>;
   close(): void;
 }
 export type TransportFactory = (options: Record<string, unknown>) => MailTransport;
@@ -75,7 +77,8 @@ export function createSmtpEmail(cfg: SmtpConfig, deps: { createTransport?: Trans
     configured: true,
     async send(msg) {
       if (!isEmailAddress(msg.to)) return failed("invalid_recipient", false);
-      if (/[\r\n]/.test(msg.subject) || msg.subject.length === 0 || msg.subject.length > 200 || msg.text.length === 0 || msg.text.length > 20_000) return failed("invalid_message", false);
+      if (/[\r\n]/.test(msg.subject) || msg.subject.length === 0 || msg.subject.length > 200 || msg.text.length === 0 || msg.text.length > 20_000 || (msg.html !== undefined && msg.html.length > 100_000)) return failed("invalid_message", false);
+      if (msg.attachments && (msg.attachments.reduce((n, a) => n + a.content.length, 0) > MAX_ATTACHMENT_BYTES || msg.attachments.some(a => !/^[\w][\w .()-]{0,118}$/.test(a.filename)))) return failed("invalid_message", false);
       const pinned = await pinPublicAddress(cfg.host, deps.resolve ?? defaultResolver, timeout);
       if (pinned === "blocked") return failed("blocked_host", false);
       if (pinned === "unresolved") return failed("network", true);
@@ -87,7 +90,7 @@ export function createSmtpEmail(cfg: SmtpConfig, deps: { createTransport?: Trans
         disableFileAccess: true, disableUrlAccess: true, logger: false, debug: false
       });
       try {
-        const info = await transport.sendMail({ from: cfg.from, to: msg.to, subject: msg.subject, text: msg.text });
+        const info = await transport.sendMail({ from: cfg.from, to: msg.to, subject: msg.subject, text: msg.text, ...(msg.html ? { html: msg.html } : {}), ...(msg.attachments?.length ? { attachments: msg.attachments.map(a => ({ filename: a.filename, content: a.content, contentType: a.contentType })) } : {}) });
         const ref = typeof info.messageId === "string" && info.messageId.length <= 200 ? info.messageId : undefined;
         return ref ? { status: "sent", providerRef: ref } : { status: "sent" };
       } catch (e) {

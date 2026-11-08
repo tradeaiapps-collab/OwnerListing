@@ -19,7 +19,7 @@ async function handlePost(req: Request, { params }: Ctx) {
   const blocked = csrfGuard(req);
   if (blocked) return blocked;
   const id = (await params).id;
-  const handler = await requireListingHandler(req, id);
+  const handler = await requireListingHandler(req, id, "listing.describe");
   if (handler instanceof NextResponse) return handler;
   const body: unknown = await req.json().catch(() => null);
   const notes = body !== null && typeof body === "object" ? (body as Record<string, unknown>)["notes"] : undefined;
@@ -34,11 +34,12 @@ async function handlePost(req: Request, { params }: Ctx) {
     ...(l.suburb !== undefined ? { suburb: l.suburb } : {}), ...(l.bedrooms !== undefined ? { bedrooms: l.bedrooms } : {}),
     ...(l.bathrooms !== undefined ? { bathrooms: l.bathrooms } : {}), ...(l.parking !== undefined ? { parking: l.parking } : {})
   }, notes ?? "");
+  if (result.state === "unavailable") console.warn(`[ai-description] listing ${id}: unavailable (${result.reason})`);
   const deps = getDeps();
   await deps.appendAudit({
     id: deps.newId(), occurredAt: deps.now(), actorType: "user", actorId: handler.actor.userId,
     aggregateType: "listing", aggregateId: id, eventType: "listing.ai_description_requested",
-    correlationId: deps.newId(), payload: { aiState: result.state }
+    correlationId: deps.newId(), payload: { aiState: result.state, ...(result.state === "unavailable" ? { reason: result.reason } : {}) }
   });
   return NextResponse.json(result, { headers: { "cache-control": "no-store" } });
 }

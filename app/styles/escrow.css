@@ -1,0 +1,42 @@
+/* Deposits in trust (/staff/escrow). Builds on commissions.css (tiles, rows) and globals (table-wrap, panel, card-list). */
+.es-lede { max-width: 60ch; margin-bottom: var(--space-6); }
+.es-tabs { display: flex; gap: var(--space-1); margin: 0 0 var(--space-4); border-bottom: 1px solid var(--border); overflow-x: auto; scrollbar-width: thin; }
+.es-tab { flex: 0 0 auto; min-height: 44px; padding: 0 var(--space-4); margin-bottom: -1px; border: 1px solid transparent; border-bottom: 3px solid transparent; border-radius: var(--radius) var(--radius) 0 0; background: transparent; color: var(--muted); font-weight: 700; box-shadow: none; }
+.es-tab:hover:not(:disabled), .es-tab:focus:not(:focus-visible) { background: var(--tint); color: var(--text); box-shadow: none; }
+.es-tab[aria-selected="true"], .es-tab[aria-selected="true"]:hover:not(:disabled) { background: transparent; color: var(--heading, var(--text)); }
+.es-tab[aria-selected="true"] { color: var(--heading, var(--text)); border-bottom-color: var(--gold); }
+.es-ref { font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace); font-size: 0.875rem; letter-spacing: 0.02em; white-space: nowrap; }
+.es-table { min-width: 36rem; }
+.es-table th, .es-table td { vertical-align: top; }
+.es-table tr[aria-selected="true"] { background: color-mix(in srgb, var(--gold, var(--accent)) 10%, transparent); }
+.es-lines { min-width: 44rem; }
+.es-desc { max-width: 22rem; overflow-wrap: anywhere; }
+.es-out { color: var(--danger); }
+.es-match { min-width: 14rem; }
+.es-suggest { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
+.es-suggest select { min-width: 0; flex: 1 1 10rem; }
+.es-status { display: inline-block; padding: 2px var(--space-2); border-radius: 999px; border: 1px solid var(--border); font-size: 0.8125rem; white-space: nowrap; }
+.es-status.held, .es-status.released, .es-status.refunded { color: var(--ok); border-color: currentColor; background: var(--ok-tint); }
+.es-status.release_pending, .es-status.part_received { color: var(--warn); border-color: currentColor; }
+.es-status.overdue { color: var(--danger); border-color: currentColor; background: var(--danger-tint); }
+.es-status.cancelled { color: var(--muted); }
+.es-detail { margin-top: var(--space-4); }
+.es-detail h2 { overflow-wrap: anywhere; }
+.es-facts { display: grid; gap: var(--space-3); grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); margin: 0 0 var(--space-4); }
+.es-facts dt { color: var(--muted); font-size: 0.75rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; }
+.es-facts dd { margin: var(--space-1) 0 0; font-weight: 600; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.es-actions-grid { display: grid; gap: var(--space-4); grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr)); margin-bottom: var(--space-4); }
+.es-form { display: grid; gap: var(--space-2); padding: var(--space-4); border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+.es-form h2, .es-form h3 { margin: 0; }
+.es-form .cm-row { margin-bottom: 0; }
+.es-wide { display: grid; gap: var(--space-1); font-weight: 600; font-size: 0.9375rem; }
+.es-check { display: flex; gap: var(--space-2); align-items: flex-start; font-weight: 600; font-size: 0.9375rem; }
+.es-check input { margin-top: 0.25rem; flex: 0 0 auto; }
+.es-list { display: grid; gap: var(--space-2); margin: 0 0 var(--space-4); padding-left: var(--space-6); }
+.es-audit { font-size: 0.9375rem; }
+.es-warn-text { color: var(--warn); font-weight: 600; }
+.es-ok-text { color: var(--ok); font-weight: 600; }
+.es-table th[scope="row"], .es-nowrap { white-space: nowrap; }
+.es-table th[scope="row"] .muted, .es-table th[scope="row"] small { white-space: normal; }
+.es-table th.es-wrap { white-space: normal; }
+.es-card > :first-child { margin-top: 0; }

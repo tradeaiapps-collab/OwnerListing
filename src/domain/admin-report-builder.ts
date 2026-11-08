@@ -35,9 +35,11 @@ export function parseReportQuery(p: URLSearchParams, today: string): { ok: true;
 export interface RawReportRow {
   key: string; agentName?: string | null;
   listingsCreated: number; liveNow: number; offers: number; accepted: number; revenueCents: number;
+  /** Buyer enquiries on listings in the group, started in the period. */
+  enquiries?: number;
 }
 
-export interface ReportRow { key: string; label: string; listingsCreated: number; liveNow: number; offers: number; accepted: number; acceptance: number; revenueCents?: number }
+export interface ReportRow { key: string; label: string; listingsCreated: number; liveNow: number; enquiries: number; offers: number; accepted: number; acceptance: number; revenueCents?: number }
 export interface BuiltReport { query: ReportQuery; dimensionLabel: string; rows: ReportRow[]; totals: Omit<ReportRow, "key" | "label">; revenueIncluded: boolean }
 
 /** "Jane Citizen" -> "Jane C."; a single name stays as its first letter and a dot. */
@@ -78,13 +80,13 @@ export function buildReport(actor: StaffActor, query: ReportQuery, raw: readonly
     const offers = safe(r.offers), accepted = safe(r.accepted);
     return {
       key: r.key, label: groupLabel(actor, query.dimension, r),
-      listingsCreated: safe(r.listingsCreated), liveNow: safe(r.liveNow), offers, accepted, acceptance: acceptanceRate(accepted, offers),
+      listingsCreated: safe(r.listingsCreated), liveNow: safe(r.liveNow), enquiries: safe(r.enquiries), offers, accepted, acceptance: acceptanceRate(accepted, offers),
       ...(revenueIncluded ? { revenueCents: safe(r.revenueCents) } : {})
     };
   }).sort((a, b) => b.listingsCreated - a.listingsCreated || b.offers - a.offers || a.label.localeCompare(b.label));
-  const add = (k: "listingsCreated" | "liveNow" | "offers" | "accepted" | "revenueCents") => rows.reduce((t, r) => t + (r[k] ?? 0), 0);
+  const add = (k: "listingsCreated" | "liveNow" | "enquiries" | "offers" | "accepted" | "revenueCents") => rows.reduce((t, r) => t + (r[k] ?? 0), 0);
   const totals = {
-    listingsCreated: add("listingsCreated"), liveNow: add("liveNow"), offers: add("offers"), accepted: add("accepted"),
+    listingsCreated: add("listingsCreated"), liveNow: add("liveNow"), enquiries: add("enquiries"), offers: add("offers"), accepted: add("accepted"),
     acceptance: acceptanceRate(add("accepted"), add("offers")), ...(revenueIncluded ? { revenueCents: add("revenueCents") } : {})
   };
   const dimensionLabel = DIMENSIONS.find(d => d.key === query.dimension)!.label;

@@ -316,7 +316,7 @@ describe.skipIf(!DATABASE_URL)("Postgres integration (migrations + raw SQL)", ()
       const a = await addUser(db, "buyer");
       const b = await addUser(db, "buyer");
       const repo = createPgSavedSearchRepository(db);
-      const input = parseSavedSearchInput({ transactionType: "sale", useClass: "residential", jurisdictions: ["QLD"], suburbs: ["Toowong"], propertyTypes: ["house"], minPriceCents: 1, maxPriceCents: 9e9, minBedrooms: 3 });
+      const input = parseSavedSearchInput({ transactionType: "sale", useClass: "residential", jurisdictions: ["QLD"], suburbs: ["Toowong"], propertyTypes: ["house"], minPriceCents: 50_000_000, maxPriceCents: 9e9, minBedrooms: 3 });
       if (!input.ok) throw new Error(input.message);
       const first = await repo.insert(a, input.value);
       await repo.insert(a, { ...input.value, suburbs: ["Paddington"] });

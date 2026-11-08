@@ -15,30 +15,38 @@ const inTx = <T>(db: Queryable, fn: (tx: Queryable) => Promise<T>) => (db.transa
 export interface ListingFilters { q?: string; status?: string; jurisdiction?: string; transactionType?: string; cursor?: string }
 export interface StaffListingRow {
   id: string; title: string; suburb: string | null; jurisdiction: string; transactionType: string; propertyType: string;
-  status: string; priceCents: number | null; createdAt: string; ownerType: string; offers: number; lastReason: string | null;
+  status: string; outcome: string | null; priceCents: number | null; createdAt: string; ownerType: string; offers: number; lastReason: string | null;
+  /** Map pin for the staff map view; null when the owner has not placed one. */
+  latitude: number | null; longitude: number | null;
 }
+
+/** Shared by the staff listing search and the bulk "select all (filtered)": deleted listings never show; params $1-$5 are listingFilterParams. */
+export const LISTING_FILTER_WHERE = `l.deleted_at IS NULL
+        AND ($1::text IS NULL OR l.title ILIKE $1 OR l.address_text ILIKE $1 OR l.suburb ILIKE $1 OR l.postcode = $2 OR l.id::text = $2)
+        AND ($3::text IS NULL OR l.status = $3) AND ($4::text IS NULL OR l.jurisdiction = $4) AND ($5::text IS NULL OR l.transaction_type = $5)`;
+export const listingFilterParams = (f: ListingFilters): unknown[] =>
+  [f.q ? `%${f.q.replace(/[\\%_]/g, c => `\\${c}`)}%` : null, f.q ?? null, f.status || null, f.jurisdiction || null, f.transactionType || null];
 
 /** Every listing, newest first, filtered and paged (keyset). Owner identity is not selected; staff open the listing by id. */
 export async function searchListings(db: Queryable, f: ListingFilters): Promise<{ rows: StaffListingRow[]; nextCursor: string | null }> {
   const cur = f.cursor ? decodeCursor(f.cursor) : null;
   const res = await db.query(
-    `SELECT l.id, l.title, l.suburb, l.jurisdiction, l.transaction_type, l.property_type, l.status, l.price_cents, l.created_at, o.user_type AS owner_type,
+    `SELECT l.id, l.title, l.suburb, l.jurisdiction, l.transaction_type, l.property_type, l.status, l.outcome, l.price_cents, l.created_at, l.latitude, l.longitude, o.user_type AS owner_type,
             (SELECT count(*)::int FROM formal_offer f WHERE f.listing_id = l.id) AS offers,
             (SELECT e.payload->>'reason' FROM audit_event e WHERE e.aggregate_type = 'listing' AND e.aggregate_id = l.id::text
                 AND e.payload ? 'moderation' ORDER BY e.occurred_at DESC LIMIT 1) AS last_reason
        FROM property_listing l JOIN app_user o ON o.id = l.owner_user_id
-      WHERE ($1::text IS NULL OR l.title ILIKE $1 OR l.address_text ILIKE $1 OR l.suburb ILIKE $1 OR l.postcode = $2 OR l.id::text = $2)
-        AND ($3::text IS NULL OR l.status = $3) AND ($4::text IS NULL OR l.jurisdiction = $4) AND ($5::text IS NULL OR l.transaction_type = $5)
+      WHERE ${LISTING_FILTER_WHERE}
         AND ($6::timestamptz IS NULL OR (l.created_at, l.id) < ($6::timestamptz, $7::uuid))
       ORDER BY l.created_at DESC, l.id DESC LIMIT $8`,
-    [f.q ? `%${f.q.replace(/[\\%_]/g, c => `\\${c}`)}%` : null, f.q ?? null, f.status || null, f.jurisdiction || null, f.transactionType || null,
-      cur?.sortValue ?? null, cur?.id ?? null, PAGE + 1]
+    [...listingFilterParams(f), cur?.sortValue ?? null, cur?.id ?? null, PAGE + 1]
   );
   const rows = res.rows.slice(0, PAGE).map(r => ({
     id: String(r["id"]), title: String(r["title"]), suburb: r["suburb"] === null ? null : String(r["suburb"]), jurisdiction: String(r["jurisdiction"]).trim(),
-    transactionType: String(r["transaction_type"]), propertyType: String(r["property_type"]), status: String(r["status"]),
+    transactionType: String(r["transaction_type"]), propertyType: String(r["property_type"]), status: String(r["status"]), outcome: r["outcome"] === null ? null : String(r["outcome"]),
     priceCents: r["price_cents"] === null ? null : n(r["price_cents"]), createdAt: iso(r["created_at"]), ownerType: String(r["owner_type"]),
-    offers: n(r["offers"]), lastReason: typeof r["last_reason"] === "string" ? r["last_reason"] : null
+    offers: n(r["offers"]), lastReason: typeof r["last_reason"] === "string" ? r["last_reason"] : null,
+    latitude: r["latitude"] === null ? null : n(r["latitude"]), longitude: r["longitude"] === null ? null : n(r["longitude"])
   }));
   const last = rows[rows.length - 1];
   return { rows, nextCursor: res.rows.length > PAGE && last ? encodeCursor({ sortValue: last.createdAt, id: last.id }) : null };

@@ -11,6 +11,9 @@ import { expireCountersPg } from "../../../../../src/server/offer-counter-db";
 import { offerLinkPg, offersForOwnerPg, submitOfferPg } from "../../../../../src/server/offers-db";
 import { csrfGuard } from "../../../../../src/server/csrf";
 import { requireListingHandler } from "../../../../../src/server/owner-listing";
+import { emitOfferReceived } from "../../../../../src/server/staff-automation-db";
+import { fireAutomation } from "../../../../../src/server/automation-db";
+import { notifyOfferOwner } from "../../../../../src/server/notifier";
 import { requireCurrentTerms } from "../../../../../src/server/terms-guard";
 import { withApi } from "../../../../../src/server/api/with-api";
 
@@ -98,6 +101,9 @@ async function handlePost(req: Request, { params }: Ctx) {
     correlationId: deps.newId(),
     payload: { listingId: id }
   });
+  await notifyOfferOwner(db, id);
+  await emitOfferReceived(db, { offerId: saved.id, listingId: id, buyerUserId: link.buyerUserId });
+  await fireAutomation(db, { trigger: "offer_received", offerId: saved.id });
   return NextResponse.json({ offer: saved }, { status: 201 });
 }
 
@@ -108,7 +114,7 @@ async function handleGet(req: Request, { params }: Ctx) {
   const denied = forbiddenFor({ id: actor.userId, role: actor.userType }, "offer.analyse");
   if (denied) return failure(denied);
   const { id } = await params;
-  const handler = await requireListingHandler(req, id);
+  const handler = await requireListingHandler(req, id, "offers.view");
   if (handler instanceof NextResponse) return handler;
   const db = getDb();
   await expireCountersPg(db, getDeps().now(), { listingId: id });

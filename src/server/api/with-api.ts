@@ -1,5 +1,6 @@
 import { createHmac, randomUUID } from "node:crypto";
 import { readCookie, SESSION_COOKIE, verifySession } from "../auth/session";
+import { mobileBearer, verifyMobileAccess } from "../auth/mobile-token";
 import { STAFF_COOKIE, verifyStaffSession } from "../auth/staff-session";
 import { getDb } from "../context";
 import { apiError, toV1ErrorBody, type ApiErrorBody } from "./errors";
@@ -24,7 +25,7 @@ const WRITE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
  * No idempotency handling: sign-in and logout (cookie flows), provider webhooks (they carry their own event ids and need the raw
  * body untouched) and internal cron calls (secret-guarded, already safe to repeat).
  */
-const IDEMPOTENCY_EXEMPT = [/^\/api\/auth\//, /^\/api\/webhooks\//, /^\/api\/internal\//, /^\/api\/dev\//];
+const IDEMPOTENCY_EXEMPT = [/^\/api\/auth\//, /^\/api\/oauth\//, /^\/api\/webhooks\//, /^\/api\/internal\//, /^\/api\/dev\//];
 
 export interface ApiLayerDeps {
   store: () => IdempotencyStore;
@@ -42,11 +43,13 @@ const defaults: ApiLayerDeps = {
 
 const CORRELATION_SHAPE = /^[A-Za-z0-9._:-]{8,100}$/;
 
-/** Who the key belongs to. Cookies are only signature-checked here; the handler still does the full sign-in check. */
+/** Who the key belongs to. Cookies and phone tokens are only signature-checked here; the handler still does the full sign-in check. */
 function scopeOf(req: Request, d: ApiLayerDeps): string {
   const secret = d.secret();
   const now = d.nowSeconds();
   if (secret && secret.length >= 32) {
+    const phone = verifyMobileAccess(mobileBearer(req), secret, now);
+    if (phone) return `user:${phone.uid}`;
     const user = verifySession(readCookie(req, SESSION_COOKIE), secret, now);
     if (user) return `user:${user.uid}`;
     const staff = verifyStaffSession(readCookie(req, STAFF_COOKIE), secret, now);

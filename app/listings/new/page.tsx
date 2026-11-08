@@ -1,29 +1,151 @@
 "use client";
 import { useState } from "react";
-import { BondPathwayField, ListingFields, type BondState } from "../fields";
+import { BondPathwayField, ListingFields, type BondState, type ListingDefaults } from "../fields";
+import { TemplatePicker } from "../template-picker";
+import type { TemplateView } from "../../../src/domain/listing-template";
 import { JSON_HEADERS, listingFormBody } from "../ui";
+import { dollarsToCents } from "../../../src/domain/listing-details";
 import { PhotoManager } from "../photo-manager";
+import { QuickSetupPanel, type QuickFiles } from "../quick-setup";
+import type { QuickSetup } from "../../../src/domain/quick-setup";
+import { ElenaPublishCheck } from "../elena-publish-check";
+import { PhotosStep } from "./photos-step";
+import type { FieldStep } from "../fields";
 
-type Check = { allowed: boolean; reasons: string[] };
+const STEPS = ["Basics", "Details", "Description", "Photos", "Location", "Publish"] as const;
+const SUBS = ["Title, price and type", "Rooms and extras", "Tell the story", "Show it off", "Address and map", "Review and save"] as const;
+const TITLES = ["What are you listing?", "Rooms and extras", "Describe the property", "Add photos", "Where is it?", "Review your listing"] as const;
+const INTROS = ["Start with the essentials buyers look at first.", "These power the filters buyers use to find your home.", "Plain, specific wording works best.", "Good photos are the biggest driver of enquiries.", "The map pin is placed from your address.", "Check the details, then save your draft."] as const;
+const FIELD_STEPS: (FieldStep | "none")[] = ["basics", "details", "description", "none", "location", "none"];
+const LAST = STEPS.length - 1;
+
+type Ready = Extract<QuickSetup, { state: "ready" }>;
+type Upload = { name: string; state: "waiting" | "uploading" | "done" | "error"; message?: string };
 
 export default function NewListing() {
   const [error, setError] = useState("");
   const [draftId, setDraftId] = useState("");
-  const [check, setCheck] = useState<Check | null>(null);
   const [busy, setBusy] = useState(false);
   const [signedOut, setSignedOut] = useState(false);
   const [isRent, setIsRent] = useState(false);
   const [bond, setBond] = useState("");
   const [bondState, setBondState] = useState<BondState>("idle");
+  const [defaults, setDefaults] = useState<ListingDefaults>({});
+  const [fieldsKey, setFieldsKey] = useState(0);
+  const [mode, setMode] = useState<"quick" | "manual">("quick");
+  const [filled, setFilled] = useState<Ready | null>(null);
+  const [pending, setPending] = useState<QuickFiles>({ photos: [], plan: null });
+  const [uploads, setUploads] = useState<Upload[]>([]);
+  const [step, setStep] = useState(0);
+  const [reached, setReached] = useState(0);
+  const [review, setReview] = useState<[string, string][]>([]);
+  const [live, setLive] = useState({ price: "Price not set", title: "Untitled listing", addr: "Address not set", rooms: "" });
+  const uploading = uploads.some(u => u.state === "waiting" || u.state === "uploading");
 
-  async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
+  /** Elena's quick setup fills the form. Whatever the person had already typed is kept where Elena found nothing. */
+  function applyQuick(r: Ready, files: QuickFiles) {
+    const form = document.getElementById("new-listing-form");
+    const fd = form instanceof HTMLFormElement ? new FormData(form) : new FormData();
+    const s = (k: string) => String(fd.get(k) ?? "");
+    const n = (k: string) => (s(k).trim() === "" ? {} : { [k]: Number(s(k)) });
+    const cents = dollarsToCents(s("price"));
+    const f = r.fields;
+    setDefaults({
+      address: s("address"), suburb: s("suburb"), postcode: s("postcode"), jurisdiction: s("jurisdiction"), useClass: s("useClass"),
+      ...n("bedrooms"), ...n("bathrooms"), ...n("parking"), ...(cents !== undefined ? { priceCents: cents } : {}),
+      title: f.title, description: f.description, transactionType: f.transactionType, propertyType: f.propertyType, amenities: f.amenities,
+      ...(f.suburb ? { suburb: f.suburb } : {}), ...(f.postcode ? { postcode: f.postcode } : {}), ...(f.jurisdiction ? { jurisdiction: f.jurisdiction } : {}),
+      ...(f.address ? { address: f.address } : {}), ...(f.bedrooms !== undefined ? { bedrooms: f.bedrooms } : {}),
+      ...(f.bathrooms !== undefined ? { bathrooms: f.bathrooms } : {}), ...(f.parking !== undefined ? { parking: f.parking } : {}),
+      ...(f.priceCents !== undefined ? { priceCents: f.priceCents } : {})
+    });
+    setFieldsKey(k => k + 1);
+    setFilled(r); setPending(files); setMode("manual"); setStep(0);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  /** Sends the photos and plan chosen in quick setup to the new draft, one at a time. */
+  async function uploadPending(id: string) {
+    const items: { file: File; kind: "photo" | "floorplan" }[] = [...pending.photos.map(file => ({ file, kind: "photo" as const })), ...(pending.plan ? [{ file: pending.plan, kind: "floorplan" as const }] : [])];
+    if (items.length === 0) return;
+    setPending({ photos: [], plan: null });
+    setUploads(items.map(i => ({ name: i.file.name, state: "waiting" })));
+    const set = (i: number, u: Partial<Upload>) => setUploads(prev => prev.map((x, j) => (j === i ? { ...x, ...u } : x)));
+    for (let i = 0; i < items.length; i++) {
+      set(i, { state: "uploading" });
+      const fd = new FormData();
+      fd.set("file", items[i]!.file); fd.set("kind", items[i]!.kind);
+      try {
+        const r = await fetch(`/api/listings/${id}/photos`, { method: "POST", body: fd });
+        if (r.ok) set(i, { state: "done" });
+        else set(i, { state: "error", message: r.status === 503 ? "Photo upload is not available yet." : (await r.json().catch(() => ({}))).error ?? "Upload failed." });
+      } catch { set(i, { state: "error", message: "Network error." }); }
+    }
+  }
+
+  /** Template fields go over the form; what was already typed (title, address, suburb, postcode, price) is kept. */
+  function applyTemplate(t: TemplateView, form: HTMLFormElement) {
+    const fd = new FormData(form), s = (k: string) => String(fd.get(k) ?? "");
+    const cents = dollarsToCents(s("price"));
+    const kept: ListingDefaults = {
+      title: s("title"), address: s("address"), suburb: s("suburb"), postcode: s("postcode"), jurisdiction: s("jurisdiction"), transactionType: s("transactionType"),
+      useClass: s("useClass"), propertyType: s("propertyType"), description: s("description"), amenities: fd.getAll("amenities").map(String),
+      ...(cents !== undefined ? { priceCents: cents } : {})
+    };
+    const n = (k: string) => (s(k).trim() === "" ? {} : { [k]: Number(s(k)) });
+    setDefaults({ ...kept, ...n("bedrooms"), ...n("bathrooms"), ...n("parking"), ...t.content });
+    setFieldsKey(k => k + 1);
+  }
+
+  /** What the preview card in the rail shows, read straight from the form. */
+  function readPreview(form: HTMLFormElement) {
+    const fd = new FormData(form), g = (k: string) => String(fd.get(k) ?? "").trim();
+    const rent = g("transactionType") === "rent";
+    const cents = dollarsToCents(g("price"));
+    const price = cents === undefined || g("price") === "" ? "Price not set" : `$${(cents / 100).toLocaleString("en-AU")}${rent ? " pw" : ""}`;
+    const rooms = ["bedrooms", "bathrooms", "parking"].map((k, i) => (g(k) === "" ? "" : `${g(k)} ${["bed", "bath", "car"][i]}`)).filter(Boolean).join(" · ");
+    const addr = [g("address"), [g("suburb"), g("jurisdiction"), g("postcode")].filter(Boolean).join(" ")].filter(Boolean).join(", ");
+    return { price, title: g("title") || "Untitled listing", addr: addr || "Address not set", rooms };
+  }
+
+  function reviewRows(form: HTMLFormElement): [string, string][] {
+    const fd = new FormData(form), g = (k: string) => String(fd.get(k) ?? "").trim();
+    const rooms = ["bedrooms", "bathrooms", "parking"].map((k, i) => (g(k) === "" ? "" : `${g(k)} ${["bed", "bath", "car"][i]}`)).filter(Boolean).join(" · ");
+    const place = [g("address"), [g("suburb"), g("jurisdiction"), g("postcode")].filter(Boolean).join(" ")].filter(Boolean).join(", ");
+    const rent = g("transactionType") === "rent";
+    return [
+      ["Basics", `${g("title") || "No title"} · ${rent ? "Rental" : "Sale"}, ${g("propertyType")} · ${g("price") ? `$${g("price")}${rent ? " pw" : ""}` : "no price"}`],
+      ["Details", rooms || "Not set"], ["Description", g("description").slice(0, 90) || "Not set"],
+      ["Photos", `${pending.photos.length} ${pending.photos.length === 1 ? "photo" : "photos"}${pending.plan ? " and a site plan" : ""}`],
+      ["Location", place || "Not set"]
+    ];
+  }
+
+  /** Moves to a step. Going forward checks the fields on the current step first. */
+  function goTo(next: number) {
+    const form = document.getElementById("new-listing-form");
+    if (!(form instanceof HTMLFormElement)) return;
+    if (next > step) {
+      const fields = Array.from(form.querySelectorAll<HTMLInputElement>(".wiz-step:not([hidden]) :is(input, select, textarea)"));
+      const bad = fields.find(el => !el.checkValidity());
+      if (bad) { bad.reportValidity(); return; }
+      if (step === 0) { const parsed = listingFormBody(new FormData(form)); if ("error" in parsed) { setError(parsed.error); return; } }
+    }
+    setError("");
+    if (next === LAST) setReview(reviewRows(form));
+    setStep(next); setReached(r => Math.max(r, next));
+    document.getElementById("wiz-top")?.scrollIntoView({ block: "start" });
+  }
+
+  async function onSubmit(e: React.FormEvent<HTMLFormElement>, force = false) {
     e.preventDefault();
+    if (step < LAST && !force) { goTo(step + 1); return; }
+    if (draftId) return;
     const parsed = listingFormBody(new FormData(e.currentTarget));
     if ("error" in parsed) { setError(parsed.error); return; }
     const body = parsed.body;
     setBusy(true);
     setError("");
-    setCheck(null);
     setBond("");
     setBondState("idle");
     try {
@@ -34,6 +156,7 @@ export default function NewListing() {
       else {
         setDraftId(d.listing.id);
         setIsRent(d.listing.transactionType === "rent");
+        void uploadPending(d.listing.id);
       }
     } catch {
       setError("Could not save the draft.");
@@ -46,7 +169,6 @@ export default function NewListing() {
     const value = e.target.value;
     setBond(value);
     setBondState("saving");
-    setCheck(null);
     try {
       const res = await fetch(`/api/listings/${draftId}`, { method: "PATCH", headers: JSON_HEADERS, body: JSON.stringify({ rentalBondPathway: value }) });
       setBondState(res.ok ? "saved" : "error");
@@ -55,46 +177,90 @@ export default function NewListing() {
     }
   }
 
-  async function runCheck() {
-    setBusy(true);
-    setError("");
-    try {
-      const res = await fetch(`/api/listings/${draftId}/publish?dryRun=1`, { method: "POST", headers: JSON_HEADERS });
-      const d = await res.json();
-      if (!res.ok) setError(d.error ?? "Check failed.");
-      else setCheck({ allowed: d.decision.allowed, reasons: d.decision.reasons });
-    } catch {
-      setError("Check failed.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
   return (
-    <main className="narrow">
+    <main className="narrow wiz-main">
       <h1>Create a listing</h1>
       <p className="muted">Start with the basics. You can save a draft and finish later. Nothing is public until you publish.</p>
-      <form className="stack" onSubmit={onSubmit}>
-        <ListingFields />
-        <div className="form-bar"><button type="submit" disabled={busy}>Save draft</button></div>
-      </form>
+      <div className="qs-tabs" role="tablist" aria-label="How do you want to set up the listing?">
+        <button type="button" role="tab" id="tab-quick" aria-selected={mode === "quick"} aria-controls="panel-quick" className={mode === "quick" ? "" : "secondary"} onClick={() => setMode("quick")}>Quick setup with Elena</button>
+        <button type="button" role="tab" id="tab-manual" aria-selected={mode === "manual"} aria-controls="panel-manual" className={mode === "manual" ? "" : "secondary"} onClick={() => setMode("manual")}>Manual setup</button>
+      </div>
+      <div id="panel-quick" role="tabpanel" aria-labelledby="tab-quick" hidden={mode !== "quick"}>
+        <QuickSetupPanel onDone={applyQuick} onManual={() => setMode("manual")} />
+      </div>
+      <div id="panel-manual" role="tabpanel" aria-labelledby="tab-manual" hidden={mode !== "manual"}>
+        {filled && (
+          <section role="status" className="panel qs-result">
+            <h2>Elena filled in your listing</h2>
+            <p className="muted">{filled.source === "ai" ? "Elena wrote the title and description from your notes. " : "Elena read your notes to fill in the details. "}Check everything below and change what is wrong. Nothing is saved until you press Save draft.</p>
+            <ul className="plain-list">{filled.filled.map(x => <li key={x.key}><strong>{x.label}:</strong> {x.value}</li>)}</ul>
+            {filled.missing.length > 0 && <p><strong>Still needed:</strong> {filled.missing.join(", ")}.</p>}
+            {(pending.photos.length > 0 || pending.plan) && <p className="muted">{pending.photos.length} {pending.photos.length === 1 ? "photo" : "photos"}{pending.plan ? " and a site plan" : ""} will be added when you save the draft.</p>}
+          </section>
+        )}
+        <TemplatePicker onApply={t => { const f = document.getElementById("new-listing-form"); if (f instanceof HTMLFormElement) applyTemplate(t, f); }} />
+        <div className="wiz-layout">
+          <aside className="wiz-rail" aria-label="Listing progress">
+            <ol className="wiz-steps">
+              {STEPS.map((name, i) => (
+                <li key={name} className={i < step ? "done" : i === step ? "cur" : ""}>
+                  <button type="button" disabled={i > reached} aria-current={i === step ? "step" : undefined} aria-label={`Step ${i + 1}, ${name}`} onClick={() => goTo(i)}>
+                    <span className="wiz-dot" aria-hidden="true">{i < step ? "✓" : i + 1}</span>
+                    <span className="wiz-st"><b>{name}</b><span>{SUBS[i]}</span></span>
+                  </button>
+                </li>
+              ))}
+            </ol>
+            <div className="wiz-preview" aria-label="Listing preview">
+              <div className="wiz-ph"><em>Preview</em></div>
+              <div className="wiz-pb"><strong className="wiz-pp">{live.price}</strong><span className="wiz-pt">{live.title}</span><span className="muted">{live.addr}</span>{live.rooms && <span className="muted">{live.rooms}</span>}</div>
+            </div>
+          </aside>
+          <section className="wiz-card">
+            <header id="wiz-top" className="wiz-header">
+              <div className="wiz-eyebrow"><span aria-live="polite">Step {step + 1} of {STEPS.length}</span><span className="wiz-eb2">{STEPS[step]}</span></div>
+              <div className="wiz-seg" role="progressbar" aria-label="Listing progress" aria-valuemin={1} aria-valuemax={STEPS.length} aria-valuenow={step + 1}>
+                {STEPS.map((n, i) => <i key={n} className={i < step ? "ok" : i === step ? "on" : ""} />)}
+              </div>
+              <h2>{TITLES[step]}</h2>
+              <p className="muted">{INTROS[step]}</p>
+            </header>
+            <form id="new-listing-form" onSubmit={onSubmit} onInput={e => setLive(readPreview(e.currentTarget))} noValidate>
+              <div className="wiz-body">
+                <ListingFields key={fieldsKey} defaults={defaults} step={FIELD_STEPS[step] ?? "none"} />
+                <div hidden={step !== 3}><PhotosStep files={pending} onChange={setPending} /></div>
+                <div hidden={step !== LAST} className="wiz-review">
+                  {review.map(([k, v], i) => (
+                    <div key={k} className="wiz-rv"><h3>{k}</h3><p>{v}</p><button type="button" className="link-button" onClick={() => goTo(i)}>Edit</button></div>
+                  ))}
+                  <p className="muted">Saving creates a draft. Nothing is public until you publish.</p>
+                </div>
+              </div>
+              <div className="wiz-nav">
+                <button type="button" className="secondary" disabled={step === 0} onClick={() => goTo(step - 1)}>Previous</button>
+                {step < LAST && <button type="button" className="link-button wiz-exit" disabled={busy || !!draftId} onClick={() => { const f = document.getElementById("new-listing-form"); if (f instanceof HTMLFormElement) void onSubmit({ preventDefault() {}, currentTarget: f } as unknown as React.FormEvent<HTMLFormElement>, true); }}>Save draft and exit</button>}
+                {step < LAST
+                  ? <button type="button" onClick={() => goTo(step + 1)}>Next: {STEPS[step + 1]}</button>
+                  : <button type="submit" disabled={busy || !!draftId}>{draftId ? "Draft saved" : busy ? "Saving..." : "Save draft"}</button>}
+              </div>
+            </form>
+          </section>
+        </div>
+      </div>
       {signedOut && <p role="alert"><a href="/login?as=owner&next=/listings/new">Sign in</a> to save a listing.</p>}
       {error && <p role="alert">{error}</p>}
       {draftId && (
         <section role="status" className="panel">
           <h2>Draft saved</h2>
           <p><a href={`/listings/${draftId}/edit`}>Edit this draft</a></p>
-          <PhotoManager listingId={draftId} />
+          {uploads.length > 0 && (
+            <ul className="plain-list" role="status" aria-label="Uploads">{uploads.map((u, i) => <li key={i}>{u.name}: {u.state === "waiting" ? "waiting" : u.state === "uploading" ? "uploading..." : u.state === "done" ? "added" : u.message}</li>)}</ul>
+          )}
+          {!uploading && <PhotoManager key={uploads.length} listingId={draftId} />}
           {isRent && (
             <BondPathwayField value={bond} state={bondState} onChange={saveBond} />
           )}
-          <button type="button" className="secondary" disabled={busy} onClick={runCheck}>Check if it can be published</button>
-          {check && (
-            <div>
-              <h3>{check.allowed ? "Can be published" : "Blocked"}</h3>
-              <ul className="plain-list">{check.reasons.map(r => <li key={r}>{r}</li>)}</ul>
-            </div>
-          )}
+          <ElenaPublishCheck listingId={draftId} />
         </section>
       )}
       <p><a className="button secondary" href="/listings/mine">Back to my listings</a></p>

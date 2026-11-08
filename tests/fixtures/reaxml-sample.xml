@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<propertyList date="2026-11-04-10:00:00" username="vaultre" password="">
+  <residential modTime="2026-11-03-09:15:00" status="current">
+    <agentID>RWP01</agentID>
+    <uniqueID>1001</uniqueID>
+    <listingAgent id="1"><name>Sam Agent</name></listingAgent>
+    <price display="yes">1250000</price>
+    <priceView>Offers over $1.25m</priceView>
+    <address display="yes"><subNumber>2</subNumber><streetNumber>14</streetNumber><street>Latrobe Tce</street><suburb display="yes">Paddington</suburb><state>QLD</state><postcode>4064</postcode><country>AUS</country></address>
+    <category name="Townhouse"/>
+    <headline>Light-filled townhouse &amp; garden</headline>
+    <description><![CDATA[Three bedrooms, <b>two</b> bathrooms.]]></description>
+    <features><bedrooms>3</bedrooms><bathrooms>2</bathrooms><garages>1</garages><carports>1</carports></features>
+    <landDetails><area unit="squareMeter">220</area></landDetails>
+    <listingDate>2026-10-20</listingDate>
+  </residential>
+  <rental modTime="2026-11-02-08:00:00" status="leased">
+    <agentID>RWP01</agentID>
+    <uniqueID>2001</uniqueID>
+    <rent period="month" display="yes">2600</rent>
+    <address display="yes"><streetNumber>9</streetNumber><street>Given Tce</street><suburb>Paddington</suburb><state>Queensland</state><postcode>4064</postcode></address>
+    <category name="Apartment"/>
+    <features><bedrooms>2</bedrooms><bathrooms>1</bathrooms></features>
+  </rental>
+  <residential modTime="2026-10-30-12:00:00" status="sold">
+    <agentID>RWP01</agentID>
+    <uniqueID>1002</uniqueID>
+    <price display="no">900000</price>
+    <address display="no"><streetNumber>5</streetNumber><street>Elizabeth St</street><suburb>Paddington</suburb><state>QLD</state><postcode>4064</postcode></address>
+    <category name="House"/>
+    <features><bedrooms>3</bedrooms><bathrooms>1</bathrooms><openSpaces>2</openSpaces></features>
+    <soldDetails><soldPrice display="no">955000</soldPrice><soldDate>2026-10-28</soldDate></soldDetails>
+    <listingDate>2026-09-15</listingDate>
+  </residential>
+  <land modTime="2026-11-01-10:00:00" status="current">
+    <uniqueID>3001</uniqueID>
+    <price>480000</price>
+    <address><lotNumber>12</lotNumber><street>Ridge Rd</street><suburb>Samford Valley</suburb><state>QLD</state><postcode>4520</postcode></address>
+    <landDetails><area unit="hectare">1.5</area></landDetails>
+  </land>
+  <commercial modTime="2026-11-01-10:00:00" status="current">
+    <uniqueID>4001</uniqueID>
+    <commercialListingType value="lease"/>
+    <commercialCategory name="Retail"/>
+    <commercialRent period="annual">52000</commercialRent>
+    <address><streetNumber>1</streetNumber><street>Given Tce</street><suburb>Paddington</suburb><state>QLD</state><postcode>4064</postcode></address>
+  </commercial>
+  <residential status="current"><uniqueID>5001</uniqueID><address><suburb>Nowhere</suburb><state>ZZ</state></address></residential>
+  <holidayRental status="current"><uniqueID>6001</uniqueID></holidayRental>
+</propertyList>

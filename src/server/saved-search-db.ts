@@ -11,7 +11,11 @@ const criteriaOf = (i: SavedSearchInput): string => JSON.stringify({
   jurisdictions: i.jurisdictions, suburbs: i.suburbs, propertyTypes: i.propertyTypes,
   ...(i.minPriceCents !== undefined ? { minPriceCents: i.minPriceCents } : {}),
   ...(i.maxPriceCents !== undefined ? { maxPriceCents: i.maxPriceCents } : {}),
-  ...(i.minBedrooms !== undefined ? { minBedrooms: i.minBedrooms } : {})
+  ...(i.minBedrooms !== undefined ? { minBedrooms: i.minBedrooms } : {}),
+  ...(i.minBathrooms !== undefined ? { minBathrooms: i.minBathrooms } : {}),
+  ...(i.minParking !== undefined ? { minParking: i.minParking } : {}),
+  ...(i.amenities !== undefined ? { amenities: i.amenities } : {}),
+  ...(i.near !== undefined ? { near: i.near } : {})
 });
 
 /** Re-validates stored criteria with the same parser, so a malformed row is skipped rather than trusted. */
@@ -39,6 +43,13 @@ export function createPgSavedSearchRepository(db: Queryable): SavedSearchReposit
       const id = r.rows[0]?.["id"];
       if (typeof id !== "string") throw new Error("Saved search was not created.");
       return { id, buyerUserId, active: true, ...input };
+    },
+    async remove(buyerUserId, searchId) {
+      const r = await db.query(
+        "DELETE FROM saved_search WHERE buyer_user_id = $1 AND id::text = $2 RETURNING id",
+        [buyerUserId, searchId]
+      );
+      return r.rows.length > 0;
     },
     async listPreferences(buyerUserId) {
       const r = await db.query(

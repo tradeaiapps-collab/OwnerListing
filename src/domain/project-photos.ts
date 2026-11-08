@@ -196,7 +196,7 @@ export async function updateProjectLayout(
   if (!ownerMayEdit(p)) return fail("conflict", "Photos of a rejected project cannot be changed.");
   const version = (body as Record<string, unknown> | null)?.["version"];
   if (!Number.isInteger(version) || (version as number) < 0) return fail("invalid", "Invalid gallery version.");
-  const entries = { entries: (body as Record<string, unknown>)["entries"] };
+  const entries = { entries: (body as Record<string, unknown>)["entries"], allowFlagged: (body as Record<string, unknown>)["allowFlagged"] === true };
   const fixMessage = (m: string) => m.replace("Photos of a published listing cannot be deleted.", "Project photos cannot be deleted.").replace(/A listing can show up to \d+ photos\./, `A project can show up to ${PROJECT_PHOTO_MAX} photos.`);
   const tooMany = (list: readonly LayoutEntry[]) => list.filter(e => !e.hidden).length > PROJECT_PHOTO_MAX;
 

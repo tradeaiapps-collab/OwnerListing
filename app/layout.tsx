@@ -1,16 +1,22 @@
 import type { ReactNode } from "react";
-import { headers } from "next/headers";
+import { cookies } from "next/headers";
 import "./globals.css";
 import GuideAssistant from "./guide-assistant";
+import { ElenaContextTracker } from "./elena-context";
 import AdminShell from "./admin-shell";
 import SiteNav from "./site-nav";
+import NavMemory from "./nav-memory";
+import { THEME_INIT_SCRIPT } from "./theme-toggle";
 import ThemePreviewBridge from "./theme-preview-bridge";
 import "./styles/a11y.css";
+import "./styles/inspections.css";
 import { appOriginFor, readAppMode } from "../src/config/app-mode";
+import { LOCALE_COOKIE } from "../src/domain/account-settings";
+import { DEFAULT_LOCALE, LOCALES, isRtl } from "../src/domain/i18n";
 import { personaById } from "../src/domain/assistant-persona";
 import { GUIDE_DISCLAIMER } from "../src/domain/guide-assistant";
 import { assetUrl, buildThemeCss, fontStylesheetUrl } from "../src/domain/site-theme";
-import { devLoginAllowed } from "../src/server/dev-login";
+import { tenantAssetUrl } from "../src/domain/white-label";
 import { getLivePersona } from "../src/server/assistant-persona-db";
 import { getLiveGuide } from "../src/server/guide-assistant-db";
 import { getRequestTheme } from "../src/server/request-theme";
@@ -30,7 +36,7 @@ export async function generateMetadata() {
   const t = await getTheme();
   const brand = brandFor(t.settings);
   const fav = t.settings.brand.favicon;
-  const icons = fav ? { icons: { icon: assetUrl("favicon", fav, t.previewToken ?? undefined) } } : {};
+  const icons = fav ? { icons: { icon: t.tenantId ? tenantAssetUrl("favicon", fav) : assetUrl("favicon", fav, t.previewToken ?? undefined) } } : {};
   const robots = admin || t.source === "draft" ? { robots: { index: false, follow: false } } : {};
   return admin
     ? { title: { default: `${brand.name} Admin`, template: `%s | ${brand.name} Admin` }, description: "Staff only", ...robots, ...icons }
@@ -44,30 +50,33 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   const brand = brandFor(settings);
   const fontUrl = fontStylesheetUrl([settings.typography.bodyFont, settings.typography.headingFont]);
   const tok = t.previewToken ?? undefined;
+  // A white-label agency's logo is served per host (no id guessing); the platform theme keeps its own asset route.
+  const logoSrc = (name: "logo-light" | "logo-dark", id: number) => (t.tenantId ? tenantAssetUrl("logo-light", id) : assetUrl(name, id, tok));
   // The public site can be fixed to light in Site appearance; the staff console keeps following the device.
   const fixedLight = !admin && settings.layout.colourMode === "light";
   const light = settings.brand.logoLight ?? settings.brand.logoDark;
   const dark = settings.brand.logoDark ?? settings.brand.logoLight;
   const logo = light && dark ? (
     <picture>
-      {!fixedLight && <source media="(prefers-color-scheme: dark)" srcSet={assetUrl("logo-dark", dark, tok)} />}
-      <img className="brand-logo" src={assetUrl("logo-light", light, tok)} alt={admin ? "" : brand.name} />
+      {!fixedLight && <source media="(prefers-color-scheme: dark)" srcSet={logoSrc("logo-dark", dark)} />}
+      <img className="brand-logo" src={logoSrc("logo-light", light)} alt={admin ? "" : brand.name} />
     </picture>
   ) : null;
   const footer = settings.footer;
   const bridgeOrigin = t.source === "draft" ? appOriginFor(admin ? "admin" : "all") : null;
   const [guide, personaId] = admin ? [null, null] : await Promise.all([getLiveGuide(), getLivePersona()]);
   const persona = personaById(personaId);
-  // "Sign in" goes to the local test kit's dev sign-in only where devLoginAllowed() holds (never in production); otherwise unchanged.
-  const h = await headers();
-  const devSignIn = !admin && devLoginAllowed({ url: `http://${h.get("host") ?? ""}/`, headers: { get: n => h.get(n) } });
 
+  // The saved language (set on /settings) drives <html lang> and text direction. Page text stays English until a language is enabled.
+  const savedLocale = (await cookies()).get(LOCALE_COOKIE)?.value;
+  const locale = !admin && savedLocale && LOCALES.some(l => l.code === savedLocale) ? savedLocale : DEFAULT_LOCALE;
   return (
-    <html lang="en-AU" data-theme-mode={fixedLight ? "light" : undefined}>
+    <html lang={locale} dir={isRtl(locale) ? "rtl" : "ltr"} data-theme-mode={fixedLight ? "light" : undefined} suppressHydrationWarning>
       <head>
+        {!admin && !fixedLight && <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />}
         {fontUrl && <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />}
         {fontUrl && <link id="site-theme-font" rel="stylesheet" href={fontUrl} />}
-        <style id="site-theme" dangerouslySetInnerHTML={{ __html: buildThemeCss(settings) }} />
+        <style id="site-theme" dangerouslySetInnerHTML={{ __html: buildThemeCss(settings, { followDevice: admin }) }} />
       </head>
       <body className={admin ? "admin-app" : undefined}>
         <a className="skip-link" href="#main-content">Skip to content</a>
@@ -78,7 +87,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
             <header className="site-header">
               <div className="site-header-inner">
                 <a className="brand" href="/">{logo ?? brand.name}</a>
-                <SiteNav items={settings.navigation} iconStyle={settings.layout.iconStyle} {...(devSignIn ? { signInHref: "/dev-login" as const } : {})} />
+                <SiteNav items={settings.navigation} iconStyle={settings.layout.iconStyle} themeToggle={!fixedLight} />
               </div>
             </header>
             <div className="page" id="main-content" tabIndex={-1}>{children}</div>
@@ -107,6 +116,8 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
             </footer>
           </>
         )}
+        <NavMemory />
+        <ElenaContextTracker />
         {guide?.enabled && <GuideAssistant greeting={guide.greeting} chips={guide.chips} disclaimer={GUIDE_DISCLAIMER} persona={{ name: persona.name, icon: persona.icon, portrait: persona.portrait, poses: persona.poses }} />}
         {bridgeOrigin && <ThemePreviewBridge allowedOrigin={bridgeOrigin} />}
       </body>

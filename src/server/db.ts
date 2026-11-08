@@ -3,9 +3,10 @@ import type { ListingRecord, ListingRepository } from "../domain/listing-service
 import type { PropertyListing } from "../domain/listing";
 import type { BondPathway } from "../domain/publish";
 import { buildSearch } from "./listing-search-sql";
+import { isAmenity } from "../domain/listing-details";
 import { isJurisdiction } from "../domain/jurisdiction";
 import type { AgentLicence } from "../domain/licence";
-import type { AgentAppointment } from "../domain/access";
+import { isAgentPermission, type AgentAppointment } from "../domain/access";
 import type { TrustAccountDecision } from "../domain/trust-account";
 
 /** The part of pg.Pool this app uses, so tests and the domain do not depend on the driver. */
@@ -24,7 +25,7 @@ interface ListingRow {
   rental_bond_pathway: string | null;
   suburb: string | null; postcode: string | null; price_cents: string | number | null;
   bedrooms: number | null; bathrooms: number | null; parking: number | null; description: string | null;
-  latitude: string | number | null; longitude: string | number | null;
+  latitude: string | number | null; longitude: string | number | null; amenities: string[] | null;
 }
 interface DisclosureRow { listing_id: string; jurisdiction: string; disclosure_key: string; satisfied: boolean; evidence_reference: string | null }
 
@@ -33,7 +34,7 @@ const iso = (v: Date | string) => (v instanceof Date ? v.toISOString() : new Dat
 const SELECT = `SELECT l.id, l.owner_user_id, u.user_type AS owner_user_type, l.jurisdiction, l.status, l.title,
   l.property_type, l.use_class, l.transaction_type, l.address_text, l.created_at, l.updated_at,
   l.listing_fee_paid, l.terms_accepted, l.rental_bond_pathway,
-  l.suburb, l.postcode, l.price_cents, l.bedrooms, l.bathrooms, l.parking, l.latitude, l.longitude, l.description
+  l.suburb, l.postcode, l.price_cents, l.bedrooms, l.bathrooms, l.parking, l.latitude, l.longitude, l.description, l.amenities
   FROM property_listing l JOIN app_user u ON u.id = l.owner_user_id`;
 
 function toRecord(r: ListingRow, disclosures: DisclosureRow[]): ListingRecord {
@@ -48,6 +49,7 @@ function toRecord(r: ListingRow, disclosures: DisclosureRow[]): ListingRecord {
     ...(r.bathrooms !== null ? { bathrooms: r.bathrooms } : {}),
     ...(r.parking !== null ? { parking: r.parking } : {}),
     ...(r.description !== null ? { description: r.description } : {}),
+    ...(r.amenities && r.amenities.length > 0 ? { amenities: r.amenities.filter(isAmenity) } : {}),
     // NUMERIC arrives as a string; the pair is stored together (table CHECK), so both or neither.
     ...(r.latitude !== null && r.longitude !== null ? { latitude: Number(r.latitude), longitude: Number(r.longitude) } : {}),
     disclosures: disclosures.map(d => ({
@@ -62,13 +64,13 @@ function toRecord(r: ListingRow, disclosures: DisclosureRow[]): ListingRecord {
   };
 }
 
-const COLS = "(id, owner_user_id, jurisdiction, transaction_type, use_class, property_type, title, address_text, status, created_at, updated_at, listing_fee_paid, terms_accepted, rental_bond_pathway, suburb, postcode, price_cents, bedrooms, bathrooms, parking, latitude, longitude, description)";
+const COLS = "(id, owner_user_id, jurisdiction, transaction_type, use_class, property_type, title, address_text, status, created_at, updated_at, listing_fee_paid, terms_accepted, rental_bond_pathway, suburb, postcode, price_cents, bedrooms, bathrooms, parking, latitude, longitude, description, amenities)";
 const params = (r: ListingRecord) => {
   const l = r.listing;
   return [l.id, l.ownerUserId, l.jurisdiction, l.transactionType, l.useClass, l.propertyType, l.title, l.address,
     l.status, l.createdAt, l.updatedAt, r.listingFeePaid, r.termsAccepted, r.rentalBondPathway ?? null,
     l.suburb ?? null, l.postcode ?? null, l.priceCents ?? null, l.bedrooms ?? null, l.bathrooms ?? null, l.parking ?? null,
-    l.latitude ?? null, l.longitude ?? null, l.description ?? null];
+    l.latitude ?? null, l.longitude ?? null, l.description ?? null, l.amenities ?? []];
 };
 
 /**
@@ -93,7 +95,7 @@ export function createPgListingRepository(db: Queryable): ListingRepository {
 
   return {
     async insert(r) {
-      await db.query(`INSERT INTO property_listing ${COLS} VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)`, params(r));
+      await db.query(`INSERT INTO property_listing ${COLS} VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)`, params(r));
     },
     async save(r) {
       const l = r.listing;
@@ -101,11 +103,11 @@ export function createPgListingRepository(db: Queryable): ListingRepository {
         `UPDATE property_listing SET jurisdiction=$3, transaction_type=$4, use_class=$5, property_type=$6, title=$7,
          address_text=$8, status=$9, updated_at=$10, listing_fee_paid=$11, terms_accepted=$12, rental_bond_pathway=$13,
          suburb=$14, postcode=$15, price_cents=$16, bedrooms=$17, bathrooms=$18, parking=$19,
-         latitude=$20, longitude=$21, description=$22 WHERE id=$1 AND owner_user_id=$2`,
+         latitude=$20, longitude=$21, description=$22, amenities=$23 WHERE id=$1 AND owner_user_id=$2`,
         [l.id, l.ownerUserId, l.jurisdiction, l.transactionType, l.useClass, l.propertyType, l.title, l.address,
           l.status, l.updatedAt, r.listingFeePaid, r.termsAccepted, r.rentalBondPathway ?? null,
           l.suburb ?? null, l.postcode ?? null, l.priceCents ?? null, l.bedrooms ?? null, l.bathrooms ?? null, l.parking ?? null,
-          l.latitude ?? null, l.longitude ?? null, l.description ?? null]
+          l.latitude ?? null, l.longitude ?? null, l.description ?? null, l.amenities ?? []]
       );
     },
     async get(id) {
@@ -162,14 +164,15 @@ export async function trustAccountDecisionPg(db: Queryable, listingId: string): 
 /** Active appointment of an agent to a listing. Parameterised; returns undefined when none is active. */
 export async function appointmentForPg(db: Queryable, listingId: string, agentUserId: string): Promise<AgentAppointment | undefined> {
   const res = await db.query(
-    "SELECT listing_id, agent_user_id, scope FROM listing_agent_appointment WHERE listing_id = $1 AND agent_user_id = $2 AND revoked_at IS NULL",
+    "SELECT listing_id, agent_user_id, scope, permissions FROM listing_agent_appointment WHERE listing_id = $1 AND agent_user_id = $2 AND revoked_at IS NULL",
     [listingId, agentUserId]
   );
   const row = res.rows[0];
   if (!row) return undefined;
   return {
     listingId: String(row["listing_id"]), agentUserId: String(row["agent_user_id"]),
-    scope: row["scope"] === "full" ? "full" : "enquiries_and_offers", revoked: false
+    scope: row["scope"] === "full" ? "full" : "enquiries_and_offers", revoked: false,
+    ...(Array.isArray(row["permissions"]) ? { permissions: (row["permissions"] as unknown[]).filter(isAgentPermission) } : {})
   };
 }
 
