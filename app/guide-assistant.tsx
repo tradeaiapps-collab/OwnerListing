@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { personaLabel, personaPose, type Persona } from "../src/domain/assistant-persona";
 import { cleanTranscript, micErrorMessage } from "../src/domain/guide-voice";
-import { GUIDE_LIMITS, type GuideChip, type GuideIntent, type GuideLink } from "../src/domain/guide-assistant";
+import { GUIDE_LIMITS, GUIDE_SHORT_NOTICE, type GuideChip, type GuideIntent, type GuideLink } from "../src/domain/guide-assistant";
 import { PRESENTER_SPEAK_EVENT, PRESENTER_STATE_EVENT, PRESENTER_STOP_EVENT, type PresenterState } from "./presenter/presenter-core";
 import { useElenaContext } from "./elena-context";
 import { contextAnswer, contextFallback, isListingForm, isWhereQuestion, sectionHint, whereAnswer } from "../src/domain/elena-context";
@@ -32,10 +32,11 @@ export const OPEN_GUIDE_EVENT = "ol:open-guide";
 /** Fired on window whenever the chat opens/closes or starts/stops answering; detail is { open, busy, typing }. The walking Elena listens to it. */
 export const GUIDE_STATE_EVENT = "ol:guide-state";
 
-export default function GuideAssistant({ greeting, disclaimer, persona }: {
-  greeting: string; chips?: GuideChip[]; disclaimer: string; persona: Pick<Persona, "name" | "icon" | "portrait" | "poses">;
+export default function GuideAssistant({ greeting, persona }: {
+  greeting: string; chips?: GuideChip[]; disclaimer?: string; persona: Pick<Persona, "name" | "icon" | "portrait" | "poses">;
 }) {
   const [open, setOpen] = useState(false);
+  const [expanded, setExpanded] = useState(false);
   const [msgs, setMsgs] = useState<Msg[]>([{ id: 0, from: "guide", text: greeting }]);
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
@@ -44,7 +45,7 @@ export default function GuideAssistant({ greeting, disclaimer, persona }: {
   const input = useRef<HTMLInputElement>(null);
   const log = useRef<HTMLOListElement>(null);
   const seq = useRef(1);
-  const titleId = useId(), descId = useId();
+  const titleId = useId();
   const welcome = personaPose(persona, "wave");
   const listening = persona.poses.listening ?? persona.icon;
 
@@ -189,19 +190,20 @@ export default function GuideAssistant({ greeting, disclaimer, persona }: {
         <span>{open ? "Close help" : `Ask ${persona.name}`}</span>
       </button>
       {open && (
-        <div ref={panel} className="ga-panel" role="dialog" aria-modal="true" aria-labelledby={titleId} aria-describedby={descId}>
+        <div ref={panel} className={`ga-panel${expanded ? " is-expanded" : ""}`} role="dialog" aria-modal="true" aria-labelledby={titleId}>
           <div className="ga-head">
             <div className="ga-head-who">
               <img className="ga-avatar" src={persona.icon} alt="" width={44} height={44} />
-              <div>
-                <h2 id={titleId}>{personaLabel(persona)}</h2>
-                <p id={descId}>Automatic answers, not a person or a licensed agent. Nothing you type is saved.</p>
-                {here.pageLabel && <p className="ga-ctx">I can see you are on <strong>{here.pageLabel}</strong>{here.sectionLabel ? <>, in <strong>{here.sectionLabel}</strong></> : null}.</p>}
-              </div>
+              <h2 id={titleId}>{personaLabel(persona)}</h2>
             </div>
+            <div className="ga-head-btns">
+            <button type="button" className="ga-x" onClick={() => setExpanded(v => !v)} aria-pressed={expanded} aria-label={expanded ? "Restore the chat to its smaller size" : "Expand the chat to full size"}>
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{expanded ? <path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5" /> : <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />}</svg>
+            </button>
             <button type="button" className="ga-x" onClick={close} aria-label={`Close the chat with ${persona.name}`}>
               <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>
             </button>
+            </div>
           </div>
           <ol ref={log} className="ga-log" aria-live="polite" aria-relevant="additions">
             <li className="ga-welcome" aria-hidden="true">
@@ -241,7 +243,7 @@ export default function GuideAssistant({ greeting, disclaimer, persona }: {
             <button type="submit" disabled={busy || text.trim() === ""}>Send</button>
           </form>
           {(micOn || micNote) && <p className="ga-mic-note" role="status">{micOn ? "Listening… speak now." : micNote}</p>}
-          <p className="ga-disclaimer">{disclaimer} Don&apos;t type personal details such as ID or bank numbers.</p>
+          <p className="ga-disclaimer">{GUIDE_SHORT_NOTICE}</p>
         </div>
       )}
     </>
