@@ -1,3 +1,4 @@
+import type { PageRenderer } from "../domain/project-document-masking";
 import { imageVariantsFromEnv, type ImageVariantPort } from "../adapters/image-variants";
 import { malwareScannerFromEnv } from "../adapters/malware-scan";
 import { objectStorageFromEnv } from "../adapters/object-storage";
@@ -102,6 +103,14 @@ export async function getActor(req: Request): Promise<Actor | null> {
 /** File storage and malware scanner. Both fail closed (uploads refused) until real providers are configured. */
 export function getUploadPorts() {
   return { storage: objectStorageFromEnv(process.env), scanner: malwareScannerFromEnv(process.env) };
+}
+
+/** Storage plus the server-side page renderer used to show investor project documents in the site. */
+export function getMaskPorts() {
+  // Loaded on first use: pdf.js and the canvas library are heavy native code that no other page needs.
+  const load = async () => (await import("./pdf-pages")).createPageRenderer();
+  const renderer: PageRenderer = { async analyse(b, m) { return (await load()).analyse(b, m); }, async render(b, m, p, o) { return (await load()).render(b, m, p, o); } };
+  return { storage: objectStorageFromEnv(process.env), renderer };
 }
 
 let variants: Promise<ImageVariantPort> | undefined;

@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import { DocumentViewer } from "./document-viewer";
 import { PROJECT_DOC_KIND_LABEL, PROJECT_DOC_KINDS, type ProjectDocList, type ProjectDocView } from "../../src/domain/project-documents";
 
 export const VISIBILITY_LABEL: Record<ProjectDocView["visibility"], string> = { private: "Only you", team: "You and platform reviewers", investors: "Investors who can see this project" };
@@ -19,8 +20,14 @@ export function useProjectDocuments(projectId: string) {
   return { data, error, reload: () => setTick(t => t + 1) };
 }
 
-/** Documents grouped by kind. `showHistory` also lists earlier versions (owner). */
+const MASKING_LABEL: Record<ProjectDocView["masking"], string> = { not_needed: "", pending: " · waiting for address masking review", confirmed: " · address masking confirmed" };
+
+/**
+ * Documents grouped by kind. Each opens in the in-site viewer (no download link); only the owner can also download the original.
+ * `showVisibility` also shows who can see each (owner).
+ */
 export function DocumentList({ docs, showVisibility, onReplace }: { docs: ProjectDocView[]; showVisibility?: boolean; onReplace?: (d: ProjectDocView) => void }) {
+  const [open, setOpen] = useState<ProjectDocView | null>(null);
   if (docs.length === 0) return <p className="muted" role="status">No documents have been added yet.</p>;
   return (
     <div className="inv-docs">
@@ -34,20 +41,25 @@ export function DocumentList({ docs, showVisibility, onReplace }: { docs: Projec
               {rows.map(d => (
                 <li key={d.id} className={d.current ? "" : "inv-doc-old"}>
                   <div className="inv-doc-main">
-                    <a href={`/api/investments/documents/${d.id}`} download>{d.title}</a>
+                    <button type="button" className="inv-doc-open" onClick={() => setOpen(d)} aria-haspopup="dialog">{d.title}</button>
                     <span className="muted inv-small">
                       {d.contentType === "application/pdf" ? "PDF" : "Image"} · {sizeLabel(d.sizeBytes)} · {dateLabel(d.uploadedAt)}
                       {!d.current && " · earlier version"}
                       {showVisibility && ` · ${VISIBILITY_LABEL[d.visibility]}`}
+                      {showVisibility && MASKING_LABEL[d.masking]}
                     </span>
                   </div>
-                  {onReplace && d.current && <button type="button" className="secondary" onClick={() => onReplace(d)}>Replace</button>}
+                  <div className="inv-doc-actions">
+                    {showVisibility && <a className="button secondary" href={`/api/investments/documents/${d.id}`} download>Download original</a>}
+                    {onReplace && d.current && <button type="button" className="secondary" onClick={() => onReplace(d)}>Replace</button>}
+                  </div>
                 </li>
               ))}
             </ul>
           </section>
         );
       })}
+      {open && <DocumentViewer docId={open.id} title={open.title} onClose={() => setOpen(null)} />}
     </div>
   );
 }
@@ -58,7 +70,7 @@ export function ProjectDocumentsSection({ projectId, mine, editable }: { project
   return (
     <section className="panel" id="documents">
       <h2>Project documents</h2>
-      <p className="muted inv-small">Supplied by the project owner. Not checked or endorsed by the platform.</p>
+      <p className="muted inv-small">Supplied by the project owner. Not checked or endorsed by the platform. {mine ? "Investors read these pages in the site, with the project address hidden, once reviewers have confirmed the masking." : "Documents open in the site and cannot be downloaded. The project address is hidden."}</p>
       {error ? <p role="alert">{error}</p> : !data ? <p className="muted" role="status">Loading…</p> : <DocumentList docs={data.documents.filter(d => d.current)} showVisibility={mine} />}
       {mine && editable && <p><a className="button secondary" href={`/investments/${projectId}/documents`}>Manage documents</a></p>}
     </section>

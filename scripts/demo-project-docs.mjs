@@ -2,7 +2,7 @@
 // Called from scripts/seed-demo.mjs. Idempotent: adds documents to projects that have none, and writes the file bytes for any
 // document row whose file is missing (the older admin seed created rows without files). Demo data only, never run in production.
 import { createHash, randomUUID } from "node:crypto";
-import { access } from "node:fs/promises";
+import { access, readFile, rm } from "node:fs/promises";
 import { localDevStorageDir, putLocalObject, resolveStorageKey } from "../src/adapters/local-disk-core.mjs";
 
 const esc = s => s.replace(/[\\()]/g, m => "\\" + m);
@@ -46,14 +46,22 @@ export function makeDemoPdf(title, lines) {
   return Buffer.from(pdf, "latin1");
 }
 
-/** Body text for one kind of document about one project. */
+const STREETS = ["12 Smith Street", "48 Wattle Avenue", "7 Riverside Terrace", "23 Old Mill Road", "5/18 Harbour Crescent", "91 Banksia Drive"];
+const POSTCODE = { QLD: "4171", NSW: "2000", VIC: "3000", SA: "5000", WA: "6000", TAS: "7000", NT: "0800", ACT: "2600" };
+/** A made-up street address for a demo project (stable for the same title), so the address masking has something to hide. */
+export function demoAddress(p) {
+  const n = [...String(p.title)].reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, 7);
+  return `${STREETS[n % STREETS.length]}, ${p.location} ${p.jurisdiction} ${POSTCODE[p.jurisdiction] ?? "4000"}`;
+}
+
+/** Body text for one kind of document about one project. The site address appears twice on purpose (heading and body) for the masking demo. */
 export function demoDocLines(kind, p) {
   const where = `${p.location}, ${p.jurisdiction}`;
-  const head = [`Project: ${p.title}`, `Location: ${where}`, `Issuer: ${p.issuer_name ?? "Issuer (demo)"}`, ""];
+  const head = [`Project: ${p.title}`, `Location: ${where}`, `Site address: ${demoAddress(p)}`, `Issuer: ${p.issuer_name ?? "Issuer (demo)"}`, ""];
   const body = {
-    plan: ["SITE AND FLOOR PLANS", "Site area, lot layout and typical floor plans for the development.", "", "Site plan: lots arranged around a central driveway with street frontage, landscaped setbacks and visitor parking.",
+    plan: ["SITE AND FLOOR PLANS", "Site area, lot layout and typical floor plans for the development.", `Title reference: Lot 14 on SP 204511, ${demoAddress(p)}.`, "", "Site plan: lots arranged around a central driveway with street frontage, landscaped setbacks and visitor parking.",
       "Typical floor plan: ground floor living, kitchen and garage; first floor bedrooms and bathrooms; private courtyard.", "Scale 1:200 at A3. Dimensions to be confirmed by the surveyor before construction."],
-    approval: ["DEVELOPMENT APPROVAL (SUMMARY)", "Council has approved the development application, subject to the conditions below.", "",
+    approval: ["DEVELOPMENT APPROVAL (SUMMARY)", `Council has approved the development application for ${demoAddress(p)}, subject to the conditions below.`, "",
       "1. Development to proceed in accordance with the approved plans.", "2. Landscaping and stormwater works completed before occupancy.", "3. Construction hours limited to 7am-6pm Monday to Saturday.",
       "4. Infrastructure charges payable before the plan is sealed.", "Approval period: four years from the date of decision."],
     feasibility: ["FEASIBILITY STUDY", "Summary of assumptions and the expected outcome. Figures are illustrative only.", "",
@@ -99,12 +107,15 @@ export async function seedProjectDocuments(db) {
     const missing = [];
     for (const d of await q(`SELECT d.id, d.kind, d.title, d.storage_key, p.title AS ptitle, p.location, p.jurisdiction, p.issuer_name FROM investment_project_document d
       JOIN investment_project p ON p.id = d.project_id JOIN app_user u ON u.id = p.owner_user_id WHERE u.email LIKE '%@demo.invalid' ORDER BY d.uploaded_at`)) {
-      if (!(await exists(resolveStorageKey(dir, d.storage_key)))) missing.push(d);
+      const file = resolveStorageKey(dir, d.storage_key);
+      // Missing file, or a demo PDF made before the demo address was added (the masking demo needs an address to hide).
+      if (!(await exists(file)) || !(await readFile(file)).includes("Site address:")) missing.push(d);
     }
     if (missing.length) {
       await q("ALTER TABLE investment_project_document DISABLE TRIGGER investment_project_document_append_only");
       for (const d of missing) {
         const bytes = makeDemoPdf(`${d.title} - ${d.ptitle}`, demoDocLines(d.kind, { title: d.ptitle, location: d.location, jurisdiction: d.jurisdiction, issuer_name: d.issuer_name }));
+        await rm(resolveStorageKey(dir, d.storage_key), { force: true }); // local demo files only: putLocalObject never overwrites
         await putLocalObject(dir, d.storage_key, bytes);
         await q("UPDATE investment_project_document SET size_bytes = $2, sha256 = $3 WHERE id = $1", [d.id, bytes.length, sha256(bytes)]);
         filled++;

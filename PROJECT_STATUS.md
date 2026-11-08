@@ -14,6 +14,7 @@ Last updated: 2026-10-24, after PR #61 was merged (open: #59). Deploy and handov
 - API standards (25 Oct 2026, feature/api-standards): /api/v1 versioning, the spec's error format and codes, Idempotency-Key on writes, X-Correlation-Id. Legacy /api/... unchanged for the site's pages. See docs/API_STANDARDS.md.
 - Separate services later for AI and payments.
 - Investor projects module built (25 Oct 2026) but OFF by default: two keys (env INVESTMENT_MODULE_ENABLED and a super-admin database switch with recorded counsel confirmation). Stays off until counsel signs off (COUNSEL_QUESTIONS 9).
+- Investor project documents are read in the site only (8 Nov 2026): server-rendered page images (pdf.js + canvas), no file download for investors, per-viewer watermark. Project addresses are masked by Elena's auto-mask (src/domain/doc-masking.ts); staff add or remove boxes and confirm at /staff/investments (Documents to mask). An investor sees a document only when the project is approved AND the latest masking revision is confirmed (db/20261108070000_project_document_masking.sql). Owners and staff can still see and download originals. Screenshots cannot be prevented, only traced by the watermark.
 
 ## Team (playbook section 12)
 Each role is assigned to an AI agent. Agents draft and build; accountable decisions and legal or licence sign-offs stay with a human.

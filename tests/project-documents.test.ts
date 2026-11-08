@@ -82,6 +82,13 @@ const titles = async (id: string, who: Actor | null, staff?: { staffId: string }
   return r.ok ? r.value.documents.map(d => d.title) : r.code;
 };
 
+/** Staff confirm the address masking of a document (investors see a document only after that). */
+const confirmMask = async (title: string) => {
+  const d = docs.rows.find(r => r.record.title === title)!.record;
+  const prev = await docs.store.latestMask(d.id);
+  await docs.store.addMask({ id: `88888888-8888-4888-8888-${String(++n).padStart(12, "0")}`, documentId: d.id, revision: (prev?.revision ?? 0) + 1, boxes: [], terms: [], pageCount: 1, textFound: true, confirmed: true, actorId: admin.id, createdAt: "2026-10-28T00:00:00.000Z" });
+};
+
 describe("project document upload", () => {
   it("stores the file under a random three-segment key and writes an audit event", async () => {
     const id = await posted();
@@ -153,7 +160,20 @@ describe("who sees project documents", () => {
     expect(await titles(id, owner)).toEqual(expect.arrayContaining(["Private note", "Team plan", "Investor feasibility"]));
     expect(await titles(id, null, { staffId: admin.id })).toEqual(expect.arrayContaining(["Team plan", "Investor feasibility"]));
     expect(await titles(id, null, { staffId: admin.id })).not.toContain("Private note");
+    expect(await titles(id, wholesale)).toEqual([]);
+    await confirmMask("Investor feasibility");
     expect(await titles(id, wholesale)).toEqual(["Investor feasibility"]);
+    expect(await titles(id, owner)).toContain("Investor feasibility");
+  });
+
+  it("an investor sees nothing while the masking is unconfirmed, and again after a later unconfirmed revision", async () => {
+    const id = await setup();
+    await confirmMask("Investor feasibility");
+    const d = docs.rows.find(r => r.record.title === "Investor feasibility")!.record;
+    await docs.store.addMask({ id: U(777), documentId: d.id, revision: 2, boxes: [], terms: [], pageCount: 1, textFound: true, confirmed: false, actorId: admin.id, createdAt: "2026-10-28T00:00:00.000Z" });
+    expect(await titles(id, wholesale)).toEqual([]);
+    const staffList = await listProjectDocuments(deps, docs.store, null, id, { staffId: admin.id });
+    expect(staffList.ok && staffList.value.documents.find(x => x.title === "Investor feasibility")!.masking).toBe("pending");
   });
 
   it("strangers, signed-out visitors and investors of a project awaiting review get not_found", async () => {
@@ -170,7 +190,10 @@ describe("who sees project documents", () => {
     const all = docs.rows.map(r => r.record);
     const byTitle = (t: string) => all.find(d => d.title === t)!.id;
     const read = (who: Actor | null, doc: string, staff?: { staffId: string }) => readProjectDocument(deps, docs.store, ports.storage, who, doc, staff);
-    expect((await read(wholesale, byTitle("Investor feasibility"))).ok).toBe(true);
+    // Investors never receive the original file; they read masked page images instead.
+    await confirmMask("Investor feasibility");
+    const raw = await read(wholesale, byTitle("Investor feasibility"));
+    expect(!raw.ok && raw.code).toBe("not_found");
     const hidden = await read(wholesale, byTitle("Team plan"));
     expect(!hidden.ok && hidden.code).toBe("not_found");
     expect((await read(null, byTitle("Team plan"), { staffId: admin.id })).ok).toBe(true);
@@ -184,6 +207,7 @@ describe("who sees project documents", () => {
     const id = await setup();
     const old = docs.rows.find(r => r.record.title === "Investor feasibility")!.record.id;
     await add(id, { title: "Investor feasibility v2", bytes: PDF("v2"), supersedesId: old });
+    await confirmMask("Investor feasibility v2");
     expect(await titles(id, wholesale)).toEqual(["Investor feasibility v2"]);
     const r = await readProjectDocument(deps, docs.store, ports.storage, wholesale, old);
     expect(!r.ok && r.code).toBe("not_found");
