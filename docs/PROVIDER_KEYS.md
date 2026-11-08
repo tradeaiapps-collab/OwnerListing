@@ -22,7 +22,7 @@ PayWay, SMTP, SMS and ABN Lookup may stay OFF; their features then stay off as d
 | Google sign-in (required) | All sign-in | `SESSION_SECRET`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `APP_URL` (`ADMIN_APP_URL` on the admin deployment) | Google Cloud console, APIs & Services, Credentials, OAuth client ID (Web). Authorised redirect URI: `${APP_URL}/api/auth/google/callback` (and the admin host's). `SESSION_SECRET`: `openssl rand -base64 48` | Sign-in off |
 | Two-step sign-in (required) | MFA for owners and agents | `MFA_SECRET_KEY` | Generate: `openssl rand -base64 32`. Never rotate casually: enrolled authenticators become unreadable | Owners and agents cannot finish signing in |
 | Westpac PayWay | Package checkout, payment webhook | `PAYWAY_MERCHANT_ID`, `PAYWAY_API_KEY`, `PAYWAY_WEBHOOK_SECRET` | Westpac merchant account, PayWay settings. No live keys until pen test and counsel sign-off. The adapter (`src/adapters/westpac-payway.ts`) is still a stub until the PayWay docs are in hand | Checkout "not available yet"; nothing publishes |
-| Email (SMTP) | Alerts, account email, email-and-password sign-up and password reset links | `SMTP_HOST`, `SMTP_PORT` (465, 587, 2525 or 25), `SMTP_FROM`, optional `SMTP_USER` + `SMTP_PASSWORD` (both or neither) | Any SMTP provider (e.g. the email host's SMTP relay). Or an admin saves them in `/staff/messaging` (needs `MESSAGING_SETTINGS_KEY`) | No email sent |
+| Email (SMTP) | Alerts, account email, email-and-password sign-up and password reset links | `SMTP_HOST`, `SMTP_PORT` (465, 587, 2525 or 25), `SMTP_FROM`, optional `SMTP_USER` + `SMTP_PASSWORD` (both or neither) | Any SMTP provider. Recommended: Amazon SES in Sydney (`email-smtp.ap-southeast-2.amazonaws.com`, port 587, SMTP credentials from the SES console, verify the sending domain with DKIM). SendGrid (`smtp.sendgrid.net`, user `apikey`) or Mailgun also work. Or an admin saves them in `/staff/messaging` (needs `MESSAGING_SETTINGS_KEY`) | No email sent |
 | SMS | Mobile verification, SMS sign-in codes, SMS alerts | `SMS_PROVIDER=twilio`, `SMS_ACCOUNT_SID` (AC...), `SMS_AUTH_TOKEN`, `SMS_SENDER` (+61 number, sender ID or MG...), optional `SMS_API_KEY_SID`; `SMS_CODE_SECRET` (`openssl rand -base64 48`) | Twilio console (or a Twilio-compatible provider). Or `/staff/messaging` for the account fields | No SMS; MFA offers the authenticator app only |
 | Browser push (Web Push) | Push to Chrome, Edge, Firefox, Safari | `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` | `npx web-push generate-vapid-keys` (free, no account). Subject: `mailto:` or https URL. Do not rotate casually: browsers must subscribe again | No browser push; the Settings tab says it is not switched on |
 | Android push (FCM) | Push to the Android app | `FCM_PROJECT_ID`, `FCM_CLIENT_EMAIL`, `FCM_PRIVATE_KEY` | Firebase console, Project settings, Service accounts, generate a private key (free) | Android devices are not pushed to |
@@ -45,6 +45,14 @@ Provider: Twilio (already the SMS adapter). SendGrid is Twilio's email product, 
 
 ## Adding a provider
 Add its keys to `.env.example` (the test fails otherwise) and an entry in `src/config/provider-check.mjs` that mirrors the real reader; `tests/provider-check.test.ts` checks the two agree.
+
+## Email: templates, log and local testing
+
+- Templates: `src/domain/email-templates.ts` (notification centre layout) and `src/domain/account-emails.ts` (sign-up, reset, staff invite, admin alerts). Every email is plain text plus a branded HTML version (variables escaped); older notices that only have text get the same HTML layout automatically.
+- Sent today: sign-up confirmation, "you already have an account", password reset, account deleted / restored, offers cancelled by a closed account, MFA reset, saved-search alerts, offer and message notices (notification centre, per-user preferences), staff invite (to invitee), admin alerts to super admins (new staff invite, an address going over the failed sign-in limit, at most one per 10 minutes).
+- Every attempt is written to `messaging_outbox` (template, result, error code, time; never the address or body) and shown under "Delivery log" on `/staff/messaging`.
+- Local testing without a provider: set `EMAIL_DELIVERY=dev_file` and emails are written to `.dev-mail/` instead of sent. On staging, set the SMTP keys and use "Send test email to me" on `/staff/messaging`.
+- Before production: verify the sending domain at the provider (SPF, DKIM, DMARC) or emails land in spam.
 
 ## Team payouts (Stripe Connect)
 

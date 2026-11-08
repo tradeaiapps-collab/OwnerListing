@@ -1,5 +1,7 @@
 import { createHmac, randomUUID } from "node:crypto";
 import type { EmailPort } from "../adapters/email";
+import { passwordResetEmail, signupExistingEmail, signupVerifyEmail } from "../domain/account-emails";
+import type { RenderedEmail } from "../domain/email-templates";
 import { EMAIL_AUTH_RATE, RESET_LINK_MINUTES, SIGNUP_LINK_HOURS, normaliseEmail, passwordProblem, readSignup } from "../domain/email-auth";
 import { windowStart, withinLimit } from "../domain/rate-limit";
 import { hashPassword, verifyPassword } from "./auth/password";
@@ -21,6 +23,8 @@ export interface EmailAuthDeps {
   brand: string;
   /** Local development only: when email is not set up, the link is handed here (the console) instead of being sent. */
   devLink?: (purpose: "signup" | "reset", link: string) => void;
+  /** Called once when an address first goes over the sign-in limit in a window (the admin alert). Must not throw or block. */
+  onLockout?: (email: string) => void;
   now?: () => Date;
 }
 
@@ -40,12 +44,16 @@ async function allowed(d: EmailAuthDeps, kind: keyof typeof EMAIL_AUTH_RATE, ip:
   const byEmail = await countHitPg(d.db, keyed(d.secret, `rate:${kind}:email`, email), start);
   // The pair bucket stops one address being hammered from one place even while both single limits still have room.
   const byPair = await countHitPg(d.db, keyed(d.secret, `rate:${kind}:pair`, `${ip}|${email}`), start);
+  if (kind === "login" && byEmail === r.perEmail + 1 && d.onLockout) {
+    // At most one alert per window across all addresses, so many addresses cannot flood the admins.
+    if ((await countHitPg(d.db, keyed(d.secret, "rate:lockout-alert", "all"), start)) === 1) d.onLockout(email);
+  }
   return withinLimit(byIp, r.perIp) && withinLimit(byEmail, r.perEmail) && withinLimit(byPair, r.perPair);
 }
 
 /** Sends the message, or hands the link to the local-development console. False when there is no way to deliver it. */
-async function deliver(d: EmailAuthDeps, purpose: "signup" | "reset", to: string, subject: string, text: string, link: string): Promise<boolean> {
-  if (d.email.configured) return (await d.email.send({ to, subject, text })).status === "sent";
+async function deliver(d: EmailAuthDeps, purpose: "signup" | "reset", to: string, msg: RenderedEmail, link: string): Promise<boolean> {
+  if (d.email.configured) return (await d.email.send({ to, ...msg })).status === "sent";
   if (d.devLink) { d.devLink(purpose, link); return true; }
   return false;
 }
@@ -72,9 +80,7 @@ export async function startSignup(d: EmailAuthDeps, body: unknown, ip: string): 
   const passwordHash = await hashPassword(password);
   const existing = await d.db.query("SELECT 1 FROM app_user WHERE email = $1", [email]);
   if (existing.rows.length > 0) {
-    await deliver(d, "signup", email, `Your ${d.brand} account`,
-      `Someone (hopefully you) tried to create a ${d.brand} account with this email address, but it already has one.\n\n` +
-      `Sign in: ${d.appUrl}/login\nForgot your password? ${d.appUrl}/forgot-password\n\nIf this was not you, you can ignore this email.\n`, `${d.appUrl}/login`);
+    await deliver(d, "signup", email, signupExistingEmail(d.brand, d.appUrl), `${d.appUrl}/login`);
     return { ok: true };
   }
   const token = randomToken();
@@ -85,9 +91,7 @@ export async function startSignup(d: EmailAuthDeps, body: unknown, ip: string): 
     [email, name, userType, passwordHash, keyed(d.secret, "token", token), new Date(at.getTime() + SIGNUP_LINK_HOURS * 3600_000).toISOString()]
   );
   const link = `${d.appUrl}/signup/verify?token=${encodeURIComponent(token)}`;
-  await deliver(d, "signup", email, `Confirm your email for ${d.brand}`,
-    `Welcome to ${d.brand}. Confirm your email address to finish creating your account:\n\n${link}\n\n` +
-    `The link works once and expires in ${SIGNUP_LINK_HOURS} hours. If you did not sign up, you can ignore this email.\n`, link);
+  await deliver(d, "signup", email, signupVerifyEmail(d.brand, link, SIGNUP_LINK_HOURS), link);
   return { ok: true };
 }
 
@@ -156,9 +160,7 @@ export async function requestPasswordReset(d: EmailAuthDeps, body: unknown, ip: 
     [email, row["id"], keyed(d.secret, "token", token), new Date(at.getTime() + RESET_LINK_MINUTES * 60_000).toISOString()]
   );
   const link = `${d.appUrl}/reset-password?token=${encodeURIComponent(token)}`;
-  await deliver(d, "reset", email, `Reset your ${d.brand} password`,
-    `Use this link to choose a new password:\n\n${link}\n\nIt works once and expires in ${RESET_LINK_MINUTES} minutes. ` +
-    `If you did not ask for this, you can ignore this email: your password has not changed.\n`, link);
+  await deliver(d, "reset", email, passwordResetEmail(d.brand, link, RESET_LINK_MINUTES), link);
   return { ok: true };
 }
 
