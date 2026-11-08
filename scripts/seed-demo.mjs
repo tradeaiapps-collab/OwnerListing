@@ -818,13 +818,19 @@ const D = "@demo.invalid";
 // Demo investor (investors are buyer accounts holding the investor role, see src/domain/roles.ts). Idempotent so an already-seeded DB gets it too.
 async function seedInvestor(db) {
   const email = `noah.investor${D}`;
-  if ((await db.query(`SELECT 1 FROM app_user WHERE email = $1`, [email])).rows.length) return;
-  const id = (await db.query(
-    `INSERT INTO app_user (email, display_name, user_type, status, roles, active_role) VALUES ($1, 'Noah Patel (investor)', 'buyer', 'active', ARRAY['buyer','investor'], 'investor') RETURNING id`, [email])).rows[0].id;
-  await db.query(`INSERT INTO terms_acceptance (user_id, version) VALUES ($1, '2026-10-24')`, [id]);
-  await db.query(`INSERT INTO buyer_verification (user_id, email_verified_at, phone_verified_at, phone_e164, id_verified_at, id_method)
-                  VALUES ($1, now(), now(), '+61400000002', now(), 'manual_review')`, [id]);
-  console.log("Demo investor created: Noah Patel (fully verified).");
+  let id = (await db.query(`SELECT id FROM app_user WHERE email = $1`, [email])).rows[0]?.id;
+  if (!id) {
+    id = (await db.query(
+      `INSERT INTO app_user (email, display_name, user_type, status, roles, active_role) VALUES ($1, 'Noah Patel (investor)', 'buyer', 'active', ARRAY['buyer','investor'], 'investor') RETURNING id`, [email])).rows[0].id;
+    await db.query(`INSERT INTO terms_acceptance (user_id, version) VALUES ($1, '2026-10-24')`, [id]);
+    await db.query(`INSERT INTO buyer_verification (user_id, email_verified_at, phone_verified_at, phone_e164, id_verified_at, id_method)
+                    VALUES ($1, now(), now(), '+61400000002', now(), 'manual_review')`, [id]);
+    console.log("Demo investor created: Noah Patel (fully verified).");
+  }
+  // The investor declaration is what the project pages check; without a row for the CURRENT disclosure version every project shows "not found" (older rows such as 'local-demo' do not count). Added for already-seeded DBs too.
+  const added = await db.query(`INSERT INTO investor_declaration (user_id, category, ack_not_advice, ack_not_offer, ack_no_funds_held, ack_off_platform, disclosure_version)
+             SELECT $1, 'wholesale', true, true, true, true, $2 WHERE NOT EXISTS (SELECT 1 FROM investor_declaration WHERE user_id = $1 AND disclosure_version = $2)`, [id, DISCLOSURE_VERSION]);
+  if (added.rowCount) console.log("Demo investor declaration added for Noah Patel (wholesale).");
 }
 // ---- Demo agent performance + sale conversations (Messages page, Agent performance page) ------------------------------
 // Idempotent (marker: priya.agent). Adds three listed agents, 13 past sales from the last 6 months (two fell through) with buyer
