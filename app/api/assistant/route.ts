@@ -8,7 +8,6 @@ import { getAiEngine } from "../../../src/server/ai";
 import { clientIp } from "../../../src/server/client-ip";
 import { getActor, getDb } from "../../../src/server/context";
 import { csrfGuard } from "../../../src/server/csrf";
-import { devLoginAllowed } from "../../../src/server/dev-login";
 import { getLiveGuide } from "../../../src/server/guide-assistant-db";
 import { loadJourney } from "../../../src/server/journey";
 import { countHitPg } from "../../../src/server/offer-flow-db";
@@ -63,11 +62,10 @@ async function handlePost(req: Request) {
     const j = await loadJourney(db, actor).catch(() => null);
     next = j ? nextStep(j.steps) : null;
   }
-  const signInHref = devLoginAllowed(req) ? "/dev-login" : undefined;
   const engine = selectAssistantEngine(await getAiEngine(), content, readBrand().name);
   const answer = await engine.answer({
     ...(isGuideIntent(topic) ? { intent: topic } : {}), ...(typeof text === "string" ? { text: text.trim() } : {}),
-    path: page, user, next, ...(signInHref ? { signInHref } : {})
+    path: page, user, next
   });
   return NextResponse.json(answer, { headers: NO_STORE });
 }

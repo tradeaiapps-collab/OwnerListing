@@ -54,18 +54,25 @@ Wipes the local database and reloads the demo data (type YES to confirm). Mac/Li
 
 All demo email addresses end in `@demo.invalid` (not real).
 
+Signing in through `/dev-login` also unlocks gated features for testing: an agent account gets a verified licence in every state, and a buyer account gets email, phone and ID verified (so Emma and Liam become fully verified once you sign in as them). This runs only in the dev sign-in route, which is already refused off localhost and in production.
+
 | Account | Site | What it can do |
 |---|---|---|
 | Sarah Mitchell (owner) | public | Owns 4 listings (Paddington QLD sale, New Farm QLD rent, Bondi NSW sale, Randwick NSW rent), 1 paid invoice, 3 offers from James (two on Paddington: an earlier one she asked him to improve, then a higher one), enquiries |
 | Daniel Okafor (owner) | public | Owns 4 listings (Fitzroy North VIC sale, Windsor VIC rent, Chermside QLD sale, Sydney NSW rent), 1 pending invoice, an open offer-link request to answer |
+| Marcus Bell (owner) | public | Owns 6 fully populated example sale listings for testing My listings and the listing page: Bondi, Manly and Parramatta NSW, Brunswick and Richmond VIC, Bulimba QLD. Each has photos, floor plan, tour video, state-specific documents and verified disclosures, a trust account, and open inspection times. Council and water rates and a finance example are in each description |
 | Mia Chen (agent) | public | Verified QLD licence, appointed on Sarah's Paddington listing |
+| Priya Sharma, Tom Becker, Hannah Cole (agents) | public | Listed marketplace agents with sales history, ratings and sale conversations (Hannah has no sales yet). Mia, Priya and Tom also have conversations |
 | James Nguyen (buyer, fully verified) | public | Email, phone and ID verified; has enquiries and two offers |
 | Emma Wilson (buyer, email only) | public | Email verified only; ID review waiting |
 | Liam Brown (buyer, unverified) | public | Nothing verified; ID review waiting |
+| Noah Patel (investor) | public | Buyer account holding the investor role, fully verified; signs in viewing as an investor (investor projects) |
 | Priya Raman (super_admin) | admin | Everything, including staff invites and messaging settings |
 | Chris (compliance), Alex (accountant), Sam (support), Taylor (technical), Robin (reporting) | admin | Each sees only what its role allows (try them to check) |
 
 Also seeded: 8 published listings, a law firm with an approved trust account, plan prices (Basic $0, Standard $149, Premium $299) and add-on prices, terms accepted for every demo account.
+
+Staff pages are populated too (`scripts/seed-admin-demo.mjs`, also `npm run seed:admin`): Negotiation coaching (12 coached deals, 8 settled, versus 5 not coached, 2 settled), Disputes, Elena insights and training (215 suggestions, a proposed learned setting), Moderation (6 open and 3 reviewed listings, wording flags, flagged seller messages) and Investor projects (6 projects in every review state, with contracts and fees). Sign in as `staff.super_admin` or `staff.compliance` at the admin site. Safe to run again.
 
 ## Test checklist
 

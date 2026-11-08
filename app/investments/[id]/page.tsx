@@ -3,6 +3,7 @@ import { use, useEffect, useState } from "react";
 import { dollarsToCents } from "../../../src/domain/listing-details";
 import type { PhotoView } from "../../../src/domain/listing-photos";
 import { STAGE_TAG } from "../project-card";
+import { ProjectDocumentsSection } from "../project-documents";
 import { ProjectSlider } from "../project-slider";
 import { aud, label, send, STATUS_LABEL, type Project } from "../ui";
 
@@ -80,6 +81,7 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
               <div className="inv-aside-actions">
                 {p.status !== "rejected" && <a className="button" href={`/investments/${p.id}/edit`}>Edit (goes back to review)</a>}
                 {p.status !== "rejected" && <a className="button secondary" href={`/investments/${p.id}/photos`}>Manage photos</a>}
+                {p.status !== "rejected" && <a className="button secondary" href={`/investments/${p.id}/documents`}>Manage documents</a>}
               </div>
             ) : (
               <div className="inv-aside-actions"><a className="button" href="#interest">Express interest</a></div>
@@ -92,6 +94,7 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
           <section className="panel"><h2>Timeline</h2><p className="inv-section">{p.timeline}</p></section>
           <section className="panel"><h2>Risks</h2><p className="inv-section">{p.risks}</p></section>
           <section className="panel"><h2>Structure</h2><p className="inv-section">{p.structureDescription}</p></section>
+          <ProjectDocumentsSection projectId={p.id} mine={mine} editable={p.status !== "rejected"} />
           <section className="panel">
             <h2>Issuer declaration</h2>
             <p><strong>Offered by:</strong> {p.issuerName}</p>

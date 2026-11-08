@@ -8,7 +8,7 @@ import { COMMERCIAL_TYPES } from "./search-vocab";
  * several of these opens without that filter (a wider view, never a narrower one).
  */
 export function savedSearchHref(s: SavedSearch): string {
-  const p = new URLSearchParams({ transactionType: s.transactionType, useClass: s.useClass });
+  const p = new URLSearchParams({ transactionType: s.transactionType, useClass: s.useClass, saved: "1" });
   if (s.jurisdictions.length === 1) p.set("jurisdiction", s.jurisdictions[0]!);
   if (s.propertyTypes.length === 1) p.set("propertyType", s.propertyTypes[0]!);
   if (s.suburbs.length === 1) p.set("suburb", s.suburbs[0]!);

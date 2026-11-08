@@ -17,18 +17,20 @@ export interface NotifyResult { inApp: boolean; email: "sent" | "skipped" | "fai
  * In-app is the record and is written first; email and SMS go through the logged messaging ports. Never throws: a notification must not
  * block the action that caused it. Marketing email carries a signed one-click unsubscribe link and is refused without one.
  */
-export async function notifyUser(db: Queryable, userId: string, kind: Kind, params: NotificationParams = {}, env: Env = process.env): Promise<NotifyResult> {
+export async function notifyUser(db: Queryable, userId: string, kind: Kind, params: NotificationParams = {}, env: Env = process.env, only?: "in_app" | "email" | "sms"): Promise<NotifyResult> {
   const result: NotifyResult = { inApp: false, email: "skipped", sms: "skipped", push: "skipped" };
   try {
     const n = renderNotification(kind, params);
     const [prefs, to] = await Promise.all([getPreferencesPg(db, userId), recipientPg(db, userId)]);
-    const plan = planChannels(kind, prefs, to.phone !== null);
+    const full = planChannels(kind, prefs, to.phone !== null);
+    // `only` narrows to one channel (an automation step that says "email" sends email only); it never adds a channel the user has not allowed.
+    const plan = only ? { inApp: full.inApp && only === "in_app", email: full.email && only === "email", sms: full.sms && only === "sms" } : full;
     const base = env["APP_URL"]?.replace(/\/+$/, "");
     const statusUrl = webhookUrl(env, "status");
     let notificationId: string | null = null;
     if (plan.inApp) { notificationId = await createNotificationPg(db, userId, n); result.inApp = true; }
     // Push goes out alongside, on the user's own topic setting; Elena personalises it. A failure here never affects the other channels.
-    result.push = (await pushToUser(db, userId, kind, n, notificationId, env)).status;
+    if (!only) result.push = (await pushToUser(db, userId, kind, n, notificationId, env)).status;
 
     if (plan.email && to.email) {
       const unsub = n.category === "marketing" && base
@@ -36,7 +38,7 @@ export async function notifyUser(db: Queryable, userId: string, kind: Kind, para
         : null;
       if (n.category !== "marketing" || unsub) {
         const mail = renderEmail({
-          brand: readBrand().name, title: n.title, body: n.body, actionUrl: base && n.link ? `${base}${n.link}` : null, actionLabel: "View details",
+          brand: readBrand().name, title: n.title, body: n.body, actionUrl: base && n.link ? `${base}${n.link}` : null, actionLabel: kind.startsWith("signature_") ? "Review and sign" : "View details",
           reason: n.category === "account" ? "You are receiving this required account notice." : "You are receiving this because of your notification settings.",
           settingsUrl: base ? `${base}/notifications?tab=preferences` : null, unsubscribeUrl: unsub
         });
@@ -139,5 +141,48 @@ const CLAIM_REMINDERS_SQL =
 export async function runInviteReminders(db: Queryable, nowIso: string, env: Env = process.env): Promise<{ reminded: number }> {
   const { rows } = await db.query(CLAIM_REMINDERS_SQL, [nowIso, INVITE_REMINDER_HOURS]);
   for (const x of rows) await notifyUser(db, String(x["agent_user_id"]), "appointment_reminder", { listing: place(x), name: String(x["owner_name"] ?? ""), link: "/agent/appointments" }, env);
+  return { reminded: rows.length };
+}
+
+/** Hours a DocuSign signer may sit on a request before the one automatic reminder; and the least time between two manual resends. */
+export const SIGNING_REMINDER_HOURS = 72;
+export const SIGNING_RESEND_MINUTES = 60;
+const SIGNER_COLUMNS = "s.user_id, d.id AS document_id, d.title, o.display_name AS owner_name";
+const SIGNER_FROM =
+  "FROM signing_signer s JOIN signing_document d ON d.id = s.document_id JOIN app_user o ON o.id = d.created_by " +
+  "WHERE d.provider = 'docusign' AND d.status = 'out_for_signature' AND s.status = 'pending'";
+const signerParams = (x: Record<string, unknown>) => ({ document: String(x["title"] ?? ""), name: String(x["owner_name"] ?? ""), link: `/signing/${String(x["document_id"])}` });
+
+/**
+ * Emails (and notifies in-app) every signer who has not yet responded to a DocuSign document. Embedded signing means DocuSign sends them
+ * nothing, so this is how they learn they were asked. Each signer is claimed (notified_at set) before sending, and a signer asked within
+ * the last SIGNING_RESEND_MINUTES is skipped, so double clicks and repeat calls never flood anyone. Ids and addresses are looked up here.
+ */
+export async function sendSigningRequests(db: Queryable, documentId: string, nowIso: string, env: Env = process.env): Promise<{ sent: number; skipped: number }> {
+  try {
+    const total = Number((await db.query(`SELECT count(*) AS n ${SIGNER_FROM} AND d.id = $1::uuid`, [documentId])).rows[0]?.["n"] ?? 0);
+    const { rows } = await db.query(
+      `UPDATE signing_signer s SET notified_at = $2::timestamptz FROM signing_document d, app_user o
+         WHERE d.id = s.document_id AND o.id = d.created_by AND d.id = $1::uuid AND d.provider = 'docusign' AND d.status = 'out_for_signature' AND s.status = 'pending'
+           AND (s.notified_at IS NULL OR s.notified_at <= $2::timestamptz - make_interval(mins => $3::int))
+         RETURNING ${SIGNER_COLUMNS}`, [documentId, nowIso, SIGNING_RESEND_MINUTES]);
+    for (const x of rows) await notifyUser(db, String(x["user_id"]), "signature_requested", signerParams(x), env);
+    return { sent: rows.length, skipped: Math.max(total - rows.length, 0) };
+  } catch {
+    return { sent: 0, skipped: 0 }; // A notification never blocks sending the document.
+  }
+}
+
+/** One automatic reminder per signer still pending SIGNING_REMINDER_HOURS after their last request. Claimed (reminded_at set) before sending, so a repeat run never reminds twice. */
+export async function runSigningReminders(db: Queryable, nowIso: string, env: Env = process.env): Promise<{ reminded: number }> {
+  const { rows } = await db.query(
+    `UPDATE signing_signer s SET reminded_at = $1::timestamptz FROM signing_document d, app_user o
+       WHERE d.id = s.document_id AND o.id = d.created_by AND s.id IN (
+         SELECT s2.id FROM signing_signer s2 JOIN signing_document d2 ON d2.id = s2.document_id
+          WHERE d2.provider = 'docusign' AND d2.status = 'out_for_signature' AND s2.status = 'pending' AND s2.reminded_at IS NULL
+            AND COALESCE(s2.notified_at, d2.sent_at) <= $1::timestamptz - make_interval(hours => $2::int)
+          ORDER BY d2.sent_at LIMIT 200 FOR UPDATE OF s2 SKIP LOCKED)
+       RETURNING ${SIGNER_COLUMNS}`, [nowIso, SIGNING_REMINDER_HOURS]);
+  for (const x of rows) await notifyUser(db, String(x["user_id"]), "signature_reminder", signerParams(x), env);
   return { reminded: rows.length };
 }

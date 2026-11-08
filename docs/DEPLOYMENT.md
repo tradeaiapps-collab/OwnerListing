@@ -41,17 +41,27 @@ Do not turn this on for real users until counsel has approved the retention peri
 ## 4b. Account deletion retention (daily)
 - `.github/workflows/account-retention.yml` calls `POST $APP_URL/api/internal/accounts/retention` with header `x-cron-secret` every day at 02:00 UTC. Set repository secrets `APP_URL` (public address) and `ACCOUNT_RETENTION_CRON_SECRET` (same value as the app, 32+ chars). Until both are set the run is skipped with a warning.
 - `.github/workflows/scheduled-reports.yml` calls `POST $APP_URL/api/internal/reports/run` with header `x-cron-secret` every hour at :05. It sends the staff report schedules that are due (set up at `/staff/report-builder`) to their owners by email. Set repository secrets `APP_URL` and `REPORTS_CRON_SECRET` (same value as the app, 32+ chars). Until both are set the run is skipped with a warning; without email settings (`/staff/messaging`) runs are stored but not sent.
+- `.github/workflows/dispute-escalation.yml` calls `POST $APP_URL/api/internal/disputes/escalate` with header `x-cron-secret` hourly. It sends buyer-seller disputes still unresolved after 5 days to staff (they are also escalated whenever someone opens a dispute list). Generate the secret at `/staff/cron-secrets` or set `DISPUTES_CRON_SECRET` (32+ chars) and the repository secret of the same name beside `APP_URL`.
+- `.github/workflows/staff-automation.yml` calls `POST $APP_URL/api/internal/staff-automation/run` with header `x-cron-secret` every 15 minutes. It applies listing-age workflow rules, sends the next batch (100 messages per campaign) of campaigns that are due or part way through, and runs scheduled tasks that are due (set up at `/staff/automation` and `/staff/campaigns`). Set repository secret `STAFF_AUTOMATION_CRON_SECRET` (same value as the app, 32+ chars) beside `APP_URL`. Campaign email needs `ALERT_UNSUBSCRIBE_KEY` (32+ chars); campaign SMS needs the Twilio settings from docs/PROVIDER_KEYS.md.
 - Manual run: Actions > Account retention (daily) > Run workflow, or the same curl by hand. Safe to repeat; answers `{counts:{finalised,purged}}`.
 - Every run writes one `job.account_retention_run` audit event (aggregate `job` / `account-retention`, payload = counts), plus one event per account changed. A missing day in the audit trail means the scheduler stopped.
 
 ## 4c. Agent invitation reminders (hourly)
 - `.github/workflows/agent-invite-reminders.yml` calls `POST $APP_URL/api/internal/appointments/reminders` with header `x-cron-secret` at 15 past every hour. Set repository secrets `APP_URL` and `APPOINTMENT_REMINDER_CRON_SECRET` (same value as the app, 32+ chars). Until both are set the run is skipped with a warning.
+- `.github/workflows/signing-reminders.yml` calls `POST $APP_URL/api/internal/signing/reminders` with header `x-cron-secret` at 25 past every hour. Set repository secret `SIGNING_REMINDER_CRON_SECRET` (same value as the app, 32+ chars) next to `APP_URL`. Until both are set the run is skipped with a warning.
 - Each invitation unanswered for 48 hours gets one reminder to the agent. Safe to repeat; answers `{reminded}`.
+- Elena lead qualifier: `.github/workflows/lead-followups.yml` every 15 minutes; setup in `docs/ELENA_LEAD_QUALIFIER.md`.
 
 ## 4d. Scheduled agent reports (hourly)
 - `.github/workflows/agent-reports.yml` calls `POST $APP_URL/api/internal/agent-reports/run` with header `x-cron-secret` at 5 minutes past every hour. Set repository secrets `APP_URL` and `AGENT_REPORT_CRON_SECRET` (same value as the app, 32+ chars). Until both are set the run is skipped; the route answers 503 while the secret is unset.
 - Reports are emailed to the agent's own account email at 8am Brisbane time (daily, Mondays, or the 1st) through the normal email settings; the delivery log on /staff/messaging shows each one (template `agent_report`). With email not configured the schedule still advances and the run is marked "not sent".
 - Answers `{counts:{due,sent,notSent,skipped}}`. Safe to repeat: each report is claimed before it is sent, so overlapping runs never send twice. Reports hold counts, money and listing titles only, never buyer names.
+
+
+## 4e. Elena market-shift alerts (daily)
+- `.github/workflows/market-shifts.yml` calls `POST $APP_URL/api/internal/market-shifts/run` with header `x-cron-secret` at 21:30 UTC (7:30am Brisbane) every day. Set repository secrets `APP_URL` and `MARKET_SHIFT_CRON_SECRET` (same value as the app, 32+ chars). Until both are set the run is skipped; the route answers 503 while the secret is unset.
+- For every area where an agent has an active appointment on a published listing (suburb, property type, sale or rent) it compares the market now with a month ago and sends an in-app notification (kind `market_shift`, category Listings, so agents control it in notification settings). Each shift is sent once per agent, area, kind and month (table `market_shift_alert`), so re-runs are safe. Answers `{counts:{areas,shifts,notified}}`; one failing area never stops the rest.
+- Run it only after migration `20261105200000_market_shift_alerts.sql` has been applied (`npm run migrate`). Rollback: disable the workflow; the table is append-only and can stay.
 
 ## 5. Smoke test after deploy
 Home loads; Google sign-in works; `/plans` loads; an upload answers 503 (storage off, expected); checkout answers "not available yet" (expected); `/api/webhooks/payway` rejects unsigned posts.

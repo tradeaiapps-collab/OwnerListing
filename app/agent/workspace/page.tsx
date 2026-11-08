@@ -6,6 +6,7 @@ import "../../styles/agent-workspace.css";
 type Lead = {
   enquiryId: string; buyerId: string; buyerName: string; listingTitle: string; score: number; band: "hot" | "warm" | "cold";
   reasons: string[]; nextAction: string; stage: string; followUpAt?: string; overdue: boolean; offerStatus?: string; notes: number;
+  autoScore?: number; fitPercent?: number; overridden?: boolean;
 };
 type Perf = {
   listings: number; enquiries: number; hot: number; unanswered: number; overdue: number; openOffers: number; pipelineCents: number;
@@ -26,6 +27,10 @@ async function call<T>(url: string, init?: RequestInit): Promise<{ ok: boolean; 
 }
 const json = (method: string, data: unknown): RequestInit => ({ method, headers: { "content-type": "application/json" }, body: JSON.stringify(data) });
 
+type Stay = { id: string; listingId: string; listingTitle: string; portal: string; checkIn: string; checkOut: string; status: "confirmed" | "conflict"; source: string };
+const PORTAL_NAMES: Record<string, string> = { airbnb: "Airbnb", vrbo: "VRBO", booking_com: "Booking.com" };
+const stayDate = (d: string) => new Date(`${d}T00:00:00`).toLocaleDateString("en-AU", { day: "numeric", month: "short" });
+
 /** Agent workspace: performance, ranked leads with pipeline stages, a private client log, and the assistant. */
 export default function AgentWorkspace() {
   const [data, setData] = useState<{ performance: Perf; forecast: Forecast; leads: Lead[] } | null>(null);
@@ -35,6 +40,8 @@ export default function AgentWorkspace() {
   const [answer, setAnswer] = useState<Answer | null>(null);
   const [question, setQuestion] = useState("");
   const [busy, setBusy] = useState(false);
+  const [stays, setStays] = useState<Stay[]>([]);
+  const [inspectionsToday, setInspectionsToday] = useState(0);
 
   const load = useCallback(async () => {
     try {
@@ -45,6 +52,10 @@ export default function AgentWorkspace() {
     } catch { setError("Could not load your workspace."); }
   }, []);
   useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    void call<{ today: number }>("/api/agent/open-inspections").then(r => { if (r.ok) setInspectionsToday(r.body.today); }).catch(() => undefined);
+    void call<{ stays: Stay[] }>("/api/agent/blocked-dates").then(r => { if (r.ok) setStays(r.body.stays); }).catch(() => undefined);
+  }, []);
 
   async function ask(q: string, buyerId?: string) {
     if (!q.trim()) return;
@@ -62,6 +73,20 @@ export default function AgentWorkspace() {
     const r = await call(`/api/agent/workspace/leads/${l.enquiryId}`, json("PUT", { stage, followUpAt: followUpAt || null }));
     if (!r.ok) setError(r.body.error ?? "Could not update the lead."); else await load();
   }
+  async function saveOverride(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (!open) return;
+    const f = new FormData(e.currentTarget);
+    const r = await call(`/api/agent/workspace/leads/${open.enquiryId}/override`, json("PUT", { score: Number(f.get("score")), reason: String(f.get("reason") ?? "") }));
+    if (!r.ok) return setError(r.body.error ?? "Could not save your score.");
+    setError(""); await load();
+  }
+  async function clearOverride() {
+    if (!open) return;
+    const r = await call(`/api/agent/workspace/leads/${open.enquiryId}/override`, { method: "DELETE" });
+    if (!r.ok) return setError(r.body.error ?? "Could not remove your score.");
+    setError(""); await load();
+  }
   async function addNote(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!open) return;
@@ -75,8 +100,9 @@ export default function AgentWorkspace() {
   return (
     <main className="aw">
       <h1>Agent workspace</h1>
-      <p><a href="/agent/listings">Appointed listings</a> · <a href="/agent/appointments">Invitations</a> · <a href="/agent/team">Team</a> · <a href="/agent/reports">Reports</a></p>
+      <p><a href="/agent/listings">Appointed listings</a> · <a href="/agent/appointments">Invitations</a> · <a href="/agent/inspections">Inspections</a> · <a href="/agent/inspection-availability">Inspection times</a> · <a href="/agent/team">Team</a> · <a href="/agent/reports">Reports</a> · <a href="/agent/my-performance">My performance</a> · <a href="/agent/market-forecast">Market forecast</a> · <a href="/agent/automations">Automations</a> · <a href="/agent/marketplace">Marketplace profile</a> · <a href="/agent/rates">Loan rates</a> · <a href="/agent/videos">Videos</a></p>
       {error && <p role="alert">{error}</p>}
+      {inspectionsToday > 0 && <p role="status"><strong>{inspectionsToday === 1 ? "1 open inspection today" : `${inspectionsToday} open inspections today`}.</strong> <a href="/agent/inspections">See the inspection calendar</a></p>}
       {!data && !error && <p className="muted" role="status">Loading…</p>}
       {p && f && (
         <>
@@ -91,6 +117,21 @@ export default function AgentWorkspace() {
             <li className="aw-kpi"><span>Appointed listings</span><strong>{p.listings}</strong></li>
           </ul>
           <div className="aw-main">
+            <section className="aw-card" aria-labelledby="blocked-h">
+              <h2 id="blocked-h">Portal bookings and blocked dates</h2>
+              {stays.length === 0 && <p className="empty">Nothing booked on the portals for your listings.</p>}
+              <ul className="aw-leads">
+                {stays.map(b => (
+                  <li key={b.id} className="aw-lead">
+                    <div className="aw-lead-head">
+                      <a href={`/listings/${b.listingId}/syndication`}>{b.listingTitle}</a>
+                      {b.status === "conflict" && <span className="aw-score warm">Clash</span>}
+                    </div>
+                    <p className="aw-meta">{stayDate(b.checkIn)} to {stayDate(b.checkOut)} · {PORTAL_NAMES[b.portal] ?? b.portal}{b.source === "ical" ? " · imported" : ""}</p>
+                  </li>
+                ))}
+              </ul>
+            </section>
             <section className="aw-card" aria-labelledby="leads-h">
               <h2 id="leads-h">Leads, best first</h2>
               {data.leads.length === 0 && <p className="empty">No enquiries on your listings yet.</p>}
@@ -99,7 +140,7 @@ export default function AgentWorkspace() {
                   <li key={l.enquiryId} className={`aw-lead${open?.enquiryId === l.enquiryId ? " is-open" : ""}`}>
                     <div className="aw-lead-head">
                       <button type="button" onClick={() => void openClient(l)} aria-expanded={open?.enquiryId === l.enquiryId}>{l.buyerName}</button>
-                      <span className={`aw-score ${l.band}`} title={l.reasons.join(", ")}>{l.score} {l.band}</span>
+                      <span className={`aw-score ${l.band}`} title={l.reasons.join(", ")}>{l.score} {l.band}{l.overridden ? " (yours)" : ""}</span>
                     </div>
                     <p className="aw-meta">{l.listingTitle}{l.offerStatus ? ` · offer ${l.offerStatus.replace("_", " ")}` : ""}</p>
                     <p className="aw-meta">{l.nextAction}</p>
@@ -119,6 +160,20 @@ export default function AgentWorkspace() {
                 <section aria-labelledby="client-h">
                   <h2 id="client-h">{open.buyerName}: private log</h2>
                   <p className="aw-meta">Only you can see this. {open.reasons.join(", ")}.</p>
+                  {(() => {
+                    const cur = data.leads.find(x => x.enquiryId === open.enquiryId) ?? open;
+                    return (
+                      <form className="aw-form" onSubmit={e => void saveOverride(e)} key={`${cur.enquiryId}:${cur.score}:${cur.overridden}`}>
+                        <p className="aw-meta">Automatic score {cur.autoScore ?? cur.score}{cur.fitPercent !== undefined ? ` · ${cur.fitPercent}% match to the buyer's saved searches` : ""}. Set your own if you know better; it replaces the automatic score until you remove it.</p>
+                        <label>Your score (0-100) <input name="score" type="number" min={0} max={100} step={1} defaultValue={cur.score} required /></label>
+                        <label>Why <input name="reason" maxLength={300} minLength={3} required placeholder="e.g. pre-approved, ready to offer" /></label>
+                        <div className="aw-controls">
+                          <button type="submit">Save my score</button>
+                          {cur.overridden && <button type="button" className="aw-chips-btn" onClick={() => void clearOverride()}>Use automatic score</button>}
+                        </div>
+                      </form>
+                    );
+                  })()}
                   <button type="button" className="aw-chips-btn" onClick={() => void ask("Summarise this client", open.buyerId)}>Ask {answer?.name ?? "the assistant"} to summarise</button>
                   <form className="aw-form" onSubmit={e => void addNote(e)}>
                     <label>Type <select name="kind">{KINDS.map(k => <option key={k}>{k}</option>)}</select></label>

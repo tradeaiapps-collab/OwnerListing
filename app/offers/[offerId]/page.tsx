@@ -6,6 +6,7 @@ import { offerStatusLabel } from "../../../src/domain/offer-display";
 import type { TimelineEvent } from "../../../src/domain/offer-timeline";
 import { CounterForm, OfferTimeline, TermsLine, when, type Counter, type Terms } from "../negotiation";
 import { JSON_HEADERS } from "../../listings/ui";
+import FallThroughPanel from "../fall-through-panel";
 import "../../styles/offers.css";
 
 type Offer = Terms & { id: string; listingId: string; listingTitle: string; status: string; submittedAt: string; awaiting: "owner" | "buyer" | null };
@@ -111,6 +112,10 @@ export default function MyOffer() {
         </div>
       ) : !myTurn && OPEN.includes(offer.status) ? (
         <div className="actions"><button type="button" className="secondary" onClick={() => setPending("withdraw")}>Withdraw offer</button></div>
+      ) : null}
+
+      {offer.status === "accepted" || offer.status === "fallen_through" ? (
+        <FallThroughPanel url={`/api/offers/${offerId}/fall-through`} viewer="buyer" offerStatus={offer.status} onChange={load} />
       ) : null}
 
       <h2>Timeline</h2>

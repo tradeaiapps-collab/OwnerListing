@@ -1,14 +1,14 @@
 /* Dashboard next-step checklist. Theme variables only. */
-.jr { margin: var(--space-4) 0 var(--space-6); padding: var(--space-4); border: 1px solid var(--border); border-radius: calc(var(--radius) + 2px); background: var(--bg); box-shadow: var(--shadow-1); }
+.jr { margin: var(--space-3) 0 var(--space-4); padding: var(--space-3) var(--space-4); border: 1px solid var(--border); border-radius: calc(var(--radius) + 2px); background: var(--bg); box-shadow: var(--shadow-1); }
 .jr-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: var(--space-2); }
-.jr-head h2 { margin: 0; font-size: 1.25rem; }
+.jr-head h2 { margin: 0; font-size: 1.125rem; line-height: 1.3; }
 .jr-count { color: var(--muted); font-weight: 600; font-size: 0.9375rem; }
-.jr-bar { height: 8px; margin: var(--space-3) 0; border-radius: 999px; background: var(--tint-2); overflow: hidden; }
+.jr-bar { height: 8px; margin: var(--space-2) 0 var(--space-3); border-radius: 999px; background: var(--tint-2); overflow: hidden; }
 .jr-bar span { display: block; height: 100%; background: var(--brand); border-radius: inherit; }
-.jr-next { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-3); padding: var(--space-3) var(--space-4); margin-bottom: var(--space-3); border-radius: var(--radius); background: var(--tint); }
+.jr-next { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-3); padding: var(--space-2) var(--space-3); margin-bottom: var(--space-2); border-radius: var(--radius); background: var(--tint); }
 .jr-next > div { display: grid; gap: 2px; max-width: 40rem; }
-.jr-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-1) var(--space-4); grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr)); }
-.jr-step { display: flex; align-items: center; gap: var(--space-2); min-height: 44px; }
+.jr-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 0 var(--space-4); grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr)); }
+.jr-step { display: flex; align-items: center; gap: var(--space-2); min-height: 40px; }
 .jr-dot { flex: none; width: 24px; height: 24px; border-radius: 50%; border: 2px solid var(--border); display: inline-flex; align-items: center; justify-content: center; font-size: 0.8125rem; font-weight: 800; }
 .jr-done .jr-dot { background: var(--ok); border-color: var(--ok); color: var(--bg); }
 .jr-todo .jr-dot { border-color: var(--brand); }
@@ -20,3 +20,12 @@
 .dash-h { font-size: 1.125rem; margin: var(--space-4) 0 var(--space-2); }
 .empty-state { display: grid; justify-items: start; gap: var(--space-3); padding: var(--space-6); border: 1px dashed var(--border); border-radius: var(--radius); background: var(--surface); }
 .empty-state p { margin: 0; }
+
+/* Compact, natural-width dashboard head and text: no synthesized stretch, no extra stylistic alternates. */
+.dash-title { margin: 0 0 var(--space-1); font-size: clamp(1.5rem, 1.2rem + 1.2vw, 2rem); line-height: 1.2; }
+.dash-sub { margin: 0; font-size: 0.9375rem; }
+.jr, .dash-grid { font-stretch: normal; font-synthesis: none; font-feature-settings: normal; letter-spacing: normal; }
+.jr-next > div { min-width: 0; flex: 1 1 18rem; line-height: 1.4; }
+.jr-next strong { font-size: 1rem; }
+.jr-next .muted { font-size: 0.9375rem; }
+.jr-next .button { flex: none; white-space: nowrap; }

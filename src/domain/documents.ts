@@ -16,6 +16,8 @@ export interface DocumentRecord {
   uploadedBy: string;
   visibility: Visibility;
   status: DocumentStatus;
+  /** Optional display title shown to buyers. */
+  title?: string;
   /** Set on an amended file: the earlier version it replaced. Earlier versions are kept. */
   supersedesId?: string;
 }

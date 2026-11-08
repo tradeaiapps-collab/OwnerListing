@@ -37,16 +37,18 @@ export function fontStylesheetUrl(fontIds: readonly string[]): string | null {
 }
 
 // ---- Navigation catalogue: ids, targets and icons are fixed in code; the admin edits label, visibility and order only. ----
-export type IconName = "search" | "tag" | "plus" | "home" | "inbox" | "bookmark" | "heart" | "shield" | "gauge" | "briefcase" | "login";
+export type IconName = "search" | "tag" | "plus" | "home" | "inbox" | "bookmark" | "heart" | "shield" | "gauge" | "briefcase" | "building" | "login";
 export interface NavDef { id: string; label: string; href: string; icon: IconName }
 export const NAV_CATALOG: readonly NavDef[] = [
   { id: "browse", label: "Browse", href: "/listings", icon: "search" },
   { id: "plans", label: "Plans", href: "/plans", icon: "tag" },
   { id: "list", label: "List a property", href: "/listings/new", icon: "plus" },
+  { id: "projects", label: "Projects", href: "/investments", icon: "building" },
   { id: "mine", label: "My listings", href: "/listings/mine", icon: "home" },
   { id: "offers", label: "Offers", href: "/listings/mine", icon: "inbox" },
   { id: "searches", label: "Saved searches", href: "/buyer/saved-searches", icon: "bookmark" },
   { id: "saved", label: "Saved homes", href: "/buyer/saved-listings", icon: "heart" },
+  { id: "prequal", label: "Pre-approval", href: "/buyer/prequalification", icon: "shield" },
   { id: "verification", label: "Verification", href: "/buyer/verification", icon: "shield" },
   { id: "dashboard", label: "Dashboard", href: "/dashboard", icon: "gauge" },
   { id: "staff", label: "Staff", href: "/staff", icon: "briefcase" },
@@ -350,8 +352,15 @@ export function changedFields(a: ThemeSettings, b: ThemeSettings): string[] {
 
 function withNewKeys(raw: unknown): unknown {
   if (!isObj(raw) || !isObj(raw["brand"]) || !isObj(raw["layout"])) return raw;
+  // Saved themes that predate a navigation item get it added (visible, default label) so they still validate.
+  const saved = Array.isArray(raw["navigation"]) ? raw["navigation"] : null;
+  const navigation = saved === null ? raw["navigation"] : [
+    ...saved,
+    ...NAV_CATALOG.filter(d => !saved.some(it => isObj(it) && it["id"] === d.id)).map(d => ({ id: d.id, label: d.label, visible: true }))
+  ];
   return {
     ...raw,
+    navigation,
     brand: { hero: DEFAULT_THEME.brand.hero, ...raw["brand"] },
     layout: { heroOverlay: DEFAULT_THEME.layout.heroOverlay, heroFocus: DEFAULT_THEME.layout.heroFocus, colourMode: DEFAULT_THEME.layout.colourMode, ...raw["layout"] }
   };
@@ -374,7 +383,7 @@ function colourVars(c: ModeColours): string {
  * CSS custom properties for a settings object. Every value is re-checked against the same rules as validateTheme, and any
  * object that does not pass is replaced by the defaults, so even a corrupted database row cannot put text into the stylesheet.
  */
-export function buildThemeCss(settings: ThemeSettings): string {
+export function buildThemeCss(settings: ThemeSettings, opts: { followDevice?: boolean } = {}): string {
   const checked = validateTheme(settings);
   const t = checked.ok ? checked.value : DEFAULT_THEME; // the normalised copy (trimmed, lower-case hex), never the raw input
   const f = DENSITY_FACTOR[t.layout.density];
@@ -389,7 +398,7 @@ export function buildThemeCss(settings: ThemeSettings): string {
   const light = colourVars(t.colours.light), dark = colourVars(t.colours.dark);
   const css =
     `:root:root{${shared}${light}}` +
-    (t.layout.colourMode === "system" ? `@media (prefers-color-scheme: dark){:root:root{${dark}}}` : "") +
+    (t.layout.colourMode === "system" || opts.followDevice ? `@media (prefers-color-scheme: dark){:root:root{${dark}}}` : "") +
     `:root:root[data-theme-mode="light"]{color-scheme:light;${light}}` +
     `:root:root[data-theme-mode="dark"]{color-scheme:dark;${dark}}`;
   return css.replace(/</g, "");

@@ -25,13 +25,18 @@ const readVoice = () => { try { return window.localStorage.getItem(VOICE_KEY) !=
 const saveVoice = (on: boolean) => { try { window.localStorage.setItem(VOICE_KEY, on ? "on" : "off"); } catch { /* the toggle still works for this visit */ } };
 
 /** Reads text aloud with the device's own voice (no outside service). Returns false when the browser has no speech. */
-export function speak(text: string, onEnd: () => void): boolean {
+export function speak(text: string, onEnd: () => void, lang = "en-AU"): boolean {
   if (typeof window === "undefined" || !("speechSynthesis" in window)) return false;
   const s = window.speechSynthesis;
   s.cancel();
   const u = new SpeechSynthesisUtterance(text);
-  u.lang = "en-AU";
-  const v = s.getVoices().find(x => /en-AU/i.test(x.lang) && /female|karen|catherine|natasha/i.test(x.name)) ?? s.getVoices().find(x => /en-AU/i.test(x.lang));
+  u.lang = lang;
+  // Her own language's voice when the device has one (matching the full tag first, then the base language); otherwise the browser picks.
+  const base = lang.split("-")[0]!.toLowerCase();
+  const sameTag = (x: SpeechSynthesisVoice) => x.lang.replace("_", "-").toLowerCase() === lang.toLowerCase();
+  const sameBase = (x: SpeechSynthesisVoice) => x.lang.toLowerCase().startsWith(base);
+  const voices = s.getVoices();
+  const v = voices.find(x => sameTag(x) && /female|karen|catherine|natasha/i.test(x.name)) ?? voices.find(sameTag) ?? voices.find(x => sameBase(x) && /female/i.test(x.name)) ?? voices.find(sameBase);
   if (v) u.voice = v;
   u.rate = 1;
   // Some browsers never fire onend for long text, which would leave her "speaking" forever; stop her after a generous cap.

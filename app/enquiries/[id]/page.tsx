@@ -1,101 +1,80 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
-import { showMeFor, type AssistantThread, type AssistantTurn, type ChatAnswer, type ChatFacts, type ChatPose, type ChatTopic } from "../../../src/domain/chat-assistant";
-import { personaPose } from "../../../src/domain/assistant-persona";
-import { formatAud } from "../../../src/domain/listing-details";
+import type { ChatLang } from "../../../src/domain/language-detect";
 import { JSON_HEADERS } from "../../listings/ui";
-import { AiReplyPanel } from "../ai-reply-panel";
-import { ElenaStage, speak, type StageState } from "../elena-stage";
-import { showMe } from "../show-me";
+import { CopilotPanel } from "../copilot-panel";
+import { ModerationPanel } from "../moderation-panel";
 import { MessageWarning, SafetySummary, useSafety } from "../safety-panel";
 import "../../styles/enquiries.css";
+import "../../styles/chat-copilot.css";
 
 type Message = { id: string; senderUserId: string | null; automated: boolean; body: string; sentAt: string };
-
+type ThreadData = { enquiry: { listingId: string; buyerUserId: string }; messages: Message[]; readByOthersAt?: string; listingNumber?: number };
 type OfferLinkState = {
   role: "buyer" | "owner";
   request?: { status: "requested" | "issued" | "declined" };
   link?: { token: string; listingId: string; expiresAt: string };
 };
-
-/** Where she points for each kind of answer: a row of the offer summary, the listing, her suggestions, or the question itself. */
-type Target = "price" | "settlement" | "deposit" | "conditions" | "listing" | "status" | "chips" | `q-${string}`;
-const TARGETS: Record<ChatTopic, (turnId: string) => Target[]> = {
-  welcome: () => ["chips"], offer: () => ["price", "status"], compromise: () => ["price", "chips"], settlement: () => ["settlement"],
-  deposit: () => ["deposit"], conditions: () => ["conditions"], listing: () => ["listing"], market: id => [`q-${id}`], next_steps: () => ["status"],
-  privacy: id => [`q-${id}`], advice: id => [`q-${id}`], chitchat: id => [`q-${id}`], unknown: id => [`q-${id}`]
-};
-const STATUS_FOR: Record<ChatPose, StageState["status"]> = { wave: "welcome", tablet: "presenting", front: "explaining", "three-quarter": "careful" };
-const POINT_MS = 4500;
-/** Topics where she is warm and agreeing, so she nods and smiles while answering. */
-const AGREE_TOPICS: ChatTopic[] = ["chitchat", "welcome", "compromise", "next_steps"];
+type Facts = { listing: { title: string; address: string; askingCents?: number }; offer?: { priceCents: number; status: string } };
+type AssistantView = { persona: { name: string; portrait: string }; viewerId: string; role: "buyer" | "owner" | "agent"; facts: Facts };
 
 const OFFER_STATUS: Record<string, string> = {
   submitted: "With the owner", under_review: "With the owner", countered: "Owner countered", buyer_countered: "Buyer countered",
   accepted: "Accepted", rejected: "Declined", withdrawn: "Withdrawn", expired: "Expired"
 };
-const roleName = (r: string) => (r === "buyer" ? "Buyer" : r === "agent" ? "Agent" : "Owner");
-const time = (iso: string) => new Date(iso).toLocaleString("en-AU", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
+const aud = (c: number) => new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD", maximumFractionDigits: 0 }).format(c / 100);
+const clock = (iso: string) => new Date(iso).toLocaleTimeString("en-AU", { hour: "numeric", minute: "2-digit" });
+const dayKey = (iso: string) => new Date(iso).toDateString();
+const dayLabel = (iso: string) => {
+  const d = new Date(iso), t = new Date();
+  const diff = Math.round((new Date(t.toDateString()).getTime() - new Date(d.toDateString()).getTime()) / 86_400_000);
+  return diff === 0 ? "Today" : diff === 1 ? "Yesterday" : d.toLocaleDateString("en-AU", { weekday: "short", day: "numeric", month: "short" });
+};
 
-/** Small fact pills under her newest answer, so what she refers to is right beside it (and lights up with the summary row). */
-function pillsFor(topic: ChatTopic, f: ChatFacts): { target: Target; text: string }[] {
-  const o = f.offer, l = f.listing, tx = l.transactionType;
-  const m = (c: number) => (tx === "rent" ? `${formatAud(c)}/wk` : formatAud(c));
-  switch (topic) {
-    case "offer": case "compromise": {
-      const out: { target: Target; text: string }[] = [];
-      if (o) out.push({ target: "price", text: `Offer ${m(o.priceCents)}` });
-      if (o?.counter?.status === "open") out.push({ target: "price", text: `${o.counter.fromParty === "owner" ? "Owner" : "Buyer"} counter ${m(o.counter.priceCents)}` });
-      else if (l.askingCents) out.push({ target: "price", text: `Asking ${m(l.askingCents)}` });
-      return out;
-    }
-    case "settlement": return o ? [{ target: "settlement", text: `Settlement ${o.settlementDays} days` }] : [];
-    case "deposit": return o ? [{ target: "deposit", text: `Deposit ${formatAud(o.depositCents)}` }] : [];
-    case "conditions": return o ? o.conditions.map(c => ({ target: "conditions" as Target, text: c })) : [];
-    case "listing": return [{ target: "listing", text: [l.bedrooms !== undefined && `${l.bedrooms} bed`, l.bathrooms !== undefined && `${l.bathrooms} bath`, l.parking !== undefined && `${l.parking} car`].filter(Boolean).join(" · ") || l.title }];
-    default: return [];
-  }
+/** Sent (one tick) and read (two ticks). Read means the other side opened the thread after the message was sent. */
+function Ticks({ read }: { read: boolean }) {
+  return <span className={`cx-ticks${read ? " is-read" : ""}`} role="img" aria-label={read ? "Read" : "Sent"}>{read ? "✓✓" : "✓"}</span>;
 }
 
-/** One enquiry thread, for its buyer and the listing's owner, with the assistant on stage. Messages cannot be edited or deleted. */
+/** One enquiry thread for its buyer and the listing's owner (or agent): the conversation on the left, Elena on the right. */
 export default function Thread() {
   const { id } = useParams<{ id: string }>();
-  const [data, setData] = useState<{ enquiry: { listingId: string; buyerUserId: string }; messages: Message[] } | null>(null);
-  const [ai, setAi] = useState<AssistantThread | null>(null);
+  const [data, setData] = useState<ThreadData | null>(null);
+  const [ai, setAi] = useState<AssistantView | null>(null);
   const [loadError, setLoadError] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const [asking, setAsking] = useState(false);
   const [draft, setDraft] = useState("");
-  const [typing, setTyping] = useState(false);
-  const [pointed, setPointed] = useState<Target[]>([]);
-  const [voice, setVoice] = useState(false);
-  const [speaking, setSpeaking] = useState(false);
-  const [listening, setListening] = useState(false);
+  const [tab, setTab] = useState<"chat" | "elena">("chat");
   const { safety, reload: reloadSafety } = useSafety(id);
-  const pointTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const endRef = useRef<HTMLDivElement>(null);
-  const alive = useRef(true);
-  const [walking, setWalking] = useState(false);
+  const composerRef = useRef<HTMLTextAreaElement>(null);
+  const count = useRef(0);
+  const [msgTr, setMsgTr] = useState<Record<string, { state: "loading" } | { state: "error"; message: string } | { state: "done"; text: string; to: ChatLang; note: string; rtl: boolean }>>({});
+
+  async function translateMessage(messageId: string) {
+    setMsgTr(m => ({ ...m, [messageId]: { state: "loading" } }));
+    try {
+      const r = await fetch(`/api/enquiries/${id}/messages/${messageId}/translate`, { method: "POST", headers: JSON_HEADERS, body: JSON.stringify({}) });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) { setMsgTr(m => ({ ...m, [messageId]: { state: "error", message: (d as { error?: string }).error ?? "Couldn't translate that message." } })); return; }
+      const t = (d as { translation: { text: string; to: ChatLang; note: string; rtl: boolean } }).translation;
+      setMsgTr(m => ({ ...m, [messageId]: { state: "done", ...t } }));
+    } catch {
+      setMsgTr(m => ({ ...m, [messageId]: { state: "error", message: "Couldn't translate that message." } }));
+    }
+  }
 
   const load = useCallback(async () => {
-    setLoadError("");
     try {
       const r = await fetch(`/api/enquiries/${id}/messages`);
       const d = await r.json();
-      if (r.ok) setData(d);
+      if (r.ok) { setData(d); setLoadError(""); }
       else setLoadError(r.status === 401 ? "Sign in to read this conversation." : r.status === 404 ? "Conversation not found." : d.error ?? "Could not load the conversation.");
     } catch {
       setLoadError("Could not load the conversation.");
     }
-  }, [id]);
-
-  const loadAi = useCallback(async () => {
-    try {
-      const r = await fetch(`/api/enquiries/${id}/assistant`);
-      if (r.ok) setAi(await r.json());
-    } catch { /* the thread still works without the assistant */ }
   }, [id]);
 
   const [olr, setOlr] = useState<OfferLinkState | null>(null);
@@ -106,269 +85,151 @@ export default function Thread() {
     } catch { /* the thread still works without this panel */ }
   }, [id]);
 
-  useEffect(() => { void load(); void loadOlr(); void loadAi(); }, [load, loadOlr, loadAi]);
-  // The floating guide is the same character; on this page she is already on stage, so the launcher steps aside.
+  useEffect(() => {
+    void load(); void loadOlr();
+    fetch(`/api/enquiries/${id}/assistant`).then(r => (r.ok ? r.json() : null)).then(d => { if (d) setAi(d as AssistantView); }).catch(() => { /* Elena still works without her portrait */ });
+  }, [id, load, loadOlr]);
+  // New messages and read ticks arrive by polling while the page is visible.
+  useEffect(() => {
+    const t = setInterval(() => { if (document.visibilityState === "visible") void load(); }, 8000);
+    return () => clearInterval(t);
+  }, [load]);
+  // Elena is on this page, so the floating guide steps aside.
   useEffect(() => { document.body.classList.add("el-chat-page"); return () => document.body.classList.remove("el-chat-page"); }, []);
-  useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
-  useEffect(() => () => { clearTimeout(pointTimer.current); if (typeof window !== "undefined") window.speechSynthesis?.cancel(); }, []);
-
-  const point = useCallback((targets: Target[]) => {
-    clearTimeout(pointTimer.current);
-    setPointed(targets);
-    pointTimer.current = setTimeout(() => setPointed([]), POINT_MS);
-  }, []);
+  useEffect(() => {
+    const n = data?.messages.length ?? 0;
+    if (n !== count.current) { count.current = n; endRef.current?.scrollIntoView({ block: "end" }); }
+  }, [data]);
 
   async function olrAction(action: "request" | "issue" | "decline") {
-    setBusy(true);
-    setError("");
+    setBusy(true); setError("");
     try {
       const r = await fetch(`/api/enquiries/${id}/offer-link`, { method: "POST", headers: JSON_HEADERS, body: JSON.stringify({ action }) });
       if (!r.ok) setError(((await r.json().catch(() => ({}))) as { error?: string }).error ?? "That did not work.");
       await Promise.all([load(), loadOlr()]);
-    } catch {
-      setError("That did not work.");
-    } finally {
-      setBusy(false);
-    }
+    } catch { setError("That did not work."); } finally { setBusy(false); }
   }
 
-  async function onSend(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    setBusy(true);
-    setError("");
+  /** The one place a message is sent. Elena's drafts also come through here, only after the person pressed send. */
+  async function send(text: string, fromBox: boolean) {
+    setBusy(true); setError("");
     try {
-      const r = await fetch(`/api/enquiries/${id}/messages`, { method: "POST", headers: JSON_HEADERS, body: JSON.stringify({ body: draft }) });
-      const d = await r.json();
-      if (r.ok) {
-        setDraft("");
-        await Promise.all([load(), reloadSafety()]);
-      } else setError(d.error ?? "Could not send the message.");
-    } catch {
-      setError("Could not send the message.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function walkTo(places: Parameters<typeof showMe>[0]["places"]) {
-    const figure = document.querySelector<HTMLElement>(".el-stage-figure");
-    if (!figure || !ai) return;
-    const pose = personaPose(ai.persona, "tablet");
-    setWalking(true);
-    try {
-      const found = await showMe({ from: figure, places, src: pose.src, flip: true, cancelled: () => !alive.current });
-      if (!found) setError("I can't see that on this screen. Open the menu and try again.");
-    } finally {
-      if (alive.current) setWalking(false);
-    }
-  }
-
-  /** Speak a question instead of typing it, using the browser's own speech recognition (no outside service). Her answer is then read aloud. */
-  function listen() {
-    type Rec = { lang: string; onresult: ((e: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void) | null; onend: (() => void) | null; onerror: (() => void) | null; start: () => void };
-    const w = window as unknown as { SpeechRecognition?: new () => Rec; webkitSpeechRecognition?: new () => Rec };
-    const Ctor = w.SpeechRecognition ?? w.webkitSpeechRecognition;
-    if (!Ctor) { setError("Speaking to her isn't supported in this browser. You can type instead."); return; }
-    const rec = new Ctor();
-    rec.lang = "en-AU";
-    setError("");
-    setListening(true);
-    rec.onresult = e => {
-      const said = e.results[0]?.[0]?.transcript?.trim();
-      if (said) { setVoice(true); void ask(said.slice(0, 500), false); }
-    };
-    rec.onend = () => setListening(false);
-    rec.onerror = () => { setListening(false); setError("I couldn't hear that. Check the microphone is allowed, or type instead."); };
-    rec.start();
-  }
-
-  async function ask(question: string, fromComposer: boolean) {
-    const q = question.trim();
-    if (!q) return;
-    setAsking(true);
-    setError("");
-    const started = Date.now();
-    try {
-      const r = await fetch(`/api/enquiries/${id}/assistant`, { method: "POST", headers: JSON_HEADERS, body: JSON.stringify({ question: q }) });
+      const r = await fetch(`/api/enquiries/${id}/messages`, { method: "POST", headers: JSON_HEADERS, body: JSON.stringify({ body: text }) });
       const d = await r.json().catch(() => ({}));
-      if (!r.ok) { setError((d as { error?: string }).error ?? "The assistant could not answer just now."); return; }
-      const turn = (d as { turn: AssistantTurn }).turn;
-      // A short thinking beat so her listening posture is seen before she answers.
-      await new Promise(res => setTimeout(res, Math.max(0, 1400 - (Date.now() - started))));
-      if (fromComposer) setDraft("");
-      setAi(a => (a ? { ...a, turns: [...a.turns, turn] } : a));
-      point(TARGETS[turn.topic](turn.id));
-      if (voice && speak(turn.answer, () => setSpeaking(false))) setSpeaking(true);
-      requestAnimationFrame(() => endRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }));
-    } catch {
-      setError("The assistant could not answer just now.");
-    } finally {
-      setAsking(false);
-    }
+      if (r.ok) { if (fromBox) setDraft(""); await Promise.all([load(), reloadSafety()]); }
+      else setError((d as { error?: string }).error ?? "Could not send the message.");
+    } catch { setError("Could not send the message."); } finally { setBusy(false); }
   }
 
-  const latest: (ChatAnswer & { id: string }) | undefined = useMemo(() => {
-    if (!ai) return undefined;
-    const t = ai.turns[ai.turns.length - 1];
-    return t ? { id: t.id, topic: t.topic, pose: t.pose, text: t.answer, suggestions: ai.welcome.suggestions } : { id: "welcome", ...ai.welcome };
-  }, [ai]);
-
-  const stage: StageState = asking
-    ? { pose: "listening", status: "thinking", pointing: false }
-    : typing && draft.trim()
-      ? { pose: "listening", status: "listening", pointing: false }
-      : { pose: latest?.pose ?? "wave", status: STATUS_FOR[latest?.pose ?? "wave"], pointing: pointed.length > 0, mood: latest?.topic === "unknown" ? "silly" : latest && AGREE_TOPICS.includes(latest.topic) ? "agree" : "explain" };
-
-  const timeline = useMemo(() => {
-    const items: ({ kind: "msg"; at: string; m: Message } | { kind: "turn"; at: string; t: AssistantTurn })[] = [
-      ...(data?.messages ?? []).map(m => ({ kind: "msg" as const, at: m.sentAt, m })),
-      ...(ai?.turns ?? []).map(t => ({ kind: "turn" as const, at: t.createdAt, t }))
-    ];
-    return items.sort((a, b) => a.at.localeCompare(b.at));
-  }, [data, ai]);
-
-  const isPointed = (t: Target) => pointed.includes(t);
-  const pc = (t: Target) => (isPointed(t) ? " is-pointed" : "");
+  const useDraft = (text: string) => { setDraft(text); setTab("chat"); requestAnimationFrame(() => composerRef.current?.focus()); };
+  const viewerId = ai?.viewerId;
+  const role = ai?.role ?? olr?.role ?? "buyer";
+  const readAt = data?.readByOthersAt;
+  const lastIncoming = useMemo(() => [...(data?.messages ?? [])].reverse().find(m => !m.automated && m.senderUserId !== viewerId)?.id, [data, viewerId]);
   const facts = ai?.facts;
-  const offer = facts?.offer;
-  const mine = (sender: string | null) => sender !== null && sender === ai?.viewerId;
-  const latestTurn = ai?.turns[ai.turns.length - 1];
-  const latestTurnId = latestTurn?.id;
-  const showMeNow = ai && latestTurn ? showMeFor(latestTurn.topic, ai.role, ai.facts) : undefined;
-
-  const suggestions = (sug: string[]) => (
-    <div className={`el-chips${pc("chips")}`} role="group" aria-label={`Ask ${ai?.persona.name ?? "the assistant"}`}>
-      {sug.map(s => <button key={s} type="button" className="el-chip" disabled={asking} onClick={() => void ask(s, false)}>{s}</button>)}
-    </div>
-  );
+  const num = data?.listingNumber;
+  const mine = (m: Message) => m.senderUserId !== null && m.senderUserId === viewerId;
+  const sideOf = (m: Message) => (m.automated ? "Notice" : m.senderUserId === data?.enquiry.buyerUserId ? "Buyer" : role === "agent" ? "Agent" : "Owner");
+  const refreshKey = data?.messages.length ?? 0;
 
   return (
-    <main className="el-page">
-      <p><a href="/enquiries">Back to messages</a></p>
-      <h1>Conversation</h1>
-      <p className="muted">Messages are a permanent record and cannot be edited or deleted. Offers made here are not formal offers.</p>
+    <main className="cx-page">
+      <p className="cx-back"><a href="/enquiries">Back to messages</a></p>
       {loadError && <p role="alert">{loadError}</p>}
       {!loadError && !data && <p className="muted" role="status">Loading…</p>}
       {data && (
-        <div className={`el-layout${ai ? " has-stage" : ""}`}>
-          {ai && <ElenaStage persona={ai.persona} state={stage} speaking={speaking} voice={voice} onVoice={setVoice} turnKey={ai.turns[ai.turns.length - 1]?.id ?? "welcome"} turnWords={(ai.turns[ai.turns.length - 1]?.answer ?? "").split(/\s+/).length} />}
-          <div className="el-chat">
-            {safety && olr?.role === "owner" && <SafetySummary enquiryId={id} safety={safety} onChange={reloadSafety} />}
-            {facts && (
-              <section className="el-facts" aria-label="Listing and offer">
-                <div className={`el-fact el-fact-listing${pc("listing")}`}>
-                  <span className="el-fact-title">{facts.listing.title}</span>
-                  <span className="el-fact-sub">{facts.listing.address}</span>
-                </div>
-                <dl className="el-fact-grid">
-                  <div className={`el-fact${pc("price")}`}><dt>{offer ? "Offer" : "Asking"}</dt><dd>{offer ? formatAud(offer.priceCents) : facts.listing.askingCents ? formatAud(facts.listing.askingCents) : "Not shown"}</dd></div>
-                  {offer && <div className={`el-fact${pc("settlement")}`}><dt>Settlement</dt><dd>{offer.settlementDays} days</dd></div>}
-                  {offer && <div className={`el-fact${pc("deposit")}`}><dt>Deposit</dt><dd>{formatAud(offer.depositCents)}</dd></div>}
-                  {offer && <div className={`el-fact${pc("conditions")}`}><dt>Conditions</dt><dd>{offer.conditions.length ? offer.conditions.map(c => c.replace(/^subject to /i, "")).join(", ") : "None"}</dd></div>}
-                  {offer && <div className={`el-fact${pc("status")}`}><dt>Status</dt><dd>{OFFER_STATUS[offer.status] ?? offer.status}</dd></div>}
-                </dl>
-              </section>
-            )}
-            <ol className="enq-thread el-thread">
-              {ai && (
-                <li className="el-turn">
-                  <div className="el-answer">
-                    <span className="el-answer-who">{ai.persona.name} · AI assistant</span>
-                    <p>{ai.welcome.text}</p>
-                  </div>
-                  {latestTurnId === undefined && suggestions(ai.welcome.suggestions)}
-                </li>
-              )}
-              {timeline.map(item => {
-                if (item.kind === "msg") {
-                  const m = item.m;
+        <>
+          <header className="cx-head">
+            <div>
+              <p className="cx-number">{num ? `Listing #${num}` : "Listing"}</p>
+              <h1>{facts?.listing.title ?? "Conversation"}</h1>
+              {facts && <p className="muted">{facts.listing.address}</p>}
+            </div>
+            <ul className="cx-facts" aria-label="Price">
+              {facts?.listing.askingCents !== undefined && <li><span>Asking</span><strong>{aud(facts.listing.askingCents)}</strong></li>}
+              {facts?.offer && <li><span>Formal offer</span><strong>{aud(facts.offer.priceCents)}</strong><small>{OFFER_STATUS[facts.offer.status] ?? facts.offer.status}</small></li>}
+            </ul>
+          </header>
+
+          <div className="cx-tabs" role="tablist" aria-label="Conversation or Elena">
+            <button type="button" role="tab" aria-selected={tab === "chat"} onClick={() => setTab("chat")}>Chat</button>
+            <button type="button" role="tab" aria-selected={tab === "elena"} onClick={() => setTab("elena")}>{ai?.persona.name ?? "Elena"}</button>
+          </div>
+
+          <div className="cx-grid" data-tab={tab}>
+            <section className="cx-chat" aria-label="Conversation">
+              {safety && olr?.role === "owner" && <SafetySummary enquiryId={id} safety={safety} onChange={reloadSafety} />}
+              <ol className="cx-thread" aria-live="polite">
+                {data.messages.length === 0 && <li className="empty">No messages yet. Say hello below, or ask {ai?.persona.name ?? "Elena"} to help you word it.</li>}
+                {data.messages.map((m, i) => {
+                  const prev = data.messages[i - 1];
                   const flag = safety?.flags.find(f => f.messageId === m.id);
-                  const who = m.automated ? "Automated notice" : mine(m.senderUserId) ? "You" : m.senderUserId === data.enquiry.buyerUserId ? "Buyer" : "Owner";
+                  const tr = msgTr[m.id];
+                  const read = !!readAt && readAt >= m.sentAt;
                   return (
                     <li key={m.id}>
-                      <div className={`enq-msg${m.automated ? " system" : mine(m.senderUserId) ? " mine" : ""}`}>
-                        {m.body}
-                        <small>{who}, {time(m.sentAt)}</small>
+                      {(!prev || dayKey(prev.sentAt) !== dayKey(m.sentAt)) && <p className="cx-day"><span>{dayLabel(m.sentAt)}</span></p>}
+                      <div className={`cx-msg${mine(m) ? " mine" : ""}${m.automated ? " system" : ""}${m.id === lastIncoming ? " latest-in" : ""}`}>
+                        {!mine(m) && <span className="cx-who">{sideOf(m)}</span>}
+                        <p className="cx-body">{m.body}</p>
+                        <span className="cx-meta">
+                          {clock(m.sentAt)}
+                          {mine(m) && <Ticks read={read} />}
+                        </span>
                       </div>
+                      {!m.automated && !mine(m) && (
+                        <div className="cx-translate">
+                          {tr?.state === "done" ? (
+                            <div className="cx-tr-box" lang={tr.to} dir={tr.rtl ? "rtl" : "ltr"}><p>{tr.text}</p><small>{tr.note}</small></div>
+                          ) : (
+                            <button type="button" className="cx-link" disabled={tr?.state === "loading"} onClick={() => void translateMessage(m.id)}>{tr?.state === "loading" ? "Translating…" : "Translate"}</button>
+                          )}
+                          {tr?.state === "error" && <p role="alert" className="cx-error">{tr.message}</p>}
+                        </div>
+                      )}
                       {flag && <MessageWarning flag={flag} />}
                     </li>
                   );
-                }
-                const t = item.t;
-                const isLatest = t.id === latestTurnId;
-                const pills = isLatest && facts ? pillsFor(t.topic, facts) : [];
-                return (
-                  <li key={t.id} className="el-turn">
-                    <div className={`enq-msg el-question${mine(t.askedByUserId) ? " mine" : ""}${pc(`q-${t.id}`)}`}>
-                      {t.question}
-                      <small>{mine(t.askedByUserId) ? "You" : roleName(t.askedByRole)} asked {ai?.persona.name}, {time(t.createdAt)}</small>
-                    </div>
-                    <div className="el-answer">
-                      <span className="el-answer-who">{ai?.persona.name} · AI assistant</span>
-                      <p>{t.answer}</p>
-                      {pills.length > 0 && (
-                        <ul className="el-pills" aria-label="What this refers to">
-                          {pills.map((p, i) => <li key={i} className={`el-pill${pc(p.target)}`}>{p.text}</li>)}
-                        </ul>
-                      )}
-                    </div>
-                    {isLatest && showMeNow && (
-                      <button type="button" className="el-showme" disabled={walking} onClick={() => void walkTo(showMeNow.places)}>
-                        {walking ? `${ai?.persona.name} is showing you…` : showMeNow.label}
-                      </button>
-                    )}
-                    {isLatest && suggestions(ai?.welcome.suggestions ?? [])}
-                  </li>
-                );
-              })}
-              {asking && <li className="el-thinking" role="status">{ai?.persona.name ?? "The assistant"} is thinking…</li>}
-            </ol>
-            <div ref={endRef} />
-            {olr?.role === "owner" && <AiReplyPanel enquiryId={id} onSent={async () => { await Promise.all([load(), reloadSafety()]); }} />}
-            <form className="el-composer" onSubmit={onSend}>
-              <label htmlFor="enq-reply" className="el-sr">Message</label>
-              <textarea
-                id="enq-reply" value={draft} rows={3} maxLength={4000} required
-                placeholder={ai ? `Write a message, or ask ${ai.persona.name} a question` : "Write a message"}
-                onChange={e => setDraft(e.target.value)} onFocus={() => setTyping(true)} onBlur={() => setTyping(false)}
-              />
-              <div className="el-composer-actions">
-                {ai && (
-                  <button type="button" className="el-ask" aria-pressed={listening} disabled={asking || listening} onClick={listen}>
-                    {listening ? "Listening…" : `Speak to ${ai.persona.name}`}
-                  </button>
-                )}
-                {ai && (
-                  <button type="button" className="el-ask" disabled={asking || !draft.trim() || draft.trim().length > 500} onClick={() => void ask(draft, true)}>
-                    {asking ? "Asking…" : `Ask ${ai.persona.name}`}
-                  </button>
-                )}
-                <button type="submit" disabled={busy || !draft.trim()}>{busy ? "Sending…" : "Send"}</button>
-              </div>
-              {ai && <p className="el-note">{ai.persona.name} sees this listing and the offer terms you both see, never private notes or the owner&apos;s lowest price. Questions to her are shown to both of you.</p>}
-              {error && <p role="alert">{error}</p>}
-            </form>
-            {olr && (
-              <section id="el-offer-link" aria-label="Formal offer link" className="el-offer-link">
-                <h2>Formal offer link</h2>
-                {olr.role === "buyer" && olr.link && (
-                  <p><a href={`/offers/new?listing=${encodeURIComponent(olr.link.listingId)}#token=${encodeURIComponent(olr.link.token)}`}>Make a formal offer</a> (single use, expires {new Date(olr.link.expiresAt).toLocaleString("en-AU")}).</p>
-                )}
-                {olr.role === "buyer" && olr.request?.status === "requested" && <p className="muted">Waiting for the owner to answer your request.</p>}
-                {olr.role === "buyer" && olr.request?.status !== "requested" && !olr.link && (
-                  <button type="button" disabled={busy} onClick={() => void olrAction("request")}>Request an offer link</button>
-                )}
-                {olr.role === "owner" && olr.request?.status === "requested" && (
-                  <p>
-                    <button type="button" disabled={busy} onClick={() => void olrAction("issue")}>Approve and issue link</button>{" "}
-                    <button type="button" disabled={busy} onClick={() => void olrAction("decline")}>Decline</button>
-                  </p>
-                )}
-                {olr.role === "owner" && olr.request?.status !== "requested" && <p className="muted">No open request. You decide every offer yourself; nothing is accepted automatically.</p>}
-              </section>
-            )}
+                })}
+                <li ref={el => { endRef.current = el as unknown as HTMLDivElement; }} aria-hidden="true" />
+              </ol>
+
+              <form className="cx-composer" onSubmit={e => { e.preventDefault(); void send(draft, true); }}>
+                <label htmlFor="cx-reply" className="cx-sr">Message</label>
+                <textarea ref={composerRef} id="cx-reply" value={draft} rows={3} maxLength={4000} required placeholder="Write your message" onChange={e => setDraft(e.target.value)} />
+                <div className="cx-row">
+                  <small className="muted">Messages are a permanent record and can&apos;t be edited or deleted. Offers here are not formal offers.</small>
+                  <button type="submit" className="cx-btn" disabled={busy || !draft.trim()}>{busy ? "Sending…" : "Send"}</button>
+                </div>
+                {error && <p role="alert" className="cx-error">{error}</p>}
+              </form>
+
+              {olr?.role === "owner" && <ModerationPanel enquiryId={id} draft={draft} onUse={setDraft} name={ai?.persona.name} />}
+
+              {olr && (
+                <section id="el-offer-link" aria-label="Formal offer link" className="cx-offer-link">
+                  <h2>Formal offer link</h2>
+                  {olr.role === "buyer" && olr.link && (
+                    <p><a href={`/offers/new?listing=${encodeURIComponent(olr.link.listingId)}#token=${encodeURIComponent(olr.link.token)}`}>Make a formal offer</a> (single use, expires {new Date(olr.link.expiresAt).toLocaleString("en-AU")}).</p>
+                  )}
+                  {olr.role === "buyer" && olr.request?.status === "requested" && <p className="muted">Waiting for the owner to answer your request.</p>}
+                  {olr.role === "buyer" && olr.request?.status !== "requested" && !olr.link && (
+                    <button type="button" className="cx-btn secondary" disabled={busy} onClick={() => void olrAction("request")}>Request an offer link</button>
+                  )}
+                  {olr.role === "owner" && olr.request?.status === "requested" && (
+                    <p>
+                      <button type="button" className="cx-btn" disabled={busy} onClick={() => void olrAction("issue")}>Approve and issue link</button>{" "}
+                      <button type="button" className="cx-btn secondary" disabled={busy} onClick={() => void olrAction("decline")}>Decline</button>
+                    </p>
+                  )}
+                  {olr.role === "owner" && olr.request?.status !== "requested" && <p className="muted">No open request. You decide every offer yourself; nothing is accepted automatically.</p>}
+                </section>
+              )}
+            </section>
+
+            <CopilotPanel enquiryId={id} persona={ai?.persona ?? null} refreshKey={refreshKey} onUse={useDraft} onSend={t => send(t, false)} busy={busy} />
           </div>
-        </div>
+        </>
       )}
     </main>
   );

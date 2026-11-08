@@ -34,10 +34,14 @@ describe("preferences", () => {
       { preferences: { offers: { inApp: true, email: true } } },
       { preferences: { offers: { inApp: true, email: true, sms: false, push: true } } },
       { preferences: { account: { inApp: true, email: false, sms: false } } },
-      { preferences: { listings: { inApp: true, email: true, sms: true } } },
-      { preferences: { marketing: { inApp: true, email: true, sms: true } } }]) {
+      { preferences: { listings: { inApp: true, email: true, sms: true } } }]) {
       expect(parsePreferencesInput(bad).ok).toBe(false);
     }
+  });
+  it("lets a person opt in to marketing texts for campaigns, but no notification kind is ever texted as marketing", () => {
+    expect(parsePreferencesInput({ preferences: { marketing: { inApp: false, email: false, sms: true } } }).ok).toBe(true);
+    const prefs = { ...defaultPreferences(), marketing: { inApp: true, email: true, sms: true } };
+    expect(planChannels("marketing_news", prefs, true).sms).toBe(false);
   });
   it("lists only flipped channels as consent changes", () => {
     const a = defaultPreferences();

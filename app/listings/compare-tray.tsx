@@ -10,7 +10,7 @@ export function CompareToggle({ id, title }: { id: string; title: string }) {
   return (
     <label className={`cmp-toggle${on ? " on" : ""}`} title={blocked ? "You can compare up to 4 properties. Remove one first." : undefined}>
       <input type="checkbox" checked={on} disabled={blocked} onChange={() => toggle({ id, title })} aria-label={`Compare ${title}`} />
-      <span>Compare</span>
+      <span>{on ? "Added to compare" : blocked ? "Compare list full" : "Add to compare"}</span>
     </label>
   );
 }
@@ -31,7 +31,7 @@ export function CompareTray() {
         ))}
       </ul>
       <div className="cmp-actions">
-        <span className="muted" role="status">{ready ? `${items.length} of 4 picked` : "Pick one more to compare"}</span>
+        <span className="muted" role="status">{ready ? `${items.length} of 4 selected` : "Select one more property to compare"}</span>
         <button type="button" className="secondary" onClick={clear}>Clear</button>
         {ready
           ? <a className="button" href={`/compare?ids=${items.map(i => i.id).join(",")}`}>Compare {items.length}</a>

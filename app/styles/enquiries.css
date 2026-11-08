@@ -126,3 +126,31 @@ body.el-chat-page .ga-launcher { display: none; }
 .el-glider img { width: 100%; height: 100%; display: block; object-fit: cover; object-position: 30% 12%; }
 .el-offer-link { padding: var(--space-3); margin-inline: calc(var(--space-3) * -1); border-radius: var(--radius); border: 1px solid transparent; }
 .site-nav a.is-pointed { border-radius: 999px; }
+
+/* Languages: translated answers, per-message translation, language picker. Machine translation is always labelled. */
+.el-tr-note { margin: var(--space-2) 0 0; font-size: 0.8125rem; color: var(--muted); overflow-wrap: anywhere; }
+.el-tr-line { display: block; margin-top: var(--space-2); padding-top: var(--space-2); border-top: 1px dashed var(--border); overflow-wrap: anywhere; }
+.el-tr-orig { margin-top: var(--space-2); font-size: 0.875rem; }
+.el-tr-orig summary { cursor: pointer; color: var(--link); min-height: 44px; display: flex; align-items: center; }
+.el-tr-orig summary:focus-visible, .el-tr-btn:focus-visible, .el-lang select:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.el-translate { margin: var(--space-1) 0 var(--space-2); }
+.el-tr-btn { min-height: 44px; padding: 0 var(--space-3); border: 0; background: none; color: var(--link); font: inherit; font-size: 0.875rem; text-decoration: underline; cursor: pointer; }
+.el-tr-btn:disabled { opacity: 0.55; cursor: progress; }
+.el-tr-box { max-width: 40rem; padding: var(--space-2) var(--space-3); border: 1px dashed var(--border); border-radius: var(--radius); background: var(--bg); }
+.el-tr-box p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.el-tr-box small { display: block; margin-top: var(--space-1); color: var(--muted); }
+.el-lang { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.el-lang label { font-size: 0.875rem; }
+.el-lang select { min-height: 44px; max-width: 100%; padding: 0 var(--space-3); border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); color: inherit; font: inherit; }
+
+/* Elena message moderation panel (seller side) */
+.enq-mod { display: grid; gap: var(--space-2); margin-bottom: var(--space-3); }
+.enq-mod-note { margin: 0; padding: var(--space-2) var(--space-3); border-left: 4px solid var(--border, #d1d5db); background: var(--tint); border-radius: 0 var(--radius-sm, 8px) var(--radius-sm, 8px) 0; overflow-wrap: anywhere; }
+.enq-mod-note.risk-low, .enq-mod-note.risk-medium { border-left-color: var(--warning, #b45309); }
+.enq-mod-note.risk-high { border-left-color: var(--danger, #b91c1c); }
+.enq-mod-note ul { margin: var(--space-1) 0 0; padding-left: var(--space-4); }
+.enq-mod-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-2); }
+.enq-mod-templates summary, .enq-mod-note summary { cursor: pointer; }
+.enq-mod-templates label { display: grid; gap: var(--space-1); margin-top: var(--space-2); }
+.enq-mod-list { list-style: none; margin: var(--space-2) 0 0; padding: 0; display: grid; gap: var(--space-1); }
+.enq-mod-list li { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }

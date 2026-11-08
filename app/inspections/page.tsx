@@ -7,10 +7,14 @@ type Row = {
   counterpartName: string; openFollowUps: number; criticalCount: number;
 };
 
+type Request = { id: string; listingId: string; listingTitle: string; status: string; slots: string[]; scheduledAt?: string; inspectorName?: string; inspectionId?: string };
+const REQUEST_STATUS: Record<string, string> = { pending_inspector_response: "Waiting for an inspector", scheduled: "Booked", completed: "Report complete", cancelled: "Cancelled" };
+
 export default function MyInspections() {
   const [rows, setRows] = useState<Row[] | null>(null);
   const [error, setError] = useState("");
   const [filter, setFilter] = useState<"all" | "followups">("all");
+  const [requests, setRequests] = useState<Request[]>([]);
 
   useEffect(() => {
     fetch("/api/inspections").then(async r => {
@@ -19,6 +23,16 @@ export default function MyInspections() {
       else setError(r.status === 401 ? "Sign in to see your inspections." : d.error ?? "Could not load inspections.");
     }).catch(() => setError("Could not load inspections."));
   }, []);
+
+  useEffect(() => {
+    fetch("/api/inspection-bookings").then(async r => { if (r.ok) setRequests(((await r.json()) as { bookings: Request[] }).bookings); }).catch(() => undefined);
+  }, []);
+
+  async function cancel(id: string) {
+    const r = await fetch(`/api/inspection-bookings/${id}/cancel`, { method: "POST" }).catch(() => null);
+    if (r?.ok) setRequests(rs => rs.map(q => q.id === id ? { ...q, status: "cancelled" } : q));
+    else setError("Could not cancel that request.");
+  }
 
   const shown = rows?.filter(r => filter === "all" || r.openFollowUps > 0) ?? [];
   const followUps = rows?.reduce((n, r) => n + r.openFollowUps, 0) ?? 0;
@@ -34,6 +48,23 @@ export default function MyInspections() {
           <button type="button" className={filter === "all" ? "" : "secondary"} aria-pressed={filter === "all"} onClick={() => setFilter("all")}>All ({rows.length})</button>
           <button type="button" className={filter === "followups" ? "" : "secondary"} aria-pressed={filter === "followups"} onClick={() => setFilter("followups")}>Open follow-ups ({followUps})</button>
         </div>
+      )}
+      {requests.length > 0 && (
+        <section aria-label="Your inspection requests">
+          <h2>Your requests</h2>
+          <ul className="card-list insp-list">
+            {requests.map(q => (
+              <li key={q.id}>
+                <div className="top"><strong>{q.listingTitle}</strong><span className="badge">{REQUEST_STATUS[q.status] ?? q.status}</span></div>
+                <span className="muted">{q.scheduledAt ? `${formatWhen(q.scheduledAt)}${q.inspectorName ? ` · ${q.inspectorName}` : ""}` : `${q.slots.length} time${q.slots.length === 1 ? "" : "s"} offered`}</span>
+                <div className="actions">
+                  {q.inspectionId && q.status === "completed" && <a className="button" href={`/inspections/${q.inspectionId}`}>Open report</a>}
+                  {(q.status === "pending_inspector_response" || q.status === "scheduled") && <button type="button" className="secondary" onClick={() => cancel(q.id)}>Cancel request</button>}
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
       )}
       {rows && shown.length === 0 && <p className="empty">{rows.length === 0 ? "No inspections yet. Owners can book one from a listing's Inspections page." : "No open follow-ups."}</p>}
       <ul className="card-list insp-list">

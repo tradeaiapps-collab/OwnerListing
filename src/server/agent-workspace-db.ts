@@ -1,4 +1,7 @@
 import { median, type LeadFact, type NoteFact, type NoteKind, type OfferFacts, type PeerFacts, type Stage, type WorkspaceDeps } from "../domain/agent-workspace";
+import { adjustLeadWeights } from "../domain/elena-learning";
+import { learnedFor, noteMany, noteReaction, stableId } from "./elena-wiring-db";
+import { DEFAULT_SCORING, parseFitSearches, type ScoringConfig } from "../domain/lead-scoring";
 import { personaById } from "../domain/assistant-persona";
 import { loadLivePersona } from "./assistant-persona-db";
 import { getDb } from "./context";
@@ -10,13 +13,16 @@ const opt = (v: unknown) => (v == null ? undefined : iso(v));
 
 export async function leadsPg(db: Queryable, agentId: string): Promise<LeadFact[]> {
   const r = await db.query(
-    `SELECT e.id AS enquiry_id, l.id AS listing_id, l.title, u.id AS buyer_id, u.display_name, e.created_at,
+    `SELECT e.id AS enquiry_id, l.id AS listing_id, l.title, l.property_type, u.id AS buyer_id, u.display_name, e.created_at,
             (SELECT count(*) FROM enquiry_message m WHERE m.enquiry_id = e.id AND m.sender_user_id = e.buyer_user_id) AS buyer_msgs,
             (SELECT count(*) FROM enquiry_message m WHERE m.enquiry_id = e.id AND m.sender_user_id = $1::uuid) AS agent_msgs,
             (SELECT max(m.sent_at) FROM enquiry_message m WHERE m.enquiry_id = e.id AND m.sender_user_id = e.buyer_user_id) AS last_buyer_at,
             (SELECT min(m.sent_at) FROM enquiry_message m WHERE m.enquiry_id = e.id AND m.sender_user_id = $1::uuid) AS first_agent_at,
             o.status AS offer_status, o.price_cents AS offer_price, s.stage, to_char(s.follow_up_at, 'YYYY-MM-DD') AS follow_up_at,
-            (SELECT count(*) FROM agent_crm_note n WHERE n.agent_user_id = $1::uuid AND n.buyer_user_id = e.buyer_user_id) AS notes
+            (SELECT count(*) FROM agent_crm_note n WHERE n.agent_user_id = $1::uuid AND n.buyer_user_id = e.buyer_user_id) AS notes,
+            l.price_cents AS l_price, l.bedrooms AS l_beds, l.suburb AS l_suburb, l.transaction_type AS l_tx,
+            (SELECT COALESCE(jsonb_agg(ss.criteria), '[]'::jsonb) FROM saved_search ss WHERE ss.buyer_user_id = e.buyer_user_id AND ss.active) AS searches,
+            ov.score AS ov_score, ov.reason AS ov_reason, ov.updated_at AS ov_at
        FROM listing_agent_appointment a
        JOIN property_listing l ON l.id = a.listing_id
        JOIN enquiry e ON e.listing_id = l.id
@@ -24,6 +30,7 @@ export async function leadsPg(db: Queryable, agentId: string): Promise<LeadFact[
        LEFT JOIN LATERAL (SELECT status, price_cents FROM formal_offer fo WHERE fo.listing_id = l.id AND fo.buyer_user_id = e.buyer_user_id
                            ORDER BY submitted_at DESC LIMIT 1) o ON true
        LEFT JOIN agent_lead_state s ON s.agent_user_id = $1::uuid AND s.enquiry_id = e.id
+       LEFT JOIN agent_lead_override ov ON ov.agent_user_id = $1::uuid AND ov.enquiry_id = e.id
       WHERE a.agent_user_id = $1::uuid AND a.revoked_at IS NULL
       ORDER BY e.created_at DESC, e.id LIMIT 500`,
     [agentId]
@@ -31,10 +38,16 @@ export async function leadsPg(db: Queryable, agentId: string): Promise<LeadFact[
   return r.rows.map((x): LeadFact => ({
     enquiryId: String(x["enquiry_id"]), listingId: String(x["listing_id"]), listingTitle: String(x["title"]), buyerId: String(x["buyer_id"]),
     buyerName: String(x["display_name"]), enquiredAt: iso(x["created_at"]), buyerMessages: Number(x["buyer_msgs"]), agentMessages: Number(x["agent_msgs"]),
-    notes: Number(x["notes"]),
+    notes: Number(x["notes"]), ...(x["property_type"] ? { propertyType: String(x["property_type"]) } : {}),
     ...(opt(x["last_buyer_at"]) ? { lastBuyerAt: opt(x["last_buyer_at"])! } : {}), ...(opt(x["first_agent_at"]) ? { firstAgentAt: opt(x["first_agent_at"])! } : {}),
     ...(x["offer_status"] ? { offerStatus: String(x["offer_status"]), offerPriceCents: Number(x["offer_price"]) } : {}),
-    ...(x["stage"] ? { stage: String(x["stage"]) as Stage } : {}), ...(x["follow_up_at"] ? { followUpAt: String(x["follow_up_at"]) } : {})
+    ...(x["stage"] ? { stage: String(x["stage"]) as Stage } : {}), ...(x["follow_up_at"] ? { followUpAt: String(x["follow_up_at"]) } : {}),
+    fit: {
+      ...(x["l_price"] != null ? { priceCents: Number(x["l_price"]) } : {}), ...(x["l_beds"] != null ? { bedrooms: Number(x["l_beds"]) } : {}),
+      ...(x["l_suburb"] ? { suburb: String(x["l_suburb"]) } : {}), ...(x["property_type"] ? { propertyType: String(x["property_type"]) } : {}),
+      ...(x["l_tx"] ? { transactionType: String(x["l_tx"]) } : {}), searches: parseFitSearches(x["searches"])
+    },
+    ...(x["ov_score"] != null ? { override: { score: Number(x["ov_score"]), reason: String(x["ov_reason"]), at: iso(x["ov_at"]) } } : {})
   }));
 }
 
@@ -80,6 +93,14 @@ export async function platformRatePg(db: Queryable): Promise<number | undefined>
   return d >= 10 ? Math.round((Number(r.rows[0]?.["accepted"]) / d) * 100) : undefined;
 }
 
+/** The staff-set scoring rules (single row), or the defaults if the row is missing. */
+export async function loadScoringConfig(db: Queryable): Promise<ScoringConfig> {
+  const r = await db.query("SELECT hot_min, warm_min, w_engagement, w_fit, w_follow_up FROM lead_scoring_setting WHERE id = 1");
+  const x = r.rows[0];
+  if (!x) return DEFAULT_SCORING;
+  return { hotMin: Number(x["hot_min"]), warmMin: Number(x["warm_min"]), weights: { engagement: Number(x["w_engagement"]), fit: Number(x["w_fit"]), followUp: Number(x["w_follow_up"]) } };
+}
+
 export function createWorkspaceDeps(db: Queryable, now: () => Date = () => new Date()): WorkspaceDeps {
   return {
     licences: () => verifiedLicencesPg(db), today: () => now().toISOString().slice(0, 10), now,
@@ -97,7 +118,32 @@ export function createWorkspaceDeps(db: Queryable, now: () => Date = () => new D
          ON CONFLICT (agent_user_id, enquiry_id) DO UPDATE SET stage = EXCLUDED.stage, follow_up_at = EXCLUDED.follow_up_at, updated_at = now()`,
         [agentId, enquiryId, stage, followUpAt]);
     },
-    personaName: async () => personaById(await loadLivePersona(db)).name
+    personaName: async () => personaById(await loadLivePersona(db)).name,
+    async scoring(agentId) {
+      const cfg = await loadScoringConfig(db);
+      // Learned settings scale the three signal weights (within +-50%); the bands and the agent's own overrides are untouched.
+      const learned = await learnedFor(db, "lead_scoring", agentId);
+      return learned.weighted ? { ...cfg, weights: adjustLeadWeights(learned.config, cfg.weights) } : cfg;
+    },
+    async noteLeads(agentId, leads) {
+      const learned = await learnedFor(db, "lead_scoring", agentId);
+      await noteMany(db, leads.slice(0, 25).map(l => ({
+        id: stableId("lead-score", agentId, l.enquiryId), feature: "lead_scoring" as const, type: l.band, userId: agentId, userRole: "agent", listingId: l.listingId, source: "direct" as const,
+        context: { score: l.score, band: l.band, overdue: l.overdue, offer: l.offerStatus !== undefined, fit: l.fitPercent !== undefined }
+      })), learned, now());
+    },
+    async noteLeadAction(agentId, enquiryId, action) {
+      await noteReaction(db, stableId("lead-score", agentId, enquiryId), action === "worked" ? "accepted" : action === "overridden" ? "modified" : "rejected", agentId);
+    },
+    async setOverride(agentId, enquiryId, score, reason, at) {
+      await db.query(
+        `INSERT INTO agent_lead_override (agent_user_id, enquiry_id, score, reason, updated_at) VALUES ($1::uuid,$2::uuid,$3,$4,$5::timestamptz)
+         ON CONFLICT (agent_user_id, enquiry_id) DO UPDATE SET score = EXCLUDED.score, reason = EXCLUDED.reason, updated_at = EXCLUDED.updated_at`,
+        [agentId, enquiryId, score, reason, at]);
+    },
+    async clearOverride(agentId, enquiryId) {
+      await db.query("DELETE FROM agent_lead_override WHERE agent_user_id = $1::uuid AND enquiry_id = $2::uuid", [agentId, enquiryId]);
+    }
   };
 }
 export const getWorkspaceDeps = (): WorkspaceDeps => createWorkspaceDeps(getDb());

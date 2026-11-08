@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getListing, listingWordingFlags, parseDraftPatch, toPublicListing, updateDraft } from "../../../../src/domain/listing-service";
-import { getActor, getDeps } from "../../../../src/server/context";
+import { recordListingView } from "../../../../src/server/staff-automation-db";
+import { getActor, getDb, getDeps } from "../../../../src/server/context";
 import { failure, unauthenticated } from "../../../../src/server/http";
 import { csrfGuard } from "../../../../src/server/csrf";
 import { withApi } from "../../../../src/server/api/with-api";
@@ -16,6 +17,7 @@ async function handleGet(req: Request, { params }: Ctx) {
   // Ownership is decided here from the signed-in actor and returned as a flag; the owner's id is never sent.
   const isOwner = actor !== null && actor.userId === r.value.ownerUserId;
   const listing = toPublicListing(r.value);
+  if (actor && !isOwner) await recordListingView(getDb(), { listingId: id, viewerUserId: actor.userId });
   // The bond pathway is returned to the listing's owner only.
   if (isOwner) {
     const rec = await deps.repo.get(id);

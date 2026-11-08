@@ -8,6 +8,7 @@ import { aud, label, STEP_LINK } from "./ui";
 const MIN_TICKET_CAPS = [10_000, 50_000, 100_000, 250_000, 500_000, 1_000_000];
 
 type Card = CardProject;
+const NOT_OPEN = "Investor projects are not open yet. Please check back soon.";
 
 /** Approved projects. Ready investors get their own list; everyone else gets the public cards and a pointer to the next step. Not an offer; interest is non-binding. */
 export default function BrowseProjects() {
@@ -22,12 +23,13 @@ export default function BrowseProjects() {
       const r = await fetch("/api/investments/projects");
       const d = await r.json().catch(() => ({}));
       if (r.ok) { setItems(d.items ?? []); return; }
+      if (r.status === 404) { setError(NOT_OPEN); return; }
       if (r.status !== 401 && r.status !== 403) { setError(d.error ?? "Could not load."); return; }
       setVisitor(r.status === 401 ? "Sign in as an investor to see full details, risks and contract terms." : d.error ?? "");
       setStep(r.status === 401 ? "investor_account" : d.step ?? "");
       const pub = await fetch("/api/investments/public");
       const pd = await pub.json().catch(() => ({}));
-      if (pub.ok) setItems(pd.items ?? []); else setError(pd.error ?? "Could not load.");
+      if (pub.ok) setItems(pd.items ?? []); else setError(pub.status === 404 ? NOT_OPEN : pd.error ?? "Could not load.");
     })().catch(() => setError("Could not load."));
   }, []);
 

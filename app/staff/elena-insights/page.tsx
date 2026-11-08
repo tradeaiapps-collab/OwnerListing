@@ -38,7 +38,7 @@ export default function ElenaInsights() {
   return (
     <main className="admin-page">
       <h1>{data ? `${data.persona}'s insights` : "Elena's insights"}</h1>
-      <p><a href="/staff/analytics">Back to platform analytics</a></p>
+      <p><a href="/staff/analytics">Back to platform analytics</a> · <a href="/staff/alerts">Alert thresholds</a></p>
       <form className="filters" onSubmit={e => { e.preventDefault(); void load(f); }}>
         <label>From <input type="date" value={f.from} onChange={e => setF({ ...f, from: e.target.value })} /></label>
         <label>To <input type="date" value={f.to} onChange={e => setF({ ...f, to: e.target.value })} /></label>
@@ -93,6 +93,24 @@ export default function ElenaInsights() {
           )}
           {i.agentsNote && <p className="muted">{i.agentsNote}</p>}
           <p className="muted">{i.teamNote}</p>
+
+          {i.teams && i.teams.length > 0 && (
+            <>
+              <h2>Teams</h2>
+              <div className="table-wrap"><table>
+                <thead><tr><th scope="col">Team</th><th scope="col" className="num">Rank</th><th scope="col" className="num">People</th><th scope="col" className="num">Listings</th><th scope="col" className="num">Enquiries</th>
+                  <th scope="col" className="num">Change</th><th scope="col" className="num">Offers</th><th scope="col" className="num">Accepted</th><th scope="col" className="num">Accepted change</th><th scope="col">Notes</th></tr></thead>
+                <tbody>
+                  {i.teams.map(t => (
+                    <tr key={t.id}><td style={{ whiteSpace: "nowrap" }}>{t.name}</td><td className="num">{t.rank ?? "–"}</td><td className="num">{t.members}</td><td className="num">{t.activeListings}</td>
+                      <td className="num">{t.enquiries.current}</td><td className="num">{change(t.enquiries)}</td><td className="num">{t.offers.current}</td><td className="num">{t.sold.current}</td><td className="num">{change(t.sold)}</td><td>{t.note}</td></tr>
+                  ))}
+                </tbody>
+              </table></div>
+              {i.teamsNote && <p className="muted">{i.teamsNote}</p>}
+              <p className="muted"><a href="/staff/analytics">Team value, commission and trends are on platform analytics.</a></p>
+            </>
+          )}
 
           <h2>Areas</h2>
           {i.areas.length === 0 ? <p className="muted">No area activity in this period.</p> : (
