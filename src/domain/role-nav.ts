@@ -8,11 +8,13 @@ export interface RoleNavItem { id: string; label: string; href: string }
  */
 const ACCOUNT: RoleNavItem = { id: "account", label: "Account", href: "/settings" };
 const MESSAGES: RoleNavItem = { id: "messages", label: "Messages", href: "/messages" };
+const PROJECTS: RoleNavItem = { id: "projects", label: "Projects", href: "/investments" };
 
 export const ROLE_NAV: Record<UserRole, readonly RoleNavItem[]> = {
   owner: [
     { id: "mine", label: "My listings", href: "/listings/mine" },
     { id: "offers", label: "Offers", href: "/listings/mine" },
+    PROJECTS,
     MESSAGES,
     { id: "agent-performance", label: "Agent performance", href: "/owner/agent-performance" },
     ACCOUNT
@@ -22,12 +24,14 @@ export const ROLE_NAV: Record<UserRole, readonly RoleNavItem[]> = {
     { id: "search", label: "Search", href: "/listings#listing-search" },
     { id: "my-offers", label: "My offers", href: "/offers" },
     { id: "searches", label: "Saved searches", href: "/buyer/saved-searches" },
+    PROJECTS,
     MESSAGES,
     ACCOUNT
   ],
   agent: [
     { id: "agent-listings", label: "Listings", href: "/agent/listings" },
     { id: "crm", label: "CRM", href: "/agent/leads" },
+    PROJECTS,
     MESSAGES,
     { id: "reports", label: "Reports", href: "/agent/reports" },
     { id: "workspace", label: "Workspace", href: "/agent/workspace" },
