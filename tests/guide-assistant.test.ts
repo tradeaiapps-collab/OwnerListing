@@ -322,3 +322,23 @@ describe("staff /api/staff/assistant", () => {
     expect(state.published).toEqual([4]);
   });
 });
+
+describe("guide chat window copy and expand control", () => {
+  it("keeps one short AI and not-advice line", async () => {
+    const { GUIDE_SHORT_NOTICE } = await import("../src/domain/guide-assistant");
+    expect(GUIDE_SHORT_NOTICE).toMatch(/AI assistant/);
+    expect(GUIDE_SHORT_NOTICE).toMatch(/not legal or financial advice/i);
+    expect(GUIDE_SHORT_NOTICE.length).toBeLessThan(60);
+  });
+  it("component has an expand toggle, no long header text, and keeps mic and listen", async () => {
+    const { readFileSync } = await import("node:fs");
+    const src = readFileSync(new URL("../app/guide-assistant.tsx", import.meta.url), "utf8");
+    expect(src).toContain("is-expanded");
+    expect(src).toContain("Expand the chat to full size");
+    expect(src).toContain("Restore the chat");
+    expect(src).not.toContain("Automatic answers, not a person");
+    expect(src).not.toContain("I can see you are on");
+    expect(src).toContain("ga-mic");
+    expect(src).toContain("ga-listen");
+  });
+});
