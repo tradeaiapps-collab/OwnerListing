@@ -268,7 +268,7 @@ async function seedInvestments(db, P) {
     const owners = [await mk("olivia.projects", "Olivia Hart (project owner)", ["buyer", "owner"], "+61400550011"), await mk("ravi.developer", "Ravi Menon (project owner)", ["buyer", "owner"], "+61400550022")];
     const investors = [P.by["noah.investor"], await mk("grace.investor", "Grace Lim (investor)", ["buyer", "investor"], "+61400550033"), await mk("hugo.investor", "Hugo Brandt (investor)", ["buyer", "investor"], "+61400550044")];
     for (const [i, id] of investors.entries()) {
-      await q(`INSERT INTO investor_declaration (user_id, category, ack_not_advice, ack_not_offer, ack_no_funds_held, ack_off_platform, disclosure_version, declared_at) VALUES ($1, $2, true, true, true, true, 'local-demo', ${ago(40 - i * 9)})`, [id, ["wholesale", "sophisticated", "wholesale"][i]]);
+      await q(`INSERT INTO investor_declaration (user_id, category, ack_not_advice, ack_not_offer, ack_no_funds_held, ack_off_platform, disclosure_version, declared_at) VALUES ($1, $2, true, true, true, true, '2026-10-25-draft-1', ${ago(40 - i * 9)})`, [id, ["wholesale", "sophisticated", "wholesale"][i]]);
     }
     // Posting model 1: 1.5% commission when a signed contract is returned. Applies to the projects below.
     await q(`INSERT INTO investment_posting_setting (key, model, commission_type, commission_bps, commission_fixed_cents, upfront_fee_cents, model2_disclosure, updated_by) VALUES ('posting', 'commission_on_contract', 'percent', 150, 0, 0, 'off', $1) ON CONFLICT (key) DO NOTHING`, [boss]);

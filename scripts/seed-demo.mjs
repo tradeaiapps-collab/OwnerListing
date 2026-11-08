@@ -831,6 +831,11 @@ async function seedInvestor(db) {
   const added = await db.query(`INSERT INTO investor_declaration (user_id, category, ack_not_advice, ack_not_offer, ack_no_funds_held, ack_off_platform, disclosure_version)
              SELECT $1, 'wholesale', true, true, true, true, $2 WHERE NOT EXISTS (SELECT 1 FROM investor_declaration WHERE user_id = $1 AND disclosure_version = $2)`, [id, DISCLOSURE_VERSION]);
   if (added.rowCount) console.log("Demo investor declaration added for Noah Patel (wholesale).");
+  // Other demo investors (Grace, Hugo) were seeded with an old 'local-demo' version; give them a current one too.
+  const more = await db.query(`INSERT INTO investor_declaration (user_id, category, ack_not_advice, ack_not_offer, ack_no_funds_held, ack_off_platform, disclosure_version)
+             SELECT u.id, 'wholesale', true, true, true, true, $1 FROM app_user u WHERE u.email LIKE '%.investor${D}'
+             AND NOT EXISTS (SELECT 1 FROM investor_declaration d WHERE d.user_id = u.id AND d.disclosure_version = $1)`, [DISCLOSURE_VERSION]);
+  if (more.rowCount) console.log(`Demo investor declarations added for ${more.rowCount} more demo investor(s).`);
 }
 // ---- Demo agent performance + sale conversations (Messages page, Agent performance page) ------------------------------
 // Idempotent (marker: priya.agent). Adds three listed agents, 13 past sales from the last 6 months (two fell through) with buyer
