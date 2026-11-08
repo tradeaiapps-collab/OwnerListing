@@ -1,11 +1,24 @@
 "use client";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { personaLabel, personaPose, type Persona } from "../src/domain/assistant-persona";
+import { cleanTranscript, micErrorMessage } from "../src/domain/guide-voice";
 import { GUIDE_LIMITS, type GuideChip, type GuideIntent, type GuideLink } from "../src/domain/guide-assistant";
 import { PRESENTER_SPEAK_EVENT, PRESENTER_STATE_EVENT, PRESENTER_STOP_EVENT, type PresenterState } from "./presenter/presenter-core";
 import { useElenaContext } from "./elena-context";
 import { contextAnswer, contextFallback, isListingForm, isWhereQuestion, sectionHint, whereAnswer } from "../src/domain/elena-context";
 import "./styles/assistant.css";
+
+interface RecResult { 0?: { transcript?: string } }
+interface Rec {
+  lang: string; interimResults: boolean; continuous: boolean; start(): void; stop(): void;
+  onresult: ((e: { results: ArrayLike<RecResult> }) => void) | null; onerror: ((e: { error?: string }) => void) | null; onend: (() => void) | null;
+}
+type RecCtor = new () => Rec;
+const recognitionCtor = (): RecCtor | undefined => {
+  if (typeof window === "undefined") return undefined;
+  const w = window as unknown as { SpeechRecognition?: RecCtor; webkitSpeechRecognition?: RecCtor };
+  return w.SpeechRecognition ?? w.webkitSpeechRecognition;
+};
 
 interface Msg { id: number; from: "guide" | "you"; text: string; links?: GuideLink[] }
 
@@ -46,6 +59,30 @@ export default function GuideAssistant({ greeting, disclaimer, persona }: {
     if (playing === m.id) { window.dispatchEvent(new Event(PRESENTER_STOP_EVENT)); setPlaying(null); return; }
     setPlaying(m.id);
     window.dispatchEvent(new CustomEvent(PRESENTER_SPEAK_EVENT, { detail: { text: m.text } }));
+  };
+
+  // Talk to her: browser speech recognition fills the question box and sends it when you stop speaking. Nothing is recorded by us.
+  const [canTalk, setCanTalk] = useState(false);
+  const [micOn, setMicOn] = useState(false);
+  const [micNote, setMicNote] = useState("");
+  const rec = useRef<Rec | null>(null);
+  useEffect(() => { setCanTalk(!!recognitionCtor()); return () => rec.current?.stop(); }, []);
+  const toggleMic = () => {
+    if (rec.current) { rec.current.stop(); return; }
+    const Ctor = recognitionCtor();
+    if (!Ctor || busy) return;
+    window.dispatchEvent(new Event(PRESENTER_STOP_EVENT));
+    const r = new Ctor();
+    r.lang = navigator.language || "en-AU"; r.interimResults = true; r.continuous = false;
+    let heard = "", failed = false;
+    r.onresult = e => { heard = cleanTranscript(Array.from(e.results).map(x => x[0]?.transcript ?? ""), GUIDE_LIMITS.message); setText(heard); };
+    r.onerror = e => { failed = true; setMicNote(micErrorMessage(e.error ?? "")); };
+    r.onend = () => {
+      rec.current = null; setMicOn(false);
+      if (heard && !failed) { setText(""); void askRef.current({ text: heard }); }
+    };
+    setMicNote(""); rec.current = r; setMicOn(true);
+    try { r.start(); } catch { rec.current = null; setMicOn(false); setMicNote(micErrorMessage("")); }
   };
 
   const close = useCallback(() => { setOpen(false); launcher.current?.focus(); }, []);
@@ -133,6 +170,9 @@ export default function GuideAssistant({ greeting, disclaimer, persona }: {
     setBusy(false);
   }
 
+  const askRef = useRef(ask);
+  askRef.current = ask;
+
   return (
     <>
       {nudge && !open && (
@@ -193,8 +233,14 @@ export default function GuideAssistant({ greeting, disclaimer, persona }: {
           <form className="ga-form" onSubmit={e => { e.preventDefault(); const t = text; setText(""); void ask({ text: t }); }}>
             <label className="ga-sr" htmlFor={`${titleId}-q`}>Ask a question</label>
             <input ref={input} id={`${titleId}-q`} value={text} maxLength={GUIDE_LIMITS.message} onChange={e => setText(e.target.value)} placeholder={here.pageLabel ? `Ask me anything about ${here.pageLabel}…` : "Ask about listing, offers, fees…"} autoComplete="off" />
+            {canTalk && (
+              <button type="button" className="ga-mic" aria-pressed={micOn} disabled={busy && !micOn} onClick={toggleMic} aria-label={micOn ? "Stop listening" : `Talk to ${persona.name}`}>
+                <span aria-hidden="true">{micOn ? "■" : "🎤"}</span>
+              </button>
+            )}
             <button type="submit" disabled={busy || text.trim() === ""}>Send</button>
           </form>
+          {(micOn || micNote) && <p className="ga-mic-note" role="status">{micOn ? "Listening… speak now." : micNote}</p>}
           <p className="ga-disclaimer">{disclaimer} Don&apos;t type personal details such as ID or bank numbers.</p>
         </div>
       )}
