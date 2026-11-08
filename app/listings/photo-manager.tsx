@@ -75,6 +75,13 @@ export function PhotoManager({ listingId, projectId }: { listingId?: string; pro
   const [drag, setDrag] = useState<number | null>(null);
   const [target, setTarget] = useState<number | null>(null);
   const input = useRef<HTMLInputElement>(null);
+  const touchFrom = useRef<number | null>(null);
+
+  /** Touch and pen reordering: press the Drag handle, slide over another photo, release. (Mouse uses native drag.) */
+  const overIndex = (e: React.PointerEvent): number | null => {
+    const li = document.elementFromPoint(e.clientX, e.clientY)?.closest<HTMLElement>("li[data-i]");
+    return li ? Number(li.dataset["i"]) : null;
+  };
   /** Photos whose text the owner has checked (left a field) and photos where they chose to post flagged wording anyway. */
   const [checked, setChecked] = useState<ReadonlySet<string>>(new Set());
   const [allowed, setAllowed] = useState<ReadonlySet<string>>(new Set());
@@ -311,7 +318,7 @@ export function PhotoManager({ listingId, projectId }: { listingId?: string; pro
           {rows.map((r, i) => {
             const label = `${r.kind === "floorplan" ? "Floor plan" : r.kind === "photo360" ? "360 photo" : "Photo"} ${i + 1}`;
             return (
-              <li key={r.id} className={["gl-item", r.hidden && "is-hidden", drag === i && "is-dragging", target === i && drag !== i && "is-target"].filter(Boolean).join(" ")}
+              <li key={r.id} data-i={i} className={["gl-item", r.hidden && "is-hidden", drag === i && "is-dragging", target === i && drag !== i && "is-target"].filter(Boolean).join(" ")}
                 draggable={manage} onDragStart={e => { setDrag(i); e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", r.id); }}
                 onDragOver={e => { if (drag !== null) { e.preventDefault(); setTarget(i); } }}
                 onDrop={e => { if (drag !== null) { e.preventDefault(); move(drag, i); } setDrag(null); setTarget(null); }}
@@ -360,6 +367,11 @@ export function PhotoManager({ listingId, projectId }: { listingId?: string; pro
                         )
                     )}
                     <div className="gl-tools">
+                      <button type="button" className="secondary gl-handle" disabled={busy} aria-label={`Drag ${label} to reorder (touch)`} aria-hidden="true" tabIndex={-1}
+                        onPointerDown={e => { if (e.pointerType === "mouse") return; touchFrom.current = i; setDrag(i); e.currentTarget.setPointerCapture(e.pointerId); }}
+                        onPointerMove={e => { if (touchFrom.current !== null) setTarget(overIndex(e)); }}
+                        onPointerUp={e => { const from = touchFrom.current, to = overIndex(e); touchFrom.current = null; if (from !== null && to !== null && to !== from) move(from, to); setDrag(null); setTarget(null); }}
+                        onPointerCancel={() => { touchFrom.current = null; setDrag(null); setTarget(null); }}>Drag</button>
                       <button type="button" className="secondary" disabled={busy || i === 0} onClick={() => move(i, i - 1)} aria-label={`Move ${label} up`}>Up</button>
                       <button type="button" className="secondary" disabled={busy || i === rows.length - 1} onClick={() => move(i, i + 1)} aria-label={`Move ${label} down`}>Down</button>
                       {r.kind === "photo" && !r.hidden && r.id !== coverId && (
