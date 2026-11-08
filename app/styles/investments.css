@@ -177,6 +177,8 @@ main .sr-section > h2 { margin-top: 0; }
 @media (hover: none) { .ps-nav { display: none; } }
 .ps-prev { left: var(--space-3); }
 .ps-next { right: var(--space-3); }
+.ps-full { position: absolute; right: var(--space-3); top: var(--space-3); min-height: 0; padding: 2px var(--space-3); border: 0; border-radius: 999px; background: rgb(0 0 0 / 0.55); color: #fff; font-size: 0.8125rem; font-weight: 700; line-height: 1.6; box-shadow: none; cursor: pointer; }
+.ps-full:hover:not(:disabled) { background: rgb(0 0 0 / 0.75); color: #fff; }
 .ps-bar { position: absolute; right: var(--space-3); bottom: var(--space-3); display: flex; align-items: center; gap: var(--space-2); }
 .ps-count, .ps-play { padding: 2px var(--space-3); border-radius: 999px; background: rgb(0 0 0 / 0.55); color: #fff; font-size: 0.8125rem; font-weight: 700; line-height: 1.6; }
 .ps-play { min-height: 0; border: 0; box-shadow: none; cursor: pointer; }

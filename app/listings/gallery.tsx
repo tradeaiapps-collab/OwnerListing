@@ -347,6 +347,17 @@ export function ListingGallery({ listingId, title, highlights }: { listingId: st
   );
 }
 
+/** Full-screen viewer alone, for pages that have their own carousel (investor project page). */
+export function PhotoViewer({ photos, title, base, start, onClose }: { photos: PhotoView[]; title: string; base: string; start: number; onClose: () => void }) {
+  const [at, setAt] = useState(start);
+  if (!photos[at]) return null;
+  return (
+    <PhotoBase.Provider value={base}>
+      <div className="gl"><Lightbox items={photos} index={at} title={title} onIndex={setAt} onClose={onClose} /></div>
+    </PhotoBase.Provider>
+  );
+}
+
 /**
  * Gallery for photos the caller already has (investor projects): hero grid on wide screens, swipe carousel on phones,
  * and the sliding full-screen viewer with a details panel. `base` is the route the images are served from.
