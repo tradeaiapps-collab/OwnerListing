@@ -1,13 +1,20 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import { BondPathwayField, ListingFields, type BondState, type ListingDefaults } from "../../fields";
+import { BondPathwayField, ListingFields, type BondState, type FieldStep, type ListingDefaults } from "../../fields";
 import { JSON_HEADERS, listingFormBody } from "../../ui";
 import { PhotoManager } from "../../photo-manager";
 import { PriceGuidanceCard } from "../../price-guidance-card";
 import { WordingFlagList, type WordingFlagView } from "../../wording-hint";
 import { LocationPicker } from "../../location-picker";
 import { ElenaPublishCheck } from "../../elena-publish-check";
+
+const STEPS = ["Basics", "Details", "Description", "Photos", "Location", "Review"] as const;
+const SUBS = ["Title, price and type", "Rooms and extras", "Tell the story", "Show it off", "Address and map", "Check and save"] as const;
+const TITLES = ["What are you listing?", "Rooms and extras", "Describe the property", "Photos", "Where is it?", "Review your listing"] as const;
+const INTROS = ["Start with the essentials buyers look at first.", "These power the filters buyers use to find your home.", "Plain, specific wording works best.", "Good photos are the biggest driver of enquiries.", "The map pin is placed from the address; drag it if it is off.", "Check the summary, run Elena's publish check, then save."] as const;
+const FIELD_STEPS: (FieldStep | "none")[] = ["basics", "details", "description", "none", "location", "none"];
+const LAST = STEPS.length - 1;
 
 type Loaded = ListingDefaults & { id: string; status: string; latitude?: number; longitude?: number };
 type FieldFlags = { field: string; flags: WordingFlagView[] };
@@ -56,6 +63,9 @@ export default function EditListing() {
   const [bond, setBond] = useState("");
   const [bondState, setBondState] = useState<BondState>("idle");
   const [savedFlags, setSavedFlags] = useState<FieldFlags[]>([]);
+  const [step, setStep] = useState(0);
+  const [reached, setReached] = useState(0);
+  const [review, setReview] = useState<[string, string][]>([]);
 
   useEffect(() => {
     setListing(null);
@@ -72,29 +82,62 @@ export default function EditListing() {
       .catch(() => setLoadError("Could not load the listing."));
   }, [id]);
 
-  async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    const parsed = listingFormBody(new FormData(e.currentTarget));
-    if ("error" in parsed) { setError(parsed.error); return; }
-    const body = parsed.body;
+  /** Saves every field on the form. Returns true when the draft was saved. */
+  async function save(form: HTMLFormElement): Promise<boolean> {
+    const parsed = listingFormBody(new FormData(form));
+    if ("error" in parsed) { setError(parsed.error); return false; }
     setBusy(true);
     setError("");
     setSaved(false);
     try {
-      const res = await fetch(`/api/listings/${id}`, { method: "PATCH", headers: JSON_HEADERS, body: JSON.stringify(body) });
+      const res = await fetch(`/api/listings/${id}`, { method: "PATCH", headers: JSON_HEADERS, body: JSON.stringify(parsed.body) });
       const d = await res.json();
-      if (res.status === 401) setError("Sign in to edit this draft.");
-      else if (!res.ok) setError(d.error ?? "Could not save the draft.");
-      else {
-        setListing(d.listing);
-        setSaved(true);
-        setSavedFlags(Array.isArray(d.wordingFlags) ? d.wordingFlags : []);
-      }
+      if (res.status === 401) { setError("Sign in to edit this draft."); return false; }
+      if (!res.ok) { setError(d.error ?? "Could not save the draft."); return false; }
+      setListing(d.listing);
+      setSaved(true);
+      setSavedFlags(Array.isArray(d.wordingFlags) ? d.wordingFlags : []);
+      return true;
     } catch {
       setError("Could not save the draft.");
+      return false;
     } finally {
       setBusy(false);
     }
+  }
+
+  function reviewRows(form: HTMLFormElement): [string, string][] {
+    const fd = new FormData(form), g = (k: string) => String(fd.get(k) ?? "").trim();
+    const rooms = ["bedrooms", "bathrooms", "parking"].map((k, i) => (g(k) === "" ? "" : `${g(k)} ${["bed", "bath", "car"][i]}`)).filter(Boolean).join(" · ");
+    const place = [g("address"), [g("suburb"), g("jurisdiction"), g("postcode")].filter(Boolean).join(" ")].filter(Boolean).join(", ");
+    const rent = g("transactionType") === "rent";
+    return [
+      ["Basics", `${g("title") || "No title"} · ${rent ? "Rental" : "Sale"}, ${g("propertyType")} · ${g("price") ? `$${g("price")}${rent ? " pw" : ""}` : "no price"}`],
+      ["Details", rooms || "Not set"], ["Description", g("description").slice(0, 90) || "Not set"],
+      ["Location", place || "Not set"]
+    ];
+  }
+
+  /** Moves to a step. Going forward checks this step's fields and saves the draft first. */
+  async function goTo(next: number) {
+    const form = document.getElementById("edit-listing-form");
+    if (!(form instanceof HTMLFormElement)) return;
+    if (next > step) {
+      const fields = Array.from(form.querySelectorAll<HTMLInputElement>(".wiz-step:not([hidden]) :is(input, select, textarea)"));
+      const bad = fields.find(el => !el.checkValidity());
+      if (bad) { bad.reportValidity(); return; }
+      if (FIELD_STEPS[step] !== "none" && !(await save(form))) return;
+    }
+    setError("");
+    if (next === LAST) setReview(reviewRows(form));
+    setStep(next); setReached(r => Math.max(r, next));
+    document.getElementById("wiz-top")?.scrollIntoView({ block: "start" });
+  }
+
+  async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (step < LAST) { await goTo(step + 1); return; }
+    await save(e.currentTarget);
   }
 
   async function saveBond(e: React.ChangeEvent<HTMLSelectElement>) {
@@ -110,30 +153,70 @@ export default function EditListing() {
   }
 
   return (
-    <main className="narrow">
+    <main className="narrow wiz-main">
       <h1>Edit draft</h1>
       {loadError && <p role="alert">{loadError}</p>}
       {!loadError && !listing && <p className="muted" role="status">Loading...</p>}
       {listing && listing.status !== "draft" && <p role="alert">Only a draft can be edited.</p>}
       {listing && listing.status === "draft" && (
-        <>
-          <form className="stack" onSubmit={onSubmit}>
-            <ListingFields defaults={listing} />
-            <div className="form-bar"><button type="submit" disabled={busy}>Save changes</button></div>
-          </form>
-          {saved && <p role="status">Changes saved.</p>}
-          {saved && savedFlags.map(f => <WordingFlagList key={f.field} field={f.field} flags={f.flags} />)}
-          {error && <p role="alert">{error}</p>}
-          <PhotoManager listingId={listing.id} />
-          <LocationPicker listingId={listing.id} address={listing.address} latitude={listing.latitude} longitude={listing.longitude} />
-          <section className="panel">
-            {listing.transactionType === "rent" && <BondPathwayField value={bond} state={bondState} onChange={saveBond} />}
-            <p><a href={`/listings/${listing.id}/disclosures`}>Required disclosures for your state</a></p>
+        <div className="wiz-layout">
+          <aside className="wiz-rail" aria-label="Listing progress">
+            <ol className="wiz-steps">
+              {STEPS.map((name, i) => (
+                <li key={name} className={i < step ? "done" : i === step ? "cur" : ""}>
+                  <button type="button" disabled={busy || i > reached} aria-current={i === step ? "step" : undefined} aria-label={`Step ${i + 1}, ${name}`} onClick={() => void goTo(i)}>
+                    <span className="wiz-dot" aria-hidden="true">{i < step ? "✓" : i + 1}</span>
+                    <span className="wiz-st"><b>{name}</b><span>{SUBS[i]}</span></span>
+                  </button>
+                </li>
+              ))}
+            </ol>
+          </aside>
+          <section className="wiz-card">
+            <header id="wiz-top" className="wiz-header">
+              <div className="wiz-eyebrow"><span aria-live="polite">Step {step + 1} of {STEPS.length}</span><span className="wiz-eb2">{STEPS[step]}</span></div>
+              <div className="wiz-seg" role="progressbar" aria-label="Listing progress" aria-valuemin={1} aria-valuemax={STEPS.length} aria-valuenow={step + 1}>
+                {STEPS.map((n, i) => <i key={n} className={i < step ? "ok" : i === step ? "on" : ""} />)}
+              </div>
+              <h2>{TITLES[step]}</h2>
+              <p className="muted">{INTROS[step]}</p>
+            </header>
+            <form id="edit-listing-form" onSubmit={onSubmit} noValidate>
+              <div className="wiz-body">
+                <ListingFields defaults={listing} step={FIELD_STEPS[step] ?? "none"} />
+                {step === 3 && <PhotoManager listingId={listing.id} />}
+                {step === 4 && (
+                  <>
+                    <LocationPicker listingId={listing.id} address={listing.address} latitude={listing.latitude} longitude={listing.longitude} />
+                    <section className="panel">
+                      {listing.transactionType === "rent" && <BondPathwayField value={bond} state={bondState} onChange={saveBond} />}
+                      <p><a href={`/listings/${listing.id}/disclosures`}>Required disclosures for your state</a></p>
+                    </section>
+                  </>
+                )}
+                {step === LAST && (
+                  <div className="wiz-review">
+                    {review.map(([k, v], i) => (
+                      <div key={k} className="wiz-rv"><h3>{k}</h3><p>{v}</p><button type="button" className="link-button" onClick={() => void goTo(i < 3 ? i : 4)}>Edit</button></div>
+                    ))}
+                    <ElenaPublishCheck listingId={listing.id} />
+                    <PriceGuidanceCard listingId={listing.id} rent={listing.transactionType === "rent"} />
+                    <SuggestDescription id={id} />
+                  </div>
+                )}
+              </div>
+              {saved && <p role="status">Changes saved.</p>}
+              {saved && savedFlags.map(f => <WordingFlagList key={f.field} field={f.field} flags={f.flags} />)}
+              {error && <p role="alert">{error}</p>}
+              <div className="wiz-nav">
+                <button type="button" className="secondary" disabled={busy || step === 0} onClick={() => void goTo(step - 1)}>Previous</button>
+                {step < LAST
+                  ? <button type="submit" disabled={busy}>{busy ? "Saving..." : `Next: ${STEPS[step + 1]}`}</button>
+                  : <button type="submit" disabled={busy}>{busy ? "Saving..." : "Save changes"}</button>}
+              </div>
+            </form>
           </section>
-          <ElenaPublishCheck listingId={listing.id} />
-          <PriceGuidanceCard listingId={listing.id} rent={listing.transactionType === "rent"} />
-          <SuggestDescription id={id} />
-        </>
+        </div>
       )}
       <p><a className="button secondary" href="/listings/mine">Back to my listings</a></p>
     </main>
