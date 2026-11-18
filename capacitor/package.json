@@ -1,0 +1,19 @@
+{
+  "name": "ownerlisting-capacitor",
+  "private": true,
+  "version": "0.1.0",
+  "description": "iPhone and Android shell that opens the OwnerListing public website (Capacitor). Not published to any store.",
+  "scripts": {
+    "sync": "cap sync",
+    "open:ios": "cap open ios",
+    "open:android": "cap open android"
+  },
+  "dependencies": {
+    "@capacitor/android": "^7.0.0",
+    "@capacitor/core": "^7.0.0",
+    "@capacitor/ios": "^7.0.0",
+    "@capacitor/splash-screen": "^7.0.0",
+    "@capacitor/status-bar": "^7.0.0"
+  },
+  "devDependencies": { "@capacitor/cli": "^7.0.0", "typescript": "^5.6.0" }
+}

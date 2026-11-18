@@ -10,6 +10,8 @@ import { THEME_INIT_SCRIPT } from "./theme-toggle";
 import ThemePreviewBridge from "./theme-preview-bridge";
 import "./styles/a11y.css";
 import "./styles/inspections.css";
+import "./styles/pwa.css";
+import PwaRegister from "./pwa-register";
 import { appOriginFor, readAppMode } from "../src/config/app-mode";
 import { LOCALE_COOKIE } from "../src/domain/account-settings";
 import { DEFAULT_LOCALE, LOCALES, isRtl } from "../src/domain/i18n";
@@ -40,9 +42,9 @@ export async function generateMetadata() {
   const robots = admin || t.source === "draft" ? { robots: { index: false, follow: false } } : {};
   return admin
     ? { title: { default: `${brand.name} Admin`, template: `%s | ${brand.name} Admin` }, description: "Staff only", ...robots, ...icons }
-    : { title: { default: brand.name, template: `%s | ${brand.name}` }, description: `${brand.tagline}. List your own property, meet verified buyers and decide on every offer yourself.`, ...robots, ...icons };
+    : { title: { default: brand.name, template: `%s | ${brand.name}` }, description: `${brand.tagline}. List your own property, meet verified buyers and decide on every offer yourself.`, manifest: "/manifest.webmanifest", appleWebApp: { capable: true, title: brand.name, statusBarStyle: "black-translucent" as const }, applicationName: brand.name, formatDetection: { telephone: false }, ...robots, ...icons, icons: { ...("icons" in icons ? icons.icons : {}), apple: "/icons/apple-touch-icon.png" } };
 }
-export const viewport = { width: "device-width", initialScale: 1 };
+export const viewport = { width: "device-width", initialScale: 1, viewportFit: "cover" as const, themeColor: "#14213d" };
 
 export default async function RootLayout({ children }: { children: ReactNode }) {
   const t = await getTheme();
@@ -117,6 +119,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
           </>
         )}
         <NavMemory />
+        {!admin && <PwaRegister />}
         <ElenaContextTracker />
         {guide?.enabled && <GuideAssistant greeting={guide.greeting} chips={guide.chips} disclaimer={GUIDE_DISCLAIMER} persona={{ name: persona.name, icon: persona.icon, portrait: persona.portrait, poses: persona.poses }} />}
         {bridgeOrigin && <ThemePreviewBridge allowedOrigin={bridgeOrigin} />}
