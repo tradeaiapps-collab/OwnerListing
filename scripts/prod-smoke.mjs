@@ -50,5 +50,11 @@ const home = await get(PUBLIC + "/");
 for (const hd of ["x-content-type-options", "strict-transport-security"]) ok(`header ${hd} on /`, home.headers.has(hd));
 ok("no stack trace on a missing page", !/at .*\.(js|ts):\d+/.test((await get(PUBLIC + "/no-such-page-smoke")).text));
 
+// Optional: ClamAV server (uploads). Only checked when CLAMD_HOST/CLAMD_PORT are set in this shell; read-only.
+if (process.env.CLAMD_HOST && process.env.CLAMD_PORT) {
+  const { checkClamd } = await import("./clamd-check.mjs");
+  for (const r of await checkClamd()) ok(`clamav: ${r.name}`, r.ok, r.ok ? "" : r.detail);
+} else console.log("SKIP  clamav checks (set CLAMD_HOST, CLAMD_PORT and the CLAMD_TLS_*_B64 values to include them)");
+
 console.log(failed ? `\n${failed} check(s) failed.` : "\nAll checks passed.");
 process.exit(failed ? 1 : 0);
