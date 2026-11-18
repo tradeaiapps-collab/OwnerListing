@@ -1,5 +1,7 @@
 # Production runbook (Vercel + Supabase)
 
+First launch: follow `docs/GO_LIVE_CHECKLIST.md` (blockers, env table, migration order, seed plan, smoke test). This file is the short reference.
+
 Short checklist for going live. Detail lives in `docs/DEPLOY_VERCEL.md` (step by step) and `docs/DEPLOYMENT.md` (hardening). Use a **paid** Vercel plan (Pro) and a **paid** Supabase plan (Pro) for production: free tiers forbid commercial use, pause when idle and give no guaranteed backups.
 
 ## One-time setup (account owner)
@@ -13,7 +15,7 @@ Short checklist for going live. Detail lives in `docs/DEPLOY_VERCEL.md` (step by
 ## Every release
 1. PR merges to `main` after CI is green. Vercel deploys both projects.
 2. If the PR added a file under `db/`: Actions, **Production migrate**, Run workflow, approve. Migrations are additive and run once each.
-3. Check `https://PUBLIC/api/health` and `https://ADMIN/api/health` return `{"ok":true}`.
+3. Run `APP_URL=... ADMIN_APP_URL=... npm run smoke:prod` (read-only); it covers `/api/health` on both sites and the public/admin split.
 4. Rollback: Vercel, Deployments, previous deployment, **Promote to Production**. A bad migration: restore from Supabase point-in-time recovery (Database, Backups), then check `DATABASE_URL` still points at the restored project.
 
 ## Monitoring
