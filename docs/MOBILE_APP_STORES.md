@@ -53,7 +53,7 @@ Nothing below has been done or submitted. Config lives in `mobile/app.config.ts`
 | Name | Value |
 | --- | --- |
 | `OWNERLISTING_API_URL` | https origin of the deployed website, e.g. `https://ownerlisting.com.au`. The build fails without it (preview, production); production also rejects http. |
-| `OWNERLISTING_PRIVACY_URL` | the public privacy policy page. **Placeholder:** if unset it falls back to `<API URL>/privacy`, and the site has no such page yet. |
+| `OWNERLISTING_PRIVACY_URL` | the public privacy policy page. If unset it falls back to `<API URL>/privacy`, which the site now serves (draft text, pending legal review). |
 | `GOOGLE_SERVICES_JSON` | file variable holding Firebase `google-services.json` (Android push) |
 | `OWNERLISTING_BUNDLE_ID` | optional; default `au.com.ownerlisting.app`. Permanent after the first upload. |
 
@@ -65,7 +65,7 @@ Encryption: `ITSAppUsesNonExemptEncryption=false` (HTTPS only), so no export-com
 
 1. **Accounts.** Apple Developer Program (USD 99 a year, enrol as an organisation: needs a D-U-N-S number, can take days) and Google Play Console (USD 25 once; identity verification; a new personal account needs a 12-tester closed test for 14 days before production). Expo account (free).
 2. **Deploy the website first** (docs/PRODUCTION_RUNBOOK.md). The app is useless against a PC address.
-3. **Privacy policy and support pages.** Publish both on the website (legal review), then set `OWNERLISTING_PRIVACY_URL` and `OWNERLISTING_SUPPORT_URL`. Both stores require the policy URL.
+3. **Privacy policy and support pages.** The site serves draft `/privacy`, `/terms` and `/support`. Get counsel to review them and set a real `SUPPORT_EMAIL`; `OWNERLISTING_PRIVACY_URL` and `OWNERLISTING_SUPPORT_URL` default to those pages, so set them only to point elsewhere. Both stores require the policy URL.
 4. **EAS setup** on a computer: `npm i -g eas-cli`, `eas login`, `cd mobile && eas init` (writes the project id; set `EAS_PROJECT_ID` as an EAS variable or commit what `eas init` adds), then add the variables above.
 5. **Push:** Firebase project plus `google-services.json` and server `FCM_*` keys; Apple APNs `.p8` key and server `APNS_*` keys (`mobile/README.md`, docs/PROVIDER_KEYS.md). Set `APNS_PRODUCTION=1` on the live server.
 6. **Signing.** Run `eas credentials` or let `eas build` offer it: sign in with your Apple ID and EAS creates the distribution certificate and provisioning profile; for Android EAS generates the upload keystore. Download a backup of the Android keystore from `eas credentials` and store it safely.
