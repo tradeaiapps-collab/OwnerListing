@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { staffCan } from "../../../../src/domain/staff-access";
 import { decisionsFor, isSubjectType } from "../../../../src/domain/moderation-queue";
 import { getDb } from "../../../../src/server/context";
 import { listQueuePg, queueCountsPg, type QueueView } from "../../../../src/server/moderation-queue-db";
@@ -19,7 +20,8 @@ async function handleGet(req: Request) {
   const db = getDb();
   const [items, counts] = await Promise.all([listQueuePg(db, { view, ...(type && isSubjectType(type) ? { subjectType: type } : {}) }), queueCountsPg(db)]);
   const decisions = { open: decisionsFor(staff, "open"), escalated: decisionsFor(staff, "escalated") };
-  return NextResponse.json({ items, counts, me: staff.id, decisions }, { headers: { "cache-control": "no-store" } });
+  const canSuspend = { listing: staffCan(staff, "listing.moderate"), account: staffCan(staff, "user.manage") };
+  return NextResponse.json({ items, counts, me: staff.id, decisions, canSuspend }, { headers: { "cache-control": "no-store" } });
 }
 
 export const GET = withApi(handleGet);

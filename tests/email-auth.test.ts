@@ -85,6 +85,15 @@ describe.skipIf(!DATABASE_URL)("email sign-up, sign-in and reset on Postgres", (
   const fresh = () => `person${++n}.${Date.now()}@example.com`;
   beforeEach(() => { sent.length = 0; });
 
+  it("refuses an offensive or contact-detail display name and stores nothing", async () => {
+    for (const name of ["Big Fucking Idiot", "Call 0412 345 678", "jo@example.com"]) {
+      const addr = fresh();
+      expect(await startSignup(deps(), { name, email: addr, password: PW, userType: "buyer" }, "1.1.1.3")).toMatchObject({ ok: false, code: "invalid" });
+      expect((await t.db.query("SELECT 1 FROM email_auth_token WHERE email = $1", [addr])).rows).toHaveLength(0);
+    }
+    expect(sent).toHaveLength(0);
+  });
+
   it("creates the account only when the emailed link is used, once", async () => {
     const addr = fresh();
     expect(await startSignup(deps(), { name: "Ann Agent", email: addr.toUpperCase(), password: PW, userType: "agent" }, "1.1.1.1")).toEqual({ ok: true });

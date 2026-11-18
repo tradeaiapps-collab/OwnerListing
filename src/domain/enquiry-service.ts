@@ -98,7 +98,9 @@ const TOO_FAST = fail("rate_limited", "You are sending too many messages. Try ag
  * an offer-looking one gets one automated notice (at most an hour apart) pointing to the formal offer-link flow
  * (no link is issued here), and any other one may queue an owner-review draft (preview only, nothing is sent).
  */
-async function post(deps: EnquiryDeps, e: Enquiry, ownerUserId: string, senderUserId: string, body: string): Promise<Result<EnquiryMessage>> {
+async function post(
+  deps: EnquiryDeps, e: Enquiry, ownerUserId: string, senderUserId: string, body: string, beforeStore?: () => Promise<void>
+): Promise<Result<EnquiryMessage>> {
   const fromBuyer = senderUserId === e.buyerUserId;
   const verification = fromBuyer ? await deps.verification(senderUserId) : undefined;
   if (fromBuyer && verification && !canContactSeller(verification)) {
@@ -115,6 +117,8 @@ async function post(deps: EnquiryDeps, e: Enquiry, ownerUserId: string, senderUs
   if (content && !content.ok) return fail("invalid", content.message);
 
   const now = deps.now();
+  // A new thread is created only now, so a refused first message never leaves an empty thread behind.
+  if (beforeStore) await beforeStore();
   const m: EnquiryMessage = { id: deps.newId(), enquiryId: e.id, senderUserId, automated: false, body, sentAt: now };
   await deps.enquiries.addMessage(m);
   if (content?.after) await content.after(m.id).catch(() => undefined);
@@ -148,12 +152,14 @@ export async function startEnquiry(
   if (!canContactSeller(v)) return fail("forbidden", STEP_TEXT[nextVerificationStep(v) ?? "verify_id"]);
 
   let enquiry = await deps.enquiries.find(listingId, actor.userId);
+  let create: (() => Promise<void>) | undefined;
   if (!enquiry) {
     if (!(await underLimit(deps, `enq-new:${actor.userId}`, ENQUIRY_RATE.newThreads))) return TOO_FAST;
-    enquiry = { id: deps.newId(), listingId, buyerUserId: actor.userId, createdAt: deps.now() };
-    await deps.enquiries.insert(enquiry);
+    const fresh: Enquiry = { id: deps.newId(), listingId, buyerUserId: actor.userId, createdAt: deps.now() };
+    enquiry = fresh;
+    create = () => deps.enquiries.insert(fresh);
   }
-  const m = await post(deps, enquiry, rec.listing.ownerUserId, actor.userId, body);
+  const m = await post(deps, enquiry, rec.listing.ownerUserId, actor.userId, body, create);
   return m.ok ? { ok: true, value: { enquiry, message: m.value } } : m;
 }
 

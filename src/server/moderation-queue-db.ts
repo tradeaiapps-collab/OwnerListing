@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { AuditEvent } from "../domain/audit";
-import { isSubjectType, NEXT_STATUS, type Decision, type ItemStatus, type Severity, type SubjectType } from "../domain/moderation-queue";
+import { isSubjectType, NEXT_STATUS, type Decision, type SuspensionPlan, type ItemStatus, type Severity, type SubjectType } from "../domain/moderation-queue";
+import { moderateListing, setUserStatus } from "./admin-moderation-db";
 import { appendAuditPg, type Queryable } from "./db";
 
 /** Staff review queue storage. Parameterised SQL only; each decision, its history row and its audit event commit together. */
@@ -82,11 +83,14 @@ export async function queueCountsPg(db: Queryable): Promise<{ open: number; esca
   return { open: get("open"), escalated: get("escalated") };
 }
 
-export async function getQueueTargetPg(db: Queryable, id: string): Promise<{ id: string; status: string; subjectOwnerId: string | null } | null> {
+export async function getQueueTargetPg(db: Queryable, id: string): Promise<{ id: string; status: string; subjectOwnerId: string | null; subjectType: SubjectType; subjectId: string } | null> {
   if (!UUID_RE.test(id)) return null;
-  const r = await db.query("SELECT id, status, subject_owner_id FROM moderation_item WHERE id = $1::uuid", [id]);
+  const r = await db.query("SELECT id, status, subject_owner_id, subject_type, subject_id FROM moderation_item WHERE id = $1::uuid", [id]);
   const row = r.rows[0];
-  return row ? { id: String(row["id"]), status: String(row["status"]), subjectOwnerId: row["subject_owner_id"] ? String(row["subject_owner_id"]) : null } : null;
+  return row ? {
+    id: String(row["id"]), status: String(row["status"]), subjectOwnerId: row["subject_owner_id"] ? String(row["subject_owner_id"]) : null,
+    subjectType: row["subject_type"] as SubjectType, subjectId: String(row["subject_id"])
+  } : null;
 }
 
 /**
@@ -94,7 +98,8 @@ export async function getQueueTargetPg(db: Queryable, id: string): Promise<{ id:
  * transaction. False when someone else decided it first.
  */
 export async function decideQueueItemPg(
-  db: Queryable, id: string, staff: { id: string; role: string }, decision: Decision, from: "open" | "escalated", note: string
+  db: Queryable, id: string, staff: { id: string; role: string }, decision: Decision, from: "open" | "escalated", note: string,
+  extra: Record<string, unknown> = {}
 ): Promise<boolean> {
   const to = NEXT_STATUS[decision];
   const final = to === "approved" || to === "rejected";
@@ -111,9 +116,42 @@ export async function decideQueueItemPg(
     const event: AuditEvent = {
       id: randomUUID(), occurredAt: new Date().toISOString(), actorType: "user", actorId: staff.id, aggregateType: "moderation_item", aggregateId: id,
       eventType: `moderation_item.${decision}`, correlationId: randomUUID(),
-      payload: { role: staff.role, from, to, subjectType: String(row["subject_type"]), subjectId: String(row["subject_id"]), reason: note }
+      payload: { role: staff.role, from, to, subjectType: String(row["subject_type"]), subjectId: String(row["subject_id"]), reason: note, ...extra }
     };
     await appendAuditPg(tx, event);
     return true;
+  });
+}
+
+export class SuspensionConflict extends Error {}
+
+/**
+ * Rejects an item and suspends its listing or account in ONE transaction: the decision, the suspension and every audit event commit
+ * together, or none does. False when someone else decided the item first. Throws SuspensionConflict (nothing is changed) when the
+ * listing or account is no longer in the state the staff member saw.
+ */
+export async function rejectAndSuspendPg(
+  db: Queryable, id: string, staff: { id: string; role: string }, from: "open" | "escalated", note: string, plan: Exclude<SuspensionPlan, { action: "deny" }>
+): Promise<{ decided: boolean; listingsSuspended: number }> {
+  return inTx(db, async tx => {
+    const extra = plan.kind === "listing" ? { suspended: "listing", listingId: plan.listingId }
+      : plan.kind === "account" ? { suspended: "account", userId: plan.userId, listings: plan.withListings ? "suspended" : "kept" } : {};
+    if (!(await decideQueueItemPg(tx, id, staff, "reject", from, note, extra))) return { decided: false, listingsSuspended: 0 };
+    if (plan.kind === "listing") {
+      const now = new Date().toISOString();
+      const ok = await moderateListing(tx, plan.listingId, "published", "suspended", {
+        id: randomUUID(), occurredAt: now, actorType: "user", actorId: staff.id, aggregateType: "listing", aggregateId: plan.listingId,
+        eventType: "listing.suspended", correlationId: randomUUID(),
+        payload: { from: "published", to: "suspended", role: staff.role, action: "suspend", reason: note, moderation: true, moderationItem: id }
+      });
+      if (!ok) throw new SuspensionConflict();
+      return { decided: true, listingsSuspended: 1 };
+    }
+    if (plan.kind === "account") {
+      const done = await setUserStatus(tx, staff, plan.userId, plan.from, "suspended", note, { suspendListings: plan.withListings });
+      if (!done) throw new SuspensionConflict();
+      return { decided: true, listingsSuspended: done.listingIds.length };
+    }
+    return { decided: true, listingsSuspended: 0 };
   });
 }

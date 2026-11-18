@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { decideQueueItemPg, enqueueModerationItemPg, getQueueTargetPg, listQueuePg, queueCountsPg } from "../src/server/moderation-queue-db";
+import { decideQueueItemPg, enqueueModerationItemPg, getQueueTargetPg, listQueuePg, queueCountsPg, rejectAndSuspendPg, SuspensionConflict } from "../src/server/moderation-queue-db";
 import { addListing, addUser, createTestDb, DATABASE_URL, type TestDb } from "./helpers/pg-db";
 
 describe.skipIf(!DATABASE_URL)("moderation queue (Postgres)", () => {
@@ -68,5 +68,49 @@ describe.skipIf(!DATABASE_URL)("moderation queue (Postgres)", () => {
   it("the database refuses a decision by the content owner", async () => {
     const { owner, id } = await setup();
     await expect(decideQueueItemPg(db, id, { id: owner, role: "support" }, "approve", "open", "Approving my own listing.")).rejects.toThrow(/check/);
+  });
+
+  const status = async (table: string, id: string) => String((await db.query(`SELECT status FROM ${table} WHERE id = $1`, [id])).rows[0]!["status"]);
+
+  it("reject + suspend listing: decision, listing status and both audit events commit together", async () => {
+    const { owner, staff, listingId, id } = await setup();
+    await db.query("UPDATE property_listing SET status = 'published' WHERE id = $1", [listingId]);
+    const me = { id: staff, role: "compliance" };
+    const r = await rejectAndSuspendPg(db, id, me, "open", "Contact details in the description.", { kind: "listing", listingId, from: "published", reason: "Contact details in the description." });
+    expect(r).toEqual({ decided: true, listingsSuspended: 1 });
+    expect(await status("property_listing", listingId)).toBe("suspended");
+    expect((await getQueueTargetPg(db, id))?.status).toBe("rejected");
+    const ev = await db.query("SELECT event_type, payload FROM audit_event WHERE (aggregate_type = 'listing' AND aggregate_id = $1) OR (aggregate_type = 'moderation_item' AND aggregate_id = $2) ORDER BY event_type", [listingId, id]);
+    expect(ev.rows.map(x => x["event_type"])).toEqual(["listing.suspended", "moderation_item.reject"]);
+    expect(ev.rows.find(x => x["event_type"] === "moderation_item.reject")!["payload"]).toMatchObject({ suspended: "listing", listingId });
+    expect(owner).toBeTruthy();
+  });
+
+  it("reject + suspend account: the account and, optionally, its live listings", async () => {
+    const { owner, staff, listingId, id } = await setup();
+    await db.query("UPDATE property_listing SET status = 'published' WHERE id = $1", [listingId]);
+    const me = { id: staff, role: "compliance" };
+    const r = await rejectAndSuspendPg(db, id, me, "open", "Repeated contact leakage in messages.", { kind: "account", userId: owner, from: "active", reason: "Repeated contact leakage in messages.", withListings: true });
+    expect(r).toEqual({ decided: true, listingsSuspended: 1 });
+    expect(await status("app_user", owner)).toBe("suspended");
+    expect(await status("property_listing", listingId)).toBe("suspended");
+    const ev = await db.query("SELECT event_type FROM audit_event WHERE aggregate_id = ANY($1::text[]) ORDER BY event_type", [[owner, listingId, id]]);
+    expect(ev.rows.map(x => x["event_type"])).toEqual(["listing.suspended", "moderation_item.reject", "user.suspended"]);
+  });
+
+  it("rolls everything back when the listing changed after staff looked at it", async () => {
+    const { staff, listingId, id } = await setup(); // listing is still a draft, so it cannot be suspended
+    await expect(rejectAndSuspendPg(db, id, { id: staff, role: "compliance" }, "open", "Contact details in the description.", { kind: "listing", listingId, from: "published", reason: "x" })).rejects.toBeInstanceOf(SuspensionConflict);
+    expect((await getQueueTargetPg(db, id))?.status).toBe("open");
+    expect((await db.query("SELECT 1 FROM audit_event WHERE aggregate_id = $1", [id])).rows).toHaveLength(0);
+  });
+
+  it("a decision someone else took first suspends nothing", async () => {
+    const { staff, listingId, id } = await setup();
+    await db.query("UPDATE property_listing SET status = 'published' WHERE id = $1", [listingId]);
+    expect(await decideQueueItemPg(db, id, { id: staff, role: "support" }, "approve", "open", "Looks fine on review.")).toBe(true);
+    const r = await rejectAndSuspendPg(db, id, { id: staff, role: "compliance" }, "open", "Contact details in the description.", { kind: "listing", listingId, from: "published", reason: "x" });
+    expect(r.decided).toBe(false);
+    expect(await status("property_listing", listingId)).toBe("published");
   });
 });

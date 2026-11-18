@@ -284,6 +284,13 @@ describe("content filter on messages", () => {
     expect(r).toMatchObject({ ok: false, code: "invalid" });
     expect(await repo.listByBuyer(buyer.userId).then(x => x.length ? repo.messages(x[0]!.id) : [])).toEqual([]);
   });
+  it("leaves no empty thread behind when the first message is refused, and creates it when a later try passes", async () => {
+    expect(await startEnquiry(deps, buyer, "l0", "Call me on 0412 345 678")).toMatchObject({ ok: false });
+    expect(await repo.listByBuyer(buyer.userId)).toEqual([]);
+    const ok = await startEnquiry(deps, buyer, "l0", "Is the street quiet?");
+    expect(ok.ok).toBe(true);
+    expect(await repo.listByBuyer(buyer.userId)).toHaveLength(1);
+  });
   it("refuses an abusive reply from the owner", async () => {
     const { enquiry } = await start();
     expect(await reply(deps, owner, enquiry.id, "you idiot")).toMatchObject({ ok: false, code: "invalid" });

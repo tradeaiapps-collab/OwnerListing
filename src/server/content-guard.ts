@@ -1,4 +1,4 @@
-import { blockMessage, scanContent, scanFields, type ContentFlagStore, type ContentSource } from "../domain/content-filter";
+import { blockMessage, scanContent, scanFields, type ContentCategory, type ContentFlagStore, type ContentSource } from "../domain/content-filter";
 
 /** The platform's own hosts, so a link back to the site is not treated as an outside link. */
 export function platformHosts(env: Readonly<Record<string, string | undefined>> = process.env): string[] {
@@ -15,9 +15,9 @@ const safely = async (p: Promise<void>) => { try { await p; } catch (e) { consol
  * call `after(subjectId)` once it is stored so the flag points at the stored row. A failing flag store never blocks anyone.
  */
 export async function guardContent(store: ContentFlagStore, input: {
-  source: ContentSource; subjectType: string; userId: string; fields: Readonly<Record<string, string>>; allowedHosts?: readonly string[];
+  source: ContentSource; subjectType: string; userId: string; fields: Readonly<Record<string, string>>; allowedHosts?: readonly string[]; ignore?: readonly ContentCategory[];
 }): Promise<GuardResult> {
-  const opts = { allowedHosts: input.allowedHosts ?? platformHosts() };
+  const opts = { allowedHosts: input.allowedHosts ?? platformHosts(), ...(input.ignore ? { ignore: input.ignore } : {}) };
   const scan = scanFields(input.fields, opts);
   const flagFor = async (action: "flag" | "block", subjectId?: string) => {
     for (const [field, s] of Object.entries(scan.byField)) {
