@@ -37,7 +37,7 @@ Generate each secret separately with `openssl rand -base64 48` (keys marked 32 u
 | `ALERT_UNSUBSCRIBE_KEY`, `ALERT_CRON_SECRET`, `API_TOKEN_SECRET`, `SMS_CODE_SECRET` | yes | empty | fail-closed when empty |
 | `ID_IMAGE_KEY` (32) | only with storage + clamd | empty | never rotate once ID images exist |
 | `THEME_PREVIEW_SECRET` | yes | same value | optional |
-| `STORAGE_DRIVER=s3`, `S3_*`, `CLAMD_*` | after decision 0.1 | empty | |
+| `STORAGE_DRIVER=s3`, `S3_*`, `CLAMD_HOST`, `CLAMD_PORT=3443`, `CLAMD_TLS_CA_B64`, `CLAMD_TLS_CERT_B64`, `CLAMD_TLS_KEY_B64` | after decision 0.1 (decided: Vercel + ClamAV VPS, see `deploy/clamav/README.md`) | empty | |
 | `NEXT_PUBLIC_MAP_PROVIDER`, `_TILE_URL`, `_ATTRIBUTION` | provider chosen | same | map tiles required by `check:providers --production` |
 | `INVESTMENT_MODULE_ENABLED` | `false` or `true` | same | |
 | every `*_CRON_SECRET` in `.env.example` | yes (32+ chars) | empty | same value as the GitHub secret of the same name |
