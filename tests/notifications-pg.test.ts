@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { defaultPreferences } from "../src/domain/notifications";
 import { archivePg, categoryStatsPg, createNotificationPg, deleteHistoryPg, getPreferencesPg, listNotificationsPg, markReadPg, savePreferencesPg, unreadCountPg } from "../src/server/notifications-db";
-import { notifyEnquiryMessage, notifyListingSold, notifyOfferBuyer, notifyOfferOwner, notifyOwnerOfBuyerCounter, notifyUser } from "../src/server/notifier";
+import { notifyEnquiryMessage, notifyListingBackOnMarket, notifyListingSold, notifyOfferBuyer, notifyOfferOwner, notifyOwnerOfBuyerCounter, notifyOwnerOfTermsAgreed, notifyUser } from "../src/server/notifier";
 import { addListing, addUser, createTestDb, DATABASE_URL, type TestDb } from "./helpers/pg-db";
 
 describe.skipIf(!DATABASE_URL)("notifications (Postgres)", () => {
@@ -149,6 +149,47 @@ describe.skipIf(!DATABASE_URL)("notifications (Postgres)", () => {
     for (const u of [saver, searcher, asker, loser]) expect(await kinds(u)).toEqual(["listing_sold"]);
     for (const u of [owner, winner, bystander]) expect(await kinds(u)).toEqual([]);
     expect((await listNotificationsPg(db, saver, "inbox", 10)).items[0]!.body).toContain("has been sold");
+  });
+
+  it("tells the owner, and only the owner, when the buyer agrees to the terms", async () => {
+    const owner = await addUser(db, "owner"), buyer = await addUser(db, "buyer");
+    const listing = await addListing(db, owner, { address_text: "12 Reef St" });
+    const offer = await offerOn(listing, buyer, "buyer_countered");
+    await notifyOwnerOfTermsAgreed(db, offer, {});
+    const items = (await listNotificationsPg(db, owner, "inbox", 10)).items;
+    expect(items.map(x => x.kind)).toEqual(["offer_terms_agreed"]);
+    expect(items[0]!.body).toContain("12 Reef St");
+    expect(items[0]!.link).toBe(`/listings/${listing}/offers/${offer}`);
+    expect(await kinds(buyer)).toEqual([]);
+    await notifyOwnerOfTermsAgreed(db, "00000000-0000-4000-8000-000000000000", {}); // unknown offer: nothing, no throw
+  });
+
+  it("tells interested buyers a listing is back on the market after a sale falls through, but not the owner or the buyer whose sale fell through", async () => {
+    const owner = await addUser(db, "owner"), fell = await addUser(db, "buyer");
+    const saver = await addUser(db, "buyer"), asker = await addUser(db, "buyer"), loser = await addUser(db, "buyer"), bystander = await addUser(db, "buyer");
+    const listing = await addListing(db, owner, { address_text: "12 Reef St", status: "published" });
+    await db.query("INSERT INTO saved_listing (buyer_user_id, listing_id) VALUES ($1,$2)", [saver, listing]);
+    await db.query("INSERT INTO enquiry (listing_id, buyer_user_id) VALUES ($1,$2)", [listing, asker]);
+    await offerOn(listing, loser, "rejected");
+    const offer = await offerOn(listing, fell, "fallen_through");
+
+    expect(await notifyListingBackOnMarket(db, offer, {})).toBe(3);
+    for (const u of [saver, asker, loser]) expect(await kinds(u)).toEqual(["listing_back_on_market"]);
+    for (const u of [owner, fell, bystander]) expect(await kinds(u)).toEqual([]);
+    expect((await listNotificationsPg(db, saver, "inbox", 10)).items[0]!.link).toBe(`/listings/${listing}`);
+  });
+
+  it("sends no back-on-market notice while the sale is still on, another offer is accepted, or the listing is not live", async () => {
+    const owner = await addUser(db, "owner"), a = await addUser(db, "buyer"), b = await addUser(db, "buyer"), saver = await addUser(db, "buyer");
+    const live = await addListing(db, owner, { status: "published" });
+    await db.query("INSERT INTO saved_listing (buyer_user_id, listing_id) VALUES ($1,$2)", [saver, live]);
+    expect(await notifyListingBackOnMarket(db, await offerOn(live, a, "accepted"), {})).toBe(0);
+    const fellOnLive = await offerOn(live, b, "fallen_through");
+    expect(await notifyListingBackOnMarket(db, fellOnLive, {})).toBe(0); // a's accepted offer is still standing
+    const draft = await addListing(db, owner, { status: "suspended" });
+    await db.query("INSERT INTO saved_listing (buyer_user_id, listing_id) VALUES ($1,$2)", [saver, draft]);
+    expect(await notifyListingBackOnMarket(db, await offerOn(draft, a, "fallen_through"), {})).toBe(0);
+    expect(await kinds(saver)).toEqual([]);
   });
 
   it("sends nothing for an offer that is not accepted, and respects a listings opt-out", async () => {

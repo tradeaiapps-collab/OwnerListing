@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { AuditEvent } from "../domain/audit";
-import { isSubjectType, NEXT_STATUS, type Decision, type SuspensionPlan, type ItemStatus, type Severity, type SubjectType } from "../domain/moderation-queue";
+import { isSubjectType, NEXT_STATUS, type Decision, type QueueSuspension, type ReinstatePlan, type SuspensionPlan, type ItemStatus, type Severity, type SubjectType } from "../domain/moderation-queue";
 import { moderateListing, setUserStatus } from "./admin-moderation-db";
 import { appendAuditPg, type Queryable } from "./db";
 
@@ -44,6 +44,8 @@ export interface QueueItem {
   id: string; subjectType: SubjectType; subjectId: string; subjectLabel: string; subjectOwnerId: string | null; source: string; reason: string;
   detail: string | null; severity: Severity; status: ItemStatus; createdAt: string; decidedAt: string | null; decisionNote: string | null;
   history: QueueEvent[];
+  /** What a rejection suspended, if anything, and whether staff have since reinstated it. */
+  suspended: "listing" | "account" | null; reinstated: boolean;
 }
 export type QueueView = "open" | "escalated" | "decided";
 export interface QueueFilters { view: QueueView; subjectType?: SubjectType }
@@ -65,7 +67,16 @@ export async function listQueuePg(db: Queryable, f: QueueFilters, limit = PAGE):
   const hist = ids.length
     ? (await db.query("SELECT item_id, action, actor_id, note, created_at FROM moderation_item_event WHERE item_id = ANY($1::uuid[]) ORDER BY created_at, id", [ids])).rows
     : [];
+  const rejected = r.rows.filter(row => row["status"] === "rejected").map(row => String(row["id"]));
+  const sus = new Map<string, QueueSuspension>();
+  if (rejected.length) {
+    for (const a of (await db.query(
+      `SELECT aggregate_id, payload FROM audit_event WHERE aggregate_type = 'moderation_item' AND event_type = 'moderation_item.reject' AND aggregate_id = ANY($1::text[])`, [rejected]
+    )).rows) { const x = suspensionOf(a["payload"]); if (x) sus.set(String(a["aggregate_id"]), x); }
+  }
   return r.rows.map(row => ({
+    suspended: sus.get(String(row["id"]))?.kind ?? null,
+    reinstated: hist.some(h => String(h["item_id"]) === String(row["id"]) && h["action"] === "reinstate"),
     id: String(row["id"]), subjectType: row["subject_type"] as SubjectType, subjectId: String(row["subject_id"]), subjectLabel: String(row["subject_label"]),
     subjectOwnerId: row["subject_owner_id"] ? String(row["subject_owner_id"]) : null, source: String(row["source"]), reason: String(row["reason"]),
     detail: (row["detail"] as string | null) ?? null, severity: row["severity"] as Severity, status: row["status"] as ItemStatus,
@@ -74,6 +85,24 @@ export async function listQueuePg(db: Queryable, f: QueueFilters, limit = PAGE):
       action: String(h["action"]), actorId: h["actor_id"] ? String(h["actor_id"]) : null, note: (h["note"] as string | null) ?? null, at: iso(h["created_at"])!
     }))
   }));
+}
+
+const suspensionOf = (payload: unknown): QueueSuspension | null => {
+  const p = (typeof payload === "string" ? (() => { try { return JSON.parse(payload) as unknown; } catch { return null; } })() : payload) as Record<string, unknown> | null;
+  if (!p) return null;
+  if (p["suspended"] === "listing" && typeof p["listingId"] === "string") return { kind: "listing", listingId: p["listingId"] };
+  if (p["suspended"] === "account" && typeof p["userId"] === "string") return { kind: "account", userId: p["userId"] };
+  return null;
+};
+
+/** What the rejection of this item suspended (from its audit event), and whether it was already reinstated. */
+export async function getSuspensionPg(db: Queryable, id: string): Promise<{ suspension: QueueSuspension | null; reinstated: boolean }> {
+  if (!UUID_RE.test(id)) return { suspension: null, reinstated: false };
+  const a = (await db.query(
+    `SELECT payload FROM audit_event WHERE aggregate_type = 'moderation_item' AND aggregate_id = $1 AND event_type = 'moderation_item.reject' ORDER BY occurred_at DESC LIMIT 1`, [id]
+  )).rows[0];
+  const done = (await db.query("SELECT 1 FROM moderation_item_event WHERE item_id = $1::uuid AND action = 'reinstate' LIMIT 1", [id])).rows.length > 0;
+  return { suspension: a ? suspensionOf(a["payload"]) : null, reinstated: done };
 }
 
 /** Counts per queue tab, for the badges. */
@@ -153,5 +182,30 @@ export async function rejectAndSuspendPg(
       return { decided: true, listingsSuspended: done.listingIds.length };
     }
     return { decided: true, listingsSuspended: 0 };
+  });
+}
+
+/**
+ * Lifts the suspension a rejection made, in ONE transaction with its history row and audit events. `listingEvent` is the already-built
+ * listing audit event (the route ran the publish gate). False when it was already reinstated. Throws SuspensionConflict (nothing changed)
+ * when the listing or account is no longer in the state the staff member saw. Listings suspended with an account are restored by the caller afterwards.
+ */
+export async function reinstateQueueItemPg(
+  db: Queryable, id: string, staff: { id: string; role: string }, plan: Exclude<ReinstatePlan, { action: "deny" }>, listingEvent?: AuditEvent
+): Promise<boolean> {
+  return inTx(db, async tx => {
+    const locked = (await tx.query("SELECT status FROM moderation_item WHERE id = $1::uuid FOR UPDATE", [id])).rows[0];
+    if (!locked || locked["status"] !== "rejected") throw new SuspensionConflict();
+    if ((await tx.query("SELECT 1 FROM moderation_item_event WHERE item_id = $1::uuid AND action = 'reinstate'", [id])).rows.length > 0) return false;
+    if (plan.kind === "listing") {
+      if (!listingEvent || !(await moderateListing(tx, plan.listingId, "suspended", "published", listingEvent))) throw new SuspensionConflict();
+    } else if (!(await setUserStatus(tx, staff, plan.userId, plan.from, "active", plan.reason))) throw new SuspensionConflict();
+    await tx.query("INSERT INTO moderation_item_event (item_id, actor_id, action, note) VALUES ($1::uuid, $2::uuid, 'reinstate', $3)", [id, staff.id, plan.reason]);
+    await appendAuditPg(tx, {
+      id: randomUUID(), occurredAt: new Date().toISOString(), actorType: "user", actorId: staff.id, aggregateType: "moderation_item", aggregateId: id,
+      eventType: "moderation_item.reinstated", correlationId: randomUUID(),
+      payload: { role: staff.role, reinstated: plan.kind, ...(plan.kind === "listing" ? { listingId: plan.listingId } : { userId: plan.userId }), reason: plan.reason }
+    });
+    return true;
   });
 }

@@ -7,7 +7,7 @@ type Decision = "approve" | "reject" | "escalate";
 interface Item {
   id: string; subjectType: "listing" | "message" | "profile"; subjectId: string; subjectLabel: string; subjectOwnerId: string | null; source: string;
   reason: string; detail: string | null; severity: "low" | "medium" | "high"; status: string; createdAt: string; decidedAt: string | null;
-  decisionNote: string | null; history: { action: string; actorId: string | null; note: string | null; at: string }[];
+  decisionNote: string | null; suspended: "listing" | "account" | null; reinstated: boolean; history: { action: string; actorId: string | null; note: string | null; at: string }[];
 }
 interface Data {
   items: Item[]; counts: { open: number; escalated: number }; me: string; decisions: { open: Decision[]; escalated: Decision[] };
@@ -19,7 +19,7 @@ interface Plan { suspend: Suspend; keepListings: boolean; confirm: boolean }
 const VIEWS = [["open", "Waiting"], ["escalated", "Escalated"], ["decided", "Decided"]] as const;
 const TYPES = [["", "Everything"], ["listing", "Listings"], ["message", "Messages"], ["profile", "Profiles"]] as const;
 const DECISION_LABEL: Record<Decision, string> = { approve: "Approve", reject: "Reject", escalate: "Escalate" };
-const HISTORY_LABEL: Record<string, string> = { raised: "Flagged", approve: "Approved", reject: "Rejected", escalate: "Escalated" };
+const HISTORY_LABEL: Record<string, string> = { raised: "Flagged", approve: "Approved", reject: "Rejected", escalate: "Escalated", reinstate: "Reinstated" };
 const words = (s: string) => s.replace(/_/g, " ");
 const when = (s: string) => new Date(s).toLocaleString("en-AU");
 
@@ -56,6 +56,15 @@ export default function StaffReviewQueue() {
     const res = await postStaff(`/api/staff/review-queue/${id}`, { decision, reason: reasons[id] ?? "", ...extra });
     setMessage(res.ok ? `${DECISION_LABEL[decision]}: recorded${res.data["suspended"] ? `, ${String(res.data["suspended"])} suspended` : ""}.` : String(res.data["error"] ?? "Failed."));
     if (res.ok) { setReasons(r => ({ ...r, [id]: "" })); setPlans(all => { const { [id]: _gone, ...rest } = all; return rest; }); await load(); }
+  }
+
+  async function reinstate(i: Item) {
+    setMessage("");
+    const res = await postStaff(`/api/staff/review-queue/${i.id}/reinstate`, { reason: reasons[i.id] ?? "", ...(i.suspended === "account" ? { listings: planOf(i.id).keepListings ? "keep" : "reinstate" } : {}) });
+    const left = Array.isArray(res.data["listingsNotRestored"]) ? res.data["listingsNotRestored"].length : 0;
+    setMessage(res.ok ? `Reinstated the ${i.suspended}${left ? `. ${left} listing${left === 1 ? "" : "s"} did not pass the publish checks and stay suspended` : ""}.`
+      : String(res.data["error"] ?? "Failed.") + (Array.isArray(res.data["reasons"]) ? ` ${res.data["reasons"].join(" ")}` : ""));
+    if (res.ok) { setReasons(r => ({ ...r, [i.id]: "" })); await load(); }
   }
 
   return (
@@ -136,6 +145,19 @@ export default function StaffReviewQueue() {
                   </div>
                 </form>
               )}
+              {i.status === "rejected" && i.suspended && !i.reinstated && !own && data.canSuspend[i.suspended] && (
+                <form className="stack mq-reinstate" onSubmit={e => e.preventDefault()}>
+                  <p className="muted">This rejection suspended the {i.suspended}. If it was a mistake or it has been put right, you can lift the suspension.</p>
+                  <label>Reason for reinstating (required, at least 10 characters)
+                    <textarea className="staff-reason" value={reasons[i.id] ?? ""} onChange={e => setReasons({ ...reasons, [i.id]: e.target.value })} />
+                  </label>
+                  {i.suspended === "account" && (
+                    <label className="mq-choice"><input type="checkbox" checked={planOf(i.id).keepListings} onChange={e => setPlan(i.id, { keepListings: e.target.checked })} /> Leave the account&apos;s suspended listings suspended</label>
+                  )}
+                  <div className="actions"><button type="button" className="secondary" onClick={() => void reinstate(i)}>Reinstate {i.suspended}</button></div>
+                </form>
+              )}
+              {i.reinstated && <p className="muted">The suspension was lifted.</p>}
               {own && options.length > 0 && <p className="muted">This is your own content, so someone else must review it.</p>}
               {i.status === "escalated" && options.length === 0 && <p className="muted">Waiting for a senior reviewer.</p>}
             </li>

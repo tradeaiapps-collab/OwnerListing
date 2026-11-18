@@ -88,3 +88,33 @@ export function planSuspension(actor: StaffActor, item: QueueTarget, decision: D
   const p = planUserAction(actor, facts.user, "suspend", reason, body?.["listings"]);
   return p.action === "deny" ? p : { kind: "account", userId: facts.user.id, from: p.from, reason: p.reason, withListings: p.withListings };
 }
+
+/**
+ * Undoing a suspension that a rejection made from this queue. Only a rejected item that suspended something, and only once. Same rules as the
+ * listing and user screens (permissions, own-account block, reason), plus the queue's own rule that nobody reviews their own content.
+ * A listing goes live again only through the publish gate, which the route runs. Body: reason, and for an account listings: "reinstate" | "keep".
+ */
+export interface QueueSuspension { kind: "listing" | "account"; listingId?: string; userId?: string }
+export type ReinstatePlan =
+  | Deny
+  | { kind: "listing"; listingId: string; reason: string }
+  | { kind: "account"; userId: string; from: string; reason: string; withListings: boolean };
+
+export function planReinstate(
+  actor: StaffActor, item: QueueTarget, suspension: QueueSuspension | null, alreadyReinstated: boolean, body: Record<string, unknown> | null, facts: SuspensionFacts
+): ReinstatePlan {
+  if (!staffCan(actor, "moderation.review")) return deny(403, "Not allowed.");
+  if (item.status !== "rejected") return deny(409, "Only a rejected item can be reinstated.");
+  if (!suspension) return deny(409, "This rejection did not suspend anything.");
+  if (alreadyReinstated) return deny(409, "Already reinstated.");
+  if (item.subjectOwnerId && item.subjectOwnerId === actor.id) return deny(403, "You cannot review your own content.");
+  const reason = body?.["reason"];
+  if (suspension.kind === "listing") {
+    if (!suspension.listingId || facts.listingStatus === undefined) return deny(409, "The listing is no longer available.");
+    const p = planListingAction(actor, facts.listingStatus, "reinstate", reason);
+    return p.action === "deny" ? p : { kind: "listing", listingId: suspension.listingId, reason: p.reason };
+  }
+  if (!suspension.userId || !facts.user) return deny(409, "The account is no longer available.");
+  const p = planUserAction(actor, facts.user, "reinstate", reason, body?.["listings"]);
+  return p.action === "deny" ? p : { kind: "account", userId: facts.user.id, from: p.from, reason: p.reason, withListings: p.withListings };
+}

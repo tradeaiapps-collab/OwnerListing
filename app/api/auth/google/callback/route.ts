@@ -2,11 +2,13 @@ import { NextResponse } from "next/server";
 import { getDb } from "../../../../../src/server/context";
 import { readAuthEnv } from "../../../../../src/server/auth/config";
 import { safeNextFromCookie } from "../../../../../src/server/auth/safe-next";
-import { exchangeCode, readIdentity } from "../../../../../src/server/auth/google";
+import { exchangeCode, readIdentity, vetGoogleName } from "../../../../../src/server/auth/google";
 import { SESSION_COOKIE, SESSION_TTL_SECONDS, readCookie, signSession } from "../../../../../src/server/auth/session";
 import { STAFF_COOKIE, STAFF_TTL_SECONDS, signStaffSession } from "../../../../../src/server/auth/staff-session";
 import { parseBootstrapEmails } from "../../../../../src/domain/staff-invite";
 import { staffSignIn } from "../../../../../src/server/staff-auth";
+import { guardContent } from "../../../../../src/server/content-guard";
+import { createPgContentFlagStore } from "../../../../../src/server/content-flag-db";
 import { upsertGoogleUser, vendorSignIn } from "../../../../../src/server/users";
 import { withApi } from "../../../../../src/server/api/with-api";
 import { afterSignIn, setUserSession } from "../../../../../src/server/auth/sign-in";
@@ -56,8 +58,13 @@ async function handleGet(req: Request) {
       return res;
     }
     const role = readCookie(req, "ol_role");
-    const user = await upsertGoogleUser(getDb(), who, role === "buyer" || role === "agent" ? role : "owner");
+    // The Google name is shown to others: abuse or contact details in it are replaced before the account is created.
+    const vetted = vetGoogleName(who);
+    const user = await upsertGoogleUser(getDb(), vetted.identity, role === "buyer" || role === "agent" ? role : "owner");
     if (!user) return failed();
+    if (vetted.replaced && user.created) {
+      await guardContent(createPgContentFlagStore(getDb()), { source: "profile", subjectType: "google_display_name", userId: user.id, fields: { display_name: who.name } });
+    }
 
     // The session cookie is set now but counts as signed in only after the second step (see actorFromRequestChecked).
     const res = NextResponse.redirect(`${auth.appUrl}${await afterSignIn(getDb(), user.id, user.userType, safeNextFromCookie(readCookie(req, "ol_next")))}`);
