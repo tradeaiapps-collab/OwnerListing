@@ -11,9 +11,26 @@ describe.skipIf(!DATABASE_URL)("open inspection scheduling on Postgres", () => {
   afterAll(async () => { await t?.close(); });
 
   const repo = () => createPgOpenInspectionRepo(t.db);
-  // A Thursday, so the next Saturday is 2026-11-07 (10:00 Sydney = 2026-11-06T23:00Z).
-  const NOW = "2026-11-05T00:00:00.000Z";
-  const SAT_10 = "2026-11-06T23:00:00.000Z", SAT_1030 = "2026-11-06T23:30:00.000Z";
+  // Dates are derived from the real clock so the suite does not age: NOW is the start of today (UTC) and SAT_10 is
+  // 10:00 Sydney time on the first Saturday at least two days later (its UTC offset follows daylight saving).
+  const sydneyOffsetMs = (at: number) => {
+    const p = Object.fromEntries(new Intl.DateTimeFormat("en-US", { timeZone: "Australia/Sydney", hourCycle: "h23", year: "numeric", month: "numeric", day: "numeric", hour: "numeric", minute: "numeric", second: "numeric" }).formatToParts(new Date(at)).map(x => [x.type, Number(x.value)]));
+    return Date.UTC(p["year"]!, p["month"]! - 1, p["day"]!, p["hour"], p["minute"], p["second"]) - Math.floor(at / 1000) * 1000;
+  };
+  const dayStart = Math.floor(Date.now() / 86_400_000) * 86_400_000;
+  const NOW = new Date(dayStart).toISOString();
+  const SAT_10_MS = (() => {
+    for (let d = 2; d <= 9; d++) {
+      const day = new Date(dayStart + d * 86_400_000 + 12 * 3_600_000); // midday UTC falls on the same Sydney date
+      const sydney = new Date(day.getTime() + sydneyOffsetMs(day.getTime()));
+      if (sydney.getUTCDay() !== 6) continue;
+      const local = Date.UTC(sydney.getUTCFullYear(), sydney.getUTCMonth(), sydney.getUTCDate(), 10);
+      return local - sydneyOffsetMs(local - sydneyOffsetMs(local));
+    }
+    throw new Error("no Saturday found");
+  })();
+  const sat = (hours: number) => new Date(SAT_10_MS + hours * 3_600_000).toISOString(); // an instant relative to Saturday 10:00 Sydney
+  const SAT_10 = sat(0), SAT_1030 = sat(0.5);
   const rule = { type: "rule", recurrence: "weekly", dayOfWeek: 6, start: "10:00", end: "14:00", slotMinutes: 30 };
   const kinds = async (user: string) => (await t.db.query("SELECT kind FROM notification WHERE user_id = $1 ORDER BY created_at, id", [user])).rows.map(r => String(r["kind"]));
   const buyerBody = (startsAt: string, extra: Record<string, unknown> = {}) => ({ listingId: "", startsAt, name: "Sam Buyer", phone: "0412345678", email: "sam@example.com", notes: "Kitchen reno", ...extra });
@@ -57,7 +74,7 @@ describe.skipIf(!DATABASE_URL)("open inspection scheduling on Postgres", () => {
   it("refuses booking times that are not offered, own listings, non-buyers and unpublished listings", async () => {
     const s = await setup();
     await publishTime(repo(), s.o, s.listingId, rule, NOW, t.db);
-    expect(await bookInspection(repo(), s.b, buyerBody("2026-11-07T01:07:00.000Z", { listingId: s.listingId }), NOW, t.db)).toMatchObject({ ok: false, code: "conflict" });
+    expect(await bookInspection(repo(), s.b, buyerBody(sat(2 + 7 / 60), { listingId: s.listingId }), NOW, t.db)).toMatchObject({ ok: false, code: "conflict" });
     expect((await bookInspection(repo(), s.a, buyerBody(SAT_10, { listingId: s.listingId }), NOW, t.db)).ok).toBe(false);
     const draft = await addListing(t.db, s.owner, { status: "draft" });
     expect((await bookInspection(repo(), s.b, buyerBody(SAT_10, { listingId: draft }), NOW, t.db)).ok).toBe(false);
@@ -95,7 +112,7 @@ describe.skipIf(!DATABASE_URL)("open inspection scheduling on Postgres", () => {
     const s = await setup();
     await publishTime(repo(), s.o, s.listingId, rule, NOW, t.db);
     await bookInspection(repo(), s.b, buyerBody(SAT_10, { listingId: s.listingId }), NOW, t.db);
-    const r = await publishTime(repo(), s.o, s.listingId, { type: "block", startsAt: SAT_10, endsAt: "2026-11-07T00:00:00.000Z", note: "Private viewing" }, NOW, t.db);
+    const r = await publishTime(repo(), s.o, s.listingId, { type: "block", startsAt: SAT_10, endsAt: sat(1), note: "Private viewing" }, NOW, t.db);
     expect(r).toMatchObject({ ok: true, value: { cancelled: 1 } });
     expect(await kinds(s.buyer)).toEqual(["open_inspection_confirmed", "open_inspection_cancelled"]);
     const note = await t.db.query("SELECT body FROM notification WHERE user_id = $1 AND kind = 'open_inspection_cancelled'", [s.buyer]);
@@ -149,21 +166,21 @@ describe.skipIf(!DATABASE_URL)("open inspection scheduling on Postgres", () => {
     const s = await setup();
     await t.db.query("UPDATE open_inspection_booking SET status = 'cancelled' WHERE listing_id <> $1", [s.listingId]); // the job is global; other tests' bookings are out of scope here
     const at = (iso: string, createdIso: string) => t.db.query("INSERT INTO open_inspection_booking (listing_id, buyer_id, buyer_name, buyer_email, starts_at, ends_at, created_at) VALUES ($1,$2,'Sam','s@e.test',$3,$3::timestamptz + interval '30 minutes',$4) RETURNING id", [s.listingId, s.buyer, iso, createdIso]);
-    await at("2026-11-07T00:00:00.000Z", "2026-11-01T00:00:00.000Z"); // booked days ahead
-    await at("2026-11-07T00:30:00.000Z", "2026-11-06T20:00:00.000Z"); // booked 4 hours before: no 24 hour reminder
-    await at("2026-11-08T00:00:00.000Z", "2026-11-01T00:00:00.000Z"); // too far away
+    await at(sat(1), new Date(Date.parse(NOW) - 4 * 86_400_000).toISOString()); // booked days ahead
+    await at(sat(1.5), sat(-3)); // booked 4 hours before: no 24 hour reminder
+    await at(sat(25), new Date(Date.parse(NOW) - 4 * 86_400_000).toISOString()); // too far away
     const count = async () => (await kinds(s.buyer)).reduce<Record<string, number>>((m, k) => ({ ...m, [k]: (m[k] ?? 0) + 1 }), {});
-    expect(await runOpenInspectionReminders(t.db, "2026-11-06T01:00:00.000Z")).toEqual({ day: 1, hour: 0 });
-    expect(await runOpenInspectionReminders(t.db, "2026-11-06T01:15:00.000Z")).toEqual({ day: 0, hour: 0 });
-    expect(await runOpenInspectionReminders(t.db, "2026-11-06T23:00:00.000Z")).toEqual({ day: 0, hour: 1 });
-    expect(await runOpenInspectionReminders(t.db, "2026-11-06T23:15:00.000Z")).toEqual({ day: 0, hour: 1 }); // the late booking's 1 hour reminder
-    expect(await runOpenInspectionReminders(t.db, "2026-11-06T23:30:00.000Z")).toEqual({ day: 0, hour: 0 });
+    expect(await runOpenInspectionReminders(t.db, sat(-22))).toEqual({ day: 1, hour: 0 });
+    expect(await runOpenInspectionReminders(t.db, sat(-21.75))).toEqual({ day: 0, hour: 0 });
+    expect(await runOpenInspectionReminders(t.db, sat(0))).toEqual({ day: 0, hour: 1 });
+    expect(await runOpenInspectionReminders(t.db, sat(0.25))).toEqual({ day: 0, hour: 1 }); // the late booking's 1 hour reminder
+    expect(await runOpenInspectionReminders(t.db, sat(0.5))).toEqual({ day: 0, hour: 0 });
     expect(await count()).toEqual({ open_inspection_reminder_24h: 1, open_inspection_reminder_1h: 2 });
   });
 
   it("does not remind cancelled bookings", async () => {
     const s = await setup();
-    await t.db.query("INSERT INTO open_inspection_booking (listing_id, buyer_id, buyer_name, buyer_email, starts_at, ends_at, created_at, status) VALUES ($1,$2,'Sam','s@e.test','2026-11-07T00:00:00Z','2026-11-07T00:30:00Z','2026-11-01T00:00:00Z','cancelled')", [s.listingId, s.buyer]);
-    expect(await runOpenInspectionReminders(t.db, "2026-11-06T01:00:00.000Z")).toEqual({ day: 0, hour: 0 });
+    await t.db.query("INSERT INTO open_inspection_booking (listing_id, buyer_id, buyer_name, buyer_email, starts_at, ends_at, created_at, status) VALUES ($1,$2,'Sam','s@e.test',$3,$4,$5,'cancelled')", [s.listingId, s.buyer, sat(1), sat(1.5), sat(-96)]);
+    expect(await runOpenInspectionReminders(t.db, sat(-22))).toEqual({ day: 0, hour: 0 });
   });
 });
