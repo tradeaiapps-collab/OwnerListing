@@ -11,6 +11,7 @@ import { LocationMap } from "../location-map";
 import { JSON_HEADERS } from "../ui";
 import { SaveAsTemplate } from "../save-as-template";
 import { MarketSnapshot } from "./market-snapshot";
+import { SuburbSnapshot } from "./suburb-snapshot";
 import { RatesCard } from "./rates-card";
 import { OptimizationPanel } from "../optimization-panel";
 import { ValuationCard } from "../valuation-card";
@@ -359,6 +360,8 @@ export default function ListingDetail() {
           {tx === "sale" && <RatesCard listingId={listing.id} />}
 
           {tx === "sale" && userType !== null && <ValuationCard listingId={listing.id} />}
+
+          {listing.suburb && <SuburbSnapshot state={listing.jurisdiction} suburb={listing.suburb} />}
 
           <h2>Property details</h2>
           <dl className="details detail-facts">

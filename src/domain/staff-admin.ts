@@ -62,6 +62,7 @@ export const STAFF_SECTIONS: readonly StaffSection[] = [
   { href: "/staff/cron-secrets", label: "Scheduler secrets", permissions: ["config.edit"] },
   { href: "/staff/campaigns", label: "Campaigns", permissions: ["campaign.manage"] },
   { href: "/staff/feeds", label: "Property data feeds", permissions: ["feeds.manage"] },
+  { href: "/staff/suburb-data", label: "Suburb data", permissions: ["feeds.manage"] },
   { href: "/staff/lead-scoring", label: "Lead scoring", permissions: ["feeds.manage"] },
   { href: "/staff/projects", label: "Internal projects", permissions: ["project.manage", "project.review", "project.tech_lead"] },
   { href: "/staff/investments", label: "Investor projects review", permissions: ["investment.review"] },
