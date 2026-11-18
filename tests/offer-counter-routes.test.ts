@@ -211,6 +211,8 @@ describe("buyer routes", () => {
     expect(await res.json()).toEqual({ offer: { id: OFFER, status: "buyer_countered" } });
     expect(audit.map(a => a.eventType)).toEqual(["offer.buyer_agreed"]);
     expect(calls.some(c => /SET status = 'accepted'/.test(c.text))).toBe(false);
+    // The owner is told (a lookup of the owner and address from the offer; failures never block the agreement).
+    expect(calls.some(c => /SELECT l\.id, l\.owner_user_id, l\.address_text FROM formal_offer o/.test(c.text))).toBe(true);
   });
   it("withdraw works for the buyer and is refused once closed", async () => {
     state.actor = buyer;

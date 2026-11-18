@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { decideQueueItemPg, enqueueModerationItemPg, getQueueTargetPg, listQueuePg, queueCountsPg, rejectAndSuspendPg, SuspensionConflict } from "../src/server/moderation-queue-db";
+import { decideQueueItemPg, enqueueModerationItemPg, getQueueTargetPg, getSuspensionPg, listQueuePg, queueCountsPg, rejectAndSuspendPg, reinstateQueueItemPg, SuspensionConflict } from "../src/server/moderation-queue-db";
 import { addListing, addUser, createTestDb, DATABASE_URL, type TestDb } from "./helpers/pg-db";
 
 describe.skipIf(!DATABASE_URL)("moderation queue (Postgres)", () => {
@@ -112,5 +112,54 @@ describe.skipIf(!DATABASE_URL)("moderation queue (Postgres)", () => {
     const r = await rejectAndSuspendPg(db, id, { id: staff, role: "compliance" }, "open", "Contact details in the description.", { kind: "listing", listingId, from: "published", reason: "x" });
     expect(r.decided).toBe(false);
     expect(await status("property_listing", listingId)).toBe("published");
+  });
+
+  it("reinstates a suspended listing once: status, history row, audit and the list view all agree", async () => {
+    const { staff, listingId, id } = await setup();
+    await db.query("UPDATE property_listing SET status = 'published' WHERE id = $1", [listingId]);
+    const me = { id: staff, role: "compliance" };
+    await rejectAndSuspendPg(db, id, me, "open", "Contact details in the description.", { kind: "listing", listingId, from: "published", reason: "Contact details in the description." });
+    expect((await listQueuePg(db, { view: "decided" })).find(i => i.id === id)).toMatchObject({ suspended: "listing", reinstated: false });
+    expect(await getSuspensionPg(db, id)).toEqual({ suspension: { kind: "listing", listingId }, reinstated: false });
+
+    const event = { id: randomUUID(), occurredAt: new Date().toISOString(), actorType: "user" as const, actorId: staff, aggregateType: "listing", aggregateId: listingId, eventType: "listing.published", correlationId: randomUUID(), payload: { action: "reinstate" } };
+    const plan = { kind: "listing" as const, listingId, reason: "The owner removed the phone number." };
+    expect(await reinstateQueueItemPg(db, id, me, plan, event)).toBe(true);
+    expect(await status("property_listing", listingId)).toBe("published");
+    expect((await listQueuePg(db, { view: "decided" })).find(i => i.id === id)).toMatchObject({ suspended: "listing", reinstated: true, status: "rejected" });
+    expect((await getQueueTargetPg(db, id))?.status).toBe("rejected");
+    const h = (await listQueuePg(db, { view: "decided" })).find(i => i.id === id)!.history;
+    expect(h.map(x => x.action)).toEqual(["raised", "reject", "reinstate"]);
+    expect(h[2]!.note).toBe("The owner removed the phone number.");
+    const ev = await db.query("SELECT payload FROM audit_event WHERE aggregate_type = 'moderation_item' AND aggregate_id = $1 AND event_type = 'moderation_item.reinstated'", [id]);
+    expect(ev.rows[0]!["payload"]).toMatchObject({ reinstated: "listing", listingId, reason: "The owner removed the phone number." });
+    // A second attempt does nothing.
+    expect(await reinstateQueueItemPg(db, id, me, plan, event)).toBe(false);
+  });
+
+  it("reinstates a suspended account, and rolls everything back if it changed in the meantime", async () => {
+    const { owner, staff, id } = await setup();
+    const me = { id: staff, role: "compliance" };
+    await rejectAndSuspendPg(db, id, me, "open", "Repeated contact leakage in messages.", { kind: "account", userId: owner, from: "active", reason: "Repeated contact leakage in messages.", withListings: false });
+    expect(await getSuspensionPg(db, id)).toEqual({ suspension: { kind: "account", userId: owner }, reinstated: false });
+    const plan = { kind: "account" as const, userId: owner, from: "suspended", reason: "Account verified and warned.", withListings: false };
+    await db.query("UPDATE app_user SET status = 'active' WHERE id = $1", [owner]); // someone else already lifted it
+    await expect(reinstateQueueItemPg(db, id, me, plan)).rejects.toThrow(SuspensionConflict);
+    expect((await getSuspensionPg(db, id)).reinstated).toBe(false);
+    await db.query("UPDATE app_user SET status = 'suspended' WHERE id = $1", [owner]);
+    expect(await reinstateQueueItemPg(db, id, me, plan)).toBe(true);
+    expect(await status("app_user", owner)).toBe("active");
+    expect((await getSuspensionPg(db, id)).reinstated).toBe(true);
+    const ev = await db.query("SELECT event_type FROM audit_event WHERE aggregate_id = ANY($1::text[]) ORDER BY event_type", [[owner, id]]);
+    expect(ev.rows.map(x => x["event_type"])).toEqual(["moderation_item.reinstated", "moderation_item.reject", "user.reinstated", "user.suspended"]);
+  });
+
+  it("a rejection that suspended nothing has nothing to reinstate, and an open item cannot be reinstated", async () => {
+    const { staff, id } = await setup();
+    const me = { id: staff, role: "compliance" };
+    expect(await getSuspensionPg(db, id)).toEqual({ suspension: null, reinstated: false });
+    await expect(reinstateQueueItemPg(db, id, me, { kind: "account", userId: staff, from: "suspended", reason: "Not rejected yet.", withListings: false })).rejects.toThrow(SuspensionConflict);
+    await decideQueueItemPg(db, id, me, "reject", "open", "Breaks the contact details rule.");
+    expect((await listQueuePg(db, { view: "decided" })).find(i => i.id === id)).toMatchObject({ suspended: null, reinstated: false });
   });
 });

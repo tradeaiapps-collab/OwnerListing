@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { decisionsFor, planDecision, planSuspension, subjectLink } from "../src/domain/moderation-queue";
+import { decisionsFor, planDecision, planReinstate, planSuspension, subjectLink } from "../src/domain/moderation-queue";
 import { sectionsFor } from "../src/domain/staff-admin";
 import type { StaffActor } from "../src/domain/staff-access";
 
@@ -81,5 +81,42 @@ describe("reject and suspend", () => {
   it("needs the listing and user permissions, not just the queue permission", () => {
     expect(planSuspension(actor("support"), listingItem, "reject", body({ suspend: "listing", confirm: true }), { listingStatus: "published" })).toMatchObject({ kind: "listing" });
     expect(planSuspension(actor("support"), msgItem, "reject", body({ suspend: "account", confirm: true }), { user })).toMatchObject({ action: "deny", status: 403 });
+  });
+});
+
+describe("reinstate a queue suspension", () => {
+  const OWNER = "33333333-3333-4333-8333-333333333333";
+  const LID = "44444444-4444-4444-8444-444444444444";
+  const rejected = { id: "i", status: "rejected", subjectOwnerId: OWNER, subjectType: "listing" as const, subjectId: LID };
+  const asListing = { kind: "listing" as const, listingId: LID };
+  const asAccount = { kind: "account" as const, userId: OWNER };
+  const body = (o: Record<string, unknown> = {}) => ({ reason: REASON, ...o });
+  const staff = actor("compliance");
+
+  it("lifts a listing suspension with the reason, once the listing is suspended", () => {
+    expect(planReinstate(staff, rejected, asListing, false, body(), { listingStatus: "suspended" })).toEqual({ kind: "listing", listingId: LID, reason: REASON });
+    expect(planReinstate(staff, rejected, asListing, false, body(), { listingStatus: "published" })).toMatchObject({ action: "deny", status: 409 });
+    expect(planReinstate(staff, rejected, asListing, false, body(), {})).toMatchObject({ action: "deny", status: 409 });
+  });
+  it("lifts an account suspension and follows the user-screen rules for its listings", () => {
+    const user = { id: OWNER, userType: "owner", status: "suspended" };
+    expect(planReinstate(staff, rejected, asAccount, false, body(), { user })).toMatchObject({ kind: "account", userId: OWNER, from: "suspended", withListings: true });
+    expect(planReinstate(staff, rejected, asAccount, false, body({ listings: "keep" }), { user })).toMatchObject({ kind: "account", withListings: false });
+    expect(planReinstate(staff, rejected, asAccount, false, body({ listings: "all" }), { user })).toMatchObject({ action: "deny", status: 400 });
+    expect(planReinstate(staff, rejected, asAccount, false, body(), { user: { ...user, status: "active" } })).toMatchObject({ action: "deny", status: 409 });
+  });
+  it("needs a reason, a rejected item that suspended something, and happens once", () => {
+    const facts = { listingStatus: "suspended" };
+    expect(planReinstate(staff, rejected, asListing, false, body({ reason: "short" }), facts)).toMatchObject({ action: "deny", status: 400 });
+    expect(planReinstate(staff, rejected, asListing, false, null, facts)).toMatchObject({ action: "deny", status: 400 });
+    expect(planReinstate(staff, { ...rejected, status: "approved" }, asListing, false, body(), facts)).toMatchObject({ action: "deny", status: 409 });
+    expect(planReinstate(staff, rejected, null, false, body(), facts)).toMatchObject({ action: "deny", status: 409 });
+    expect(planReinstate(staff, rejected, asListing, true, body(), facts)).toMatchObject({ action: "deny", status: 409 });
+  });
+  it("checks permissions and blocks reviewing your own content", () => {
+    expect(planReinstate(actor("accountant"), rejected, asListing, false, body(), { listingStatus: "suspended" })).toMatchObject({ action: "deny", status: 403 });
+    expect(planReinstate(actor("compliance", OWNER), rejected, asListing, false, body(), { listingStatus: "suspended" })).toMatchObject({ action: "deny", status: 403 });
+    // Support can moderate listings but cannot manage accounts.
+    expect(planReinstate(actor("support"), rejected, asAccount, false, body(), { user: { id: OWNER, userType: "owner", status: "suspended" } })).toMatchObject({ action: "deny", status: 403 });
   });
 });

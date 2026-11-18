@@ -187,6 +187,20 @@ describe.skipIf(!DATABASE_URL)("sale fell through on Postgres", () => {
     expect(d.holding.status).toBe("cancelled");
   });
 
+  it("when the sale falls through, interested buyers hear the listing is back on the market, once, and the two sides get the fell-through notice", async () => {
+    const s = await setup({ received: false });
+    const saver = await addUser(t.db, "buyer");
+    await t.db.query("UPDATE property_listing SET status = 'published' WHERE id = $1", [s.listingId]);
+    await t.db.query("INSERT INTO saved_listing (buyer_user_id, listing_id) VALUES ($1,$2)", [saver, s.listingId]);
+    const kinds = async (u: string) => (await t.db.query("SELECT kind FROM notification WHERE user_id = $1 ORDER BY created_at", [u])).rows.map(r => String(r["kind"]));
+    must(await raiseFallThrough(t.db, s.buyer, "buyer", s.offerId, "other_condition", null));
+    expect(await kinds(saver)).toEqual([]); // a request alone changes nothing for followers
+    must(await respondFallThrough(t.db, s.owner, "owner", s.offerId, "agree", null));
+    expect(await kinds(saver)).toEqual(["listing_back_on_market"]);
+    expect(await kinds(s.owner)).not.toContain("listing_back_on_market");
+    expect(await kinds(s.buyer)).not.toContain("listing_back_on_market");
+  });
+
   it("cooling-off leaves out the state's public holidays on file, so a long break keeps the period open", async () => {
     const s = await setup({ acceptedDaysAgo: 10 });
     expect(await previewFallThrough(t.db, s.buyer, "buyer", s.offerId, "cooling_off")).toMatchObject({ ok: false, error: expect.stringContaining("cooling-off period") });
