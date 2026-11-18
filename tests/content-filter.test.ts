@@ -89,3 +89,17 @@ describe("guardContent", () => {
     expect(r.ok).toBe(false);
   });
 });
+
+describe("ignore option", () => {
+  it("skips the named categories only", () => {
+    expect(scanContent("call 0412 345 678", { ignore: ["contact_details"] }).action).toBe("allow");
+    expect(scanContent("call 0412 345 678 you fucking idiot", { ignore: ["contact_details"] }).action).toBe("block");
+    expect(scanContent("click here for guaranteed returns", { ignore: ["spam"] }).action).toBe("allow");
+  });
+  it("is passed through guardContent", async () => {
+    const rows: ContentFlagInput[] = [];
+    const r = await guardContent({ record: async f => { rows.push(f); } }, { source: "message", subjectType: "deal_message", userId: "u", fields: { body: "ring 0412 345 678" }, allowedHosts: [], ignore: ["contact_details"] });
+    expect(r.ok).toBe(true);
+    expect(rows).toHaveLength(0);
+  });
+});

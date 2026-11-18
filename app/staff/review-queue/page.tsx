@@ -9,7 +9,12 @@ interface Item {
   reason: string; detail: string | null; severity: "low" | "medium" | "high"; status: string; createdAt: string; decidedAt: string | null;
   decisionNote: string | null; history: { action: string; actorId: string | null; note: string | null; at: string }[];
 }
-interface Data { items: Item[]; counts: { open: number; escalated: number }; me: string; decisions: { open: Decision[]; escalated: Decision[] } }
+interface Data {
+  items: Item[]; counts: { open: number; escalated: number }; me: string; decisions: { open: Decision[]; escalated: Decision[] };
+  canSuspend: { listing: boolean; account: boolean };
+}
+type Suspend = "none" | "listing" | "account";
+interface Plan { suspend: Suspend; keepListings: boolean; confirm: boolean }
 
 const VIEWS = [["open", "Waiting"], ["escalated", "Escalated"], ["decided", "Decided"]] as const;
 const TYPES = [["", "Everything"], ["listing", "Listings"], ["message", "Messages"], ["profile", "Profiles"]] as const;
@@ -28,6 +33,7 @@ export default function StaffReviewQueue() {
   const [type, setType] = useState<(typeof TYPES)[number][0]>("");
   const [data, setData] = useState<Data | null>(null);
   const [reasons, setReasons] = useState<Record<string, string>>({});
+  const [plans, setPlans] = useState<Record<string, Plan>>({});
   const [message, setMessage] = useState("");
   const [loaded, setLoaded] = useState(false);
 
@@ -39,11 +45,17 @@ export default function StaffReviewQueue() {
   }, [view, type]);
   useEffect(() => { void load(); }, [load]);
 
+  const planOf = (id: string): Plan => plans[id] ?? { suspend: "none", keepListings: false, confirm: false };
+  const setPlan = (id: string, p: Partial<Plan>) => setPlans(all => ({ ...all, [id]: { ...planOf(id), ...p } }));
+
   async function decide(id: string, decision: Decision) {
     setMessage("");
-    const res = await postStaff(`/api/staff/review-queue/${id}`, { decision, reason: reasons[id] ?? "" });
-    setMessage(res.ok ? `${DECISION_LABEL[decision]}: recorded.` : String(res.data["error"] ?? "Failed."));
-    if (res.ok) { setReasons(r => ({ ...r, [id]: "" })); await load(); }
+    const p = planOf(id);
+    const extra = decision === "reject" && p.suspend !== "none"
+      ? { suspend: p.suspend, confirm: p.confirm, ...(p.suspend === "account" ? { listings: p.keepListings ? "keep" : "suspend" } : {}) } : {};
+    const res = await postStaff(`/api/staff/review-queue/${id}`, { decision, reason: reasons[id] ?? "", ...extra });
+    setMessage(res.ok ? `${DECISION_LABEL[decision]}: recorded${res.data["suspended"] ? `, ${String(res.data["suspended"])} suspended` : ""}.` : String(res.data["error"] ?? "Failed."));
+    if (res.ok) { setReasons(r => ({ ...r, [id]: "" })); setPlans(all => { const { [id]: _gone, ...rest } = all; return rest; }); await load(); }
   }
 
   return (
@@ -95,9 +107,31 @@ export default function StaffReviewQueue() {
                   <label>Reason (required, at least 10 characters)
                     <textarea className="staff-reason" value={reasons[i.id] ?? ""} onChange={e => setReasons({ ...reasons, [i.id]: e.target.value })} />
                   </label>
+                  {options.includes("reject") && (data.canSuspend.account || (i.subjectType === "listing" && data.canSuspend.listing)) && (
+                    <fieldset className="mq-suspend">
+                      <legend>If you reject this</legend>
+                      <label className="mq-choice"><input type="radio" name={`sus-${i.id}`} checked={planOf(i.id).suspend === "none"} onChange={() => setPlan(i.id, { suspend: "none", confirm: false })} /> Only record the rejection</label>
+                      {i.subjectType === "listing" && data.canSuspend.listing && (
+                        <label className="mq-choice"><input type="radio" name={`sus-${i.id}`} checked={planOf(i.id).suspend === "listing"} onChange={() => setPlan(i.id, { suspend: "listing", confirm: false })} /> Also suspend this listing</label>
+                      )}
+                      {i.subjectOwnerId && data.canSuspend.account && (
+                        <label className="mq-choice"><input type="radio" name={`sus-${i.id}`} checked={planOf(i.id).suspend === "account"} onChange={() => setPlan(i.id, { suspend: "account", confirm: false })} /> Also suspend the account that wrote this</label>
+                      )}
+                      {planOf(i.id).suspend === "account" && (
+                        <label className="mq-choice"><input type="checkbox" checked={planOf(i.id).keepListings} onChange={e => setPlan(i.id, { keepListings: e.target.checked })} /> Keep the account&apos;s live listings published</label>
+                      )}
+                      {planOf(i.id).suspend !== "none" && (
+                        <label className="mq-choice mq-confirm"><input type="checkbox" checked={planOf(i.id).confirm} onChange={e => setPlan(i.id, { confirm: e.target.checked })} /> I confirm. The {planOf(i.id).suspend === "listing" ? "listing is taken offline" : "person is signed out and cannot use the site"} straight away, and this is logged with my reason.</label>
+                      )}
+                    </fieldset>
+                  )}
                   <div className="actions">
                     {options.map(d => (
-                      <button key={d} type="button" className={d === "approve" ? "" : "secondary"} onClick={() => void decide(i.id, d)}>{DECISION_LABEL[d]}</button>
+                      <button key={d} type="button" className={d === "approve" ? "" : "secondary"}
+                        disabled={d === "reject" && planOf(i.id).suspend !== "none" && !planOf(i.id).confirm}
+                        onClick={() => void decide(i.id, d)}>
+                        {d === "reject" && planOf(i.id).suspend !== "none" ? `Reject and suspend ${planOf(i.id).suspend}` : DECISION_LABEL[d]}
+                      </button>
                     ))}
                   </div>
                 </form>

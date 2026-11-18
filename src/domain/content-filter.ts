@@ -65,20 +65,27 @@ function spamHits(text: string): string[] {
   return out;
 }
 
-export function scanContent(text: string, opts: { allowedHosts?: readonly string[] } = {}): ContentScan {
+export interface ScanOptions {
+  allowedHosts?: readonly string[];
+  /** Categories not checked here. Used where the other rule already handles them, e.g. contact details after an accepted offer. */
+  ignore?: readonly ContentCategory[];
+}
+
+export function scanContent(text: string, opts: ScanOptions = {}): ContentScan {
   const hits: ContentHit[] = [];
   if (!text || !text.trim()) return { action: "allow", hits };
   const t = text.normalize("NFKC").replace(/[\p{Cf}]/gu, "");
   const allowed = (opts.allowedHosts ?? []).map(h => h.toLowerCase());
-  for (const m of contactHits(t, allowed)) hits.push({ category: "contact_details", action: "block", match: m });
-  for (const m of findProfanity(t)) hits.push({ category: "abuse", action: MILD.has(m) ? "flag" : "block", match: m });
-  for (const m of spamHits(t)) hits.push({ category: "spam", action: "flag", match: m });
+  const skip = new Set(opts.ignore ?? []);
+  if (!skip.has("contact_details")) for (const m of contactHits(t, allowed)) hits.push({ category: "contact_details", action: "block", match: m });
+  if (!skip.has("abuse")) for (const m of findProfanity(t)) hits.push({ category: "abuse", action: MILD.has(m) ? "flag" : "block", match: m });
+  if (!skip.has("spam")) for (const m of spamHits(t)) hits.push({ category: "spam", action: "flag", match: m });
   const action: ContentAction = hits.some(h => h.action === "block") ? "block" : hits.length ? "flag" : "allow";
   return { action, hits };
 }
 
 /** Scans several fields; the strongest action wins. Hits keep their field name so a person knows what to fix. */
-export function scanFields(fields: Readonly<Record<string, string>>, opts: { allowedHosts?: readonly string[] } = {}): ContentScan & { byField: Record<string, ContentScan> } {
+export function scanFields(fields: Readonly<Record<string, string>>, opts: ScanOptions = {}): ContentScan & { byField: Record<string, ContentScan> } {
   const byField: Record<string, ContentScan> = {};
   const hits: ContentHit[] = [];
   for (const [k, v] of Object.entries(fields)) { const s = scanContent(v, opts); byField[k] = s; hits.push(...s.hits); }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { decisionsFor, planDecision, subjectLink } from "../src/domain/moderation-queue";
+import { decisionsFor, planDecision, planSuspension, subjectLink } from "../src/domain/moderation-queue";
 import { sectionsFor } from "../src/domain/staff-admin";
 import type { StaffActor } from "../src/domain/staff-access";
 
@@ -44,5 +44,42 @@ describe("moderation queue decisions", () => {
     expect(sectionsFor(actor("accountant")).map(s => s.href)).not.toContain("/staff/review-queue");
     expect(subjectLink("listing", A)).toBe(`/listings/${A}`);
     expect(subjectLink("message", A)).toBeNull();
+  });
+});
+
+describe("reject and suspend", () => {
+  const OWNER = "33333333-3333-4333-8333-333333333333";
+  const listingItem = { id: "i", status: "open", subjectOwnerId: OWNER, subjectType: "listing" as const, subjectId: "44444444-4444-4444-8444-444444444444" };
+  const msgItem = { ...listingItem, subjectType: "message" as const };
+  const user = { id: OWNER, userType: "owner", status: "active" };
+  const body = (o: Record<string, unknown>) => ({ reason: REASON, ...o });
+  const staff = actor("compliance");
+
+  it("does nothing unless asked", () => {
+    expect(planSuspension(staff, listingItem, "reject", body({}), {})).toEqual({ kind: "none" });
+    expect(planSuspension(staff, listingItem, "approve", body({ suspend: "none" }), {})).toEqual({ kind: "none" });
+  });
+  it("needs an explicit confirm, a reject decision and a known choice", () => {
+    expect(planSuspension(staff, listingItem, "reject", body({ suspend: "listing" }), { listingStatus: "published" })).toMatchObject({ action: "deny", status: 400 });
+    expect(planSuspension(staff, listingItem, "reject", body({ suspend: "listing", confirm: "yes" }), { listingStatus: "published" })).toMatchObject({ action: "deny", status: 400 });
+    expect(planSuspension(staff, listingItem, "escalate", body({ suspend: "listing", confirm: true }), { listingStatus: "published" })).toMatchObject({ action: "deny", status: 400 });
+    expect(planSuspension(staff, listingItem, "reject", body({ suspend: "everything", confirm: true }), {})).toMatchObject({ action: "deny", status: 400 });
+  });
+  it("suspends a published listing the item is about, with the reason", () => {
+    expect(planSuspension(staff, listingItem, "reject", body({ suspend: "listing", confirm: true }), { listingStatus: "published" }))
+      .toEqual({ kind: "listing", listingId: listingItem.subjectId, from: "published", reason: REASON });
+    expect(planSuspension(staff, listingItem, "reject", body({ suspend: "listing", confirm: true }), { listingStatus: "draft" })).toMatchObject({ action: "deny", status: 409 });
+    expect(planSuspension(staff, msgItem, "reject", body({ suspend: "listing", confirm: true }), {})).toMatchObject({ action: "deny", status: 400 });
+  });
+  it("suspends the account behind the item and follows the user-screen rules", () => {
+    expect(planSuspension(staff, msgItem, "reject", body({ suspend: "account", confirm: true }), { user })).toMatchObject({ kind: "account", userId: OWNER, withListings: true });
+    expect(planSuspension(staff, msgItem, "reject", body({ suspend: "account", confirm: true, listings: "keep" }), { user })).toMatchObject({ kind: "account", withListings: false });
+    expect(planSuspension(staff, msgItem, "reject", body({ suspend: "account", confirm: true }), { user: { ...user, status: "suspended" } })).toMatchObject({ action: "deny", status: 409 });
+    expect(planSuspension(staff, msgItem, "reject", body({ suspend: "account", confirm: true }), { user: { ...user, userType: "admin" } })).toMatchObject({ action: "deny", status: 409 });
+    expect(planSuspension(staff, { ...msgItem, subjectOwnerId: null }, "reject", body({ suspend: "account", confirm: true }), {})).toMatchObject({ action: "deny", status: 400 });
+  });
+  it("needs the listing and user permissions, not just the queue permission", () => {
+    expect(planSuspension(actor("support"), listingItem, "reject", body({ suspend: "listing", confirm: true }), { listingStatus: "published" })).toMatchObject({ kind: "listing" });
+    expect(planSuspension(actor("support"), msgItem, "reject", body({ suspend: "account", confirm: true }), { user })).toMatchObject({ action: "deny", status: 403 });
   });
 });

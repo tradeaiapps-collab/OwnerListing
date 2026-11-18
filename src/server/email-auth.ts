@@ -1,5 +1,6 @@
 import { createHmac, randomUUID } from "node:crypto";
 import type { EmailPort } from "../adapters/email";
+import { scanContent } from "../domain/content-filter";
 import { passwordResetEmail, signupExistingEmail, signupVerifyEmail } from "../domain/account-emails";
 import type { RenderedEmail } from "../domain/email-templates";
 import { EMAIL_AUTH_RATE, RESET_LINK_MINUTES, SIGNUP_LINK_HOURS, normaliseEmail, passwordProblem, readSignup } from "../domain/email-auth";
@@ -74,6 +75,8 @@ export async function startSignup(d: EmailAuthDeps, body: unknown, ip: string): 
   if (!r.ok) return fail("invalid", r.message);
   if (!canDeliver(d)) return notConfigured();
   const { email, name, password, userType } = r.value;
+  // The display name is shown to other people. Abuse and contact details are refused; the account is not created yet, so nothing is stored.
+  if (scanContent(name).action === "block") return fail("invalid", "That name can't be used. Please use your real name, without contact details or offensive words.");
   if (!(await allowed(d, "link", ip, email))) return fail("rate_limited", "Too many attempts. Try again in an hour.");
 
   // Hashed before the lookup, so a known and a new address take the same time.

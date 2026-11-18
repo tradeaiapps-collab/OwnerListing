@@ -1,5 +1,6 @@
 import { reasonOk, REASON_ERROR, type Deny } from "./staff-admin";
 import { staffCan, type StaffActor } from "./staff-access";
+import { planListingAction, planUserAction } from "./admin-moderation";
 
 /**
  * The staff review queue: one place for listings, messages and profiles that a filter or a report flagged.
@@ -23,7 +24,7 @@ export const isDecision = (v: unknown): v is Decision => typeof v === "string" &
 
 export const NEXT_STATUS: Record<Decision, ItemStatus> = { approve: "approved", reject: "rejected", escalate: "escalated" };
 
-export interface QueueTarget { id: string; status: string; subjectOwnerId: string | null }
+export interface QueueTarget { id: string; status: string; subjectOwnerId: string | null; subjectType?: SubjectType; subjectId?: string }
 export type DecisionPlan = Deny | { action: "plan"; decision: Decision; from: "open" | "escalated"; to: ItemStatus; note: string };
 
 const deny = (status: number, error: string): Deny => ({ action: "deny", status, error });
@@ -51,3 +52,39 @@ export function planDecision(actor: StaffActor, item: QueueTarget, decision: unk
 
 /** Where staff can look at the subject itself. Rejecting does not change the content by itself: staff then use the listing or user screens. */
 export const subjectLink = (type: SubjectType, id: string): string | null => (type === "listing" ? `/listings/${id}` : null);
+
+/**
+ * Rejecting an item can also suspend what it is about, but only when staff say so and confirm it. Body fields:
+ * suspend: "none" (default) | "listing" (the item's listing) | "account" (the account that wrote or owns the content),
+ * confirm: must be true for any suspension, listings: "suspend" (default) | "keep" for an account (what happens to its live listings).
+ * Each suspension re-uses the rules of the listing and user screens (permission, own-account block, staff accounts, status checks) and
+ * needs the same reason, which is also written to the audit log.
+ */
+export const SUSPEND_CHOICES = ["none", "listing", "account"] as const;
+export type SuspendChoice = (typeof SUSPEND_CHOICES)[number];
+
+export type SuspensionPlan =
+  | Deny
+  | { kind: "none" }
+  | { kind: "listing"; listingId: string; from: "published"; reason: string }
+  | { kind: "account"; userId: string; from: string; reason: string; withListings: boolean };
+
+/** What the suspension would act on, read fresh by the route. */
+export interface SuspensionFacts { listingStatus?: string | undefined; user?: { id: string; userType: string; status: string } | undefined }
+
+export function planSuspension(actor: StaffActor, item: QueueTarget, decision: Decision, body: Record<string, unknown> | null, facts: SuspensionFacts): SuspensionPlan {
+  const choice = body?.["suspend"] ?? "none";
+  if (!SUSPEND_CHOICES.includes(choice as SuspendChoice)) return deny(400, 'Suspend must be "none", "listing" or "account".');
+  if (choice === "none") return { kind: "none" };
+  if (decision !== "reject") return deny(400, "Only rejecting an item can suspend anything.");
+  if (body?.["confirm"] !== true) return deny(400, "Confirm the suspension before it is applied.");
+  const reason = body?.["reason"];
+  if (choice === "listing") {
+    if (item.subjectType !== "listing" || !item.subjectId || facts.listingStatus === undefined) return deny(400, "This item is not about a listing.");
+    const p = planListingAction(actor, facts.listingStatus, "suspend", reason);
+    return p.action === "deny" ? p : { kind: "listing", listingId: item.subjectId, from: "published", reason: p.reason };
+  }
+  if (!item.subjectOwnerId || !facts.user) return deny(400, "This item has no account to suspend.");
+  const p = planUserAction(actor, facts.user, "suspend", reason, body?.["listings"]);
+  return p.action === "deny" ? p : { kind: "account", userId: facts.user.id, from: p.from, reason: p.reason, withListings: p.withListings };
+}

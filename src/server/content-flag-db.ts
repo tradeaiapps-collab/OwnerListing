@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { CONTENT_RULES_VERSION, type ContentFlagInput, type ContentFlagStore } from "../domain/content-filter";
 import type { Queryable } from "./db";
+import { enqueueModerationItemPg } from "./moderation-queue-db";
 
 const iso = (v: unknown) => (v instanceof Date ? v.toISOString() : new Date(String(v)).toISOString());
 
@@ -26,6 +27,14 @@ export function createPgContentFlagStore(db: Queryable): ContentFlagStore {
          VALUES ($1::uuid,$2,$3,$4::uuid,$5,$6::uuid,$7,$8::text[],$9::jsonb,$10,$11)`,
         [randomUUID(), f.source, f.subjectType, f.subjectId ?? null, f.field, f.userId, f.action, [...new Set(f.hits.map(h => h.category))],
           JSON.stringify(f.hits), f.excerpt.slice(0, 500), CONTENT_RULES_VERSION]);
+      // Flagged text that was stored goes to the staff moderation queue too (refused text was never stored, so there is nothing to review).
+      if (f.action === "flag" && f.subjectId) {
+        const cats = [...new Set(f.hits.map(h => h.category))].map(c => c.replace(/_/g, " "));
+        await enqueueModerationItemPg(db, {
+          subjectType: f.source, subjectId: f.subjectId, subjectLabel: `${f.subjectType.replace(/_/g, " ")}: ${f.field}`, subjectOwnerId: f.userId,
+          source: "content_filter", reason: `Flagged: ${cats.join(", ")}`.slice(0, 120), detail: f.excerpt, severity: f.hits.some(h => h.category === "abuse") ? "high" : "medium"
+        });
+      }
     }
   };
 }
