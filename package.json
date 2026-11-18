@@ -10,9 +10,11 @@
     "build": "next build",
     "start": "next start -p 3004",
     "migrate": "node scripts/migrate.mjs",
+    "migrate:plan": "node scripts/migrate-plan.mjs",
     "seed:demo": "node scripts/seed-demo.mjs",
     "seed:admin": "node scripts/seed-admin-demo.mjs",
-    "check:providers": "node scripts/check-providers.mjs"
+    "check:providers": "node scripts/check-providers.mjs",
+    "smoke:prod": "node scripts/prod-smoke.mjs"
   },
   "devDependencies": {
     "@types/leaflet": "1.9.12",
