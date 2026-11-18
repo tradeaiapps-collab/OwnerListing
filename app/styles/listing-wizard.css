@@ -49,5 +49,9 @@
 @media (max-width: 559px) { .wiz-nav { padding: var(--space-3) var(--space-4); position: sticky; bottom: 0; z-index: 5; } .wiz-nav > button:not(.link-button) { flex: 1; min-width: 0; } .wiz-exit { display: none; } }
 .wiz-nav button.wiz-exit { margin-left: auto; min-height: 44px; }
 .wiz-nav > button:last-child { min-width: 9rem; }
+/* Save status and error sit between the body and the nav: give them the card's own inset so they line up with the fields. */
+.wiz-card form > [role="status"] { margin: 0; padding: 0 var(--space-6) var(--space-4); color: var(--muted); }
+.wiz-card form > [role="alert"] { margin: 0 var(--space-6) var(--space-4); }
+@media (max-width: 559px) { .wiz-card form > [role="status"] { padding: 0 var(--space-4) var(--space-3); } .wiz-card form > [role="alert"] { margin: 0 var(--space-4) var(--space-3); } }
 .wiz-empty { margin: 0; }
 @media (prefers-reduced-motion: reduce) { .wiz-seg i, .wiz-steps button { transition: none; } }
