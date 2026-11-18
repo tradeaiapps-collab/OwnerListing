@@ -75,6 +75,30 @@ describe("channel planning", () => {
   });
 });
 
+describe("sold and buyer-counter notices", () => {
+  it("words the owner's counter notice without any price and keeps it on the offers category", () => {
+    const n = renderNotification("offer_buyer_countered", { listing: "12 Reef St", link: "/listings/x/offers/y" });
+    expect(n.category).toBe("offers");
+    expect(n.title).toBe("Buyer counter-offer");
+    expect(n.body).toContain("12 Reef St");
+    expect(n.body).not.toMatch(/\$/);
+    expect(n.link).toBe("/listings/x/offers/y");
+    expect(n.smsText).toContain("Buyer counter-offer");
+  });
+  it("says sold or rented, goes by email on the listings setting and never by text", () => {
+    expect(renderNotification("listing_sold", { listing: "12 Reef St", rent: "0" }).body).toBe("12 Reef St has been sold and is no longer available.");
+    expect(renderNotification("listing_sold", { listing: "12 Reef St", rent: "1" }).title).toBe("Property no longer available");
+    const n = renderNotification("listing_sold", { listing: "12 Reef St", link: "/browse" });
+    expect(n.category).toBe("listings");
+    expect(n.smsText).toBeNull();
+    const p = { ...defaultPreferences(), listings: { inApp: true, email: true, sms: true } };
+    expect(planChannels("listing_sold", p, true).sms).toBe(false);
+    expect(planChannels("listing_sold", p, true).email).toBe(true);
+    const off = { ...defaultPreferences(), listings: { inApp: false, email: false, sms: false } };
+    expect(planChannels("listing_sold", off, true)).toEqual({ inApp: false, email: false, sms: false });
+  });
+});
+
 describe("wording", () => {
   it("clips, strips control characters and falls back when a value is missing", () => {
     const n = renderNotification("message_received", { name: "A\u0000\nB".repeat(100), listing: "  " });

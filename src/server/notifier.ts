@@ -86,6 +86,46 @@ export async function notifyOfferOwner(db: Queryable, listingId: string, env: En
   }
 }
 
+/**
+ * Tells the owner that the buyer answered with a counter-offer. The owner's id and the address are looked up from the offer, never taken
+ * from the request. No price or terms go in the message: the owner opens the offer to see them.
+ */
+export async function notifyOwnerOfBuyerCounter(db: Queryable, offerId: string, env: Env = process.env): Promise<void> {
+  try {
+    const r = await db.query("SELECT l.id, l.owner_user_id, l.address_text FROM formal_offer o JOIN property_listing l ON l.id = o.listing_id WHERE o.id = $1::uuid", [offerId]);
+    const x = r.rows[0];
+    if (x) await notifyUser(db, String(x["owner_user_id"]), "offer_buyer_countered", { listing: String(x["address_text"] ?? ""), link: `/listings/${String(x["id"])}/offers/${offerId}` }, env);
+  } catch {
+    // A notification never blocks the counter.
+  }
+}
+
+/**
+ * Tells the people following a listing that it has sold (or been rented) once an offer is accepted: buyers who saved it, were alerted to it
+ * by a saved search, enquired about it, or made another offer. Never the owner or the winning buyer (they have their own notices).
+ * Each person gets one notice, on their own listing-notification settings. Returns how many were addressed.
+ */
+export async function notifyListingSold(db: Queryable, offerId: string, env: Env = process.env): Promise<number> {
+  try {
+    const l = (await db.query(
+      `SELECT l.id, l.owner_user_id, l.address_text, l.transaction_type, o.buyer_user_id AS winner
+         FROM formal_offer o JOIN property_listing l ON l.id = o.listing_id WHERE o.id = $1::uuid AND o.status = 'accepted'`, [offerId])).rows[0];
+    if (!l) return 0;
+    const r = await db.query(
+      `SELECT DISTINCT u FROM (
+         SELECT buyer_user_id AS u FROM saved_listing WHERE listing_id = $1::uuid
+         UNION SELECT buyer_user_id FROM alert_delivery WHERE listing_id = $1::uuid AND saved_search_id IS NOT NULL AND outcome = 'sent'
+         UNION SELECT buyer_user_id FROM enquiry WHERE listing_id = $1::uuid
+         UNION SELECT buyer_user_id FROM formal_offer WHERE listing_id = $1::uuid
+       ) f WHERE u <> $2::uuid AND u <> $3::uuid`, [String(l["id"]), String(l["owner_user_id"]), String(l["winner"])]);
+    const params = { listing: String(l["address_text"] ?? ""), link: "/browse", rent: l["transaction_type"] === "rent" ? "1" : "0" };
+    for (const row of r.rows) await notifyUser(db, String(row["u"]), "listing_sold", params, env);
+    return r.rows.length;
+  } catch {
+    return 0; // A notification never blocks the sale.
+  }
+}
+
 /** Tells the other person in an enquiry thread about a new message. Message text is never copied into the notification. */
 export async function notifyEnquiryMessage(db: Queryable, enquiryId: string, senderUserId: string, env: Env = process.env): Promise<void> {
   try {
