@@ -116,7 +116,7 @@ Settings (`.env.example`): `S3_BUCKET`, `S3_REGION`, `S3_ACCESS_KEY_ID`, `S3_SEC
 
 What the code does: every request is TLS and AWS Signature V4 signed; every write sends `x-amz-server-side-encryption` and fails if the service answers with a different mode; objects never overwrite (`If-None-Match: *`) and are stored with `Content-Disposition: attachment` and `Cache-Control: private, no-store`; only `id/` objects can be deleted. The app routes already serve bytes with the stored content type, `X-Content-Type-Options: nosniff` and a sandbox CSP after the access check. `signedUrl(key, { ttlSeconds, filename, contentType })` makes a link valid 1 to 3600 seconds (default 300) that forces `attachment`, for any route that wants to hand the browser a direct link after its own access check.
 
-Bucket setup (once, by whoever owns the account):
+Ready-made policy, lifecycle and CORS files, plus the step-by-step AWS setup, are in `deploy/s3/` (start at `deploy/s3/README.md`). Check a bucket with `npm run check:s3`. The manual outline:
 1. Create a private bucket in the same region as the app. Turn on **Block all public access** (all four settings).
 2. Enable **versioning**. For `id/` objects add a lifecycle rule that expires non-current versions after 1 day, otherwise a "deleted" ID image survives as an old version and breaks the retention promise.
 3. Default encryption: SSE-S3 (`AES256`), or SSE-KMS with a customer key (`S3_SSE=aws:kms`, `S3_KMS_KEY_ID`). Add a bucket policy that denies `s3:PutObject` without encryption and denies any request with `aws:SecureTransport` false.
