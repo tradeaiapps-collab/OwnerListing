@@ -35,7 +35,50 @@ Defaults you can change before the first upload: app id `au.com.ownerlisting.sit
 (`OWNERLISTING_APP_ID`, `OWNERLISTING_APP_NAME`). Replace the default Capacitor icons and splash in the two projects.
 The live site must be deployed first (docs/PRODUCTION_RUNBOOK.md); a PC address will not work for other people's phones.
 
-## What only you can do
+## 3. Native app (Expo, `mobile/`): store build and release steps
+
+Nothing below has been done or submitted. Config lives in `mobile/app.config.ts` and `mobile/eas.json`; icons and splash in `mobile/assets/`
+(placeholder house mark on navy: replace `icon.png` 1024x1024 no transparency, `adaptive-icon.png` and `adaptive-icon-mono.png` 1024x1024 with the artwork inside the central 66%, `splash-icon.png`).
+
+**Build profiles** (`mobile/eas.json`)
+
+| Profile | Output | Use |
+| --- | --- | --- |
+| `development` | dev client, iOS simulator build | day-to-day coding, push testing |
+| `preview` | Android `.apk`, iOS internal build (ad hoc, needs registered devices) | testers; API URL required |
+| `production` | Android `.aab`, iOS App Store build, version auto-increments | store upload; API URL must be https |
+
+**Environment variables** (set in EAS, never in git: expo.dev, project, Environment variables, per environment `preview` and `production`)
+
+| Name | Value |
+| --- | --- |
+| `OWNERLISTING_API_URL` | https origin of the deployed website, e.g. `https://ownerlisting.com.au`. The build fails without it (preview, production); production also rejects http. |
+| `OWNERLISTING_PRIVACY_URL` | the public privacy policy page. **Placeholder:** if unset it falls back to `<API URL>/privacy`, and the site has no such page yet. |
+| `GOOGLE_SERVICES_JSON` | file variable holding Firebase `google-services.json` (Android push) |
+| `OWNERLISTING_BUNDLE_ID` | optional; default `au.com.ownerlisting.app`. Permanent after the first upload. |
+
+Permission strings: iPhone `NSUserNotificationsUsageDescription` is set; Android asks only `POST_NOTIFICATIONS` and blocks microphone,
+storage and overlay permissions. The app has no camera, photo or location feature today; add the matching Info.plist strings before adding one.
+Encryption: `ITSAppUsesNonExemptEncryption=false` (HTTPS only), so no export-compliance prompt.
+
+### Steps for you, in order
+
+1. **Accounts.** Apple Developer Program (USD 99 a year, enrol as an organisation: needs a D-U-N-S number, can take days) and Google Play Console (USD 25 once; identity verification; a new personal account needs a 12-tester closed test for 14 days before production). Expo account (free).
+2. **Deploy the website first** (docs/PRODUCTION_RUNBOOK.md). The app is useless against a PC address.
+3. **Privacy policy and support pages.** Publish both on the website (legal review), then set `OWNERLISTING_PRIVACY_URL` and `OWNERLISTING_SUPPORT_URL`. Both stores require the policy URL.
+4. **EAS setup** on a computer: `npm i -g eas-cli`, `eas login`, `cd mobile && eas init` (writes the project id; set `EAS_PROJECT_ID` as an EAS variable or commit what `eas init` adds), then add the variables above.
+5. **Push:** Firebase project plus `google-services.json` and server `FCM_*` keys; Apple APNs `.p8` key and server `APNS_*` keys (`mobile/README.md`, docs/PROVIDER_KEYS.md). Set `APNS_PRODUCTION=1` on the live server.
+6. **Signing.** Run `eas credentials` or let `eas build` offer it: sign in with your Apple ID and EAS creates the distribution certificate and provisioning profile; for Android EAS generates the upload keystore. Download a backup of the Android keystore from `eas credentials` and store it safely.
+7. **Store records.** App Store Connect: New App, bundle id `au.com.ownerlisting.app` (register it under Identifiers first). Play Console: Create app, package `au.com.ownerlisting.app`. Enable Play App Signing.
+8. **Build:** `cd mobile && eas build --platform all --profile production`. Try `--profile preview` first on your own phone.
+9. **Listings** (both stores): name, short and long description, category (House and Home / Lifestyle), 1024x1024 icon, support URL, privacy policy URL, age rating questionnaire, contact email.
+   Screenshots: iPhone 6.9" (1320x2868) and 6.5" (1284x2778), iPad 13" (2064x2752) because `supportsTablet` is on (or set it to false to skip iPad); Android phone 1080x1920 minimum (2 to 8), plus a 1024x500 feature graphic.
+   Privacy forms: Apple App Privacy (email, name, phone, user content, identifiers/push token, linked to the user, not used for tracking) and Google Data safety (same list; data encrypted in transit; account deletion link, see the website's account deletion page).
+   Reviewer access: give both stores a test owner and a test agent account including the second-step method, in the review notes.
+10. **Submit:** `eas submit --platform ios` and `eas submit --platform android` (needs an App Store Connect API key and a Google service account JSON; EAS prompts). Test via TestFlight and Play internal testing first, then promote to production and press Submit for review.
+11. **Later updates:** bump nothing by hand (`autoIncrement`), but change `version` in `mobile/app.config.ts` for user-visible releases.
+
+## What only you can do (options 1 and 2; option 3 steps are above)
 
 1. **Apple Developer Program** (USD 99 a year) and **Google Play Console** (USD 25 once), in the business's name. Google asks for identity checks and, for new personal accounts, a closed test before production.
 2. **Decide option 2 or 3** (above) and the final **app id**.
