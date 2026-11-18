@@ -15,7 +15,8 @@
     "seed:admin": "node scripts/seed-admin-demo.mjs",
     "check:providers": "node scripts/check-providers.mjs",
     "smoke:prod": "node scripts/prod-smoke.mjs",
-    "check:clamd": "node scripts/clamd-check.mjs"
+    "check:clamd": "node scripts/clamd-check.mjs",
+    "check:s3": "node scripts/s3-check.mjs"
   },
   "devDependencies": {
     "@types/leaflet": "1.9.12",

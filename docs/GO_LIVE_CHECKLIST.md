@@ -3,7 +3,7 @@
 Nothing here has been run. Every step marked **[you]** needs your account, a secret or your go-ahead. Detail: `PRODUCTION_RUNBOOK.md` (short list), `DEPLOY_VERCEL.md` (env table, step by step), `DEPLOYMENT.md` (hardening), `PROVIDER_KEYS.md` (provider keys). Never paste connection strings or secrets into chat or a PR.
 
 ## 0. Blockers to decide first
-1. **Uploads cannot work on Vercel as built.** Photos, documents and ID images need `STORAGE_DRIVER=s3` (Supabase Storage S3 endpoint, Cloudflare R2, Wasabi or AWS) **and** a ClamAV `clamd` reachable over TCP (`CLAMD_HOST`, `CLAMD_PORT`); without both, uploads answer 503. Vercel cannot run clamd, and its request body limit is about 4.5 MB. Choose: (a) a small always-on server (about A$8 a month VPS or container) running clamd, or (b) host the app on a container platform instead of Vercel. Until then the site goes live without uploads (listings have no photos).
+1. **Uploads cannot work on Vercel as built.** Photos, documents and ID images need `STORAGE_DRIVER=s3` (default: AWS S3 Sydney, see `deploy/s3/README.md`) **and** a ClamAV `clamd` reachable over TCP (`CLAMD_HOST`, `CLAMD_PORT`); without both, uploads answer 503. Vercel cannot run clamd, and its request body limit is about 4.5 MB. Choose: (a) a small always-on server (about A$8 a month VPS or container) running clamd, or (b) host the app on a container platform instead of Vercel. Until then the site goes live without uploads (listings have no photos).
 2. **Email**: SES Sydney SMTP, entered at `/staff/messaging` after first sign-in. Without it no email sends.
 3. **Google sign-in** is the only sign-in: create the OAuth client first (redirect URIs below).
 4. Keep `INVESTMENT_MODULE_ENABLED=false` until counsel signs off, unless you decide otherwise (the Projects tab is hidden when off).
@@ -37,12 +37,20 @@ Generate each secret separately with `openssl rand -base64 48` (keys marked 32 u
 | `ALERT_UNSUBSCRIBE_KEY`, `ALERT_CRON_SECRET`, `API_TOKEN_SECRET`, `SMS_CODE_SECRET` | yes | empty | fail-closed when empty |
 | `ID_IMAGE_KEY` (32) | only with storage + clamd | empty | never rotate once ID images exist |
 | `THEME_PREVIEW_SECRET` | yes | same value | optional |
-| `STORAGE_DRIVER=s3`, `S3_*`, `CLAMD_HOST`, `CLAMD_PORT=3443`, `CLAMD_TLS_CA_B64`, `CLAMD_TLS_CERT_B64`, `CLAMD_TLS_KEY_B64` | after decision 0.1 (decided: Vercel + ClamAV VPS, see `deploy/clamav/README.md`) | empty | |
+| `STORAGE_DRIVER=s3`, `S3_BUCKET`, `S3_REGION=ap-southeast-2`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` (all four required; leave `S3_ENDPOINT` blank for AWS), `CLAMD_HOST`, `CLAMD_PORT=3443`, `CLAMD_TLS_CA_B64`, `CLAMD_TLS_CERT_B64`, `CLAMD_TLS_KEY_B64` | after decision 0.1 (decided: Vercel + ClamAV VPS, see `deploy/clamav/README.md`) | empty | |
 | `NEXT_PUBLIC_MAP_PROVIDER`, `_TILE_URL`, `_ATTRIBUTION` | provider chosen | same | map tiles required by `check:providers --production` |
 | `INVESTMENT_MODULE_ENABLED` | `false` or `true` | same | |
 | every `*_CRON_SECRET` in `.env.example` | yes (32+ chars) | empty | same value as the GitHub secret of the same name |
 
 Run `npm run check:providers -- --production` with the production values loaded locally; exit 1 means stop.
+
+### 3a. File storage bucket (AWS S3 Sydney) [you]
+Full steps and the exact files: `deploy/s3/README.md`. In short:
+1. AWS account, region `ap-southeast-2`. Create a private bucket (Block all public access on, versioning on, default encryption SSE-S3).
+2. Apply `deploy/s3/bucket-policy.json` and `lifecycle.json` (replace `BUCKET`, `ACCOUNT_ID`, `APP_IAM_USER`). `cors.json` is optional (see README).
+3. Create IAM user `ownerlisting-app` with `iam-policy.json`; make one access key; put it in Vercel (both projects) as `S3_ACCESS_KEY_ID` / `S3_SECRET_ACCESS_KEY`, with `STORAGE_DRIVER=s3`, `S3_BUCKET`, `S3_REGION=ap-southeast-2`. Never paste the key into chat.
+4. In your shell with those values: `npm run check:s3`. All lines must say PASS. Then redeploy and upload one photo.
+5. AWS Budgets alert (for example A$20 a month) and MFA on the AWS root account.
 
 ## 4. Domain and TLS [you]
 `www.` to public and `admin.` to admin in Vercel; CNAMEs at the registrar; Vercel issues TLS. Then set `APP_URL` / `ADMIN_APP_URL`, Google redirect URIs, and redeploy.

@@ -56,5 +56,11 @@ if (process.env.CLAMD_HOST && process.env.CLAMD_PORT) {
   for (const r of await checkClamd()) ok(`clamav: ${r.name}`, r.ok, r.ok ? "" : r.detail);
 } else console.log("SKIP  clamav checks (set CLAMD_HOST, CLAMD_PORT and the CLAMD_TLS_*_B64 values to include them)");
 
+// Optional: object-storage bucket (uploads). Only checked when S3_BUCKET is set in this shell. Writes and deletes one tiny id/ object.
+if (process.env.S3_BUCKET && process.env.S3_ACCESS_KEY_ID && process.env.S3_SECRET_ACCESS_KEY && process.env.S3_REGION) {
+  const { checkS3 } = await import("./s3-check.mjs");
+  for (const r of await checkS3()) ok(`s3: ${r.name}`, r.ok, r.ok ? "" : r.detail);
+} else console.log("SKIP  s3 checks (set S3_BUCKET, S3_REGION, S3_ACCESS_KEY_ID and S3_SECRET_ACCESS_KEY to include them)");
+
 console.log(failed ? `\n${failed} check(s) failed.` : "\nAll checks passed.");
 process.exit(failed ? 1 : 0);

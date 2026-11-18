@@ -1,0 +1,100 @@
+{
+  "Rules": [
+    {
+      "ID": "id-images-drop-old-versions-after-1-day",
+      "Status": "Enabled",
+      "Filter": {
+        "Prefix": "id/"
+      },
+      "NoncurrentVersionExpiration": {
+        "NoncurrentDays": 1
+      },
+      "Expiration": {
+        "ExpiredObjectDeleteMarker": true
+      },
+      "AbortIncompleteMultipartUpload": {
+        "DaysAfterInitiation": 1
+      }
+    },
+    {
+      "ID": "listings-keep-old-versions-90-days",
+      "Status": "Enabled",
+      "Filter": {
+        "Prefix": "listings/"
+      },
+      "NoncurrentVersionExpiration": {
+        "NoncurrentDays": 90
+      },
+      "Expiration": {
+        "ExpiredObjectDeleteMarker": true
+      },
+      "AbortIncompleteMultipartUpload": {
+        "DaysAfterInitiation": 7
+      }
+    },
+    {
+      "ID": "inspections-keep-old-versions-90-days",
+      "Status": "Enabled",
+      "Filter": {
+        "Prefix": "inspections/"
+      },
+      "NoncurrentVersionExpiration": {
+        "NoncurrentDays": 90
+      },
+      "Expiration": {
+        "ExpiredObjectDeleteMarker": true
+      },
+      "AbortIncompleteMultipartUpload": {
+        "DaysAfterInitiation": 7
+      }
+    },
+    {
+      "ID": "investments-keep-old-versions-90-days",
+      "Status": "Enabled",
+      "Filter": {
+        "Prefix": "investments/"
+      },
+      "NoncurrentVersionExpiration": {
+        "NoncurrentDays": 90
+      },
+      "Expiration": {
+        "ExpiredObjectDeleteMarker": true
+      },
+      "AbortIncompleteMultipartUpload": {
+        "DaysAfterInitiation": 7
+      }
+    },
+    {
+      "ID": "signing-keep-old-versions-90-days",
+      "Status": "Enabled",
+      "Filter": {
+        "Prefix": "signing/"
+      },
+      "NoncurrentVersionExpiration": {
+        "NoncurrentDays": 90
+      },
+      "Expiration": {
+        "ExpiredObjectDeleteMarker": true
+      },
+      "AbortIncompleteMultipartUpload": {
+        "DaysAfterInitiation": 7
+      }
+    },
+    {
+      "ID": "prequal-keep-old-versions-90-days",
+      "Status": "Enabled",
+      "Filter": {
+        "Prefix": "prequal/"
+      },
+      "NoncurrentVersionExpiration": {
+        "NoncurrentDays": 90
+      },
+      "Expiration": {
+        "ExpiredObjectDeleteMarker": true
+      },
+      "AbortIncompleteMultipartUpload": {
+        "DaysAfterInitiation": 7
+      }
+    }
+  ]
+}
