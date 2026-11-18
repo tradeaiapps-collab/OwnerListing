@@ -254,6 +254,9 @@ html[data-theme-mode="dark"] .site-footer { background: #070b16; color: #e7e2d8;
 .site-footer a:hover { color: var(--footer-ink); opacity: 1; text-decoration: underline; text-decoration-color: var(--gold); }
 .site-footer a:focus-visible { outline-color: var(--gold); }
 .site-footer-base { max-width: var(--container); margin: 0 auto; padding: var(--space-4) var(--space-4) var(--space-6); border-top: 1px solid color-mix(in srgb, var(--footer-ink) 14%, transparent); }
+.site-footer-base { display: grid; gap: var(--space-2); }
+@media (min-width: 640px) { .site-footer-base { grid-template-columns: 1fr auto; align-items: center; } }
+.site-footer-legal ul { gap: 0 var(--space-4); }
 .site-footer-base p { font-size: 0.8125rem; color: var(--footer-muted); letter-spacing: 0.02em; }
 
 /* Breadcrumbs (app/breadcrumbs.tsx) */

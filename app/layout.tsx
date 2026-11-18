@@ -32,6 +32,9 @@ const FOOTER_COLUMNS = [
   { title: "Help", links: [{ label: "How it works", href: "/#home-how" }, { label: "Questions", href: "/#home-faq" }, { label: "Dashboard", href: "/dashboard" }, { label: "Terms", href: "/terms" }] }
 ];
 
+/** Always shown under the footer, whether or not an admin has replaced the footer links. */
+const LEGAL_LINKS = [{ label: "Privacy", href: "/privacy" }, { label: "Terms", href: "/terms" }, { label: "Support", href: "/support" }];
+
 const getTheme = getRequestTheme;
 
 export async function generateMetadata() {
@@ -114,7 +117,12 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
                   </nav>
                 )}
               </div>
-              <div className="site-footer-base"><p>{footer.text || `© ${new Date().getFullYear()} ${brand.name}`}</p></div>
+              <div className="site-footer-base">
+                <p>{footer.text || `© ${new Date().getFullYear()} ${brand.name}`}</p>
+                <nav aria-label="Legal" className="site-footer-legal">
+                  <ul>{LEGAL_LINKS.map(l => <li key={l.href}><a href={l.href}>{l.label}</a></li>)}</ul>
+                </nav>
+              </div>
             </footer>
           </>
         )}

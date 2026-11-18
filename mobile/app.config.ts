@@ -31,7 +31,7 @@ export function resolveApiUrl(env: StoreEnv): string {
 export function buildConfig(env: StoreEnv): ExpoConfig {
   const bundleId = env["OWNERLISTING_BUNDLE_ID"] ?? DEFAULT_BUNDLE_ID;
   const apiUrl = resolveApiUrl(env);
-  // PLACEHOLDER until the website has a published privacy page: set OWNERLISTING_PRIVACY_URL to the real address.
+  // Defaults to the site's public /privacy and /support pages; set the env vars only to point elsewhere.
   const privacyUrl = env["OWNERLISTING_PRIVACY_URL"] ?? `${apiUrl}/privacy`;
   const supportUrl = env["OWNERLISTING_SUPPORT_URL"] ?? `${apiUrl}/support`;
   return {
