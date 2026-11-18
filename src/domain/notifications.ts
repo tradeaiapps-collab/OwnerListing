@@ -110,6 +110,8 @@ export const KINDS = {
   offer_accepted: "offers",
   offer_rejected: "offers",
   offer_countered: "offers",
+  offer_buyer_countered: "offers",
+  listing_sold: "listings",
   fall_through_proposed: "offers",
   fall_through_update: "offers",
   offer_fallen_through: "offers",
@@ -137,7 +139,7 @@ export type Kind = keyof typeof KINDS;
 export const isKind = (v: unknown): v is Kind => typeof v === "string" && Object.prototype.hasOwnProperty.call(KINDS, v);
 
 /** Kinds worth a text message when the user has opted in: they are time-critical and short. */
-const SMS_KINDS: ReadonlySet<Kind> = new Set<Kind>(["message_received", "appointment_invited", "appointment_reminder", "consultation_booked", "consultation_cancelled", "offer_received", "offer_accepted", "offer_rejected", "offer_countered", "fall_through_proposed", "offer_fallen_through", "automation_alert"]);
+const SMS_KINDS: ReadonlySet<Kind> = new Set<Kind>(["message_received", "appointment_invited", "appointment_reminder", "consultation_booked", "consultation_cancelled", "offer_received", "offer_accepted", "offer_rejected", "offer_countered", "offer_buyer_countered", "fall_through_proposed", "offer_fallen_through", "automation_alert"]);
 
 export interface NotificationParams { [key: string]: string | undefined }
 export interface RenderedNotification { kind: Kind; category: Category; title: string; body: string; link: string | null; smsText: string | null }
@@ -184,6 +186,10 @@ export function renderNotification(kind: Kind, p: NotificationParams = {}): Rend
     case "offer_accepted": return t("Offer accepted", `Your offer on ${listing} was accepted by the owner.`);
     case "offer_rejected": return t("Offer not accepted", `Your offer on ${listing} was not accepted.`);
     case "offer_countered": return t("Counter-offer", `There is a counter-offer on ${listing}.`);
+    case "offer_buyer_countered": return t("Buyer counter-offer", `The buyer sent a counter-offer on ${listing}. Review it in your offers: you can accept, counter again or decline.`);
+    case "listing_sold": return p["rent"] === "1"
+      ? t("Property no longer available", `${listing} has been rented and is no longer available.`, false)
+      : t("Property sold", `${listing} has been sold and is no longer available.`, false);
     case "fall_through_proposed": return t("Sale of your property may have fallen through", `The other side says the contract on ${listing} will not go ahead (${clip(p["reason"], 80, "reason given")}). Open it to see the proposed outcome for the deposit and agree or dispute it.`);
     case "fall_through_update": return t(clip(p["title"], 80, "Update on a sale that fell through"), clip(p["text"], 300, `There is an update on the deposit for ${listing}.`), false);
     case "dispute_opened": return t("A dispute was raised on your sale", `A dispute about ${listing} was raised (${clip(p["title"], 80, "see the settlement")}). Elena will suggest a fair middle ground. Open it to add your side.`, false);
