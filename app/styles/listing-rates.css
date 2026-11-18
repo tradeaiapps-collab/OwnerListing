@@ -1,0 +1,14 @@
+/* Council and water rates: buyer card and seller form. Site tokens only (light and dark follow the theme); mobile first. */
+.lr-list { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-2) var(--space-4); margin: 0 0 var(--space-3); }
+.lr-list dt { font-weight: 600; }
+.lr-list dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.lr-list dd small { display: block; color: var(--muted); }
+@media (min-width: 640px) { .lr-list { grid-template-columns: minmax(0, 12rem) minmax(0, 1fr); } }
+.lr-total { font-weight: 700; }
+.lr-form { display: grid; gap: var(--space-4); }
+.lr-row { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-2); border: 0; padding: 0; margin: 0; }
+.lr-row legend { font-weight: 600; padding: 0; margin-bottom: var(--space-2); }
+.lr-row label { display: grid; gap: var(--space-1); min-width: 0; }
+@media (min-width: 560px) { .lr-row { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); } .lr-row legend { grid-column: 1 / -1; } }
+.lr-check { display: flex; gap: var(--space-2); align-items: flex-start; }
+.lr-check input { margin-top: 0.25rem; flex: none; }

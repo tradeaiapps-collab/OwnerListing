@@ -1,0 +1,14 @@
+.install-banner {
+  position: fixed; inset-inline: var(--space-3, 12px); bottom: calc(88px + env(safe-area-inset-bottom));
+  z-index: 40; display: flex; align-items: center; gap: var(--space-3, 12px); max-width: 480px; margin-inline: auto;
+  padding: var(--space-3, 12px); background: var(--surface); color: var(--text); border: 1px solid var(--border);
+  border-radius: 14px; box-shadow: var(--shadow-2);
+}
+.install-banner-icon { border-radius: 10px; flex: none; }
+.install-banner-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; font-size: 0.875rem; line-height: 1.35; flex: 1; }
+.install-banner-go { flex: none; }
+.install-banner-close { flex: none; width: 44px; height: 44px; margin-inline-end: -6px; background: none; border: 0; color: var(--muted); font-size: 1.5rem; cursor: pointer; border-radius: 10px; }
+.install-banner-close:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.offline-page { max-width: 520px; margin: 4rem auto; text-align: center; }
+@media (display-mode: standalone) { .install-banner { display: none; } }
+@media (display-mode: standalone) { .site-header { padding-top: env(safe-area-inset-top); } }

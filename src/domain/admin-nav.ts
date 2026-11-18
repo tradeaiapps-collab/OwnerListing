@@ -36,6 +36,7 @@ const META: Record<string, { group: string; icon: AdminIcon; blurb: string }> = 
   "/staff/investments/settings": { group: "marketplace", icon: "toggle", blurb: "Turn the investor module on or off" },
   "/staff/commissions": { group: "marketplace", icon: "bank", blurb: "Agent commission deals, overrides and payouts" },
   "/staff/cases": { group: "compliance", icon: "case", blurb: "Claim and resolve admin cases" },
+  "/staff/review-queue": { group: "compliance", icon: "safety", blurb: "Flagged listings, messages and profiles: approve, reject or escalate" },
   "/staff/safety": { group: "compliance", icon: "safety", blurb: "Messages held by the safety filter" },
   "/staff/moderation": { group: "compliance", icon: "safety", blurb: "Seller and agent messages flagged for compliance or tone" },
   "/staff/trust-accounts": { group: "compliance", icon: "bank", blurb: "Two-person trust account approvals" },

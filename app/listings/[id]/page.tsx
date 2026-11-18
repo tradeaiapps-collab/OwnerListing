@@ -12,6 +12,7 @@ import { JSON_HEADERS } from "../ui";
 import { SaveAsTemplate } from "../save-as-template";
 import { MarketSnapshot } from "./market-snapshot";
 import { SuburbSnapshot } from "./suburb-snapshot";
+import { RatesCard } from "./rates-card";
 import { OptimizationPanel } from "../optimization-panel";
 import { ValuationCard } from "../valuation-card";
 import "../../styles/cards.css";
@@ -355,6 +356,8 @@ export default function ListingDetail() {
               {listing.description.split(/\n{2,}/).map((p, i) => <p key={i} className="detail-description">{p}</p>)}
             </section>
           )}
+
+          {tx === "sale" && <RatesCard listingId={listing.id} />}
 
           {tx === "sale" && userType !== null && <ValuationCard listingId={listing.id} />}
 
