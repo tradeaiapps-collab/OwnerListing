@@ -8,6 +8,8 @@
 .suburb-data .sd-table { min-width: 44rem; }
 .suburb-data .sd-table th, .suburb-data .sd-table td { vertical-align: top; }
 .suburb-data .sd-table td:last-child { min-width: 16rem; }
+/* Phones: let the three columns wrap inside the viewport instead of scrolling sideways, so Figures is readable. */
+@media (max-width: 639px) { .suburb-data .table-wrap > .sd-table { min-width: 0; table-layout: fixed; width: 100%; } .suburb-data .sd-table td:last-child { min-width: 0; } .suburb-data .sd-table th, .suburb-data .sd-table td { overflow-wrap: break-word; padding-inline: var(--space-2); } .suburb-data .sd-table th { white-space: normal; } .suburb-data .sd-table th:nth-child(1) { width: 26%; } .suburb-data .sd-table th:nth-child(2) { width: 28%; } .suburb-data .sd-table th:nth-child(3) { width: 46%; } }
 .sd-snapshot .sd-facts { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-2) var(--space-4); margin: 0 0 var(--space-3); }
 .sd-snapshot .sd-facts dt { font-weight: 600; }
 .sd-snapshot .sd-facts dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
