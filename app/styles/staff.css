@@ -22,3 +22,13 @@ main.roles-page { max-width: 1280px; }
 .roles-matrix .area-row th { text-align: left; padding-top: var(--space-4); background: var(--tint); border-bottom: 1px solid var(--border); color: var(--heading, var(--text)); }
 .roles-matrix .cell { text-align: center; min-width: 6rem; }
 .roles-matrix .role-disabled { opacity: 0.6; }
+
+/* Moderation queue cards. */
+.mq-item { display: grid; gap: var(--space-2); min-width: 0; }
+.mq-title, .mq-detail, .mq-history li { overflow-wrap: anywhere; }
+.mq-meta { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin: 0; }
+.mq-meta .badge { margin: 0; }
+.mq-sev-high { color: var(--danger, var(--warn)); border-color: color-mix(in srgb, var(--danger, var(--warn)) 50%, var(--bg)); }
+.mq-sev-medium { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 50%, var(--bg)); }
+.mq-detail { margin: 0; padding: var(--space-2) var(--space-3); border-left: 3px solid var(--line); background: var(--tint); }
+.mq-history { margin: 0; padding: 0; list-style: none; display: grid; gap: var(--space-1); }

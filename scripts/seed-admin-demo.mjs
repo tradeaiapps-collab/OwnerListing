@@ -332,12 +332,44 @@ async function seedInvestments(db, P) {
   });
 }
 
+async function seedReviewQueue(db, P) {
+  if ((await db.query(`SELECT 1 FROM moderation_item LIMIT 1`)).rows.length) return;
+  const owner = P.by["marcus.owner"], buyer = P.by["james.buyer"], comp = P.by["staff.compliance"], sup = P.by["staff.support"];
+  await inTx(db, "review queue", async () => {
+    const q = async (text, params) => (await db.query(text, params)).rows;
+    const lst = await q(`SELECT id, title FROM property_listing WHERE owner_user_id = $1 ORDER BY created_at, id LIMIT 3`, [owner]);
+    if (lst.length < 3) throw new Error("expected the example listings of marcus.owner");
+    // type, subject id, label, owner, source, reason, detail, severity, hours ago
+    const items = [
+      ["listing", lst[0].id, lst[0].title, owner, "content_filter", "Phone number in the description", "Call me on 04xx xxx xxx before you book an inspection.", "medium", 3],
+      ["message", randomUUID(), "Message from an owner to a buyer", owner, "content_filter", "Pressure to move off the platform", "Text me directly and we can skip the fees.", "high", 8],
+      ["profile", buyer, "James Buyer", buyer, "user_report", "Reported for an abusive bio", "Reported twice this week.", "low", 30],
+      ["listing", lst[1].id, lst[1].title, owner, "content_filter", "Possible misleading claim in the title", "Guaranteed 10% yearly growth.", "high", 50],
+      ["message", randomUUID(), "Message from a buyer to an owner", buyer, "content_filter", "Abusive language", "Held for tone.", "medium", 70]
+    ];
+    const ids = [];
+    for (const [type, sid, label, own, source, reason, detail, sev, h] of items) {
+      const r = await q(
+        `INSERT INTO moderation_item (subject_type, subject_id, subject_label, subject_owner_id, source, reason, detail, severity, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, now() - $9::int * interval '1 hour') RETURNING id`, [type, sid, label, own, source, reason, detail, sev, h]);
+      await q(`INSERT INTO moderation_item_event (item_id, action, created_at) VALUES ($1, 'raised', now() - $2::int * interval '1 hour')`, [r[0].id, h]);
+      ids.push(r[0].id);
+    }
+    await q(`UPDATE moderation_item SET status = 'escalated' WHERE id = $1`, [ids[3]]);
+    await q(`INSERT INTO moderation_item_event (item_id, actor_id, action, note) VALUES ($1, $2, 'escalate', 'A growth claim like this needs the compliance lead to look at it.')`, [ids[3], sup]);
+    await q(`UPDATE moderation_item SET status = 'rejected', decided_by = $2, decided_at = now() - interval '20 hours', decision_note = 'Bio breaks the conduct rules. Account warned.' WHERE id = $1`, [ids[4], comp]);
+    await q(`INSERT INTO moderation_item_event (item_id, actor_id, action, note, created_at) VALUES ($1, $2, 'reject', 'Bio breaks the conduct rules. Account warned.', now() - interval '20 hours')`, [ids[4], comp]);
+    return "Admin demo: review queue (5 items: 3 waiting, 1 escalated, 1 rejected).";
+  });
+}
+
 export async function seedAdminExamples(db) {
   const P = await people(db);
   if (P.missing) { console.log(`Admin demo data skipped: base demo accounts are missing (${P.missing.join(", ")}).`); return; }
   await seedCoaching(db, P);
   await seedModeration(db, P);
   await seedInvestments(db, P);
+  await seedReviewQueue(db, P);
 }
 
 // Standalone run (npm run seed:admin): same safety guard as seed-demo.mjs.
