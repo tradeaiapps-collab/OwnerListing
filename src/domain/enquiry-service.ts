@@ -55,6 +55,8 @@ export interface EnquiryDeps {
   /** With both set, an agent with an active appointment and a current licence may handle the listing's threads. Unset means owner only. */
   appointmentFor?: (listingId: string, agentUserId: string) => Promise<AgentAppointment | undefined>;
   licences?: () => Promise<readonly AgentLicence[]>;
+  /** Content filter (contact details, abuse, spam). Unset means no filter. `after` runs once a flagged message is stored. */
+  contentGuard?: (input: { userId: string; enquiryId: string; text: string }) => Promise<{ ok: true; after?: (messageId: string) => Promise<void> } | { ok: false; message: string }>;
 }
 
 const fail = (code: Failure["code"], message: string): Failure => ({ ok: false, code, message });
@@ -108,10 +110,14 @@ async function post(deps: EnquiryDeps, e: Enquiry, ownerUserId: string, senderUs
     const wording = messageWordingError(body);
     if (wording) return fail("invalid", wording);
   }
+  // Contact details, abuse and spam. Refused text is never stored; flagged text is stored and queued for staff.
+  const content = deps.contentGuard ? await deps.contentGuard({ userId: senderUserId, enquiryId: e.id, text: body }) : undefined;
+  if (content && !content.ok) return fail("invalid", content.message);
 
   const now = deps.now();
   const m: EnquiryMessage = { id: deps.newId(), enquiryId: e.id, senderUserId, automated: false, body, sentAt: now };
   await deps.enquiries.addMessage(m);
+  if (content?.after) await content.after(m.id).catch(() => undefined);
   await audit(deps, senderUserId, e.id, "enquiry.message_sent", { messageId: m.id });
 
   if (fromBuyer && verification) {
