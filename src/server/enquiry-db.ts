@@ -1,3 +1,5 @@
+import { guardContent } from "./content-guard";
+import { createPgContentFlagStore } from "./content-flag-db";
 import { randomUUID } from "node:crypto";
 import type { AutoReplySettings } from "../domain/auto-reply";
 import type { BuyerVerification } from "../domain/buyer";
@@ -177,6 +179,8 @@ export function getEnquiryDeps(): EnquiryDeps {
     appendAudit: base.appendAudit,
     now: base.now,
     newId: () => randomUUID(),
+    contentGuard: ({ userId, enquiryId, text }) =>
+      guardContent(createPgContentFlagStore(db), { source: "message", subjectType: "enquiry_message", userId, fields: { body: text } }).then(r => r.ok ? { ok: true as const, after: r.after } : r),
     ...(base.appointmentFor ? { appointmentFor: base.appointmentFor } : {}),
     ...(base.licences ? { licences: base.licences } : {})
   };
