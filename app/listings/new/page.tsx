@@ -6,8 +6,7 @@ import type { TemplateView } from "../../../src/domain/listing-template";
 import { JSON_HEADERS, listingFormBody } from "../ui";
 import { dollarsToCents } from "../../../src/domain/listing-details";
 import { PhotoManager } from "../photo-manager";
-import { QuickSetupPanel, type QuickFiles } from "../quick-setup";
-import type { QuickSetup } from "../../../src/domain/quick-setup";
+import { QuickSetupPanel, type Drafted, type QuickFiles } from "../quick-setup";
 import { ElenaPublishCheck } from "../elena-publish-check";
 import { PhotosStep } from "./photos-step";
 import type { FieldStep } from "../fields";
@@ -19,7 +18,7 @@ const INTROS = ["Start with the essentials buyers look at first.", "These power 
 const FIELD_STEPS: (FieldStep | "none")[] = ["basics", "details", "description", "none", "location", "none"];
 const LAST = STEPS.length - 1;
 
-type Ready = Extract<QuickSetup, { state: "ready" }>;
+type Ready = Drafted;
 type Upload = { name: string; state: "waiting" | "uploading" | "done" | "error"; message?: string };
 
 export default function NewListing() {
@@ -191,9 +190,17 @@ export default function NewListing() {
       <div id="panel-manual" role="tabpanel" aria-labelledby="tab-manual" hidden={mode !== "manual"}>
         {filled && (
           <section role="status" className="panel qs-result">
-            <h2>Elena filled in your listing</h2>
+            <h2>Elena wrote your listing. Check it below.</h2>
             <p className="muted">{filled.source === "ai" ? "Elena wrote the title and description from your notes. " : "Elena read your notes to fill in the details. "}Check everything below and change what is wrong. Nothing is saved until you press Save draft.</p>
             <ul className="plain-list">{filled.filled.map(x => <li key={x.key}><strong>{x.label}:</strong> {x.value}</li>)}</ul>
+            {filled.photoState === "read" && filled.seen && filled.seen.length > 0 && <p><strong>Elena saw in your photos:</strong> {filled.seen.join(", ")}.</p>}
+            {filled.photoState === "off" && <p className="muted">Elena can&apos;t look at photos on this server yet (no vision model installed), so she wrote from your address and notes. Your photos are still added when you save.</p>}
+            {filled.photoState === "failed" && <p className="muted">Elena couldn&apos;t read the photos this time. Your photos are still added when you save.</p>}
+            {filled.area && filled.area.suburbFacts.length > 0 && <>
+              <p><strong>What we know about the area</strong> <span className="muted">({filled.area.suburbSource})</span></p>
+              <ul className="plain-list">{filled.area.suburbFacts.map(x => <li key={x.label}>{x.label}: {x.value}</li>)}</ul>
+            </>}
+            {filled.area && filled.area.checklist.length > 0 && <p className="muted"><strong>Papers a seller usually needs in {filled.fields.jurisdiction}:</strong> {filled.area.checklist.join("; ")}. Draft list, not legal advice.</p>}
             {filled.missing.length > 0 && <p><strong>Still needed:</strong> {filled.missing.join(", ")}.</p>}
             {(pending.photos.length > 0 || pending.plan) && <p className="muted">{pending.photos.length} {pending.photos.length === 1 ? "photo" : "photos"}{pending.plan ? " and a site plan" : ""} will be added when you save the draft.</p>}
           </section>
