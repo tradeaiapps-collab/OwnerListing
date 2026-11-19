@@ -9,6 +9,7 @@ import { PhotoManager } from "../photo-manager";
 import { QuickSetupPanel, type Drafted, type QuickFiles } from "../quick-setup";
 import { ElenaPublishCheck } from "../elena-publish-check";
 import { PhotosStep } from "./photos-step";
+import { ContractorSection } from "../contractor-section";
 import type { FieldStep } from "../fields";
 
 const STEPS = ["Basics", "Details", "Description", "Photos", "Location", "Publish"] as const;
@@ -240,7 +241,7 @@ export default function NewListing() {
                   {review.map(([k, v], i) => (
                     <div key={k} className="wiz-rv"><h3>{k}</h3><p>{v}</p><button type="button" className="link-button" onClick={() => goTo(i)}>Edit</button></div>
                   ))}
-                  <p className="muted">Saving creates a draft. Nothing is public until you publish.</p>
+                  <p className="muted">Saving creates a draft. Then you can invite your photographer and building inspector. Nothing is public until you publish.</p>
                 </div>
               </div>
               <div className="wiz-nav">
@@ -267,6 +268,7 @@ export default function NewListing() {
           {isRent && (
             <BondPathwayField value={bond} state={bondState} onChange={saveBond} />
           )}
+          <ContractorSection listingId={draftId} />
           <ElenaPublishCheck listingId={draftId} />
         </section>
       )}
