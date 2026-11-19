@@ -269,6 +269,7 @@ export default function NewListing() {
             <BondPathwayField value={bond} state={bondState} onChange={saveBond} />
           )}
           <ContractorSection listingId={draftId} />
+          <p><a className="button" href={`/listings/${draftId}/approve`}>Review and approve your ad</a></p>
           <ElenaPublishCheck listingId={draftId} />
         </section>
       )}
