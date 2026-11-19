@@ -5,6 +5,9 @@ const DEFAULT_TAGLINE = "Sell or rent your property yourself";
 /** The name the pre-recorded presenter clips say aloud; those clips are only used while the site brand is still this. */
 export const DEFAULT_BRAND_NAME = DEFAULT_NAME;
 
+/** PLACEHOLDER support mailbox for the default brand; legal pages override via SUPPORT_EMAIL. */
+export const DEFAULT_SUPPORT_EMAIL = "support@ownerlisting.com.au";
+
 export interface Brand { name: string; tagline: string }
 
 const clean = (v: string | undefined) => {
