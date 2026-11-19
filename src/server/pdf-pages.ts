@@ -46,6 +46,22 @@ function drawWatermark(ctx: nc.SKRSContext2D, w: number, h: number, text: string
   ctx.restore();
 }
 
+/** Plain text of a PDF (first 40 pages), for Elena reading inspection reports. Empty for scans. Never throws. */
+export async function extractPdfText(bytes: Uint8Array, maxChars = 40_000): Promise<string> {
+  let opened: Awaited<ReturnType<typeof openPdf>> | undefined;
+  try {
+    opened = await openPdf(bytes);
+    let out = "";
+    for (let n = 1; n <= Math.min(opened.doc.numPages, 40) && out.length < maxChars; n++) {
+      const page = await opened.doc.getPage(n);
+      const content = await page.getTextContent();
+      out += content.items.map(it => ("str" in it ? it.str : "")).join(" ") + "\n";
+      page.cleanup();
+    }
+    return out.slice(0, maxChars);
+  } catch { return ""; } finally { await opened?.doc.destroy().catch(() => undefined); }
+}
+
 export function createPageRenderer(): PageRenderer {
   return {
     async analyse(bytes, mime) {

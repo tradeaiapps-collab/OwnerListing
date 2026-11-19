@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { JSON_HEADERS } from "./ui";
 
 type Assignment = { id: string; kind: string; status: string; counterpartName: string };
@@ -34,7 +34,20 @@ export function ContractorSection({ listingId, onChange }: { listingId: string; 
       if (r.ok) setDocs((await r.json()).documents ?? []);
     } catch { /* counts are optional */ }
   }, [listingId]);
-  useEffect(() => { void load(); }, [load]);
+  const asked = useRef(false);
+  const [auto, setAuto] = useState<{ kind: string; result: string; name?: string }[]>([]);
+  useEffect(() => {
+    void (async () => {
+      await load();
+      // Once per visit: ask nearby photographers and inspectors who opted in. Anyone already invited is skipped by the server.
+      if (asked.current) return;
+      asked.current = true;
+      try {
+        const r = await fetch(`/api/listings/${listingId}/assignments/auto`, { method: "POST" });
+        if (r.ok) { setAuto((await r.json()).outcomes ?? []); await load(); onChange?.(); }
+      } catch { /* the invite form below still works */ }
+    })();
+  }, [load, listingId, onChange]);
 
   async function invite(kind: string) {
     const value = contact.trim();
@@ -52,7 +65,7 @@ export function ContractorSection({ listingId, onChange }: { listingId: string; 
   return (
     <section className="panel ctr" aria-labelledby="ctr-h">
       <h2 id="ctr-h">Photographer and building inspection</h2>
-      <p className="muted">Invite your photographer and building inspector here. They add their photos and reports straight to this listing. They need an account and must accept first.</p>
+      <p className="muted">Elena asks a photographer and an inspector who work in your suburb. You can invite your own too. They add their photos and reports straight to this listing. They need an account and must accept first.</p>
       <ul className="ctr-list">
         {ROLES.map(role => {
           const mine = (items ?? []).filter(a => a.kind === role.kind && a.status !== "cancelled");
@@ -63,8 +76,8 @@ export function ContractorSection({ listingId, onChange }: { listingId: string; 
                 <strong>{role.title}</strong>
                 <span className="muted">{role.gives}</span>
                 {items === null ? <span className="muted" role="status">Loading…</span> : mine.length === 0
-                  ? <span className="muted">Not invited yet</span>
-                  : mine.map(a => <span key={a.id}>{a.counterpartName}: {STATUS[a.status] ?? a.status}</span>)}
+                  ? <span className="muted">{auto.some(x => x.kind === role.kind && x.result === "none_nearby") ? "No one has signed up for your area yet. Invite someone you know." : "Not invited yet"}</span>
+                  : mine.map(a => <span key={a.id}>{a.counterpartName}: {STATUS[a.status] ?? a.status}{auto.some(x => x.kind === role.kind && x.result === "invited") ? " (Elena asked them for you)" : ""}</span>)}
                 {role.kind === "inspector" && files > 0 && <span>{files} report{files === 1 ? "" : "s"} attached</span>}
               </div>
               {items !== null && (open === role.kind
@@ -78,7 +91,7 @@ export function ContractorSection({ listingId, onChange }: { listingId: string; 
         })}
       </ul>
       {error && <p role="alert">{error}</p>}
-      <p className="muted"><a href={`/listings/${listingId}/assignments`}>Manage everyone on this listing</a>. Photos they add appear in your photo list above. Elena does not read inspection reports yet, so check them yourself before you publish.</p>
+      <p className="muted"><a href={`/listings/${listingId}/assignments`}>Manage everyone on this listing</a>. Photos they add appear in your photo list above. Elena reads inspection reports on the approval screen.</p>
     </section>
   );
 }
