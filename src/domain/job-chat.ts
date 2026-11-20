@@ -5,10 +5,18 @@ export interface JobAssignment {
   listingId: string;
   ownerUserId: string;
   contractorUserId: string;
-  kind: "photographer" | "solicitor" | "inspector" | "agent" | "other";
+  kind: "photographer" | "solicitor" | "inspector" | "agent" | "pest_control" | "other";
   status: AssignmentStatus;
   /** Photographer has ticked the usage-rights box. Set by the database; when explicitly false, photo upload is refused. */
   usageRightsConfirmed?: boolean;
+  /** Public job number (5001 and up), assigned by the database on insert. Shown as JOB-5001. */
+  jobNumber?: number;
+  /** The contractor's own displayed price for the chosen service, copied at booking so later edits never change an old job. */
+  serviceName?: string;
+  priceCents?: number;
+  note?: string;
+  requestedTime?: string;
+  offerSource?: "owner" | "elena";
 }
 
 export interface ChatMessage {

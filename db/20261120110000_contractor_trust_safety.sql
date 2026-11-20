@@ -120,29 +120,23 @@ END;
 $$ LANGUAGE plpgsql;
 CREATE TRIGGER job_quote_guard BEFORE UPDATE OR DELETE ON job_quote FOR EACH ROW EXECUTE FUNCTION job_quote_guard();
 
--- ---------- Reviews ----------
-CREATE TABLE contractor_review (
-  id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  assignment_id       UUID NOT NULL UNIQUE REFERENCES job_assignment(id),
-  owner_user_id       UUID NOT NULL REFERENCES app_user(id),
-  contractor_user_id  UUID NOT NULL REFERENCES app_user(id),
-  rating              SMALLINT NOT NULL CHECK (rating BETWEEN 1 AND 5),
-  comment             TEXT CHECK (comment IS NULL OR char_length(comment) BETWEEN 1 AND 1500),
-  created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
-  reply               TEXT CHECK (reply IS NULL OR char_length(reply) BETWEEN 1 AND 1000),
-  replied_at          TIMESTAMPTZ,
-  CHECK ((reply IS NULL) = (replied_at IS NULL))
-);
-CREATE INDEX contractor_review_contractor_idx ON contractor_review (contractor_user_id, created_at DESC);
+-- ---------- Reviews: the contractor's single public reply ----------
+-- contractor_review (db/20261120000000, contractor marketplace) holds one owner review per completed job. Here it gains one contractor reply.
+ALTER TABLE contractor_review
+  ADD COLUMN reply TEXT CHECK (reply IS NULL OR char_length(reply) BETWEEN 1 AND 1000),
+  ADD COLUMN replied_at TIMESTAMPTZ,
+  ADD CONSTRAINT contractor_review_reply_chk CHECK ((reply IS NULL) = (replied_at IS NULL));
 
--- A review is permanent. The only change allowed after posting is the contractor's single public reply.
+-- A review is permanent. After posting, only the contractor's single reply (and staff hiding it) can change.
 CREATE OR REPLACE FUNCTION contractor_review_guard() RETURNS trigger AS $$
 BEGIN
   IF TG_OP = 'DELETE' THEN RAISE EXCEPTION 'contractor_review rows are permanent'; END IF;
-  IF OLD.reply IS NOT NULL THEN RAISE EXCEPTION 'the contractor has already replied'; END IF;
   IF NEW.assignment_id <> OLD.assignment_id OR NEW.owner_user_id <> OLD.owner_user_id OR NEW.contractor_user_id <> OLD.contractor_user_id
-     OR NEW.rating <> OLD.rating OR NEW.comment IS DISTINCT FROM OLD.comment OR NEW.created_at <> OLD.created_at THEN
+     OR NEW.rating <> OLD.rating OR NEW.body IS DISTINCT FROM OLD.body OR NEW.created_at <> OLD.created_at THEN
     RAISE EXCEPTION 'a review cannot be edited';
+  END IF;
+  IF OLD.reply IS NOT NULL AND (NEW.reply IS DISTINCT FROM OLD.reply OR NEW.replied_at IS DISTINCT FROM OLD.replied_at) THEN
+    RAISE EXCEPTION 'the contractor has already replied';
   END IF;
   RETURN NEW;
 END;

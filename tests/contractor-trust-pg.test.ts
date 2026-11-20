@@ -3,7 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { insertComplaint } from "../src/server/contractor-ops-db";
 import { createPgAssignmentRepository } from "../src/server/assignment-db";
 import {
-  assignmentAccessPg, confirmUsageRightsPg, createReviewPg, decideQuotePg, decideReportPg, decideVerificationPg, getStandingPg, getVerificationPg,
+  assignmentAccessPg, confirmUsageRightsPg, decideQuotePg, decideReportPg, decideVerificationPg, getStandingPg, getVerificationPg,
   listReportsPg, listVerificationsPg, publicTrustPg, quotesForAssignmentPg, replyToReviewPg, sendQuotePg, setSuspensionPg, submitVerificationPg
 } from "../src/server/contractor-trust-db";
 import { verificationState } from "../src/domain/contractor-trust";
@@ -134,14 +134,11 @@ describe.skipIf(!DATABASE_URL)("contractor trust and safety (Postgres)", () => {
     expect(await sendQuotePg(db, j.contractor, j.id, { amountCents: 100, description: "Ten characters or more." })).toBe("not_allowed");
   });
 
-  it("reviews: only the owner of a completed job, once; one public reply; nothing edited or deleted", async () => {
-    const open = await job("approved");
-    expect(await createReviewPg(db, open.owner, open.id, { rating: 5, comment: null })).toBe("not_allowed");
+  it("reviews: one public contractor reply; hidden reviews are not shown; nothing edited or deleted", async () => {
     const done = await job("completed");
-    expect(await createReviewPg(db, done.contractor, done.id, { rating: 5, comment: null })).toBe("not_allowed");
-    expect(await createReviewPg(db, await addUser(db, "owner"), done.id, { rating: 5, comment: null })).toBe("not_allowed");
-    expect(await createReviewPg(db, done.owner, done.id, { rating: 4, comment: "Turned up on time." })).toBe("created");
-    expect(await createReviewPg(db, done.owner, done.id, { rating: 1, comment: null })).toBe("duplicate");
+    // The owner's review itself is written by the job board (POST /api/jobs/[id]/review); here it is inserted the same way.
+    await db.query("INSERT INTO contractor_review (assignment_id, contractor_user_id, owner_user_id, rating, body) VALUES ($1,$2,$3,4,'Turned up on time.')", [done.id, done.contractor, done.owner]);
+    await expect(db.query("INSERT INTO contractor_review (assignment_id, contractor_user_id, owner_user_id, rating) VALUES ($1,$2,$3,1)", [done.id, done.contractor, done.owner])).rejects.toThrow();
     const review = (await publicTrustPg(db, done.contractor, TODAY))!.reviews[0]!;
     expect(review).toMatchObject({ rating: 4, comment: "Turned up on time.", reply: null });
     expect(await replyToReviewPg(db, done.owner, review.id, "hi")).toBe(false);
@@ -153,6 +150,8 @@ describe.skipIf(!DATABASE_URL)("contractor trust and safety (Postgres)", () => {
     expect(trust.rating).toEqual({ average: 4, count: 1 });
     expect(trust.reviews[0]!.reply).toBe("Thank you!");
     expect(JSON.stringify(trust)).not.toMatch(/abn|policy|licence/i);
+    await db.query("UPDATE contractor_review SET status = 'hidden' WHERE id = $1", [review.id]);
+    expect((await publicTrustPg(db, done.contractor, TODAY))).toMatchObject({ rating: { count: 0 }, reviews: [] });
   });
 
   it("public trust shows the badge only for a verified, in-date, not-suspended contractor", async () => {

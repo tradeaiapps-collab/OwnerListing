@@ -226,24 +226,8 @@ const toReview = (r: Record<string, unknown>): ReviewRow => ({
   id: text(r["id"]), assignmentId: text(r["assignment_id"]), rating: Number(r["rating"]), comment: opt(r["comment"]), createdAt: iso(r["created_at"]), reply: opt(r["reply"]),
   repliedAt: r["replied_at"] ? iso(r["replied_at"]) : null, reviewerFirstName: text(r["display_name"]).trim().split(/\s+/)[0] ?? ""
 });
-const REVIEW_SELECT = "SELECT r.id, r.assignment_id, r.rating, r.comment, r.created_at, r.reply, r.replied_at, u.display_name FROM contractor_review r JOIN app_user u ON u.id = r.owner_user_id";
-
-export type CreateReviewResult = "created" | "not_allowed" | "duplicate";
-/** Only the owner of a completed job can rate it, once. */
-export async function createReviewPg(db: Queryable, ownerId: string, assignmentId: string, v: { rating: number; comment: string | null }): Promise<CreateReviewResult> {
-  return inTx(db, async tx => {
-    const r = await tx.query(
-      `INSERT INTO contractor_review (assignment_id, owner_user_id, contractor_user_id, rating, comment)
-       SELECT a.id, a.owner_user_id, a.contractor_user_id, $3::smallint, $4::text FROM job_assignment a WHERE a.id = $1::uuid AND a.owner_user_id = $2::uuid AND a.status = 'completed'
-       ON CONFLICT (assignment_id) DO NOTHING RETURNING id`, [assignmentId, ownerId, v.rating, v.comment]);
-    if (!r.rows[0]) {
-      const done = (await tx.query("SELECT 1 FROM job_assignment WHERE id = $1::uuid AND owner_user_id = $2::uuid AND status = 'completed'", [assignmentId, ownerId])).rows.length === 1;
-      return done ? "duplicate" : "not_allowed";
-    }
-    await audit(tx, ownerId, "contractor_review", text(r.rows[0]["id"]), "contractor_review.posted", { assignmentId, rating: v.rating });
-    return "created";
-  });
-}
+const REVIEW_SELECT = "SELECT r.id, r.assignment_id, r.rating, r.body AS comment, r.created_at, r.reply, r.replied_at, u.display_name FROM contractor_review r JOIN app_user u ON u.id = r.owner_user_id";
+const VISIBLE = "r.status = 'visible'";
 
 /** The reviewed contractor posts one public reply; it cannot be changed afterwards. */
 export async function replyToReviewPg(db: Queryable, contractorId: string, reviewId: string, reply: string): Promise<boolean> {
@@ -256,7 +240,7 @@ export async function replyToReviewPg(db: Queryable, contractorId: string, revie
 }
 
 export async function reviewForAssignmentPg(db: Queryable, assignmentId: string): Promise<ReviewRow | undefined> {
-  const r = (await db.query(`${REVIEW_SELECT} WHERE r.assignment_id = $1::uuid`, [assignmentId])).rows[0];
+  const r = (await db.query(`${REVIEW_SELECT} WHERE r.assignment_id = $1::uuid AND ${VISIBLE}`, [assignmentId])).rows[0];
   return r ? toReview(r) : undefined;
 }
 
@@ -269,8 +253,8 @@ export async function publicTrustPg(db: Queryable, contractorId: string, today: 
   if (!u) return undefined;
   const [v, standing, ratings, reviews] = await Promise.all([
     getVerificationPg(db, contractorId), getStandingPg(db, contractorId),
-    db.query("SELECT rating FROM contractor_review WHERE contractor_user_id = $1::uuid", [contractorId]),
-    db.query(`${REVIEW_SELECT} WHERE r.contractor_user_id = $1::uuid ORDER BY r.created_at DESC LIMIT 50`, [contractorId])
+    db.query("SELECT rating FROM contractor_review WHERE contractor_user_id = $1::uuid AND status = 'visible'", [contractorId]),
+    db.query(`${REVIEW_SELECT} WHERE r.contractor_user_id = $1::uuid AND ${VISIBLE} ORDER BY r.created_at DESC LIMIT 50`, [contractorId])
   ]);
   return {
     contractorId, displayName: text(u["display_name"]), badge: !standing.suspended && verificationState(v, today).badge, suspended: standing.suspended,

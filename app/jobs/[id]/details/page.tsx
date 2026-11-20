@@ -109,7 +109,7 @@ export default function JobDetails() {
           {review ? (
             <p>{"★".repeat(review.rating)}{"☆".repeat(5 - review.rating)}{review.comment ? ` · ${review.comment}` : ""}{review.reply ? ` · Their reply: ${review.reply}` : ""}</p>
           ) : (
-            <form className="stack" onSubmit={e => { e.preventDefault(); void call(`/api/assignments/${job.id}/review`, { rating, ...(comment.trim() ? { comment } : {}) }, "Thanks for your review.").finally(finish); }}>
+            <form className="stack" onSubmit={e => { e.preventDefault(); void call(`/api/jobs/${job.id}/review`, { rating, ...(comment.trim() ? { body: comment } : {}) }, "Thanks for your review.").finally(finish); }}>
               <fieldset><legend>Stars</legend>
                 {[1, 2, 3, 4, 5].map(n => <label key={n}><input type="radio" name="rating" checked={rating === n} onChange={() => setRating(n)} /> {n}</label>)}
               </fieldset>

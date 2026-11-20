@@ -16,13 +16,14 @@ export const GET_LISTING_SQL = "SELECT owner_user_id, jurisdiction FROM property
 export const FIND_BY_ID_SQL = "SELECT id, user_type, status FROM app_user WHERE id = $1::uuid";
 export const FIND_BY_EMAIL_SQL = "SELECT id, user_type, status FROM app_user WHERE email = $1::citext";
 export const GET_ASSIGNMENT_SQL =
-  "SELECT id, listing_id, owner_user_id, contractor_user_id, kind, status FROM job_assignment WHERE id = $1::uuid";
+  "SELECT id, listing_id, owner_user_id, contractor_user_id, kind, status, job_number, service_name, price_cents FROM job_assignment WHERE id = $1::uuid";
+export const JOB_NUMBER_SQL = "SELECT job_number FROM job_assignment WHERE id = $1::uuid";
 
-/** Params: 1 id, 2 listing, 3 owner, 4 contractor, 5 kind, 6..10 audit (id, at, event type, correlation, payload). */
+/** Params: 1 id, 2 listing, 3 owner, 4 contractor, 5 kind, 6..10 audit (id, at, event type, correlation, payload), 11 service name, 12 price cents, 13 note, 14 requested time, 15 offer source. */
 export const INSERT_PROPOSED_SQL =
   "WITH ins AS (" +
-  "INSERT INTO job_assignment (id, listing_id, owner_user_id, contractor_user_id, kind, status) " +
-  "SELECT $1::uuid, l.id, l.owner_user_id, c.id, $5::text, 'proposed' FROM property_listing l, app_user c " +
+  "INSERT INTO job_assignment (id, listing_id, owner_user_id, contractor_user_id, kind, status, service_name, price_cents, note, requested_time, offer_source) " +
+  "SELECT $1::uuid, l.id, l.owner_user_id, c.id, $5::text, 'proposed', $11::text, $12::integer, $13::text, $14::timestamptz, $15::text FROM property_listing l, app_user c " +
   "WHERE l.id = $2::uuid AND l.owner_user_id = $3::uuid AND c.id = $4::uuid AND c.id <> l.owner_user_id " +
   "AND c.status NOT IN ('suspended', 'closed') AND NOT EXISTS (SELECT 1 FROM contractor_standing cs WHERE cs.user_id = c.id AND cs.suspended) " +
   "AND NOT EXISTS (SELECT 1 FROM job_assignment x WHERE x.listing_id = l.id AND x.contractor_user_id = c.id " +
@@ -33,7 +34,9 @@ export const INSERT_PROPOSED_SQL =
 /** Params: 1 id, 2 actor, 3 side, 4 allowed from-statuses, 5 to-status, 6..10 audit (id, at, event type, correlation, payload). */
 export const TRANSITION_SQL =
   "WITH moved AS (" +
-  "UPDATE job_assignment SET status = $5::text, approved_at = CASE WHEN $5::text = 'approved' THEN now() ELSE approved_at END " +
+  "UPDATE job_assignment SET status = $5::text, approved_at = CASE WHEN $5::text = 'approved' THEN now() ELSE approved_at END, " +
+  "responded_at = CASE WHEN $3::text = 'contractor' AND $5::text IN ('approved', 'cancelled') AND responded_at IS NULL THEN now() ELSE responded_at END, " +
+  "completed_at = CASE WHEN $5::text = 'completed' THEN now() ELSE completed_at END " +
   "WHERE id = $1::uuid AND status = ANY($4::text[]) " +
   "AND (CASE WHEN $3::text = 'owner' THEN owner_user_id ELSE contractor_user_id END) = $2::uuid " +
   "AND NOT ($3::text = 'contractor' AND $5::text = 'approved' AND EXISTS (SELECT 1 FROM contractor_standing cs WHERE cs.user_id = contractor_user_id AND cs.suspended)) RETURNING id) " +
@@ -72,13 +75,21 @@ export function createPgAssignmentRepository(db: Queryable): AssignmentRepositor
       return {
         id: text(r["id"]), listingId: text(r["listing_id"]), ownerUserId: text(r["owner_user_id"]),
         contractorUserId: text(r["contractor_user_id"]), kind: text(r["kind"]) as JobAssignment["kind"],
-        status: text(r["status"]) as AssignmentStatus
+        status: text(r["status"]) as AssignmentStatus,
+        ...(r["job_number"] != null ? { jobNumber: Number(r["job_number"]) } : {}),
+        ...(r["service_name"] != null ? { serviceName: text(r["service_name"]) } : {}),
+        ...(r["price_cents"] != null ? { priceCents: Number(r["price_cents"]) } : {})
       };
     },
     async insertProposed(a, audit) {
       const { rows } = await db.query(INSERT_PROPOSED_SQL, [
-        a.id, a.listingId, a.ownerUserId, a.contractorUserId, a.kind, ...auditParams(audit)
+        a.id, a.listingId, a.ownerUserId, a.contractorUserId, a.kind, ...auditParams(audit),
+        a.serviceName ?? null, a.priceCents ?? null, a.note ?? null, a.requestedTime ?? null, a.offerSource ?? "owner"
       ]);
+      if (rows.length === 1) {
+        const n = (await db.query(JOB_NUMBER_SQL, [a.id])).rows[0]?.["job_number"];
+        if (n != null) a.jobNumber = Number(n);
+      }
       return rows.length === 1;
     },
     async transition(t, audit) {

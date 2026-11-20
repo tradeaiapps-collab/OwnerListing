@@ -132,15 +132,6 @@ export const parseQuoteDecision = (input: unknown): Parsed<"accept" | "decline" 
 };
 
 // ---------- Reviews ----------
-export function parseReview(input: unknown): Parsed<{ rating: number; comment: string | null }> {
-  if (typeof input !== "object" || input === null) return bad("Send a JSON object.");
-  const o = input as Record<string, unknown>;
-  const r = o["rating"];
-  if (typeof r !== "number" || !Number.isInteger(r) || r < 1 || r > 5) return bad("Rating must be a whole number from 1 to 5.");
-  if (o["comment"] === undefined || o["comment"] === null || o["comment"] === "") return { ok: true, value: { rating: r, comment: null } };
-  const comment = str(o["comment"], 1, 1500);
-  return comment ? { ok: true, value: { rating: r, comment } } : bad("A comment must be 1 to 1500 characters.");
-}
 export function parseReply(input: unknown): Parsed<string> {
   const reply = typeof input === "object" && input !== null ? str((input as Record<string, unknown>)["reply"], 1, 1000) : undefined;
   return reply ? { ok: true, value: reply } : bad("A reply must be 1 to 1000 characters.");

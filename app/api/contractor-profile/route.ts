@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
+import { TRADES } from "../../../src/domain/contractor-market";
 import { parseContractorProfile } from "../../../src/domain/contractor-dispatch";
 import { withApi } from "../../../src/server/api/with-api";
+import { ENSURE_PAGE_SQL } from "../../../src/server/contractor-market-db";
 import { createPgContractorProfileStore } from "../../../src/server/contractor-profile-db";
 import { getActor, getDb } from "../../../src/server/context";
 import { csrfGuard } from "../../../src/server/csrf";
@@ -11,8 +13,8 @@ async function handleGet(req: Request) {
   const actor = await getActor(req);
   if (!actor) return unauthenticated();
   const store = createPgContractorProfileStore(getDb());
-  const [photographer, inspector] = await Promise.all([store.get(actor.userId, "photographer"), store.get(actor.userId, "inspector")]);
-  return NextResponse.json({ profiles: { photographer: photographer ?? null, inspector: inspector ?? null } });
+  const [photographer, inspector, pestControl, other] = await Promise.all(TRADES.map(t => store.get(actor.userId, t)));
+  return NextResponse.json({ profiles: { photographer: photographer ?? null, inspector: inspector ?? null, pest_control: pestControl ?? null, other: other ?? null } });
 }
 
 async function handlePut(req: Request) {
@@ -20,10 +22,11 @@ async function handlePut(req: Request) {
   if (blocked) return blocked;
   const actor = await getActor(req);
   if (!actor) return unauthenticated();
-  if (actor.userType !== "vendor" && actor.userType !== "agent") return failure({ ok: false, code: "forbidden", message: "Only photographer and inspector accounts have service areas." });
+  if (actor.userType !== "vendor" && actor.userType !== "agent") return failure({ ok: false, code: "forbidden", message: "Only contractor accounts have service areas." });
   const parsed = parseContractorProfile(await req.json().catch(() => null));
   if (!parsed.ok) return failure(parsed);
   await createPgContractorProfileStore(getDb()).save(actor.userId, parsed.value.kind, parsed.value.profile);
+  await getDb().query(ENSURE_PAGE_SQL, [actor.userId]); // every contractor with service areas gets a CON number
   return NextResponse.json({ profile: parsed.value.profile });
 }
 

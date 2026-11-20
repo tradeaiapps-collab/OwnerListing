@@ -138,7 +138,15 @@ export const KINDS = {
   automation_alert: "messages",
   scheduling_message: "messages",
   scheduling_suggestion: "messages",
-  lead_followup_due: "messages"
+  lead_followup_due: "messages",
+  job_offered: "appointments",
+  job_accepted: "appointments",
+  job_declined: "appointments",
+  job_time_proposed: "appointments",
+  job_time_confirmed: "appointments",
+  job_done: "appointments",
+  job_files_added: "appointments",
+  job_reviewed: "messages"
 } as const satisfies Record<string, Category>;
 export type Kind = keyof typeof KINDS;
 export const isKind = (v: unknown): v is Kind => typeof v === "string" && Object.prototype.hasOwnProperty.call(KINDS, v);
@@ -163,6 +171,7 @@ export function renderNotification(kind: Kind, p: NotificationParams = {}): Rend
   const doc = `"${clip(p["document"], 120, "a document")}"`;
   const link = safeLink(p["link"]);
   const when = clip(p["when"], 80, "the booked time");
+  const job = clip(p["job"], 20, "Job");
   const amount = clip(p["amount"], 20, "the deposit");
   const ref = clip(p["reference"], 30, "on file");
   const payout = p["payout"] === "refund" ? "refund" : "release";
@@ -179,6 +188,14 @@ export function renderNotification(kind: Kind, p: NotificationParams = {}): Rend
     case "consultation_booked": return t("New consultation booked", `${name} booked a consultation with you for ${when}.`);
     case "consultation_confirmed": return t("Consultation confirmed", `Your consultation with ${name} is confirmed for ${when}.`);
     case "consultation_cancelled": return t("Consultation cancelled", `${name} cancelled the consultation planned for ${when}.`);
+    case "job_offered": return t(`${job}: new job offer`, `${name} offered you work at ${listing}${p["price"] ? ` (${clip(p["price"], 40, "")})` : ""}. Accept, reject or propose another time. Quote ${job} if you reply by email.`);
+    case "job_accepted": return t(`${job}: job accepted`, `${name} accepted the job at ${listing}.`);
+    case "job_declined": return t(`${job}: job declined`, `${name} declined the job at ${listing}.${p["reason"] ? ` Reason: ${clip(p["reason"], 200, "")}` : ""}`);
+    case "job_time_proposed": return t(`${job}: new time proposed`, `${name} proposed ${when} for the job at ${listing}. Open the job to accept it or choose another time.`);
+    case "job_time_confirmed": return t(`${job}: time confirmed`, `${name} confirmed ${when} for the job at ${listing}.`);
+    case "job_done": return t(`${job}: job marked done`, `${name} marked the job at ${listing} as done. Check the files and confirm it is complete.`);
+    case "job_files_added": return t(`${job}: files added`, `${name} added ${clip(p["count"], 6, "new")} file(s) to ${listing}.`);
+    case "job_reviewed": return t(`${job}: new review`, `${name} left you feedback for the job at ${listing}.`);
     case "review_received": return t("New review", `${name} left you a review.`);
     case "open_inspection_confirmed": return t("Inspection booked", `You are booked to inspect ${listing} on ${when}. Contact: ${clip(p["contact"], 120, "the listing agent")}. Bring photo ID, and message the agent from the listing if your plans change.`);
     case "open_inspection_new": return t("New inspection booked", `${name} booked to inspect ${listing} on ${when}.`);

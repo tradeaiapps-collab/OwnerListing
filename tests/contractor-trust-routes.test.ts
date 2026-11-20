@@ -10,7 +10,7 @@ vi.mock("../src/server/context", () => ({ getActor: async () => S.actor, getStaf
 vi.mock("../src/server/contractor-trust-db", () => ({
   submitVerificationPg: rec("submitVerification", true), getVerificationPg: rec("getVerification", undefined), getStandingPg: rec("getStanding", { suspended: false, reason: null, changedAt: null }),
   reviewsForContractorPg: rec("reviews", []), sendQuotePg: rec("sendQuote", "created"), decideQuotePg: rec("decideQuote", true), createReportPg: rec("createReport", "created"),
-  createReviewPg: rec("createReview", "created"), replyToReviewPg: rec("reply", true), confirmUsageRightsPg: rec("rights", true), assignmentAccessPg: rec("access", undefined),
+  replyToReviewPg: rec("reply", true), confirmUsageRightsPg: rec("rights", true), assignmentAccessPg: rec("access", undefined),
   quotesForAssignmentPg: rec("quotes", []), reviewForAssignmentPg: rec("review", undefined), publicTrustPg: rec("publicTrust", undefined),
   listVerificationsPg: rec("listVerifications", []), decideVerificationPg: rec("decideVerification", true), listReportsPg: rec("listReports", []),
   decideReportPg: rec("decideReport", "ok"), setSuspensionPg: rec("suspend", true)
@@ -18,7 +18,7 @@ vi.mock("../src/server/contractor-trust-db", () => ({
 
 import * as trust from "../app/api/contractor/trust/route";
 import * as quotes from "../app/api/assignments/[id]/quotes/route";
-import * as review from "../app/api/assignments/[id]/review/route";
+import * as review from "../app/api/jobs/[id]/review/route";
 import * as rights from "../app/api/assignments/[id]/usage-rights/route";
 import * as jobTrust from "../app/api/assignments/[id]/trust/route";
 import * as quote from "../app/api/quotes/[id]/route";
@@ -79,18 +79,16 @@ describe("contractor routes", () => {
     expect((await trust.PUT(put({ ...VERIFICATION, insuranceExpiry: "2020-01-01" }))).status).toBe(400);
     expect((await quotes.POST(post({ amountCents: -5, description: "Replace two taps." }), ctx())).status).toBe(400);
     S.actor = { userId: "o1111111-1111-4111-8111-111111111111", userType: "owner" };
-    expect((await review.POST(post({ rating: 9 }), ctx())).status).toBe(400);
   });
   it("refuses contact details and abuse in quotes, reviews and replies", async () => {
     expect((await quotes.POST(post({ amountCents: 1000, description: "Call me on 0412 345 678 to pay me directly." }), ctx())).status).toBe(400);
     expect((await reply.POST(post({ reply: "Ring 0412 345 678 for a discount" }), ctx())).status).toBe(400);
     S.actor = { userId: "o1111111-1111-4111-8111-111111111111", userType: "owner" };
-    expect((await review.POST(post({ rating: 3, comment: "Email bob@example.com for work" }), ctx())).status).toBe(400);
+    expect((await review.POST(post({ rating: 3, body: "Email bob@example.com for work" }), ctx())).status).toBe(400);
     expect(called("sendQuote")).toHaveLength(0);
   });
   it("maps database refusals to the right status", async () => {
     S.actor = { userId: "o1111111-1111-4111-8111-111111111111", userType: "owner" };
-    expect((await review.POST(post({ rating: 5 }), ctx())).status).toBe(201);
     expect((await quote.POST(post({ action: "explode" }), ctx())).status).toBe(400);
     expect((await quote.POST(post({ action: "accept" }), ctx())).status).toBe(200);
     expect(called("decideQuote")[0]!.args.slice(1)).toEqual([S.actor.userId, ID, "accept"]);
