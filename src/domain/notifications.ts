@@ -258,6 +258,8 @@ export function renderNotification(kind: Kind, p: NotificationParams = {}): Rend
     case "elena_enquiry": return t(clip(p["title"], 80, "Elena update"), clip(p["text"], 400, "Elena has an update on a buyer enquiry."));
     case "open_inspection_owner_reminder": return t("Inspection coming up", `${name} is booked to inspect ${listing} on ${when}.`);
     case "owner_digest": return t(clip(p["title"], 80, "What needs you today"), clip(p["text"], 1500, "Open your dashboard to see what needs you today."), false);
+    case "rental_update": return t(clip(p["title"], 80, "Rental update"), clip(p["text"], 700, "There is an update on your rental."));
+    case "rental_urgent": return t(clip(p["title"], 80, "Urgent rental update"), clip(p["text"], 700, "There is an urgent update on your rental."));
     case "automation_alert": return t(clip(p["title"], 80, "Automation update"), clip(p["text"], 400, "One of your automations ran."));
   }
 }
