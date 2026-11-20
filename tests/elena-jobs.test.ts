@@ -139,6 +139,9 @@ describe("onReply (auto-reply mode)", () => {
     expect(sends(r.steps)).toEqual(["contractor:auto_reply_help"]);
     expect(r.toOwner).toBe(true);
   });
+  it("never auto-replies to the owner", () => {
+    expect(onReply(proposed, "owner", { intent: "question" }, { ...on, autoReply: true }, NOW)).toMatchObject({ steps: [], toOwner: true, reply: false });
+  });
   it("ignores a yes from the person who made the proposal", () => {
     const r = onReply(proposed, "contractor", { intent: "accept" }, on, NOW);
     expect(r.steps).toEqual([]);

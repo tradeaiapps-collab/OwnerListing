@@ -118,11 +118,11 @@ export function readReply(text: string, now: string, jurisdiction: Jurisdiction)
 
 export const MESSAGE_KINDS = [
   "request", "request_reminder", "ask_time", "time_to_confirm", "time_reminder", "time_rejected", "confirmed", "appointment_reminder",
-  "delivery_followup", "delivered_owner", "needs_owner", "files_added", "auto_reply_help"
+  "delivery_followup", "delivered_owner", "needs_owner", "files_added", "auto_reply_help", "contractor_reply"
 ] as const;
 export type MessageKind = (typeof MESSAGE_KINDS)[number];
 
-export interface MessageVars { address: string; contractor: string; owner: string; kindLabel: string; ref: string; when?: string; reason?: string; count?: number }
+export interface MessageVars { address: string; contractor: string; owner: string; kindLabel: string; ref: string; when?: string; reason?: string; count?: number; quote?: string }
 export interface Draft { title: string; body: string }
 
 const REPLY_HINT = "Reply with a date and time, for example: 25 Nov 10:30am.";
@@ -144,6 +144,7 @@ export function draftMessage(kind: MessageKind, v: MessageVars): Draft {
     case "delivered_owner": return { title: `Work received: ${v.kindLabel}`, body: `${v.contractor} has uploaded ${v.count ?? 0} file${v.count === 1 ? "" : "s"} for the ${job}. Photos are on your listing; open the listing to keep, reorder or hide them, then mark the job complete.` };
     case "files_added": return { title: `Files added to your listing`, body: `${v.count ?? 0} new file${v.count === 1 ? "" : "s"} from ${v.contractor} were added to ${v.address}. Hide any you do not want shown.` };
     case "needs_owner": return { title: `Elena needs you: ${v.kindLabel}`, body: `Elena has stopped on the ${job}. ${v.reason ?? "Please take a look."}` };
+    case "contractor_reply": return { title: `Reply from ${v.contractor}`, body: `${v.contractor} replied about the ${job}: ${v.quote ?? "(see the log)"} Elena has not answered for you.` };
     case "auto_reply_help": return { title: `Re: ${v.ref}`, body: `Thanks. I have passed your message to ${v.owner}, who will reply directly. For the ${job}, ${REPLY_HINT.charAt(0).toLowerCase()}${REPLY_HINT.slice(1)}` };
   }
 }
@@ -261,7 +262,8 @@ export function onReply(job: ElenaJob, from: Party, r: ReadReply, settings: JobS
     if (r.intent === "reject" && r.at) return { steps: onProposal(job, from, r.at, now), toOwner: false, reply: false };
   }
   // Not part of the flow. With auto-reply on she sends the fixed hand-over note; either way the owner sees it.
-  return { steps: settings.autoReply ? [{ type: "send", to: from, kind: "auto_reply_help" }] : [], toOwner: true, reply: settings.autoReply };
+  const reply = settings.autoReply && from === "contractor"; // never "reply" to the owner
+  return { steps: reply ? [{ type: "send", to: from, kind: "auto_reply_help" }] : [], toOwner: true, reply };
 }
 
 export const KIND_LABEL: Record<string, string> = { photographer: "photographer", inspector: "building inspection", solicitor: "solicitor", agent: "agent", other: "contractor" };

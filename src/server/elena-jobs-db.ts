@@ -6,6 +6,7 @@ import {
 import { formatAppointment } from "../domain/elena-scheduling";
 import { isJurisdiction, type Jurisdiction } from "../domain/jurisdiction";
 import type { LayoutEntry } from "../domain/listing-photos";
+import { scanContent } from "../domain/content-filter";
 import { autoDispatch } from "../domain/contractor-dispatch";
 import { assignmentIds, createPgAssignmentRepository } from "./assignment-db";
 import { createPgContractorProfileStore } from "./contractor-profile-db";
@@ -111,20 +112,27 @@ export const NAMES_SQL = "SELECT id, display_name FROM app_user WHERE id = ANY($
 const log = (db: Queryable, jobId: string, direction: "in" | "out", party: Party, kind: string, body: string, status: string, reason?: string) =>
   db.query(LOG_SQL, [randomUUID(), jobId, direction, party, kind, body.slice(0, 2000) || "(empty)", status, reason ?? null]);
 
+const MONEY_WORDS = /\b(?:price|quote|fee|cost|invoice|payment|deposit|discount|charge)\b/i;
 const firstName = (n: string) => n.trim().split(/\s+/)[0] || "there";
 
 /**
  * Sends one message for a job: fixed wording, content-checked, rate-limited, logged. Returns "sent", or why not.
  * A blocked message is never sent; the caller hands the job to the owner.
  */
-export async function sendJobMessage(db: Queryable, sender: Sender, job: JobRow, to: Party, kind: MessageKind, now: string, extra: { count?: number; reason?: string } = {}): Promise<"sent" | "blocked" | "rate_limited" | "failed"> {
+export async function sendJobMessage(db: Queryable, sender: Sender, job: JobRow, to: Party, kind: MessageKind, now: string, extra: { count?: number; reason?: string; quote?: string } = {}): Promise<"sent" | "blocked" | "rate_limited" | "failed"> {
   const names = new Map((await db.query(NAMES_SQL, [[job.ownerUserId, job.contractorUserId]])).rows.map(r => [text(r["id"]), text(r["display_name"])]));
+  let quote = extra.quote;
+  if (kind === "contractor_reply" && quote !== undefined) {
+    const q = `"${quote.replace(/\s+/g, " ").slice(0, 300)}"`;
+    quote = scanContent(q).action === "block" || /\$\s?\d/.test(q) || MONEY_WORDS.test(q)
+      ? "(it mentions contact details, money or blocked words, so it is only in the log below)" : q;
+  }
   const draft = draftMessage(kind, {
     address: job.address, contractor: firstName(names.get(job.contractorUserId) ?? ""), owner: firstName(names.get(job.ownerUserId) ?? ""),
     kindLabel: KIND_LABEL[job.kind] ?? "contractor", ref: job.contactRef,
     ...(job.proposedAt ? { when: formatAppointment(job.proposedAt, job.jurisdiction) } : {}),
     ...(kind === "confirmed" || kind === "appointment_reminder" ? { when: formatAppointment(job.appointmentAt ?? job.proposedAt ?? now, job.jurisdiction) } : {}),
-    count: job.filesPulled, ...extra
+    count: job.filesPulled, ...(extra.reason ? { reason: extra.reason } : {}), ...(quote !== undefined ? { quote } : {})
   });
   const body = `${draft.body}\n\nJob ${job.contactRef}`;
   const check = checkOutbound({ title: draft.title, body });
@@ -141,10 +149,10 @@ export async function sendJobMessage(db: Queryable, sender: Sender, job: JobRow,
 
 // ---- Applying steps -------------------------------------------------------------------------------------------------------------
 
-/** Params: 1 id, 2 expected state, 3 state, 4 proposed_at, 5 proposed_by, 6 appointment_at, 7 rounds, 8 reminders, 9 next_action_at, 10 reason. Guarded by the expected state. */
+/** Params: 1 id, 2 expected state, 3 state, 4 proposed_at, 5 proposed_by, 6 appointment_at, 7 rounds, 8 reminders, 9 next_action_at, 10 reason. Guarded by the expected state and round count, so a replayed or concurrent proposal changes nothing. */
 export const PATCH_SQL =
   "UPDATE elena_job SET state = $3::text, proposed_at = $4::timestamptz, proposed_by = $5::text, appointment_at = $6::timestamptz, rounds = $7::int, reminders = $8::int, " +
-  "next_action_at = $9::timestamptz, needs_owner_reason = $10, updated_at = now() WHERE id = $1::uuid AND state = $2::text RETURNING id";
+  "next_action_at = $9::timestamptz, needs_owner_reason = $10, updated_at = now() WHERE id = $1::uuid AND state = $2::text AND rounds = $11::int RETURNING id";
 
 /**
  * Runs the steps from the domain: first the state change (so a crash cannot resend), then the messages. Returns false when the job moved
@@ -166,13 +174,13 @@ export async function applySteps(db: Queryable, sender: Sender, job: JobRow, ste
     if ("nextActionAt" in p) nextAction = p.nextActionAt;
     if (p.reason) reason = p.reason;
   }
-  const moved = await db.query(PATCH_SQL, [job.id, job.state, next.state, next.proposedAt ?? null, next.proposedBy ?? null, next.appointmentAt ?? null, next.rounds, next.reminders, nextAction ?? null, next.state === "needs_owner" ? reason ?? null : null]);
+  const moved = await db.query(PATCH_SQL, [job.id, job.state, next.state, next.proposedAt ?? null, next.proposedBy ?? null, next.appointmentAt ?? null, next.rounds, next.reminders, nextAction ?? null, next.state === "needs_owner" ? reason ?? null : null, job.rounds]);
   if (moved.rows.length !== 1) return false;
   for (const s of steps) {
     if (s.type !== "send") continue;
     const r = await sendJobMessage(db, sender, next, s.to, s.kind, now);
     if (r === "blocked") {
-      await db.query(PATCH_SQL, [job.id, next.state, "needs_owner", next.proposedAt ?? null, next.proposedBy ?? null, next.appointmentAt ?? null, next.rounds, next.reminders, null, "Elena's message was blocked by the safety filter. Please contact them directly."]);
+      await db.query(PATCH_SQL, [job.id, next.state, "needs_owner", next.proposedAt ?? null, next.proposedBy ?? null, next.appointmentAt ?? null, next.rounds, next.reminders, null, "Elena's message was blocked by the safety filter. Please contact them directly.", next.rounds]);
       return true;
     }
   }
@@ -307,20 +315,23 @@ async function partyOf(db: Queryable, jobId: string, userId: string): Promise<{ 
   return job.ownerUserId === userId ? { job, party: "owner" } : job.contractorUserId === userId ? { job, party: "contractor" } : undefined;
 }
 
+export const LIVE_ASSIGNMENT_SQL = "SELECT 1 FROM job_assignment WHERE id = $1::uuid AND status IN ('proposed','approved')";
+const live = async (db: Queryable, job: JobRow) => (await db.query(LIVE_ASSIGNMENT_SQL, [job.assignmentId])).rows.length === 1;
+
 /** In-app: the owner or the contractor suggests a time. */
 export async function proposeTime(db: Queryable, sender: Sender, userId: string, jobId: string, at: string, now: string): Promise<ActResult> {
   const p = await partyOf(db, jobId, userId);
   if (!p) return nf;
   const t = new Date(at).getTime();
   if (!Number.isFinite(t) || t <= new Date(now).getTime() || t > new Date(now).getTime() + 180 * 86_400_000) return { ok: false, code: "invalid", message: "Choose a time in the next six months." };
-  if (p.job.state !== "negotiating") return { ok: false, code: "conflict", message: "This job is not waiting on a time." };
+  if (p.job.state !== "negotiating" || !(await live(db, p.job))) return { ok: false, code: "conflict", message: "This job is not waiting on a time." };
   return (await applySteps(db, sender, p.job, onProposal(p.job, p.party, new Date(t).toISOString(), now), now)) ? { ok: true } : { ok: false, code: "conflict", message: "This job changed. Refresh and try again." };
 }
 /** In-app: the other party says yes or no to the suggested time. */
 export async function answerTime(db: Queryable, sender: Sender, userId: string, jobId: string, accept: boolean, now: string): Promise<ActResult> {
   const p = await partyOf(db, jobId, userId);
   if (!p) return nf;
-  const steps = onAnswer(p.job, p.party, accept, now);
+  const steps = (await live(db, p.job)) ? onAnswer(p.job, p.party, accept, now) : [];
   if (steps.length === 0) return { ok: false, code: "conflict", message: "There is no time waiting for your answer." };
   return (await applySteps(db, sender, p.job, steps, now)) ? { ok: true } : { ok: false, code: "conflict", message: "This job changed. Refresh and try again." };
 }
@@ -336,7 +347,7 @@ export async function ownerAction(db: Queryable, userId: string, jobId: string, 
   }
   if (action === "resume") {
     if (p.job.state !== "stopped" && p.job.state !== "needs_owner") return { ok: false, code: "conflict", message: "Elena is already handling this job." };
-    const r = await db.query("UPDATE elena_job SET state = CASE WHEN appointment_at IS NOT NULL THEN 'scheduled' ELSE 'negotiating' END, reminders = 0, needs_owner_reason = NULL, next_action_at = $2::timestamptz, updated_at = now() WHERE id = $1::uuid AND state IN ('stopped','needs_owner') RETURNING id", [jobId, now]);
+    const r = await db.query("UPDATE elena_job j SET state = CASE WHEN j.appointment_at IS NOT NULL THEN 'scheduled' WHEN a.status = 'approved' THEN 'negotiating' ELSE 'requested' END, reminders = 0, needs_owner_reason = NULL, next_action_at = $2::timestamptz, updated_at = now() FROM job_assignment a WHERE j.id = $1::uuid AND a.id = j.assignment_id AND a.status IN ('proposed','approved') AND j.state IN ('stopped','needs_owner') RETURNING j.id", [jobId, now]);
     return r.rows.length ? { ok: true } : { ok: false, code: "conflict", message: "This job changed." };
   }
   if (action === "hide_files" || action === "show_files") {
@@ -348,6 +359,7 @@ export async function ownerAction(db: Queryable, userId: string, jobId: string, 
 
 // ---- Email replies --------------------------------------------------------------------------------------------------------------
 
+export const NOTE_SENT_SQL = "SELECT 1 FROM elena_job_message WHERE job_id = $1::uuid AND party = $2::text AND kind = 'auto_reply_help' AND direction = 'out' AND created_at > $3::timestamptz LIMIT 1";
 export const PARTY_EMAILS_SQL = "SELECT id, email FROM app_user WHERE id = ANY($1::uuid[])";
 
 export type InboundResult = "ignored" | "handled" | "owner_only";
@@ -369,14 +381,18 @@ export async function handleInboundJobEmail(
   const from: Party | undefined = emails.get(job.ownerUserId) === m.from ? "owner" : emails.get(job.contractorUserId) === m.from ? "contractor" : undefined;
   if (!from) return "ignored";
   if (!m.verified) { await log(db, job.id, "in", from, "email", m.text, "ignored", "Sender could not be verified."); return "ignored"; }
+  const settings = await getSettings(db, job.listingId);
+  if (!settings.handleJobs) { await log(db, job.id, "in", from, "email", m.text, "ignored", "Elena is switched off for this listing."); return "ignored"; }
   await log(db, job.id, "in", from, "email", m.text, "received");
   await db.query("UPDATE elena_job SET updated_at = now() WHERE id = $1::uuid", [job.id]);
 
-  const settings = await getSettings(db, job.listingId);
   const decision = onReply(job, from, readReply(m.text, now, job.jurisdiction), settings, now);
-  if (decision.steps.length) await applySteps(db, sender, job, decision.steps, now);
-  if (decision.toOwner && from === "contractor") {
-    await sender.send(job.ownerUserId, "needs_owner", "A reply needs you", `Your contractor replied about job ${job.contactRef}: "${m.text.slice(0, 300)}". Elena has not answered for you.`, `/listings/${job.listingId}`).catch(() => false);
+  // One hand-over note per person per day, so two automatic senders can never keep each other talking.
+  if (decision.steps.some(x => x.type === "send" && x.kind === "auto_reply_help")) {
+    const since = new Date(new Date(now).getTime() - 24 * 3600_000).toISOString();
+    if ((await db.query(NOTE_SENT_SQL, [job.id, from, since])).rows.length > 0) decision.steps = decision.steps.filter(x => !(x.type === "send" && x.kind === "auto_reply_help"));
   }
+  if (decision.steps.length) await applySteps(db, sender, job, decision.steps, now);
+  if (decision.toOwner && from === "contractor") await sendJobMessage(db, sender, job, "owner", "contractor_reply", now, { quote: m.text });
   return decision.toOwner ? "owner_only" : "handled";
 }

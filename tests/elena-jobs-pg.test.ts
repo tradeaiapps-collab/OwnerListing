@@ -141,6 +141,19 @@ describe.skipIf(!DATABASE_URL)("Elena job handling on Postgres", () => {
     await expect(t.db.query("UPDATE elena_job_message SET body = 'x' WHERE job_id = $1", [j.id])).rejects.toThrow();
   });
 
+  it("a resumed job the contractor never accepted goes back to waiting for their answer; a cancelled job takes no actions", async () => {
+    const a = await setup({ handleJobs: true, autoReply: false, hideNewFiles: false }, "proposed");
+    await runDueElenaJobs(t.db, new Date().toISOString(), sender);
+    const id = (await job(a.listingId, a.ownerId)).id;
+    await ownerAction(t.db, a.ownerId, id, "stop", new Date().toISOString());
+    await ownerAction(t.db, a.ownerId, id, "resume", new Date().toISOString());
+    expect((await job(a.listingId, a.ownerId)).state).toBe("requested");
+    await t.db.query("UPDATE job_assignment SET status = 'approved' WHERE id = $1", [a.assignmentId]);
+    await t.db.query("UPDATE elena_job SET state = 'negotiating' WHERE id = $1", [id]);
+    await t.db.query("UPDATE job_assignment SET status = 'cancelled' WHERE id = $1", [a.assignmentId]);
+    expect((await proposeTime(t.db, sender, a.contractorId, id, new Date(Date.now() + 3 * 86_400_000).toISOString(), new Date().toISOString())).ok).toBe(false);
+  });
+
   it("stop and resume are owner-only; Elena does nothing on a stopped job", async () => {
     outbox.length = 0;
     const a = await setup();
@@ -197,8 +210,12 @@ describe.skipIf(!DATABASE_URL)("Elena job handling on Postgres", () => {
       outbox.length = 0;
       expect(await handleInboundJobEmail(t.db, sender, { from: on.contractorEmail, subject: on.ref, text: "Is there a lockbox?", verified: true }, now)).toBe("owner_only");
       expect(outbox.some(o => o.userId === on.contractorId && o.title.startsWith("Re:"))).toBe(true);
-      expect(outbox.some(o => o.userId === on.ownerId)).toBe(true);
-      expect(outbox.every(o => !/\$\d/.test(o.body.replace(/\$300/g, "")))).toBe(true);
+      expect(outbox.some(o => o.userId === on.ownerId && o.title.startsWith("Reply from"))).toBe(true);
+      // a second off-flow mail the same day gets no second note, so two robots cannot keep each other talking
+      outbox.length = 0;
+      await handleInboundJobEmail(t.db, sender, { from: on.contractorEmail, subject: on.ref, text: "Thanks!", verified: true }, now);
+      expect(outbox.some(o => o.userId === on.contractorId)).toBe(false);
+      expect(outbox.every(o => !/\$\d/.test(o.body))).toBe(true);
       const m = (await job(on.listingId, on.ownerId)).log.map(x => `${x.direction}:${x.status}`);
       expect(m).toContain("in:received");
     });
@@ -208,7 +225,8 @@ describe.skipIf(!DATABASE_URL)("Elena job handling on Postgres", () => {
       await t.db.query("INSERT INTO elena_job (assignment_id, listing_id, owner_user_id, contractor_user_id, kind, contact_ref, state) VALUES ($1,$2,$3,$4,'photographer','EJ-424242','negotiating')", [a.assignmentId, a.listingId, a.ownerId, a.contractorId]);
       outbox.length = 0;
       const r = await handleInboundJobEmail(t.db, sender, { from: await emailOf(a.contractorId), subject: "EJ-424242", text: `I can do ${future()}`, verified: true }, new Date().toISOString());
-      expect(r).toBe("owner_only");
+      expect(r).toBe("ignored");
+      expect(outbox).toHaveLength(0);
       expect((await t.db.query("SELECT state FROM elena_job WHERE contact_ref = 'EJ-424242'")).rows[0]!["state"]).toBe("negotiating");
     });
   });

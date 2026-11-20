@@ -9,7 +9,7 @@ import { withApi } from "../../../../src/server/api/with-api";
 /**
  * Email replies to Elena's job messages, posted by the mail provider's inbound parse (or a small forwarder) with header x-inbound-secret.
  * Body: { "from": "a@b.com", "subject": "...", "text": "...", "verified": true, "headers"?: {...} }. `verified` must be true only when the
- * forwarder confirmed the sender (SPF or DKIM pass); otherwise the reply is logged and ignored. FAILS CLOSED: 503 until
+ * forwarder confirmed the From address with a DMARC-aligned pass (DKIM or SPF aligned with the From domain, not just the envelope sender); otherwise the reply is logged and ignored. FAILS CLOSED: 503 until
  * JOB_EMAIL_INBOUND_SECRET (32+ chars) is set; 401 on a wrong secret. Automated senders are ignored.
  */
 const digest = (s: string) => createHash("sha256").update(s).digest();
