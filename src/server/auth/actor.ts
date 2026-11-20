@@ -1,6 +1,7 @@
 import { mfaClaimValid, mfaRequired } from "../../domain/mfa";
 import type { Actor } from "../../domain/listing-service";
 import type { Queryable } from "../db";
+import { vendorMayCall } from "../../domain/contractor-access";
 import { heldRoles, sessionTypeFor } from "../../domain/roles";
 import { liveMobileSession } from "./mobile-session-db";
 import { mobileBearer, verifyMobileAccess } from "./mobile-token";
@@ -82,7 +83,10 @@ export async function sessionFromRequestChecked(db: Queryable, req: Request, sec
  */
 export async function actorFromRequestChecked(db: Queryable, req: Request, secret: string, nowSeconds: number): Promise<Actor | null> {
   const s = await sessionFromRequestChecked(db, req, secret, nowSeconds);
-  return s && (!s.mfa.required || s.mfa.satisfied) ? s.actor : null;
+  if (!s || (s.mfa.required && !s.mfa.satisfied)) return null;
+  // A contractor session counts as signed in only for contractor APIs; everywhere else it is treated as signed out (default deny).
+  if (s.actor.userType === "vendor" && !vendorMayCall(new URL(req.url).pathname)) return null;
+  return s.actor;
 }
 
 /** Cookie-only, no database check: requests must use actorFromRequestChecked. The signed-in user from the session cookie, or null. Fails closed on a missing, forged or expired session. */

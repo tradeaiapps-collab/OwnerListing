@@ -40,6 +40,13 @@ export const ROLE_NAV: Record<UserRole, readonly RoleNavItem[]> = {
     { id: "workspace", label: "Workspace", href: "/agent/workspace" },
     ACCOUNT
   ],
+  vendor: [
+    { id: "contractor-profile", label: "My page", href: "/contractor/profile" },
+    { id: "contractor-jobs", label: "Jobs", href: "/contractor/jobs" },
+    { id: "contractor-public", label: "Public page", href: "/contractors" },
+    PROJECTS,
+    { id: "contractor-security", label: "Security", href: "/mfa" }
+  ],
   investor: [
     { id: "projects", label: "Projects", href: "/investments" },
     { id: "portfolio", label: "Portfolio", href: "/investments/threads" },

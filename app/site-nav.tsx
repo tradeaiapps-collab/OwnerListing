@@ -8,7 +8,7 @@ import ThemeToggle from "./theme-toggle";
 import { NAV_CACHE_KEY, parseNavSnapshot, serializeNavSnapshot } from "../src/domain/nav-cache";
 import { NAV_CATALOG, type IconStyle, type NavItem } from "../src/domain/site-theme";
 
-type Who = "loading" | "out" | "staff" | "owner" | "buyer";
+type Who = "loading" | "out" | "staff" | "owner" | "buyer" | "vendor";
 
 /**
  * Links follow the signed-in type. This only hides links; every route still enforces access on the server.
@@ -66,10 +66,10 @@ export default function SiteNav({ items, iconStyle, themeToggle }: { items?: Nav
         // Signed in with Google but the second step is still to do: every API treats the session as signed out until then.
         window.location.assign(`/mfa?next=${encodeURIComponent(window.location.pathname + window.location.search)}`);
       } else if (me?.user) {
-        const w: Who = me.user.userType === "buyer" ? "buyer" : "owner";
+        const w: Who = me.user.userType === "buyer" ? "buyer" : me.user.userType === "vendor" ? "vendor" : "owner";
         setWho(w);
         void loadRoles().then(r => {
-          const cr = (r?.currentRole ?? (me.user.userType === "buyer" ? "buyer" : me.user.userType === "agent" ? "agent" : "owner")) as UserRole;
+          const cr = (r?.currentRole ?? (me.user.userType === "buyer" ? "buyer" : me.user.userType === "agent" ? "agent" : me.user.userType === "vendor" ? "vendor" : "owner")) as UserRole;
           setRole(cr); remember(w, cr);
         });
       }
@@ -84,8 +84,8 @@ export default function SiteNav({ items, iconStyle, themeToggle }: { items?: Nav
   };
 
   // Signed-in people get the focused menu for the role they are viewing as; it updates on the reload that follows a role switch.
-  const pending = (who === "owner" || who === "buyer") && role === null;
-  const signedIn = (who === "owner" || who === "buyer") && role !== null;
+  const pending = (who === "owner" || who === "buyer" || who === "vendor") && role === null;
+  const signedIn = (who === "owner" || who === "buyer" || who === "vendor") && role !== null;
   const owner = who === "owner" || who === "out";
   const buyer = who === "buyer" || who === "out";
   const shown: Record<string, boolean> = {
@@ -108,7 +108,7 @@ export default function SiteNav({ items, iconStyle, themeToggle }: { items?: Nav
         const href = def.href;
         return <a key={it.id} href={href}><Icon name={def.icon} style={style} />{it.label}</a>;
       })}
-      {(who === "owner" || who === "buyer" || who === "staff") && <button type="button" className="nav-signout" onClick={signOut}>Sign out</button>}
+      {(who === "owner" || who === "buyer" || who === "vendor" || who === "staff") && <button type="button" className="nav-signout" onClick={signOut}>Sign out</button>}
       </div>
       {(who === "owner" || who === "buyer") && <RoleSwitcher />}
       {themeToggle && <ThemeToggle />}

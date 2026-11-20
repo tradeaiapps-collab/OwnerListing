@@ -1,8 +1,8 @@
 /** Same rule as the messaging settings (kept here so browser pages can import this file without server-only modules). */
 const EMAIL_RE = /^[^\s\x00-\x1f\x7f<>"',;()\\@]{1,64}@[A-Za-z0-9](?:[A-Za-z0-9.-]{0,251}[A-Za-z0-9])?\.[A-Za-z]{2,}$/;
 
-/** Account types anyone can create for themselves. Vendors and staff are always pre-provisioned. */
-export const SELF_SIGNUP_TYPES = ["buyer", "owner", "agent"] as const;
+/** Account types anyone can create for themselves. "vendor" is a contractor (photographer, inspector, pest control, other trade). Staff are always pre-provisioned. */
+export const SELF_SIGNUP_TYPES = ["buyer", "owner", "agent", "vendor"] as const;
 export type SelfSignupType = (typeof SELF_SIGNUP_TYPES)[number];
 export const isSelfSignupType = (v: unknown): v is SelfSignupType => typeof v === "string" && (SELF_SIGNUP_TYPES as readonly string[]).includes(v);
 
@@ -24,7 +24,12 @@ export function passwordProblem(password: unknown, email?: string): string | nul
   return null;
 }
 
-export interface SignupInput { email: string; name: string; password: string; userType: SelfSignupType }
+/** The trade a contractor signs up under (the same four as the contractor profile). Never accepted for any other account type. */
+export const SIGNUP_TRADES = ["photographer", "inspector", "pest_control", "other"] as const;
+export type SignupTrade = (typeof SIGNUP_TRADES)[number];
+export const isSignupTrade = (v: unknown): v is SignupTrade => typeof v === "string" && (SIGNUP_TRADES as readonly string[]).includes(v);
+
+export interface SignupInput { email: string; name: string; password: string; userType: SelfSignupType; trade: SignupTrade | null }
 
 /** Checks a sign-up request body. Returns the cleaned input or the first problem, worded for the person filling in the form. */
 export function readSignup(body: unknown): { ok: true; value: SignupInput } | { ok: false; message: string } {
@@ -33,15 +38,16 @@ export function readSignup(body: unknown): { ok: true; value: SignupInput } | { 
   if (name.length < 2 || name.length > 80 || /[\u0000-\u001f<>]/.test(name)) return { ok: false, message: "Enter your name (2 to 80 characters)." };
   const email = normaliseEmail(b["email"]);
   if (!email) return { ok: false, message: "Enter a valid email address." };
-  if (!isSelfSignupType(b["userType"])) return { ok: false, message: "Choose whether you are buying or renting, an owner or an agent." };
+  if (!isSelfSignupType(b["userType"])) return { ok: false, message: "Choose whether you are buying or renting, an owner, an agent or a contractor." };
+  if (b["userType"] === "vendor" && !isSignupTrade(b["trade"])) return { ok: false, message: "Choose your trade." };
   const problem = passwordProblem(b["password"], email);
   if (problem) return { ok: false, message: problem };
-  return { ok: true, value: { email, name, password: b["password"] as string, userType: b["userType"] } };
+  return { ok: true, value: { email, name, password: b["password"] as string, userType: b["userType"], trade: b["userType"] === "vendor" && isSignupTrade(b["trade"]) ? b["trade"] : null } };
 }
 
 /** Where a newly signed-in person lands when no return path was asked for. */
 export const homeFor = (userType: "owner" | "agent" | "buyer" | "vendor"): string =>
-  userType === "buyer" ? "/buyer/saved-searches" : userType === "owner" ? "/listings/new" : "/dashboard";
+  userType === "buyer" ? "/buyer/saved-searches" : userType === "owner" ? "/listings/new" : userType === "vendor" ? "/contractor/profile" : "/dashboard";
 
 export const SIGNUP_LINK_HOURS = 24;
 export const RESET_LINK_MINUTES = 60;

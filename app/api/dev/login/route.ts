@@ -78,7 +78,7 @@ async function handlePost(req: Request) {
   await grantDevAccess(userId, ut as string);
   // A buyer account that holds the investor role and last viewed as one signs in as that investor.
   const asInvestor = ut === "buyer" && row["active_role"] === "investor" && Array.isArray(row["roles"]) && row["roles"].includes("investor");
-  const res = NextResponse.json({ ok: true, redirect: ut === "buyer" && !asInvestor ? "/buyer/saved-searches" : "/dashboard" });
+  const res = NextResponse.json({ ok: true, redirect: ut === "buyer" && !asInvestor ? "/buyer/saved-searches" : ut === "vendor" ? "/contractor/profile" : "/dashboard" });
   // Seeded demo accounts have no second factor; this local-only sign-in stands in for it (never reachable off localhost, see devLoginAllowed).
   res.cookies.set(SESSION_COOKIE, signSession({ uid: userId, ut, ...(asInvestor ? { cr: "investor" as const } : {}), exp: now + SESSION_TTL_SECONDS, mfa: now }, secret), { ...opts, maxAge: SESSION_TTL_SECONDS });
   res.cookies.set(STAFF_COOKIE, "", { ...opts, maxAge: 0 });
