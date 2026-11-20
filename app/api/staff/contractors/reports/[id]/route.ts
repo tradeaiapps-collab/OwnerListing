@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { parseReportDecision } from "../../../../../../src/domain/contractor-trust";
 import { getDb } from "../../../../../../src/server/context";
+import { logOutcomePg } from "../../../../../../src/server/elena-prescreen-db";
 import { decideReportPg } from "../../../../../../src/server/contractor-trust-db";
 import { fail, readJsonObject, staffGate, UUID_RE } from "../../../../../../src/server/staff-route";
 import { withApi } from "../../../../../../src/server/api/with-api";
@@ -15,7 +16,9 @@ async function handlePost(req: Request, { params }: Ctx) {
   if (!UUID_RE.test(id)) return fail(404, "Not found.");
   const d = parseReportDecision(await readJsonObject(req));
   if (!d.ok) return fail(400, d.message);
-  if ((await decideReportPg(getDb(), id, staff.id, d.value.action, d.value.note)) !== "ok") return fail(409, "Already decided, not found, or you are a party to it.");
+  const db = getDb();
+  if ((await decideReportPg(db, id, staff.id, d.value.action, d.value.note)) !== "ok") return fail(409, "Already decided, not found, or you are a party to it.");
+  await logOutcomePg(db, { queue: "complaint", subjectId: id, staffId: staff.id, staffRole: staff.role, staffAction: d.value.action });
   return NextResponse.json({ ok: true });
 }
 
