@@ -230,3 +230,35 @@ body.doc-viewer-open { overflow: hidden; }
 .mask-side textarea { width: 100%; }
 .mask-check { display: flex; gap: var(--space-2); align-items: flex-start; font-size: 0.9375rem; }
 .mask-check input { margin-top: 0.25rem; flex: none; }
+
+/* Elena on investor projects: questions, updates, owner review. Tokens only. */
+.elena-box { display: grid; gap: var(--space-3); }
+.elena-box h3 { margin: var(--space-3) 0 var(--space-1); font-size: 1rem; }
+.elena-notice { margin: 0; padding: var(--space-2) var(--space-3); border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); font-size: 0.9375rem; overflow-wrap: anywhere; }
+.elena-form { display: grid; gap: var(--space-2); }
+.elena-form textarea { min-height: 88px; font: inherit; padding: var(--space-2) var(--space-3); width: 100%; box-sizing: border-box; }
+.elena-form .elena-row { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; justify-content: space-between; }
+.elena-form button, .elena-actions button, .elena-actions a { min-height: 44px; }
+.elena-count { color: var(--muted); font-size: 0.875rem; }
+.elena-list { margin: 0; padding: 0; list-style: none; display: grid; gap: var(--space-3); }
+.elena-list > li { padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius); display: grid; gap: var(--space-2); min-width: 0; }
+.elena-q { margin: 0; font-weight: 600; overflow-wrap: anywhere; }
+.elena-a { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.elena-src { margin: 0; padding: var(--space-2) var(--space-3); border-left: 3px solid var(--gold); background: var(--surface); border-radius: 0 var(--radius) var(--radius) 0; font-size: 0.9375rem; overflow-wrap: anywhere; }
+.elena-src cite { display: block; color: var(--muted); font-style: normal; font-size: 0.875rem; margin-top: var(--space-1); }
+.elena-tag { display: inline-block; padding: 0 var(--space-2); border: 1px solid currentColor; border-radius: 999px; font-size: 0.8125rem; width: fit-content; }
+.elena-tag.answered { color: var(--brand); }
+.elena-tag.escalated { color: var(--warn); }
+.elena-tag.declined { color: var(--muted); }
+.elena-tag.draft { color: var(--warn); }
+.elena-tag.published { color: var(--brand); }
+.elena-reply { margin: 0; padding: var(--space-2) var(--space-3); border-radius: var(--radius); background: var(--surface); overflow-wrap: anywhere; white-space: pre-wrap; }
+.elena-flag { border-left: 4px solid var(--warn); }
+.elena-flag.high { border-left-color: var(--danger); }
+.elena-flag.low { border-left-color: var(--border); }
+.elena-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.elena-update-body { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; }
+.elena-edit { display: grid; gap: var(--space-2); }
+.elena-edit input, .elena-edit textarea { font: inherit; width: 100%; box-sizing: border-box; padding: var(--space-2) var(--space-3); min-height: 44px; }
+.elena-edit textarea { min-height: 180px; }
+@media (max-width: 479px) { .elena-actions > * { flex: 1 1 100%; } .elena-form .elena-row > button { width: 100%; } }

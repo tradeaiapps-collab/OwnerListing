@@ -8,6 +8,7 @@ import { ElenaPriceSuggestion } from "../../elena-price-suggestion";
 import { WordingFlagList, type WordingFlagView } from "../../wording-hint";
 import { LocationPicker } from "../../location-picker";
 import { ElenaPublishCheck } from "../../elena-publish-check";
+import { ElenaEnquiriesPanel } from "../../elena-enquiries-panel";
 
 const STEPS = ["Basics", "Details", "Description", "Photos", "Location", "Review"] as const;
 const SUBS = ["Title, price and type", "Rooms and extras", "Tell the story", "Show it off", "Address and map", "Check and save"] as const;
@@ -200,6 +201,7 @@ export default function EditListing() {
                       <div key={k} className="wiz-rv"><h3>{k}</h3><p>{v}</p><button type="button" className="link-button" onClick={() => void goTo(i < 3 ? i : 4)}>Edit</button></div>
                     ))}
                     <ElenaPublishCheck listingId={listing.id} />
+                    <ElenaEnquiriesPanel listingId={listing.id} />
                     <ElenaPriceSuggestion listingId={listing.id} rent={listing.transactionType === "rent"} />
                     <SuggestDescription id={id} />
                   </div>

@@ -1,16 +1,17 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
 import { loadError, postStaff } from "../staff-api";
+import { ElenaBulkBar, ElenaPanel, type ElenaRec } from "../elena-panel";
 import "../../styles/staff.css";
 
 interface State { status: string; badge: boolean; insuranceExpired: boolean; licenceExpired: boolean; insuranceExpiringInDays: number | null; licenceExpiringInDays: number | null }
 interface Verification {
   userId: string; name: string; businessName: string; abn: string; licenceNumber: string | null; licenceAuthority: string | null; licenceExpiry: string | null;
-  insurer: string; policyNumber: string; insuranceExpiry: string; status: string; reviewNote: string | null; submittedAt: string; state: State;
+  insurer: string; policyNumber: string; insuranceExpiry: string; status: string; reviewNote: string | null; submittedAt: string; state: State; elena?: ElenaRec | null;
 }
 interface Report {
   id: string; kind: string; detail: string; status: string; createdAt: string; decisionNote: string | null; contractorId: string; contractorName: string; reporterName: string;
-  listingTitle: string; contractorSuspended: boolean; reportsAgainst: number;
+  listingTitle: string; contractorSuspended: boolean; reportsAgainst: number; elena?: ElenaRec | null;
 }
 const KINDS: Record<string, string> = { no_show: "Did not turn up", poor_work: "Poor work", late: "Late", conduct: "Conduct", other: "Something else" };
 type Tab = "verifications" | "reports";
@@ -24,6 +25,7 @@ export default function StaffContractors() {
   const [rs, setRs] = useState<Report[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [message, setMessage] = useState("");
+  const [elenaOnly, setElenaOnly] = useState(false);
   const [notes, setNotes] = useState<Record<string, string>>({});
 
   const load = useCallback(async () => {
@@ -42,6 +44,7 @@ export default function StaffContractors() {
     setMessage(res.ok ? "Recorded." : String(res.data["error"] ?? "Failed."));
     await load();
   }
+  const shownVs = vs.filter(v => !elenaOnly || showAll || v.elena?.action === "approve");
   const note = (id: string) => notes[id]?.trim() ?? "";
   const noteBox = (id: string, label: string) => (
     <label>{label}
@@ -62,9 +65,13 @@ export default function StaffContractors() {
       {tab === "verifications" && (<>
         <p className="muted">Compare the details below with the contractor&apos;s real licence, insurance certificate and the ABN register. Nothing is checked automatically; only the ABN format was validated. Insurance that has expired removes the badge by itself.</p>
         <label><input type="checkbox" checked={showAll} onChange={e => setShowAll(e.target.checked)} /> Include decided (to find expiring or expired insurance)</label>
-        {loaded && vs.length === 0 && <p className="empty">{showAll ? "No contractor has submitted details." : "Nothing waiting for a check."}</p>}
+        {!showAll && (
+          <ElenaBulkBar queue="verification" items={vs.map(v => ({ id: v.userId, elena: v.elena ?? null }))} filterOn={elenaOnly} setFilterOn={setElenaOnly}
+            onDone={() => void load()} setMessage={setMessage} />
+        )}
+        {loaded && shownVs.length === 0 && <p className="empty">{elenaOnly && vs.length > 0 ? "Elena does not recommend verifying anyone here." : showAll ? "No contractor has submitted details." : "Nothing waiting for a check."}</p>}
         <ul className="card-list">
-          {vs.map(v => (
+          {shownVs.map(v => (
             <li key={v.userId} className="card">
               <h2>{v.businessName} <span className="badge">{v.status}</span>{v.state.badge && <span className="badge"> badge on</span>}</h2>
               <p><strong>{v.name}</strong> · ABN {v.abn} · submitted {new Date(v.submittedAt).toLocaleDateString("en-AU")}</p>
@@ -72,6 +79,7 @@ export default function StaffContractors() {
                 {v.state.insuranceExpired ? " (EXPIRED)" : v.state.insuranceExpiringInDays !== null && v.state.insuranceExpiringInDays <= 30 ? ` (in ${v.state.insuranceExpiringInDays} days)` : ""}</p>
               <p>{v.licenceNumber ? `Licence: ${v.licenceNumber}, issued by ${v.licenceAuthority}, expires ${v.licenceExpiry}${v.state.licenceExpired ? " (EXPIRED)" : ""}` : "No licence given."}</p>
               {v.reviewNote && <p className="muted">Last note: {v.reviewNote}</p>}
+              {v.status === "pending" && <ElenaPanel rec={v.elena} onUseDraft={d => setNotes({ ...notes, [v.userId]: d })} />}
               {v.status === "pending" && (<>
                 {noteBox(v.userId, "Note to the contractor (needed to reject)")}
                 <div className="actions">
@@ -94,19 +102,20 @@ export default function StaffContractors() {
               <h2>{KINDS[r.kind] ?? r.kind} <span className="badge">{r.status}</span>{r.contractorSuspended && <span className="badge"> suspended</span>}</h2>
               <p><strong>{r.contractorName}</strong> · {r.reportsAgainst} report{r.reportsAgainst === 1 ? "" : "s"} not dismissed · job at {r.listingTitle} · reported by {r.reporterName}</p>
               <blockquote style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{r.detail}</blockquote>
+              {r.status === "open" && <ElenaPanel rec={r.elena} />}
               <p className="muted">{new Date(r.createdAt).toLocaleString("en-AU")}{r.decisionNote ? ` · Decision: ${r.decisionNote}` : ""}</p>
               {r.status === "open" && (<>
                 {noteBox(r.id, "Decision note")}
                 <div className="actions">
-                  <button type="button" className="secondary" disabled={!note(r.id)} onClick={() => void post(`/api/staff/contractor-trust/reports/${r.id}`, { action: "dismiss", note: note(r.id) })}>Dismiss</button>
-                  <button type="button" disabled={!note(r.id)} onClick={() => void post(`/api/staff/contractor-trust/reports/${r.id}`, { action: "uphold", note: note(r.id) })}>Uphold</button>
-                  {!r.contractorSuspended && <button type="button" disabled={!note(r.id)} onClick={() => void post(`/api/staff/contractor-trust/reports/${r.id}`, { action: "uphold_and_suspend", note: note(r.id) })}>Uphold and suspend</button>}
+                  <button type="button" className="secondary" disabled={!note(r.id)} onClick={() => void post(`/api/staff/contractors/reports/${r.id}`, { action: "dismiss", note: note(r.id) })}>Dismiss</button>
+                  <button type="button" disabled={!note(r.id)} onClick={() => void post(`/api/staff/contractors/reports/${r.id}`, { action: "uphold", note: note(r.id) })}>Uphold</button>
+                  {!r.contractorSuspended && <button type="button" disabled={!note(r.id)} onClick={() => void post(`/api/staff/contractors/reports/${r.id}`, { action: "uphold_and_suspend", note: note(r.id) })}>Uphold and suspend</button>}
                 </div>
               </>)}
               {r.contractorSuspended && (
                 <div className="actions">
                   {r.status !== "open" && noteBox(`s-${r.id}`, "Reason to reinstate")}
-                  <button type="button" className="secondary" disabled={!note(r.status === "open" ? r.id : `s-${r.id}`)} onClick={() => void post(`/api/staff/contractor-trust/${r.contractorId}/standing`, { action: "reinstate", note: note(r.status === "open" ? r.id : `s-${r.id}`) })}>Reinstate contractor</button>
+                  <button type="button" className="secondary" disabled={!note(r.status === "open" ? r.id : `s-${r.id}`)} onClick={() => void post(`/api/staff/contractors/${r.contractorId}/standing`, { action: "reinstate", note: note(r.status === "open" ? r.id : `s-${r.id}`) })}>Reinstate contractor</button>
                 </div>
               )}
             </li>

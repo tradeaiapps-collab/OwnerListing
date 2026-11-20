@@ -66,7 +66,7 @@ export function createPgEnquiryRepository(db: Queryable): EnquiryRepository {
       const r = await db.query("SELECT * FROM enquiry_message WHERE enquiry_id = $1::uuid ORDER BY sent_at, id", [enquiryId]);
       return r.rows.map((x): EnquiryMessage => ({
         id: String(x["id"]), enquiryId: String(x["enquiry_id"]), senderUserId: x["sender_user_id"] === null ? null : String(x["sender_user_id"]),
-        automated: x["automated"] === true, body: String(x["body"]), sentAt: iso(x["sent_at"])
+        automated: x["automated"] === true, ...(x["elena"] === true ? { elena: true } : {}), body: String(x["body"]), sentAt: iso(x["sent_at"])
       }));
     },
     async lastAutomatedAt(enquiryId) {

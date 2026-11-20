@@ -61,12 +61,14 @@ export async function listVerificationsPg(db: Queryable, view: "pending" | "all"
 }
 
 /** Staff decision on pending details only; staff cannot decide on themselves. */
-export async function decideVerificationPg(db: Queryable, userId: string, staffId: string, action: "verify" | "reject", note: string | null): Promise<boolean> {
+export async function decideVerificationPg(db: Queryable, userId: string, staffId: string, action: "verify" | "reject", note: string | null, expectedSubmittedAt?: string): Promise<boolean> {
   return inTx(db, async tx => {
+    // expectedSubmittedAt: the submission the decision was made on. If the contractor re-submitted since, nothing is decided (millisecond match, as JS dates hold).
     const r = await tx.query(
       `UPDATE contractor_verification SET status = $3, review_note = $4, reviewed_by = $2::uuid, reviewed_at = now()
-       WHERE user_id = $1::uuid AND status = 'pending' AND user_id <> $2::uuid RETURNING user_id`,
-      [userId, staffId, action === "verify" ? "verified" : "rejected", note]);
+       WHERE user_id = $1::uuid AND status = 'pending' AND user_id <> $2::uuid
+         AND ($5::timestamptz IS NULL OR date_trunc('milliseconds', submitted_at) = $5::timestamptz) RETURNING user_id`,
+      [userId, staffId, action === "verify" ? "verified" : "rejected", note, expectedSubmittedAt ?? null]);
     if (r.rows.length !== 1) return false;
     await tx.query("INSERT INTO contractor_verification_event (user_id, actor_id, action, note) VALUES ($1::uuid, $2::uuid, $3, $4)", [userId, staffId, action, note]);
     await audit(tx, staffId, "contractor_verification", userId, `contractor_verification.${action}`);

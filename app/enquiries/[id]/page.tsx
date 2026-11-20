@@ -4,12 +4,13 @@ import { useParams } from "next/navigation";
 import type { ChatLang } from "../../../src/domain/language-detect";
 import { JSON_HEADERS } from "../../listings/ui";
 import { CopilotPanel } from "../copilot-panel";
+import { ElenaCard } from "../elena-card";
 import { ModerationPanel } from "../moderation-panel";
 import { MessageWarning, SafetySummary, useSafety } from "../safety-panel";
 import "../../styles/enquiries.css";
 import "../../styles/chat-copilot.css";
 
-type Message = { id: string; senderUserId: string | null; automated: boolean; body: string; sentAt: string };
+type Message = { id: string; senderUserId: string | null; automated: boolean; elena?: boolean; body: string; sentAt: string };
 type ThreadData = { enquiry: { listingId: string; buyerUserId: string }; messages: Message[]; readByOthersAt?: string; listingNumber?: number };
 type OfferLinkState = {
   role: "buyer" | "owner";
@@ -129,7 +130,7 @@ export default function Thread() {
   const facts = ai?.facts;
   const num = data?.listingNumber;
   const mine = (m: Message) => m.senderUserId !== null && m.senderUserId === viewerId;
-  const sideOf = (m: Message) => (m.automated ? "Notice" : m.senderUserId === data?.enquiry.buyerUserId ? "Buyer" : role === "agent" ? "Agent" : "Owner");
+  const sideOf = (m: Message) => (m.elena ? "Elena (AI assistant)" : m.automated ? "Notice" : m.senderUserId === data?.enquiry.buyerUserId ? "Buyer" : role === "agent" ? "Agent" : "Owner");
   const refreshKey = data?.messages.length ?? 0;
 
   return (
@@ -169,7 +170,7 @@ export default function Thread() {
                   return (
                     <li key={m.id}>
                       {(!prev || dayKey(prev.sentAt) !== dayKey(m.sentAt)) && <p className="cx-day"><span>{dayLabel(m.sentAt)}</span></p>}
-                      <div className={`cx-msg${mine(m) ? " mine" : ""}${m.automated ? " system" : ""}${m.id === lastIncoming ? " latest-in" : ""}`}>
+                      <div className={`cx-msg${mine(m) ? " mine" : ""}${m.automated && !m.elena ? " system" : ""}${m.id === lastIncoming ? " latest-in" : ""}`}>
                         {!mine(m) && <span className="cx-who">{sideOf(m)}</span>}
                         <p className="cx-body">{m.body}</p>
                         <span className="cx-meta">
@@ -193,6 +194,8 @@ export default function Thread() {
                 })}
                 <li ref={el => { endRef.current = el as unknown as HTMLDivElement; }} aria-hidden="true" />
               </ol>
+
+              <ElenaCard enquiryId={id} refreshKey={refreshKey} onChanged={() => void load()} />
 
               <form className="cx-composer" onSubmit={e => { e.preventDefault(); void send(draft, true); }}>
                 <label htmlFor="cx-reply" className="cx-sr">Message</label>

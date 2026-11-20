@@ -62,6 +62,22 @@ export async function extractPdfText(bytes: Uint8Array, maxChars = 40_000): Prom
   } catch { return ""; } finally { await opened?.doc.destroy().catch(() => undefined); }
 }
 
+/** Plain text of each page (first 60 pages, 12,000 characters each) for Elena quoting investor project documents. Empty list for scans. Never throws. */
+export async function extractPdfPages(bytes: Uint8Array): Promise<string[]> {
+  let opened: Awaited<ReturnType<typeof openPdf>> | undefined;
+  try {
+    opened = await openPdf(bytes);
+    const out: string[] = [];
+    for (let n = 1; n <= Math.min(opened.doc.numPages, 60); n++) {
+      const page = await opened.doc.getPage(n);
+      const content = await page.getTextContent();
+      out.push(content.items.map(it => ("str" in it ? it.str : "")).join(" ").slice(0, 12_000));
+      page.cleanup();
+    }
+    return out;
+  } catch { return []; } finally { await opened?.doc.destroy().catch(() => undefined); }
+}
+
 export function createPageRenderer(): PageRenderer {
   return {
     async analyse(bytes, mime) {
