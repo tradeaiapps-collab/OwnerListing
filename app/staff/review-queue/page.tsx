@@ -1,13 +1,14 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
 import { loadError, postStaff } from "../staff-api";
+import { ElenaBulkBar, ElenaPanel, type ElenaRec } from "../elena-panel";
 import "../../styles/staff.css";
 
 type Decision = "approve" | "reject" | "escalate";
 interface Item {
   id: string; subjectType: "listing" | "message" | "profile"; subjectId: string; subjectLabel: string; subjectOwnerId: string | null; source: string;
   reason: string; detail: string | null; severity: "low" | "medium" | "high"; status: string; createdAt: string; decidedAt: string | null;
-  decisionNote: string | null; suspended: "listing" | "account" | null; reinstated: boolean; history: { action: string; actorId: string | null; note: string | null; at: string }[];
+  decisionNote: string | null; suspended: "listing" | "account" | null; reinstated: boolean; elena?: ElenaRec | null; history: { action: string; actorId: string | null; note: string | null; at: string }[];
 }
 interface Data {
   items: Item[]; counts: { open: number; escalated: number }; me: string; decisions: { open: Decision[]; escalated: Decision[] };
@@ -36,6 +37,7 @@ export default function StaffReviewQueue() {
   const [plans, setPlans] = useState<Record<string, Plan>>({});
   const [message, setMessage] = useState("");
   const [loaded, setLoaded] = useState(false);
+  const [elenaOnly, setElenaOnly] = useState(false);
 
   const load = useCallback(async () => {
     setLoaded(false);
@@ -67,6 +69,8 @@ export default function StaffReviewQueue() {
     if (res.ok) { setReasons(r => ({ ...r, [i.id]: "" })); await load(); }
   }
 
+  const shown = (data?.items ?? []).filter(i => !elenaOnly || view === "decided" || i.elena?.action === "approve");
+
   return (
     <main>
       <h1>Moderation queue</h1>
@@ -89,9 +93,13 @@ export default function StaffReviewQueue() {
       </div>
       {message && <p role="alert">{message}</p>}
       {!loaded && !message && <p className="muted" role="status">Loading...</p>}
-      {loaded && data && data.items.length === 0 && <p className="empty">Nothing here.</p>}
+      {view !== "decided" && data && data.decisions.open.includes("approve") && (
+        <ElenaBulkBar queue="moderation" items={data.items.map(i => ({ id: i.id, elena: i.elena ?? null }))} filterOn={elenaOnly} setFilterOn={setElenaOnly}
+          onDone={() => void load()} setMessage={setMessage} />
+      )}
+      {loaded && data && shown.length === 0 && <p className="empty">{elenaOnly && data.items.length > 0 ? "Elena does not recommend approving anything here." : "Nothing here."}</p>}
       <ul className="card-list">
-        {data?.items.map(i => {
+        {data && shown.map(i => {
           const options = i.status === "open" ? data.decisions.open : i.status === "escalated" ? data.decisions.escalated : [];
           const own = i.subjectOwnerId !== null && i.subjectOwnerId === data.me;
           return (
@@ -105,6 +113,7 @@ export default function StaffReviewQueue() {
               </p>
               <p><strong>{i.reason}</strong></p>
               {i.detail && <blockquote className="mq-detail">{i.detail}</blockquote>}
+              {(i.status === "open" || i.status === "escalated") && <ElenaPanel rec={i.elena} />}
               {i.subjectType === "listing" && <p><a href={`/listings/${i.subjectId}`}>Open the listing</a></p>}
               <ol className="mq-history" aria-label="History">
                 {i.history.map((h, n) => (

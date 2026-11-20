@@ -1,0 +1,22 @@
+/* Owner home: "What needs you today". Mobile first; tokens only. */
+.ot { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-3); margin: var(--space-4) 0; padding: var(--space-4); border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); min-width: 0; }
+.ot-head { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: baseline; justify-content: space-between; }
+.ot-head h2 { margin: 0; }
+.ot-count { font-size: var(--text-sm, 0.875rem); color: var(--muted); font-weight: 600; }
+.ot-list { grid-template-columns: minmax(0, 1fr); max-width: none; width: 100%; list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-3); }
+.ot-item { max-width: none; display: grid; gap: var(--space-3); padding: var(--space-3); border: 1px solid var(--border); border-left-width: 4px; border-radius: var(--radius); background: var(--bg); min-width: 0; }
+.ot-u1 { border-left-color: var(--danger); }
+.ot-u2 { border-left-color: var(--warn); }
+.ot-u3 { border-left-color: var(--border); }
+.ot-text { display: grid; gap: var(--space-1); min-width: 0; overflow-wrap: anywhere; }
+.ot-kind { font-size: var(--text-sm, 0.875rem); color: var(--muted); }
+.ot-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.ot-actions > a, .ot-actions > button { flex: 1 1 100%; text-align: center; min-height: 44px; }
+.ot-empty { max-width: none; margin: 0; padding: var(--space-3); border: 1px dashed var(--border); border-radius: var(--radius); color: var(--muted); }
+.ot-digest { display: flex; gap: var(--space-3); align-items: flex-start; }
+.ot-digest input { margin-top: var(--space-1); flex: none; }
+@media (min-width: 768px) {
+  .ot-item { grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
+  .ot-actions { justify-content: flex-end; }
+  .ot-actions > a, .ot-actions > button { flex: 0 0 auto; }
+}

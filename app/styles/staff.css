@@ -37,3 +37,20 @@ main.roles-page { max-width: 1280px; }
 .mq-suspend .mq-choice input { margin-top: 0.25rem; flex: none; }
 .mq-suspend .mq-confirm { color: var(--warn); }
 .mq-history { margin: 0; padding: 0; list-style: none; display: grid; gap: var(--space-1); }
+
+/* Elena's pre-screening panel on the staff queues. She recommends; staff decide. */
+.elena-rec { display: grid; gap: var(--space-2); margin: 0; padding: var(--space-3); border: 1px solid var(--line); border-left: 3px solid var(--accent, var(--line)); border-radius: var(--radius, 8px); background: var(--tint); min-width: 0; overflow-wrap: anywhere; }
+.elena-rec h3 { margin: 0; font-size: 1rem; display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.elena-rec p, .elena-rec ul { margin: 0; }
+.elena-rec ul { padding-left: 1.2rem; display: grid; gap: var(--space-1); }
+.elena-rec .badge { margin: 0; }
+.elena-rec-high { border-left-color: var(--ok, var(--accent)); }
+.elena-rec-low { border-left-color: var(--line); }
+.elena-draft { margin: 0; padding: var(--space-2) var(--space-3); border: 1px dashed var(--line); background: var(--bg); white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; }
+.elena-bar { display: grid; gap: var(--space-2); margin: 0 0 var(--space-3); padding: var(--space-3); border: 1px solid var(--line); border-radius: var(--radius, 8px); min-width: 0; }
+.elena-bar label { display: flex; flex-direction: row; align-items: flex-start; gap: var(--space-2); overflow-wrap: anywhere; }
+.elena-bar input[type="checkbox"] { margin-top: 0.25rem; flex: none; }
+.elena-accuracy { width: 100%; border-collapse: collapse; }
+.elena-accuracy th, .elena-accuracy td { padding: var(--space-2); border-bottom: 1px solid var(--line); text-align: left; overflow-wrap: anywhere; }
+.elena-accuracy th.num, .elena-accuracy td.num { text-align: right; font-variant-numeric: tabular-nums; }
+.elena-accuracy-wrap { overflow-x: auto; max-width: 100%; }
