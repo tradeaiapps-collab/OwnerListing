@@ -6,6 +6,11 @@ import {
   assignmentAccessPg, confirmUsageRightsPg, decideQuotePg, decideReportPg, decideVerificationPg, getStandingPg, getVerificationPg,
   listReportsPg, listVerificationsPg, publicTrustPg, quotesForAssignmentPg, replyToReviewPg, sendQuotePg, setSuspensionPg, submitVerificationPg
 } from "../src/server/contractor-trust-db";
+import { actorFromRequestChecked } from "../src/server/auth/actor";
+import { SESSION_COOKIE, signSession } from "../src/server/auth/session";
+import { CANDIDATES_SQL } from "../src/server/contractor-profile-db";
+import { INSERT_MESSAGE_SQL } from "../src/server/job-chat-db";
+import { PROPOSE_TIME_SQL, MARK_DONE_SQL } from "../src/server/contractor-market-db";
 import { verificationState } from "../src/domain/contractor-trust";
 import { addListing, addUser, createTestDb, DATABASE_URL, type TestDb } from "./helpers/pg-db";
 
@@ -165,5 +170,57 @@ describe.skipIf(!DATABASE_URL)("contractor trust and safety (Postgres)", () => {
     await setSuspensionPg(db, staff, c, true, "Under review.");
     expect((await publicTrustPg(db, c, TODAY))).toMatchObject({ badge: false, suspended: true });
     expect(await publicTrustPg(db, await addUser(db, "owner"), TODAY)).toBeUndefined();
+  });
+
+  it("a suspended contractor is shut out everywhere at once, and reinstating restores it", async () => {
+    const secret = "s".repeat(40), now = Math.floor(Date.now() / 1000);
+    const staff = await addUser(db, "admin");
+    const v = String((await db.query("INSERT INTO app_user (email, display_name, user_type, status) VALUES ($1, 'Vee', 'vendor', 'active') RETURNING id", [`${randomUUID()}@example.test`])).rows[0]!["id"]);
+    const owner = await addUser(db, "owner");
+    const listing = await addListing(db, owner, {});
+    const jobId = String((await db.query("INSERT INTO job_assignment (listing_id, owner_user_id, contractor_user_id, kind, status) VALUES ($1,$2,$3,'photographer','approved') RETURNING id", [listing, owner, v])).rows[0]!["id"]);
+    const req = () => new Request("http://test/api/jobs", { headers: { cookie: `${SESSION_COOKIE}=${signSession({ uid: v, ut: "vendor", exp: now + 3600 }, secret)}` } });
+    const audit = [randomUUID(), new Date().toISOString(), "t", randomUUID(), "{}"];
+    expect(await actorFromRequestChecked(db, req(), secret, now)).toEqual({ userId: v, userType: "vendor" });
+    expect((await db.query(INSERT_MESSAGE_SQL, [randomUUID(), jobId, v, "hello", new Date().toISOString()])).rows).toHaveLength(1);
+
+    expect(await setSuspensionPg(db, staff, v, true, "Two no-shows.")).toBe(true);
+    // Session, sign-in status, chat, job actions and photo access are all closed.
+    expect(await actorFromRequestChecked(db, req(), secret, now)).toBeNull();
+    expect((await db.query("SELECT status FROM app_user WHERE id = $1", [v])).rows[0]!["status"]).toBe("suspended");
+    expect((await db.query(INSERT_MESSAGE_SQL, [randomUUID(), jobId, v, "hello again", new Date().toISOString()])).rows).toHaveLength(0);
+    expect((await db.query(INSERT_MESSAGE_SQL, [randomUUID(), jobId, owner, "owner can still write", new Date().toISOString()])).rows).toHaveLength(1);
+    expect((await db.query(PROPOSE_TIME_SQL, [jobId, v, new Date(Date.now() + 86_400_000).toISOString(), ...audit])).rows).toHaveLength(0);
+    expect((await db.query(MARK_DONE_SQL, [jobId, v, ...audit])).rows).toHaveLength(0);
+
+    expect(await setSuspensionPg(db, staff, v, false, "Cleared.")).toBe(true);
+    expect(await actorFromRequestChecked(db, req(), secret, now)).toEqual({ userId: v, userType: "vendor" });
+    expect((await db.query(PROPOSE_TIME_SQL, [jobId, v, new Date(Date.now() + 86_400_000).toISOString(), ...audit])).rows).toHaveLength(1);
+  });
+
+  it("automatic matching offers jobs only to verified, in-date, not suspended contractors", async () => {
+    const staff = await addUser(db, "admin");
+    const mk = async () => {
+      const id = String((await db.query("INSERT INTO app_user (email, display_name, user_type, status) VALUES ($1, 'Pat', 'vendor', 'active') RETURNING id", [`${randomUUID()}@example.test`])).rows[0]!["id"]);
+      await db.query("INSERT INTO contractor_profile (user_id, kind, accepting_new, service_postcodes) VALUES ($1, 'photographer', true, ARRAY['4064'])", [id]);
+      return id;
+    };
+    const ids = async () => (await db.query(CANDIDATES_SQL, ["photographer"])).rows.map(r => String(r["id"]));
+    const c = await mk();
+    expect(await ids()).not.toContain(c);
+    await submitVerificationPg(db, c, details);
+    expect(await ids()).not.toContain(c);
+    await decideVerificationPg(db, c, staff, "verify", null);
+    expect(await ids()).toContain(c);
+    await db.query("UPDATE contractor_verification SET insurance_expiry = current_date - 1 WHERE user_id = $1", [c]);
+    expect(await ids()).not.toContain(c);
+    await db.query("UPDATE contractor_verification SET insurance_expiry = current_date + 30 WHERE user_id = $1", [c]);
+    expect(await ids()).toContain(c);
+    await setSuspensionPg(db, staff, c, true, "Under review.");
+    expect(await ids()).not.toContain(c);
+    // New profiles are off until the contractor opts in.
+    const fresh = await addUser(db, "agent");
+    await db.query("INSERT INTO contractor_profile (user_id, kind) VALUES ($1, 'inspector')", [fresh]);
+    expect((await db.query("SELECT accepting_new FROM contractor_profile WHERE user_id = $1", [fresh])).rows[0]!["accepting_new"]).toBe(false);
   });
 });

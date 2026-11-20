@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { maskJobAddress } from "../../../../src/domain/contractor-trust";
 import { actOnJob } from "../../../../src/domain/job-board";
 import { assignmentIds, getAssignmentRepo } from "../../../../src/server/assignment-db";
 import { withApi } from "../../../../src/server/api/with-api";
@@ -18,7 +19,7 @@ async function handleGet(req: Request, { params }: Ctx) {
   const { id } = await params;
   const job = UUID.test(id) ? await createPgMarketStore(getDb()).getJob(id) : undefined;
   if (!job || (job.ownerUserId !== actor.userId && job.contractorUserId !== actor.userId)) return failure({ ok: false, code: "not_found", message: "Not found." });
-  return NextResponse.json({ job: { ...job, role: job.ownerUserId === actor.userId ? "owner" : "contractor" } });
+  return NextResponse.json({ job: { ...maskJobAddress(job, actor.userId), role: job.ownerUserId === actor.userId ? "owner" : "contractor" } });
 }
 
 /**
@@ -32,7 +33,7 @@ async function handlePost(req: Request, { params }: Ctx) {
   if (!actor) return unauthenticated();
   const { id } = await params;
   const r = await actOnJob({ assignments: getAssignmentRepo(), store: createPgMarketStore(getDb()), ids: assignmentIds, notify: makeJobNotify(getDb()) }, actor, id, await req.json().catch(() => null));
-  return r.ok ? NextResponse.json({ job: r.value }) : failure(r);
+  return r.ok ? NextResponse.json({ job: maskJobAddress(r.value, actor.userId) }) : failure(r);
 }
 export const GET = withApi(handleGet);
 export const POST = withApi(handlePost);

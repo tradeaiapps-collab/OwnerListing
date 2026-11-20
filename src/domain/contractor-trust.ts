@@ -158,3 +158,12 @@ export function summariseRatings(ratings: readonly number[]): { average: number 
   if (ratings.length === 0) return { average: null, count: 0 };
   return { average: Math.round((ratings.reduce((s, r) => s + r, 0) / ratings.length) * 10) / 10, count: ratings.length };
 }
+
+/**
+ * A job as a contractor may see it: the street address is replaced by the suburb until they have accepted, and again once the job is
+ * cancelled. The owner always sees the full address. Apply to every job a contractor can read or be notified about.
+ */
+export function maskJobAddress<T extends { address: string; suburb?: string; status: string; contractorUserId: string }>(job: T, viewerId: string): T {
+  if (viewerId !== job.contractorUserId || canSeeFullAddress("contractor", job.status)) return job;
+  return { ...job, address: job.suburb ? `${job.suburb} (street address shown once you accept)` : "Street address shown once you accept" };
+}

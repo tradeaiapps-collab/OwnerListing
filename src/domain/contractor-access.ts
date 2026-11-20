@@ -16,7 +16,12 @@ export const VENDOR_API_PREFIXES: readonly string[] = [
   "/api/push",
   "/api/abn",
   // Later contractor packages: calendar, uploads by job, emergency settings.
-  "/api/contractor/"
+  "/api/contractor/",
+  // Trust and safety: job details and usage rights, quotes, replies to reviews, and the public trust summary. Each route checks the user is a party.
+  "/api/assignments",
+  "/api/quotes",
+  "/api/reviews",
+  "/api/contractors"
 ];
 
 /** True when a contractor session may call this API path. `/api/v1/...` is the same route as `/api/...`. Path traversal and encoded dots are refused. */

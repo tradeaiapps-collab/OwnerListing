@@ -1,3 +1,4 @@
+import { notSuspendedSql } from "./contractor-standing-sql";
 import { randomUUID } from "node:crypto";
 import type { ChatRepository } from "../domain/job-chat-service";
 import type { AssignmentStatus, ChatMessage, JobAssignment } from "../domain/job-chat";
@@ -19,6 +20,7 @@ export const INSERT_MESSAGE_SQL =
   "INSERT INTO chat_message (id, assignment_id, sender_id, body, attachment_refs, sent_at) " +
   "SELECT $1::uuid, a.id, $3::uuid, $4, '[]'::jsonb, $5::timestamptz FROM job_assignment a " +
   "WHERE a.id = $2::uuid AND a.status = 'approved' AND $3::uuid IN (a.owner_user_id, a.contractor_user_id) " +
+  "AND ($3::uuid <> a.contractor_user_id OR " + notSuspendedSql("a.contractor_user_id") + ") " +
   "RETURNING id";
 
 const text = (v: unknown) => String(v);

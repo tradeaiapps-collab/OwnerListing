@@ -92,6 +92,8 @@ async function setSuspension(tx: Queryable, staffId: string, contractorId: strin
       `UPDATE contractor_standing SET suspended = false, reason = NULL, changed_by = $2::uuid, changed_at = now()
        WHERE user_id = $1::uuid AND suspended AND user_id <> $2::uuid RETURNING user_id`, [contractorId, staffId]);
   if (r.rows.length !== 1) return false;
+  // A contractor-type account is also locked out at sign-in (and signed back in when reinstated). Other account types keep their account.
+  await tx.query("UPDATE app_user SET status = $2 WHERE id = $1::uuid AND user_type = 'vendor' AND status = $3", [contractorId, suspend ? "suspended" : "active", suspend ? "active" : "suspended"]);
   await tx.query("INSERT INTO contractor_standing_event (contractor_user_id, report_id, actor_id, action, note) VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5)",
     [contractorId, reportId, staffId, suspend ? "suspend" : "reinstate", note]);
   await audit(tx, staffId, "contractor_standing", contractorId, suspend ? "contractor.suspended" : "contractor.reinstated", { reportId });

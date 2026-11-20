@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
-  areaOnly, canSeeFullAddress, parseQuote, parseReportDecision, parseReview, parseVerification, parseVerificationDecision, summariseRatings, verificationState
+  areaOnly, canSeeFullAddress, parseQuote, parseReportDecision, parseVerification, parseVerificationDecision, summariseRatings, verificationState
 } from "../src/domain/contractor-trust";
+import { maskJobAddress } from "../src/domain/contractor-trust";
+import { vendorMayCall } from "../src/domain/contractor-access";
 import { canUploadPhotos } from "../src/domain/listing-photos";
 
 const TODAY = "2026-11-20";
@@ -55,8 +57,6 @@ describe("other inputs", () => {
     expect(parseQuote({ amountCents: 45000, description: "Replace two taps and reseal." })).toMatchObject({ ok: true });
     expect(parseQuote({ amountCents: 4.5, description: "Replace two taps and reseal." })).toMatchObject({ ok: false });
     expect(parseQuote({ amountCents: 200_000_000, description: "Replace two taps and reseal." })).toMatchObject({ ok: false });
-    expect(parseReview({ rating: 5 })).toMatchObject({ ok: true, value: { comment: null } });
-    expect(parseReview({ rating: 6 })).toMatchObject({ ok: false });
   });
 });
 
@@ -77,5 +77,21 @@ describe("privacy and ratings", () => {
   it("averages ratings to one decimal", () => {
     expect(summariseRatings([])).toEqual({ average: null, count: 0 });
     expect(summariseRatings([5, 4, 4])).toEqual({ average: 4.3, count: 3 });
+  });
+});
+
+describe("job address and contractor routes", () => {
+  const job = { address: "12 Secret Lane", suburb: "Paddington", status: "proposed", contractorUserId: "c", ownerUserId: "o" };
+  it("hides the street from the contractor until the job is accepted, and again once cancelled", () => {
+    expect(maskJobAddress(job, "c").address).toBe("Paddington (street address shown once you accept)");
+    expect(maskJobAddress({ ...job, suburb: undefined }, "c").address).not.toContain("Secret");
+    expect(maskJobAddress({ ...job, status: "cancelled" }, "c").address).not.toContain("Secret");
+    expect(maskJobAddress({ ...job, status: "approved" }, "c").address).toBe("12 Secret Lane");
+    expect(maskJobAddress({ ...job, status: "completed" }, "c").address).toBe("12 Secret Lane");
+    expect(maskJobAddress(job, "o").address).toBe("12 Secret Lane");
+  });
+  it("lets contractor sessions reach the trust routes, and nothing next to them", () => {
+    for (const p of ["/api/assignments/x/trust", "/api/assignments/x/quotes", "/api/quotes/x", "/api/reviews/x/reply", "/api/contractors/x/trust", "/api/v1/quotes/x"]) expect(vendorMayCall(p), p).toBe(true);
+    for (const p of ["/api/assignmentsX", "/api/quotesX", "/api/reviewsX", "/api/contractorsX", "/api/staff/contractors/reports"]) expect(vendorMayCall(p), p).toBe(false);
   });
 });

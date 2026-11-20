@@ -41,6 +41,9 @@ CREATE TABLE contractor_verification_event (
 CREATE INDEX contractor_verification_event_idx ON contractor_verification_event (user_id, created_at);
 CREATE TRIGGER contractor_verification_event_guard BEFORE UPDATE OR DELETE ON contractor_verification_event FOR EACH ROW EXECUTE FUNCTION trust_event_permanent();
 
+-- Contractors are not offered new jobs automatically until staff have verified them (they can still be invited by an owner).
+ALTER TABLE contractor_profile ALTER COLUMN accepting_new SET DEFAULT false;
+
 -- ---------- Standing (suspension) ----------
 CREATE TABLE contractor_standing (
   user_id    UUID PRIMARY KEY REFERENCES app_user(id),
