@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { runDueAutomations } from "../../../../../src/server/automation-db";
 import { runDueRentals } from "../../../../../src/server/elena-rentals-db";
 import { runDueElenaJobs } from "../../../../../src/server/elena-jobs-db";
+import { runDuePaperwork } from "../../../../../src/server/sale-paperwork-db";
 import { runDueSchedulingMessages } from "../../../../../src/server/elena-scheduling-db";
 import { authorizeCron } from "../../../../../src/server/cron-secret-db";
 import { getDb } from "../../../../../src/server/context";
@@ -22,7 +23,9 @@ async function handlePost(req: Request) {
   const elenaJobs = await runDueElenaJobs(getDb(), now).catch(() => ({ created: 0, acted: 0, invited: 0 }));
   // Rentals: repair chasing, viewing reminders and viewing summaries for owners who switched Elena on.
   const rentals = await runDueRentals(getDb(), now).catch(() => ({ repairs: 0, reminders: 0, summaries: 0 }));
-  return NextResponse.json({ ...automations, scheduling, elenaJobs, rentals });
+  // Sale paperwork reminders for owners who switched them on: owner and buyer are told only about their own open items. Never fails the run.
+  const paperwork = await runDuePaperwork(getDb(), now).catch(() => ({ listings: 0, sent: 0, stopped: 0, done: 0 }));
+  return NextResponse.json({ ...automations, scheduling, elenaJobs, rentals, paperwork });
 }
 
 export const POST = withApi(handlePost);
