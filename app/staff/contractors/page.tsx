@@ -1,118 +1,77 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
-import { loadError, postStaff } from "../staff-api";
-import "../../styles/staff.css";
+import { loadError } from "../staff-api";
+import "../../styles/agent-performance.css";
 
-interface State { status: string; badge: boolean; insuranceExpired: boolean; licenceExpired: boolean; insuranceExpiringInDays: number | null; licenceExpiringInDays: number | null }
-interface Verification {
-  userId: string; name: string; businessName: string; abn: string; licenceNumber: string | null; licenceAuthority: string | null; licenceExpiry: string | null;
-  insurer: string; policyNumber: string; insuranceExpiry: string; status: string; reviewNote: string | null; submittedAt: string; state: State;
-}
-interface Report {
-  id: string; kind: string; detail: string; status: string; createdAt: string; decisionNote: string | null; contractorId: string; contractorName: string; reporterName: string;
-  listingTitle: string; contractorSuspended: boolean; reportsAgainst: number;
-}
-const KINDS: Record<string, string> = { no_show: "Did not turn up", poor_work: "Poor work", unsafe: "Unsafe or inappropriate behaviour", other: "Something else" };
-type Tab = "verifications" | "reports";
+type Row = { label: string; invited: number; accepted: number; declined: number; completed: number; cancelledAfterAccept: number; avgResponseMinutes: number | null; completionRate: number | null; complaints: number };
 
-/** Staff check what contractors supplied (nothing is looked up automatically), review owner reports, and suspend or reinstate contractors. */
+const today = () => new Date().toISOString().slice(0, 10);
+const daysAgo = (n: number) => new Date(Date.now() - n * 86_400_000).toISOString().slice(0, 10);
+const mins = (m: number | null) => (m === null ? "–" : m < 90 ? `${m} min` : m < 2880 ? `${Math.round(m / 60)} h` : `${Math.round(m / 1440)} d`);
+
+/** Jobs, response times, completion and complaints for every contractor in a date range, with a CSV export. */
 export default function StaffContractors() {
-  const [tab, setTab] = useState<Tab>("verifications");
-  const [showAll, setShowAll] = useState(false);
-  const [showDecided, setShowDecided] = useState(false);
-  const [vs, setVs] = useState<Verification[]>([]);
-  const [rs, setRs] = useState<Report[]>([]);
-  const [loaded, setLoaded] = useState(false);
-  const [message, setMessage] = useState("");
-  const [notes, setNotes] = useState<Record<string, string>>({});
+  const [from, setFrom] = useState(daysAgo(89));
+  const [to, setTo] = useState(today());
+  const [rows, setRows] = useState<Row[] | null>(null);
+  const [error, setError] = useState("");
 
-  const load = useCallback(async () => {
-    setMessage("");
-    const url = tab === "verifications" ? `/api/staff/contractors/verifications?view=${showAll ? "all" : "pending"}` : `/api/staff/contractors/reports?view=${showDecided ? "decided" : "open"}`;
-    const r = await fetch(url).catch(() => null);
-    if (!r || !r.ok) { setMessage(loadError(r?.status ?? 0)); setLoaded(true); return; }
-    const d = await r.json();
-    if (tab === "verifications") setVs(d.verifications); else setRs(d.reports);
-    setLoaded(true);
-  }, [tab, showAll, showDecided]);
-  useEffect(() => { setLoaded(false); void load(); }, [load]);
+  const load = useCallback(async (f: string, t: string) => {
+    setError("");
+    const r = await fetch(`/api/staff/contractors-report?from=${f}&to=${t}`).catch(() => null);
+    if (!r || !r.ok) { setRows(null); setError(r?.status === 400 ? ((await r.json().catch(() => ({}))).error ?? "Check the dates.") : loadError(r?.status ?? 0)); return; }
+    setRows((await r.json()).rows);
+  }, []);
+  useEffect(() => { if (from && to) void load(from, to); }, [from, to, load]);
 
-  async function post(url: string, body: Record<string, unknown>) {
-    const res = await postStaff(url, body);
-    setMessage(res.ok ? "Recorded." : String(res.data["error"] ?? "Failed."));
-    await load();
-  }
-  const note = (id: string) => notes[id]?.trim() ?? "";
-  const noteBox = (id: string, label: string) => (
-    <label>{label}
-      <textarea className="staff-reason" maxLength={500} value={notes[id] ?? ""} onChange={e => setNotes({ ...notes, [id]: e.target.value })} />
-    </label>
-  );
-
+  const total = (k: "invited" | "completed" | "complaints") => (rows ?? []).reduce((n, r) => n + r[k], 0);
   return (
-    <main>
-      <h1>Contractor trust</h1>
-      <p><a href="/staff">Back to staff</a></p>
-      <div className="actions" role="group" aria-label="Section">
-        <button type="button" aria-pressed={tab === "verifications"} className={tab === "verifications" ? undefined : "secondary"} onClick={() => setTab("verifications")}>Verification</button>
-        <button type="button" aria-pressed={tab === "reports"} className={tab === "reports" ? undefined : "secondary"} onClick={() => setTab("reports")}>Owner reports</button>
+    <main className="admin-page ap">
+      <div>
+        <h1>Contractor report</h1>
+        <p className="ap-lead">Photographers, inspectors and other contractors, for jobs invited in the range (UTC dates). Response time runs from the invitation to the first answer.</p>
       </div>
-      {message && <p role="alert">{message}</p>}
-
-      {tab === "verifications" && (<>
-        <p className="muted">Compare the details below with the contractor&apos;s real licence, insurance certificate and the ABN register. Nothing is checked automatically; only the ABN format was validated. Insurance that has expired removes the badge by itself.</p>
-        <label><input type="checkbox" checked={showAll} onChange={e => setShowAll(e.target.checked)} /> Include decided (to find expiring or expired insurance)</label>
-        {loaded && vs.length === 0 && <p className="empty">{showAll ? "No contractor has submitted details." : "Nothing waiting for a check."}</p>}
-        <ul className="card-list">
-          {vs.map(v => (
-            <li key={v.userId} className="card">
-              <h2>{v.businessName} <span className="badge">{v.status}</span>{v.state.badge && <span className="badge"> badge on</span>}</h2>
-              <p><strong>{v.name}</strong> · ABN {v.abn} · submitted {new Date(v.submittedAt).toLocaleDateString("en-AU")}</p>
-              <p>Insurance: {v.insurer}, policy {v.policyNumber}, expires {v.insuranceExpiry}
-                {v.state.insuranceExpired ? " (EXPIRED)" : v.state.insuranceExpiringInDays !== null && v.state.insuranceExpiringInDays <= 30 ? ` (in ${v.state.insuranceExpiringInDays} days)` : ""}</p>
-              <p>{v.licenceNumber ? `Licence: ${v.licenceNumber}, issued by ${v.licenceAuthority}, expires ${v.licenceExpiry}${v.state.licenceExpired ? " (EXPIRED)" : ""}` : "No licence given."}</p>
-              {v.reviewNote && <p className="muted">Last note: {v.reviewNote}</p>}
-              {v.status === "pending" && (<>
-                {noteBox(v.userId, "Note to the contractor (needed to reject)")}
-                <div className="actions">
-                  <button type="button" onClick={() => void post(`/api/staff/contractors/verifications/${v.userId}`, { action: "verify", ...(note(v.userId) ? { note: note(v.userId) } : {}) })}>Verify</button>
-                  <button type="button" className="secondary" disabled={!note(v.userId)} onClick={() => void post(`/api/staff/contractors/verifications/${v.userId}`, { action: "reject", note: note(v.userId) })}>Reject</button>
-                </div>
-              </>)}
-            </li>
-          ))}
-        </ul>
-      </>)}
-
-      {tab === "reports" && (<>
-        <p className="muted">Reports from owners about a contractor on their job. Uphold, or uphold and suspend (a suspended contractor cannot be invited, accept jobs or be matched). A decision needs a note.</p>
-        <label><input type="checkbox" checked={showDecided} onChange={e => setShowDecided(e.target.checked)} /> Show decided reports</label>
-        {loaded && rs.length === 0 && <p className="empty">{showDecided ? "No decided reports yet." : "No open reports."}</p>}
-        <ul className="card-list">
-          {rs.map(r => (
-            <li key={r.id} className="card">
-              <h2>{KINDS[r.kind] ?? r.kind} <span className="badge">{r.status}</span>{r.contractorSuspended && <span className="badge"> suspended</span>}</h2>
-              <p><strong>{r.contractorName}</strong> · {r.reportsAgainst} report{r.reportsAgainst === 1 ? "" : "s"} not dismissed · job at {r.listingTitle} · reported by {r.reporterName}</p>
-              <blockquote style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{r.detail}</blockquote>
-              <p className="muted">{new Date(r.createdAt).toLocaleString("en-AU")}{r.decisionNote ? ` · Decision: ${r.decisionNote}` : ""}</p>
-              {r.status === "open" && (<>
-                {noteBox(r.id, "Decision note")}
-                <div className="actions">
-                  <button type="button" className="secondary" disabled={!note(r.id)} onClick={() => void post(`/api/staff/contractors/reports/${r.id}`, { action: "dismiss", note: note(r.id) })}>Dismiss</button>
-                  <button type="button" disabled={!note(r.id)} onClick={() => void post(`/api/staff/contractors/reports/${r.id}`, { action: "uphold", note: note(r.id) })}>Uphold</button>
-                  {!r.contractorSuspended && <button type="button" disabled={!note(r.id)} onClick={() => void post(`/api/staff/contractors/reports/${r.id}`, { action: "uphold_and_suspend", note: note(r.id) })}>Uphold and suspend</button>}
-                </div>
-              </>)}
-              {r.contractorSuspended && (
-                <div className="actions">
-                  {r.status !== "open" && noteBox(`s-${r.id}`, "Reason to reinstate")}
-                  <button type="button" className="secondary" disabled={!note(r.status === "open" ? r.id : `s-${r.id}`)} onClick={() => void post(`/api/staff/contractors/${r.contractorId}/standing`, { action: "reinstate", note: note(r.status === "open" ? r.id : `s-${r.id}`) })}>Reinstate contractor</button>
-                </div>
-              )}
-            </li>
-          ))}
-        </ul>
-      </>)}
+      <div className="ap-filters">
+        <label>From<input type="date" value={from} max={to} onChange={e => setFrom(e.target.value)} /></label>
+        <label>To<input type="date" value={to} min={from} onChange={e => setTo(e.target.value)} /></label>
+        <div className="actions"><a className="button secondary" href={`/api/staff/contractors-report?from=${from}&to=${to}&format=csv`}>Export CSV</a></div>
+      </div>
+      {error && <p role="alert" className="ap-error">{error}</p>}
+      {!rows && !error && <p className="ap-state" role="status">Loading…</p>}
+      {rows && (
+        <>
+          <div className="ap-kpis">
+            <div className="ap-kpi"><span>Contractors</span><strong>{rows.length}</strong></div>
+            <div className="ap-kpi"><span>Jobs invited</span><strong>{total("invited")}</strong></div>
+            <div className="ap-kpi"><span>Jobs completed</span><strong>{total("completed")}</strong></div>
+            <div className="ap-kpi"><span>Complaints</span><strong>{total("complaints")}</strong></div>
+          </div>
+          {rows.length === 0 ? <div className="ap-state">No contractor jobs were invited in this range.</div> : (
+            <div className="ap-table-wrap">
+              <table className="ap-table">
+                <caption className="sr-only">Contractors with jobs, response time, completion rate and complaints</caption>
+                <thead><tr>
+                  <th scope="col">Contractor</th><th scope="col" className="num">Invited</th><th scope="col" className="num">Accepted</th>
+                  <th scope="col" className="num">Declined</th><th scope="col" className="num">Completed</th><th scope="col" className="num">Avg response</th>
+                  <th scope="col" className="num">Completion</th><th scope="col" className="num">Complaints</th>
+                </tr></thead>
+                <tbody>
+                  {rows.map(r => (
+                    <tr key={r.label} className={r.complaints > 0 ? "flagged" : undefined}>
+                      <td className="agent">{r.label}<small>{r.cancelledAfterAccept} cancelled after accepting</small></td>
+                      <td className="num">{r.invited}</td><td className="num">{r.accepted}</td><td className="num">{r.declined}</td><td className="num">{r.completed}</td>
+                      <td className="num">{mins(r.avgResponseMinutes)}</td>
+                      <td className="num">{r.completionRate === null ? "–" : `${r.completionRate}%`}</td>
+                      <td className="num">{r.complaints}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          <ul className="ap-notes"><li>Completion rate is completed jobs divided by accepted jobs.</li><li>Names follow your personal-data permission.</li></ul>
+        </>
+      )}
     </main>
   );
 }

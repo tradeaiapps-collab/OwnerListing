@@ -18,7 +18,6 @@ vi.mock("../src/server/contractor-trust-db", () => ({
 
 import * as trust from "../app/api/contractor/trust/route";
 import * as quotes from "../app/api/assignments/[id]/quotes/route";
-import * as report from "../app/api/assignments/[id]/report/route";
 import * as review from "../app/api/assignments/[id]/review/route";
 import * as rights from "../app/api/assignments/[id]/usage-rights/route";
 import * as jobTrust from "../app/api/assignments/[id]/trust/route";
@@ -52,7 +51,7 @@ beforeEach(() => {
 describe("contractor routes", () => {
   it("need a signed-in user, and writes need the same-origin check", async () => {
     S.actor = null;
-    for (const r of [await trust.GET(get()), await trust.PUT(put(VERIFICATION)), await quotes.POST(post(QUOTE), ctx()), await report.POST(post({}), ctx()), await quote.POST(post({ action: "accept" }), ctx()), await jobTrust.GET(get(), ctx())]) expect(r.status).toBe(401);
+    for (const r of [await trust.GET(get()), await trust.PUT(put(VERIFICATION)), await quotes.POST(post(QUOTE), ctx()), await quote.POST(post({ action: "accept" }), ctx()), await jobTrust.GET(get(), ctx())]) expect(r.status).toBe(401);
     S.actor = { userId: "c1111111-1111-4111-8111-111111111111", userType: "vendor" };
     expect((await quotes.POST(post(QUOTE, { "content-type": "application/json", origin: "http://evil" }), ctx())).status).toBeGreaterThanOrEqual(400);
     expect(called("sendQuote")).toHaveLength(0);
@@ -81,14 +80,12 @@ describe("contractor routes", () => {
     expect((await quotes.POST(post({ amountCents: -5, description: "Replace two taps." }), ctx())).status).toBe(400);
     S.actor = { userId: "o1111111-1111-4111-8111-111111111111", userType: "owner" };
     expect((await review.POST(post({ rating: 9 }), ctx())).status).toBe(400);
-    expect((await report.POST(post({ kind: "bad", detail: "A long enough description." }), ctx())).status).toBe(400);
   });
-  it("refuses contact details and abuse in quotes, reviews and replies, but lets a report carry a phone number to staff", async () => {
+  it("refuses contact details and abuse in quotes, reviews and replies", async () => {
     expect((await quotes.POST(post({ amountCents: 1000, description: "Call me on 0412 345 678 to pay me directly." }), ctx())).status).toBe(400);
     expect((await reply.POST(post({ reply: "Ring 0412 345 678 for a discount" }), ctx())).status).toBe(400);
     S.actor = { userId: "o1111111-1111-4111-8111-111111111111", userType: "owner" };
     expect((await review.POST(post({ rating: 3, comment: "Email bob@example.com for work" }), ctx())).status).toBe(400);
-    expect((await report.POST(post({ kind: "no_show", detail: "He never came; his number is 0412 345 678." }), ctx())).status).toBe(201);
     expect(called("sendQuote")).toHaveLength(0);
   });
   it("maps database refusals to the right status", async () => {

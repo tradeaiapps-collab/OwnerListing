@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  areaOnly, canSeeFullAddress, parseQuote, parseReport, parseReportDecision, parseReview, parseVerification, parseVerificationDecision, summariseRatings, verificationState
+  areaOnly, canSeeFullAddress, parseQuote, parseReportDecision, parseReview, parseVerification, parseVerificationDecision, summariseRatings, verificationState
 } from "../src/domain/contractor-trust";
 import { canUploadPhotos } from "../src/domain/listing-photos";
 
@@ -48,9 +48,6 @@ describe("verificationState", () => {
 
 describe("other inputs", () => {
   it("validates reports, decisions, quotes and reviews", () => {
-    expect(parseReport({ kind: "no_show", detail: "Did not arrive at 10am." })).toMatchObject({ ok: true });
-    expect(parseReport({ kind: "rude", detail: "Did not arrive at 10am." })).toMatchObject({ ok: false });
-    expect(parseReport({ kind: "other", detail: "short" })).toMatchObject({ ok: false });
     expect(parseReportDecision({ action: "uphold_and_suspend", note: "Confirmed no-show twice." })).toMatchObject({ ok: true });
     expect(parseReportDecision({ action: "uphold" })).toMatchObject({ ok: false });
     expect(parseVerificationDecision({ action: "reject" })).toMatchObject({ ok: false });

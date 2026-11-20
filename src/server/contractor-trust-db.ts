@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { areaOnly, canSeeFullAddress, summariseRatings, USAGE_RIGHTS_VERSION, verificationState, type ReportKind, type VerificationInput, type VerificationState } from "../domain/contractor-trust";
+import { areaOnly, canSeeFullAddress, summariseRatings, USAGE_RIGHTS_VERSION, verificationState, type VerificationInput, type VerificationState } from "../domain/contractor-trust";
 import { appendAuditPg, type Queryable } from "./db";
 
 /**
@@ -102,60 +102,41 @@ export async function setSuspensionPg(db: Queryable, staffId: string, contractor
   return inTx(db, tx => setSuspension(tx, staffId, contractorId, suspend, note, null));
 }
 
-// ---------- Reports ----------
-export type CreateReportResult = "created" | "not_allowed" | "duplicate";
-export async function createReportPg(db: Queryable, ownerId: string, assignmentId: string, kind: ReportKind, detail: string): Promise<CreateReportResult> {
-  return inTx(db, async tx => {
-    const r = await tx.query(
-      `INSERT INTO contractor_report (assignment_id, reporter_user_id, contractor_user_id, kind, detail)
-       SELECT a.id, a.owner_user_id, a.contractor_user_id, $3::text, $4::text FROM job_assignment a
-       WHERE a.id = $1::uuid AND a.owner_user_id = $2::uuid AND a.status IN ('approved', 'completed')
-       ON CONFLICT (assignment_id, kind) WHERE status = 'open' DO NOTHING RETURNING id, contractor_user_id`,
-      [assignmentId, ownerId, kind, detail]);
-    const row = r.rows[0];
-    if (!row) {
-      const ok = (await tx.query("SELECT 1 FROM job_assignment WHERE id = $1::uuid AND owner_user_id = $2::uuid AND status IN ('approved', 'completed')", [assignmentId, ownerId])).rows.length === 1;
-      return ok ? "duplicate" : "not_allowed";
-    }
-    await tx.query("INSERT INTO contractor_standing_event (contractor_user_id, report_id, actor_id, action) VALUES ($1::uuid, $2::uuid, $3::uuid, 'raised')", [text(row["contractor_user_id"]), text(row["id"]), ownerId]);
-    await audit(tx, ownerId, "contractor_report", text(row["id"]), "contractor_report.raised", { assignmentId, kind });
-    return "created";
-  });
-}
-
+// ---------- Complaints (owner reports, filed through contractor operations) ----------
 export interface ReportRow {
-  id: string; assignmentId: string; kind: ReportKind; detail: string; status: "open" | "dismissed" | "upheld"; createdAt: string; decisionNote: string | null; decidedAt: string | null;
+  id: string; assignmentId: string; kind: string; detail: string; status: "open" | "dismissed" | "upheld"; createdAt: string; decisionNote: string | null; decidedAt: string | null;
   contractorId: string; contractorName: string; reporterName: string; listingTitle: string; contractorSuspended: boolean; reportsAgainst: number;
 }
 export async function listReportsPg(db: Queryable, view: "open" | "decided"): Promise<ReportRow[]> {
   const { rows } = await db.query(
-    `SELECT r.id, r.assignment_id, r.kind, r.detail, r.status, r.created_at, r.decision_note, r.decided_at, r.contractor_user_id, cu.display_name AS contractor_name, ru.display_name AS reporter_name, l.title,
-       COALESCE(s.suspended, false) AS suspended, (SELECT count(*) FROM contractor_report x WHERE x.contractor_user_id = r.contractor_user_id AND x.status <> 'dismissed') AS against
-     FROM contractor_report r JOIN app_user cu ON cu.id = r.contractor_user_id JOIN app_user ru ON ru.id = r.reporter_user_id
-     JOIN job_assignment a ON a.id = r.assignment_id JOIN property_listing l ON l.id = a.listing_id LEFT JOIN contractor_standing s ON s.user_id = r.contractor_user_id
+    `SELECT r.id, r.assignment_id, r.kind, r.details, r.status, r.created_at, r.decision_note, r.decided_at, a.contractor_user_id, cu.display_name AS contractor_name, ru.display_name AS reporter_name, l.title,
+       COALESCE(s.suspended, false) AS suspended,
+       (SELECT count(*) FROM contractor_complaint x JOIN job_assignment xa ON xa.id = x.assignment_id WHERE xa.contractor_user_id = a.contractor_user_id AND x.status <> 'dismissed') AS against
+     FROM contractor_complaint r JOIN job_assignment a ON a.id = r.assignment_id JOIN app_user cu ON cu.id = a.contractor_user_id JOIN app_user ru ON ru.id = r.reported_by
+     JOIN property_listing l ON l.id = a.listing_id LEFT JOIN contractor_standing s ON s.user_id = a.contractor_user_id
      WHERE (($1::text = 'open' AND r.status = 'open') OR ($1::text = 'decided' AND r.status <> 'open'))
      ORDER BY r.created_at DESC LIMIT 200`, [view]);
   return rows.map(r => ({
-    id: text(r["id"]), assignmentId: text(r["assignment_id"]), kind: text(r["kind"]) as ReportKind, detail: text(r["detail"]), status: text(r["status"]) as ReportRow["status"],
+    id: text(r["id"]), assignmentId: text(r["assignment_id"]), kind: text(r["kind"]), detail: text(r["details"]), status: text(r["status"]) as ReportRow["status"],
     createdAt: iso(r["created_at"]), decisionNote: opt(r["decision_note"]), decidedAt: r["decided_at"] ? iso(r["decided_at"]) : null, contractorId: text(r["contractor_user_id"]),
     contractorName: text(r["contractor_name"]), reporterName: text(r["reporter_name"]), listingTitle: text(r["title"]), contractorSuspended: r["suspended"] === true, reportsAgainst: Number(r["against"])
   }));
 }
 
 export type DecideReportResult = "ok" | "conflict";
-/** Decides an open report once. "uphold_and_suspend" also suspends the contractor in the same transaction. */
+/** Decides an open complaint once. "uphold_and_suspend" also suspends the contractor in the same transaction. Staff on either side of the job cannot decide it. */
 export async function decideReportPg(db: Queryable, reportId: string, staffId: string, action: "dismiss" | "uphold" | "uphold_and_suspend", note: string): Promise<DecideReportResult> {
   return inTx(db, async tx => {
     const r = await tx.query(
-      `UPDATE contractor_report SET status = $3, decided_by = $2::uuid, decided_at = now(), decision_note = $4
-       WHERE id = $1::uuid AND status = 'open' AND reporter_user_id <> $2::uuid AND contractor_user_id <> $2::uuid RETURNING contractor_user_id`,
+      `UPDATE contractor_complaint c SET status = $3, decided_by = $2::uuid, decided_at = now(), decision_note = $4 FROM job_assignment a
+       WHERE c.id = $1::uuid AND c.status = 'open' AND a.id = c.assignment_id AND c.reported_by <> $2::uuid AND a.contractor_user_id <> $2::uuid RETURNING a.contractor_user_id`,
       [reportId, staffId, action === "dismiss" ? "dismissed" : "upheld", note]);
     const row = r.rows[0];
     if (!row) return "conflict";
     const contractorId = text(row["contractor_user_id"]);
     await tx.query("INSERT INTO contractor_standing_event (contractor_user_id, report_id, actor_id, action, note) VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5)",
       [contractorId, reportId, staffId, action === "dismiss" ? "dismiss" : "uphold", note]);
-    await audit(tx, staffId, "contractor_report", reportId, `contractor_report.${action}`);
+    await audit(tx, staffId, "contractor_complaint", reportId, `contractor_complaint.${action}`);
     if (action === "uphold_and_suspend") await setSuspension(tx, staffId, contractorId, true, note, reportId);
     return "ok";
   });

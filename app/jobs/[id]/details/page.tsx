@@ -8,7 +8,7 @@ interface Quote { id: string; amountCents: number; description: string; status: 
 interface Review { rating: number; comment: string | null; reply: string | null }
 const dollars = (c: number) => (c / 100).toLocaleString("en-AU", { style: "currency", currency: "AUD" });
 const QUOTE_STATUS: Record<string, string> = { sent: "Waiting for the owner", accepted: "Accepted", declined: "Declined", withdrawn: "Withdrawn" };
-const REPORT_KINDS = [["no_show", "Did not turn up"], ["poor_work", "Poor work"], ["unsafe", "Unsafe or inappropriate behaviour"], ["other", "Something else"]] as const;
+const REPORT_KINDS = [["no_show", "Did not turn up"], ["poor_work", "Poor work"], ["late", "Turned up late"], ["conduct", "Conduct"], ["other", "Something else"]] as const;
 
 /** One job for its owner and contractor: where it is, usage rights, written quotes, then (owner) the rating and a report. */
 export default function JobDetails() {
@@ -123,7 +123,7 @@ export default function JobDetails() {
       {owner && (job.status === "approved" || job.status === "completed") && (
         <section><h2>Report a problem</h2>
           <p className="muted">If the contractor did not turn up or the work was poor, tell staff. They review every report and can suspend a contractor.</p>
-          <form className="stack" onSubmit={e => { e.preventDefault(); void call(`/api/assignments/${job.id}/report`, { kind, detail }, "Reported. Staff will review it.").then(ok => { if (ok) setDetail(""); }).finally(finish); }}>
+          <form className="stack" onSubmit={e => { e.preventDefault(); void call(`/api/assignments/${job.id}/complaint`, { kind, details: detail }, "Reported. Staff will review it.").then(ok => { if (ok) setDetail(""); }).finally(finish); }}>
             <label>What went wrong
               <select value={kind} onChange={e => setKind(e.target.value)}>{REPORT_KINDS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
             </label>

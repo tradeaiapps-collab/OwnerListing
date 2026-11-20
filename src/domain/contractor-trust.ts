@@ -83,20 +83,8 @@ export function verificationState(row: { status: string; insuranceExpiry: string
 
 export const todayUtc = (now: Date = new Date()) => now.toISOString().slice(0, 10);
 
-// ---------- Reports ----------
-export const REPORT_KINDS = ["no_show", "poor_work", "unsafe", "other"] as const;
-export type ReportKind = typeof REPORT_KINDS[number];
-export const REPORT_KIND_LABELS: Record<ReportKind, string> = { no_show: "Did not turn up", poor_work: "Poor work", unsafe: "Unsafe or inappropriate behaviour", other: "Something else" };
-
-export function parseReport(input: unknown): Parsed<{ kind: ReportKind; detail: string }> {
-  if (typeof input !== "object" || input === null) return bad("Send a JSON object.");
-  const o = input as Record<string, unknown>;
-  if (typeof o["kind"] !== "string" || !(REPORT_KINDS as readonly string[]).includes(o["kind"])) return bad("Choose what went wrong.");
-  const detail = str(o["detail"], 10, 1500);
-  if (!detail) return bad("Describe what happened in 10 to 1500 characters.");
-  return { ok: true, value: { kind: o["kind"] as ReportKind, detail } };
-}
-
+// ---------- Complaints ----------
+// Owners file them through contractor operations (POST /api/assignments/[id]/complaint); staff decide them here.
 export type StaffReportAction = "dismiss" | "uphold" | "uphold_and_suspend";
 export function parseReportDecision(input: unknown): Parsed<{ action: StaffReportAction; note: string }> {
   if (typeof input !== "object" || input === null) return bad("Send a JSON object.");

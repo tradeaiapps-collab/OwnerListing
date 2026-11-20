@@ -106,6 +106,9 @@ export const KINDS = {
   open_inspection_reminder_1h: "appointments",
   open_inspection_cancelled: "appointments",
   booking_conflict: "appointments",
+  job_new: "appointments",
+  job_time_changed: "appointments",
+  job_reminder: "appointments",
   offer_received: "offers",
   offer_accepted: "offers",
   offer_rejected: "offers",
@@ -141,7 +144,7 @@ export type Kind = keyof typeof KINDS;
 export const isKind = (v: unknown): v is Kind => typeof v === "string" && Object.prototype.hasOwnProperty.call(KINDS, v);
 
 /** Kinds worth a text message when the user has opted in: they are time-critical and short. */
-const SMS_KINDS: ReadonlySet<Kind> = new Set<Kind>(["message_received", "appointment_invited", "appointment_reminder", "consultation_booked", "consultation_cancelled", "offer_received", "offer_accepted", "offer_rejected", "offer_countered", "offer_buyer_countered", "offer_terms_agreed", "fall_through_proposed", "offer_fallen_through", "automation_alert"]);
+const SMS_KINDS: ReadonlySet<Kind> = new Set<Kind>(["message_received", "appointment_invited", "appointment_reminder", "job_new", "job_time_changed", "job_reminder", "consultation_booked", "consultation_cancelled", "offer_received", "offer_accepted", "offer_rejected", "offer_countered", "offer_buyer_countered", "offer_terms_agreed", "fall_through_proposed", "offer_fallen_through", "automation_alert"]);
 
 export interface NotificationParams { [key: string]: string | undefined }
 export interface RenderedNotification { kind: Kind; category: Category; title: string; body: string; link: string | null; smsText: string | null }
@@ -184,6 +187,9 @@ export function renderNotification(kind: Kind, p: NotificationParams = {}): Rend
     case "open_inspection_cancelled": return t("Inspection cancelled", `The inspection of ${listing} on ${when} was cancelled. ${clip(p["next"], 200, "Open the listing to book another time.")}`);
     case "booking_received": return t("New booking from a portal", `${name} booked ${listing} through a listing portal. The dates are now blocked on your calendar.`);
     case "booking_conflict": return t("Booking clashes with another", `A booking from ${name} for ${listing} overlaps dates that are already booked. Contact the portal or the guest to sort it out.`);
+    case "job_new": return t("New job request", `${name} asked you to do a ${clip(p["job"], 40, "job")} at ${listing}. Open it to accept or decline.`);
+    case "job_time_changed": return t("Job time changed", `The time for your ${clip(p["job"], 40, "job")} at ${listing} is now ${when}. Open it to confirm.`);
+    case "job_reminder": return t("Job coming up", `Your ${clip(p["job"], 40, "job")} at ${listing} is on ${when}.`);
     case "offer_received": return t("New offer received", `A new offer was made on ${listing}. Review it in your offers.`);
     case "offer_accepted": return t("Offer accepted", `Your offer on ${listing} was accepted by the owner.`);
     case "offer_rejected": return t("Offer not accepted", `Your offer on ${listing} was not accepted.`);

@@ -51,40 +51,34 @@ CREATE TABLE contractor_standing (
   CHECK (NOT suspended OR reason IS NOT NULL)
 );
 
--- ---------- Reports against a contractor ----------
-CREATE TABLE contractor_report (
-  id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  assignment_id       UUID NOT NULL REFERENCES job_assignment(id),
-  reporter_user_id    UUID NOT NULL REFERENCES app_user(id),
-  contractor_user_id  UUID NOT NULL REFERENCES app_user(id),
-  kind                TEXT NOT NULL CHECK (kind IN ('no_show', 'poor_work', 'unsafe', 'other')),
-  detail              TEXT NOT NULL CHECK (char_length(detail) BETWEEN 10 AND 1500),
-  status              TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'dismissed', 'upheld')),
-  created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
-  decided_by          UUID REFERENCES app_user(id),
-  decided_at          TIMESTAMPTZ,
-  decision_note       TEXT CHECK (decision_note IS NULL OR char_length(decision_note) <= 500),
-  CHECK ((status = 'open') = (decided_at IS NULL)),
-  CHECK (decided_by IS NULL OR (decided_by <> reporter_user_id AND decided_by <> contractor_user_id))
-);
--- The same complaint about the same job is one open report.
-CREATE UNIQUE INDEX contractor_report_open_idx ON contractor_report (assignment_id, kind) WHERE status = 'open';
-CREATE INDEX contractor_report_queue_idx ON contractor_report (status, created_at);
-CREATE INDEX contractor_report_contractor_idx ON contractor_report (contractor_user_id);
+-- ---------- Review of owner complaints ----------
+-- contractor_complaint (db/20261120100000, contractor operations) is the one complaint table. Staff decide each complaint once.
+-- The contractor is the assignment's contractor; staff cannot decide a complaint on a job they are a party to (checked in the update).
+ALTER TABLE contractor_complaint
+  ADD COLUMN status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'dismissed', 'upheld')),
+  ADD COLUMN decided_by UUID REFERENCES app_user(id),
+  ADD COLUMN decided_at TIMESTAMPTZ,
+  ADD COLUMN decision_note TEXT CHECK (decision_note IS NULL OR char_length(decision_note) <= 500),
+  ADD CONSTRAINT contractor_complaint_decided_chk CHECK ((status = 'open') = (decided_at IS NULL)),
+  ADD CONSTRAINT contractor_complaint_decider_chk CHECK (decided_by IS NULL OR decided_by <> reported_by);
+CREATE INDEX contractor_complaint_queue_idx ON contractor_complaint (status, created_at);
 
-CREATE OR REPLACE FUNCTION contractor_report_guard() RETURNS trigger AS $$
+CREATE OR REPLACE FUNCTION contractor_complaint_guard() RETURNS trigger AS $$
 BEGIN
-  IF TG_OP = 'DELETE' THEN RAISE EXCEPTION 'contractor_report rows are permanent'; END IF;
-  IF OLD.status <> 'open' THEN RAISE EXCEPTION 'contractor_report is already decided'; END IF;
+  IF TG_OP = 'DELETE' THEN RAISE EXCEPTION 'contractor_complaint rows are permanent'; END IF;
+  IF OLD.status <> 'open' THEN RAISE EXCEPTION 'contractor_complaint is already decided'; END IF;
+  IF NEW.assignment_id <> OLD.assignment_id OR NEW.reported_by <> OLD.reported_by OR NEW.kind <> OLD.kind OR NEW.details <> OLD.details OR NEW.created_at <> OLD.created_at THEN
+    RAISE EXCEPTION 'a complaint cannot be edited';
+  END IF;
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
-CREATE TRIGGER contractor_report_guard BEFORE UPDATE OR DELETE ON contractor_report FOR EACH ROW EXECUTE FUNCTION contractor_report_guard();
+CREATE TRIGGER contractor_complaint_guard BEFORE UPDATE OR DELETE ON contractor_complaint FOR EACH ROW EXECUTE FUNCTION contractor_complaint_guard();
 
 CREATE TABLE contractor_standing_event (
   id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   contractor_user_id UUID NOT NULL REFERENCES app_user(id),
-  report_id          UUID REFERENCES contractor_report(id),
+  report_id          UUID REFERENCES contractor_complaint(id),
   actor_id           UUID NOT NULL REFERENCES app_user(id),
   action             TEXT NOT NULL CHECK (action IN ('raised', 'dismiss', 'uphold', 'suspend', 'reinstate')),
   note               TEXT,

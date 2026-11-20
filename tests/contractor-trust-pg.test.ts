@@ -1,8 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { insertComplaint } from "../src/server/contractor-ops-db";
 import { createPgAssignmentRepository } from "../src/server/assignment-db";
 import {
-  assignmentAccessPg, confirmUsageRightsPg, createReportPg, createReviewPg, decideQuotePg, decideReportPg, decideVerificationPg, getStandingPg, getVerificationPg,
+  assignmentAccessPg, confirmUsageRightsPg, createReviewPg, decideQuotePg, decideReportPg, decideVerificationPg, getStandingPg, getVerificationPg,
   listReportsPg, listVerificationsPg, publicTrustPg, quotesForAssignmentPg, replyToReviewPg, sendQuotePg, setSuspensionPg, submitVerificationPg
 } from "../src/server/contractor-trust-db";
 import { verificationState } from "../src/domain/contractor-trust";
@@ -72,12 +73,11 @@ describe.skipIf(!DATABASE_URL)("contractor trust and safety (Postgres)", () => {
     expect(await confirmUsageRightsPg(db, proposed.contractor, proposed.id)).toBe(false);
   });
 
-  it("reports go to staff; upheld-and-suspended contractors cannot be invited or accept; reinstating restores", async () => {
+  it("complaints reach staff; upheld-and-suspended contractors cannot be invited or accept; reinstating restores", async () => {
     const staff = await addUser(db, "admin");
     const j = await job();
-    expect(await createReportPg(db, j.contractor, j.id, "no_show", "Not allowed for the contractor.")).toBe("not_allowed");
-    expect(await createReportPg(db, j.owner, j.id, "no_show", "Did not arrive for the 10am shoot.")).toBe("created");
-    expect(await createReportPg(db, j.owner, j.id, "no_show", "Again the same thing.")).toBe("duplicate");
+    expect(await insertComplaint(db, j.id, j.contractor, "no_show", "Not allowed for the contractor.")).toBe(false);
+    expect(await insertComplaint(db, j.id, j.owner, "no_show", "Did not arrive for the 10am shoot.")).toBe(true);
     const row = (await listReportsPg(db, "open")).find(r => r.assignmentId === j.id)!;
     expect(row).toMatchObject({ kind: "no_show", status: "open", contractorSuspended: false });
     expect(await decideReportPg(db, row.id, j.owner, "uphold", "x")).toBe("conflict");
@@ -85,6 +85,8 @@ describe.skipIf(!DATABASE_URL)("contractor trust and safety (Postgres)", () => {
     expect(await decideReportPg(db, row.id, staff, "dismiss", "again")).toBe("conflict");
     expect((await getStandingPg(db, j.contractor)).suspended).toBe(true);
     expect((await listReportsPg(db, "decided")).find(r => r.id === row.id)).toMatchObject({ status: "upheld", contractorSuspended: true });
+    await expect(db.query("UPDATE contractor_complaint SET details = 'changed' WHERE id = $1", [row.id])).rejects.toThrow();
+    await expect(db.query("DELETE FROM contractor_complaint WHERE id = $1", [row.id])).rejects.toThrow(/permanent/);
 
     const repo = createPgAssignmentRepository(db);
     const ev = () => ({ id: randomUUID(), occurredAt: new Date().toISOString(), actorType: "user" as const, actorId: j.owner, aggregateType: "job_assignment", aggregateId: "x", eventType: "t", correlationId: randomUUID(), payload: {} });
