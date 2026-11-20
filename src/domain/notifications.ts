@@ -149,13 +149,15 @@ export const KINDS = {
   job_files_added: "appointments",
   job_reviewed: "messages",
   emergency_request: "messages",
-  emergency_accepted: "messages"
+  emergency_accepted: "messages",
+  rental_update: "messages",
+  rental_urgent: "messages"
 } as const satisfies Record<string, Category>;
 export type Kind = keyof typeof KINDS;
 export const isKind = (v: unknown): v is Kind => typeof v === "string" && Object.prototype.hasOwnProperty.call(KINDS, v);
 
 /** Kinds worth a text message when the user has opted in: they are time-critical and short. */
-const SMS_KINDS: ReadonlySet<Kind> = new Set<Kind>(["message_received", "appointment_invited", "appointment_reminder", "job_new", "job_time_changed", "job_reminder", "consultation_booked", "consultation_cancelled", "offer_received", "offer_accepted", "offer_rejected", "offer_countered", "offer_buyer_countered", "offer_terms_agreed", "fall_through_proposed", "offer_fallen_through", "automation_alert", "job_update"]);
+const SMS_KINDS: ReadonlySet<Kind> = new Set<Kind>(["rental_urgent", "message_received", "appointment_invited", "appointment_reminder", "job_new", "job_time_changed", "job_reminder", "consultation_booked", "consultation_cancelled", "offer_received", "offer_accepted", "offer_rejected", "offer_countered", "offer_buyer_countered", "offer_terms_agreed", "fall_through_proposed", "offer_fallen_through", "automation_alert", "job_update"]);
 
 export interface NotificationParams { [key: string]: string | undefined }
 export interface RenderedNotification { kind: Kind; category: Category; title: string; body: string; link: string | null; smsText: string | null }
@@ -247,6 +249,8 @@ export function renderNotification(kind: Kind, p: NotificationParams = {}): Rend
     case "scheduling_message": return t(clip(p["title"], 80, "A message about your inspection"), clip(p["text"], 1500, "There is an update about your inspection."));
     case "scheduling_suggestion": return t(clip(p["title"], 80, "Elena drafted a message"), clip(p["text"], 400, "Review the draft and send, edit or skip it."));
     case "lead_followup_due": return t("Lead follow-up due", clip(p["text"], 300, `Follow up with ${name} about ${listing}.`), false);
+    case "rental_update": return t(clip(p["title"], 80, "Rental update"), clip(p["text"], 700, "There is an update on your rental."));
+    case "rental_urgent": return t(clip(p["title"], 80, "Urgent rental update"), clip(p["text"], 700, "There is an urgent update on your rental."));
     case "job_update": return t(clip(p["title"], 80, "Job update"), clip(p["text"], 600, "There is an update on your job."));
     case "emergency_request": return t(`Urgent request ${clip(p["reference"], 20, "")}`, clip(p["text"], 300, "An owner needs an emergency contractor. Open it to accept or pass."), false);
     case "emergency_accepted": return t("A contractor accepted your urgent request", clip(p["text"], 300, `${name} accepted your urgent request. Open it for their contact details.`), false);

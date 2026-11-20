@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { runDueAutomations } from "../../../../../src/server/automation-db";
+import { runDueRentals } from "../../../../../src/server/elena-rentals-db";
 import { runDueElenaJobs } from "../../../../../src/server/elena-jobs-db";
 import { runDueSchedulingMessages } from "../../../../../src/server/elena-scheduling-db";
 import { authorizeCron } from "../../../../../src/server/cron-secret-db";
@@ -19,7 +20,9 @@ async function handlePost(req: Request) {
   const scheduling = await runDueSchedulingMessages(getDb(), now).catch(() => ({ expired: 0, suggested: 0 }));
   // Contractor jobs Elena handles for owners who turned it on: new requests, reminders, time follow-ups and delivery chasing.
   const elenaJobs = await runDueElenaJobs(getDb(), now).catch(() => ({ created: 0, acted: 0, invited: 0 }));
-  return NextResponse.json({ ...automations, scheduling, elenaJobs });
+  // Rentals: repair chasing, viewing reminders and viewing summaries for owners who switched Elena on.
+  const rentals = await runDueRentals(getDb(), now).catch(() => ({ repairs: 0, reminders: 0, summaries: 0 }));
+  return NextResponse.json({ ...automations, scheduling, elenaJobs, rentals });
 }
 
 export const POST = withApi(handlePost);
