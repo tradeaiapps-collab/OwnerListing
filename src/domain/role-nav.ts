@@ -15,6 +15,8 @@ export const ROLE_NAV: Record<UserRole, readonly RoleNavItem[]> = {
     { id: "mine", label: "My listings", href: "/listings/mine" },
     { id: "offers", label: "Offers", href: "/listings/mine" },
     PROJECTS,
+    { id: "contractors", label: "Contractors", href: "/contractors" },
+    { id: "jobs", label: "Jobs", href: "/jobs" },
     MESSAGES,
     { id: "agent-performance", label: "Agent performance", href: "/owner/agent-performance" },
     ACCOUNT
@@ -32,10 +34,18 @@ export const ROLE_NAV: Record<UserRole, readonly RoleNavItem[]> = {
     { id: "agent-listings", label: "Listings", href: "/agent/listings" },
     { id: "crm", label: "CRM", href: "/agent/leads" },
     PROJECTS,
+    { id: "jobs", label: "Jobs", href: "/jobs" },
     MESSAGES,
     { id: "reports", label: "Reports", href: "/agent/reports" },
     { id: "workspace", label: "Workspace", href: "/agent/workspace" },
     ACCOUNT
+  ],
+  vendor: [
+    { id: "contractor-profile", label: "My page", href: "/contractor/profile" },
+    { id: "contractor-jobs", label: "Jobs", href: "/contractor/jobs" },
+    { id: "contractor-public", label: "Public page", href: "/contractors" },
+    PROJECTS,
+    { id: "contractor-security", label: "Security", href: "/mfa" }
   ],
   investor: [
     { id: "projects", label: "Projects", href: "/investments" },

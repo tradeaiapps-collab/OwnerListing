@@ -1,15 +1,19 @@
-import { randomInt, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import {
-  KIND_LABEL, LIMITS, checkOutbound, draftMessage, findRef, onAccepted, onAnswer, onDue, onProposal, onReply, rateLimited, readReply,
+  KIND_LABEL, LIMITS, checkOutbound, draftMessage, findJobNo, onAccepted, onAnswer, onDue, onProposal, onProposalElsewhere, onReply, onScheduledElsewhere, rateLimited, readReply,
   type ElenaJob, type JobSettings, type JobState, type MessageKind, type Party, type Step
 } from "../domain/elena-jobs";
 import { formatAppointment } from "../domain/elena-scheduling";
 import { isJurisdiction, type Jurisdiction } from "../domain/jurisdiction";
 import type { LayoutEntry } from "../domain/listing-photos";
 import { scanContent } from "../domain/content-filter";
-import { autoDispatch } from "../domain/contractor-dispatch";
+import { formatJobNo } from "../domain/contractor-market";
+import { maskJobAddress } from "../domain/contractor-trust";
+import { bookContractor, suggestFor } from "../domain/job-board";
 import { assignmentIds, createPgAssignmentRepository } from "./assignment-db";
-import { createPgContractorProfileStore } from "./contractor-profile-db";
+import { createPgMarketStore } from "./contractor-market-db";
+import { notSuspendedSql, verifiedInDateSql } from "./contractor-standing-sql";
+import { makeJobNotify } from "./job-notify";
 import type { Queryable } from "./db";
 import { notifyUser } from "./notifier";
 
@@ -20,7 +24,7 @@ const text = (v: unknown) => String(v);
 const iso = (v: unknown) => (v instanceof Date ? v.toISOString() : new Date(String(v)).toISOString());
 const optIso = (v: unknown) => (v === null || v === undefined ? undefined : iso(v));
 
-export interface JobRow extends ElenaJob { ownerUserId: string; contractorUserId: string; jurisdiction: Jurisdiction; address: string; filesPulled: number; needsOwnerReason?: string }
+export interface JobRow extends ElenaJob { suburb?: string; ownerUserId: string; contractorUserId: string; jurisdiction: Jurisdiction; address: string; filesPulled: number; needsOwnerReason?: string; assignmentProposed?: string; assignmentScheduled?: string; assignmentStatus: string; jobNumber: number }
 export interface LogEntry { id: string; direction: "out" | "in"; party: Party; kind: string; body: string; status: string; reason?: string; at: string }
 export interface Sender { send(userId: string, kind: MessageKind, title: string, body: string, link: string): Promise<boolean> }
 
@@ -62,19 +66,23 @@ export function parseSettings(input: unknown): JobSettings | undefined {
 
 const JOB_COLS =
   "j.id, j.assignment_id, j.listing_id, j.kind, j.contact_ref, j.state, j.proposed_at, j.proposed_by, j.appointment_at, j.rounds, j.reminders, " +
-  "j.next_action_at, j.created_at, j.owner_user_id, j.contractor_user_id, j.files_pulled, j.needs_owner_reason, l.jurisdiction, l.address_text";
-export const JOB_BY_ID_SQL = `SELECT ${JOB_COLS} FROM elena_job j JOIN property_listing l ON l.id = j.listing_id WHERE j.id = $1::uuid`;
-export const JOBS_FOR_LISTING_SQL = `SELECT ${JOB_COLS}, cu.display_name AS contractor_name FROM elena_job j JOIN property_listing l ON l.id = j.listing_id JOIN app_user cu ON cu.id = j.contractor_user_id WHERE j.listing_id = $1::uuid AND l.owner_user_id = $2::uuid ORDER BY j.created_at`;
-export const JOB_BY_REF_SQL = `SELECT ${JOB_COLS} FROM elena_job j JOIN property_listing l ON l.id = j.listing_id WHERE j.contact_ref = $1::text`;
+  "j.next_action_at, j.created_at, j.owner_user_id, j.contractor_user_id, j.files_pulled, j.needs_owner_reason, l.jurisdiction, l.address_text, l.suburb, " +
+  "a.job_number, a.status AS assignment_status, a.proposed_time AS a_proposed, a.scheduled_time AS a_scheduled";
+const JOB_FROM = " FROM elena_job j JOIN property_listing l ON l.id = j.listing_id JOIN job_assignment a ON a.id = j.assignment_id";
+export const JOB_BY_ID_SQL = `SELECT ${JOB_COLS}${JOB_FROM} WHERE j.id = $1::uuid`;
+export const JOBS_FOR_LISTING_SQL = `SELECT ${JOB_COLS}, cu.display_name AS contractor_name${JOB_FROM} JOIN app_user cu ON cu.id = j.contractor_user_id WHERE j.listing_id = $1::uuid AND l.owner_user_id = $2::uuid ORDER BY j.created_at`;
+export const JOB_BY_NO_SQL = `SELECT ${JOB_COLS}${JOB_FROM} WHERE a.job_number = $1::integer`;
 export const LAST_LOG_SQL = "SELECT id, direction, party, kind, body, status, reason, created_at FROM elena_job_message WHERE job_id = $1::uuid ORDER BY created_at DESC, id LIMIT 40";
 
 function toJob(r: Record<string, unknown>): JobRow {
   const j = text(r["jurisdiction"]).trim();
   return {
-    id: text(r["id"]), assignmentId: text(r["assignment_id"]), listingId: text(r["listing_id"]), kind: text(r["kind"]), contactRef: text(r["contact_ref"]),
+    id: text(r["id"]), assignmentId: text(r["assignment_id"]), listingId: text(r["listing_id"]), kind: text(r["kind"]), contactRef: formatJobNo(Number(r["job_number"])),
     state: text(r["state"]) as JobState, rounds: Number(r["rounds"]), reminders: Number(r["reminders"]), createdAt: iso(r["created_at"]),
     ownerUserId: text(r["owner_user_id"]), contractorUserId: text(r["contractor_user_id"]), filesPulled: Number(r["files_pulled"]),
-    jurisdiction: (isJurisdiction(j) ? j : "NSW") as Jurisdiction, address: text(r["address_text"]),
+    jurisdiction: (isJurisdiction(j) ? j : "NSW") as Jurisdiction, address: text(r["address_text"]), ...(r["suburb"] ? { suburb: text(r["suburb"]) } : {}),
+    jobNumber: Number(r["job_number"]), assignmentStatus: text(r["assignment_status"]),
+    ...(optIso(r["a_proposed"]) ? { assignmentProposed: optIso(r["a_proposed"])! } : {}), ...(optIso(r["a_scheduled"]) ? { assignmentScheduled: optIso(r["a_scheduled"])! } : {}),
     ...(optIso(r["proposed_at"]) ? { proposedAt: optIso(r["proposed_at"])! } : {}),
     ...(r["proposed_by"] ? { proposedBy: text(r["proposed_by"]) as Party } : {}),
     ...(optIso(r["appointment_at"]) ? { appointmentAt: optIso(r["appointment_at"])! } : {}),
@@ -127,14 +135,16 @@ export async function sendJobMessage(db: Queryable, sender: Sender, job: JobRow,
     quote = scanContent(q).action === "block" || /\$\s?\d/.test(q) || MONEY_WORDS.test(q)
       ? "(it mentions contact details, money or blocked words, so it is only in the log below)" : q;
   }
+  // A contractor sees only the suburb until the job is accepted (same rule as the Jobs page).
+  const address = to === "contractor" ? maskJobAddress({ address: job.address, ...(job.suburb ? { suburb: job.suburb } : {}), status: job.assignmentStatus, contractorUserId: job.contractorUserId }, job.contractorUserId).address : job.address;
   const draft = draftMessage(kind, {
-    address: job.address, contractor: firstName(names.get(job.contractorUserId) ?? ""), owner: firstName(names.get(job.ownerUserId) ?? ""),
+    address, contractor: firstName(names.get(job.contractorUserId) ?? ""), owner: firstName(names.get(job.ownerUserId) ?? ""),
     kindLabel: KIND_LABEL[job.kind] ?? "contractor", ref: job.contactRef,
     ...(job.proposedAt ? { when: formatAppointment(job.proposedAt, job.jurisdiction) } : {}),
     ...(kind === "confirmed" || kind === "appointment_reminder" ? { when: formatAppointment(job.appointmentAt ?? job.proposedAt ?? now, job.jurisdiction) } : {}),
     count: job.filesPulled, ...(extra.reason ? { reason: extra.reason } : {}), ...(quote !== undefined ? { quote } : {})
   });
-  const body = `${draft.body}\n\nJob ${job.contactRef}`;
+  const body = `${draft.body}\n\n${job.contactRef}`;
   const check = checkOutbound({ title: draft.title, body });
   if (!check.ok) { await log(db, job.id, "out", to, kind, body, "blocked", check.reason); return "blocked"; }
   const since = new Date(new Date(now).getTime() - 24 * 3600_000).toISOString();
@@ -158,7 +168,7 @@ export const PATCH_SQL =
  * Runs the steps from the domain: first the state change (so a crash cannot resend), then the messages. Returns false when the job moved
  * under us (someone else changed it), in which case nothing was sent.
  */
-export async function applySteps(db: Queryable, sender: Sender, job: JobRow, steps: readonly Step[], now: string): Promise<boolean> {
+export async function applySteps(db: Queryable, sender: Sender, job: JobRow, steps: readonly Step[], now: string, opts: { fromJobsPage?: boolean } = {}): Promise<boolean> {
   let next: JobRow = { ...job };
   let reason: string | undefined = job.needsOwnerReason;
   let nextAction: string | null | undefined = job.nextActionAt;
@@ -176,6 +186,7 @@ export async function applySteps(db: Queryable, sender: Sender, job: JobRow, ste
   }
   const moved = await db.query(PATCH_SQL, [job.id, job.state, next.state, next.proposedAt ?? null, next.proposedBy ?? null, next.appointmentAt ?? null, next.rounds, next.reminders, nextAction ?? null, next.state === "needs_owner" ? reason ?? null : null, job.rounds]);
   if (moved.rows.length !== 1) return false;
+  await mirrorToJob(db, job, next, now, opts.fromJobsPage === true);
   for (const s of steps) {
     if (s.type !== "send") continue;
     const r = await sendJobMessage(db, sender, next, s.to, s.kind, now);
@@ -192,9 +203,9 @@ export async function applySteps(db: Queryable, sender: Sender, job: JobRow, ste
 
 // ---- Creating jobs --------------------------------------------------------------------------------------------------------------
 
-/** Live assignments on listings where Elena handles jobs and has no job yet. */
+/** Live job offers on listings where Elena handles jobs and has no job yet. The offer itself (and its notification) is the Jobs page's own. */
 export const NEW_JOBS_SQL =
-  "SELECT a.id, a.listing_id, a.owner_user_id, a.contractor_user_id, a.kind, a.status FROM job_assignment a " +
+  "SELECT a.id, a.listing_id, a.owner_user_id, a.contractor_user_id, a.kind, a.status, a.job_number FROM job_assignment a " +
   "JOIN elena_job_settings s ON s.listing_id = a.listing_id AND s.handle_jobs " +
   "WHERE a.status IN ('proposed','approved') AND NOT EXISTS (SELECT 1 FROM elena_job j WHERE j.assignment_id = a.id) ORDER BY a.id LIMIT 50";
 export const INSERT_JOB_SQL =
@@ -202,18 +213,109 @@ export const INSERT_JOB_SQL =
   "VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid, $6::text, $7::text, 'requested', $8::timestamptz) ON CONFLICT DO NOTHING RETURNING id";
 
 async function createJob(db: Queryable, sender: Sender, a: Record<string, unknown>, now: string): Promise<boolean> {
-  for (let i = 0; i < 5; i++) {
-    const id = randomUUID();
-    const ref = `EJ-${randomInt(100000, 1000000)}`;
-    const ins = await db.query(INSERT_JOB_SQL, [id, text(a["id"]), text(a["listing_id"]), text(a["owner_user_id"]), text(a["contractor_user_id"]), text(a["kind"]), ref, now]);
-    if (ins.rows.length !== 1) { if ((await db.query("SELECT 1 FROM elena_job WHERE assignment_id = $1::uuid", [text(a["id"])])).rows.length) return false; continue; }
-    const job = (await getJob(db, id))!;
-    // A new request is sent now; if the contractor already accepted, go straight to asking for a time.
-    if (text(a["status"]) === "approved") await applySteps(db, sender, job, onAccepted(now), now);
-    else await applySteps(db, sender, job, [{ type: "set", patch: { reminders: 0, nextActionAt: new Date(new Date(now).getTime() + LIMITS.reminderGapMs).toISOString() } }, { type: "send", to: "contractor", kind: "request" }], now);
-    return true;
+  const id = randomUUID();
+  const gap = new Date(new Date(now).getTime() + LIMITS.reminderGapMs).toISOString();
+  const ins = await db.query(INSERT_JOB_SQL, [id, text(a["id"]), text(a["listing_id"]), text(a["owner_user_id"]), text(a["contractor_user_id"]), text(a["kind"]), formatJobNo(Number(a["job_number"])), gap]);
+  if (ins.rows.length !== 1) return false;
+  // The contractor already got the offer from the Jobs page, so Elena does not send a second request: she chases it after a day.
+  // If they have already accepted, she goes straight to asking for a time.
+  if (text(a["status"]) === "approved") { const job = await getJob(db, id); if (job) await applySteps(db, sender, job, onAccepted(now), now); }
+  return true;
+}
+
+// ---- Keeping in step with the Jobs page -----------------------------------------------------------------------------------------
+
+export const ACTIVE_JOBS_SQL =
+  `SELECT j.id FROM elena_job j JOIN elena_job_settings s ON s.listing_id = j.listing_id AND s.handle_jobs WHERE j.state IN ('requested','negotiating') ORDER BY j.updated_at LIMIT 200`;
+export const SUSPENDED_SQL = `SELECT NOT (${notSuspendedSql("$1::uuid")}) AS suspended`;
+
+/**
+ * Contractors and owners can also act on the Jobs page (accept, propose a time, accept or reject a time). Elena reads the job each time she
+ * wakes, so the two never disagree: an accepted offer starts the time conversation, a confirmed time is recorded and reminded, a new proposal
+ * is chased, and a rejected proposal asks both sides for another time.
+ */
+export async function syncFromJobsPage(db: Queryable, sender: Sender, now: string): Promise<number> {
+  let n = 0;
+  for (const r of (await db.query(ACTIVE_JOBS_SQL, [])).rows) {
+    const job = await getJob(db, text(r["id"]));
+    if (!job) continue;
+    let steps: Step[] = [];
+    if (job.assignmentStatus === "cancelled" || job.assignmentStatus === "completed") steps = [{ type: "set", patch: { state: "stopped", nextActionAt: null } }];
+    else if (job.assignmentScheduled && job.assignmentScheduled !== job.appointmentAt) steps = onScheduledElsewhere(job, job.assignmentScheduled, now);
+    else if (job.state === "requested" && job.assignmentStatus === "approved") steps = onAccepted(now);
+    else if (job.state === "negotiating" && job.assignmentProposed && (job.proposedAt !== job.assignmentProposed || job.proposedBy !== "contractor")) steps = onProposalElsewhere(job, job.assignmentProposed, now);
+    else if (job.state === "negotiating" && job.proposedBy === "contractor" && job.proposedAt && !job.assignmentProposed) steps = onAnswer(job, "owner", false, now);
+    if (steps.length && (await applySteps(db, sender, job, steps, now, { fromJobsPage: true }))) n++;
   }
-  return false;
+  return n;
+}
+
+// ---- Writing agreed times back to the job ---------------------------------------------------------------------------------------
+
+const elenaAudit = (job: JobRow, eventType: string, now: string, payload: Record<string, unknown>) =>
+  ({ id: randomUUID(), occurredAt: now, actorType: "service" as const, actorId: "elena", aggregateType: "job_assignment", aggregateId: job.assignmentId, eventType, correlationId: randomUUID(), payload: { listingId: job.listingId, kind: job.kind, ...payload } });
+
+/** Params: 1 id, 2 time, 3..7 audit. A time both sides agreed becomes the job's scheduled time (and a still-offered job becomes approved). Refuses suspended contractors. */
+export const SCHEDULE_SQL =
+  "WITH moved AS (UPDATE job_assignment SET scheduled_time = $2::timestamptz, proposed_time = NULL, " +
+  "approved_at = CASE WHEN status = 'proposed' THEN now() ELSE approved_at END, status = CASE WHEN status = 'proposed' THEN 'approved' ELSE status END, responded_at = coalesce(responded_at, now()) " +
+  "WHERE id = $1::uuid AND status IN ('proposed','approved') AND " + notSuspendedSql("contractor_user_id") + " RETURNING id) " +
+  "INSERT INTO audit_event (id, occurred_at, actor_type, actor_id, aggregate_type, aggregate_id, event_type, correlation_id, payload) " +
+  "SELECT $3::uuid, $4::timestamptz, 'service', 'elena', 'job_assignment', moved.id::text, $5::text, $6::text, $7::jsonb FROM moved RETURNING aggregate_id";
+
+/** Mirrors what Elena just recorded onto the job so the Jobs page and Elena always show the same thing. Never throws. */
+async function mirrorToJob(db: Queryable, before: JobRow, after: JobRow, now: string, fromJobsPage: boolean): Promise<void> {
+  try {
+    const store = createPgMarketStore(db);
+    if (after.state === "scheduled" && after.appointmentAt && before.state !== "scheduled" && !fromJobsPage) {
+      const a = elenaAudit(after, "job.time_confirmed_by_elena", now, { time: after.appointmentAt });
+      await db.query(SCHEDULE_SQL, [after.assignmentId, after.appointmentAt, a.id, a.occurredAt, a.eventType, a.correlationId, JSON.stringify(a.payload)]);
+    } else if (after.proposedBy === "contractor" && after.proposedAt && after.proposedAt !== before.assignmentProposed && !fromJobsPage) {
+      await store.proposeTime(after.assignmentId, after.contractorUserId, after.proposedAt, elenaAudit(after, "job.time_proposed", now, { time: after.proposedAt }));
+    } else if (before.proposedBy === "contractor" && before.proposedAt && !after.proposedAt && after.state === "negotiating" && !fromJobsPage) {
+      await store.rejectTime(after.assignmentId, after.ownerUserId, elenaAudit(after, "job.time_rejected", now, {}));
+    }
+  } catch { /* the Jobs page copy is a convenience; Elena's own record is complete */ }
+}
+
+// ---- Picking contractors --------------------------------------------------------------------------------------------------------
+
+/** Listings where Elena handles jobs and a photographer or inspector slot may be open. */
+export const DISPATCH_LISTINGS_SQL =
+  "SELECT l.id, l.owner_user_id FROM property_listing l JOIN elena_job_settings s ON s.listing_id = l.id AND s.handle_jobs " +
+  "WHERE l.status IN ('draft','pending_review','published') AND (" +
+  "SELECT count(*) FROM job_assignment a WHERE a.listing_id = l.id AND a.kind IN ('photographer','inspector') AND a.status <> 'cancelled') < 2 ORDER BY l.id LIMIT 25";
+export const LIVE_KIND_SQL = "SELECT 1 FROM job_assignment WHERE listing_id = $1::uuid AND kind = $2::text AND status <> 'cancelled' LIMIT 1";
+export const PRIOR_CONTRACTORS_SQL = "SELECT DISTINCT contractor_user_id FROM job_assignment WHERE listing_id = $1::uuid AND kind = $2::text";
+/** Of these contractors, those staff have not suspended and whose verification and insurance are in date today. */
+export const ELIGIBLE_SQL = `SELECT u.id FROM app_user u WHERE u.id = ANY($1::uuid[]) AND u.status NOT IN ('suspended','closed') AND ${notSuspendedSql("u.id")} AND ${verifiedInDateSql("u.id")}`;
+
+/**
+ * For each open slot, offers the job to the best-ranked contractor (area, rating, price, completed jobs: the same ranking as "Let Elena choose")
+ * who is verified, insured in date and not suspended, and who has not already been asked for this listing. It is the normal job offer: the
+ * contractor still accepts or declines, pricing stays between them and the owner, and the owner can cancel.
+ */
+export async function dispatchOpenSlots(db: Queryable, rows?: Record<string, unknown>[]): Promise<number> {
+  const deps = { assignments: createPgAssignmentRepository(db), store: createPgMarketStore(db), ids: assignmentIds, notify: makeJobNotify(db) };
+  let invited = 0;
+  for (const l of rows ?? (await db.query(DISPATCH_LISTINGS_SQL, [])).rows) {
+    const actor = { userId: text(l["owner_user_id"]), userType: "owner" as const };
+    const listingId = text(l["id"]);
+    for (const kind of ["photographer", "inspector"] as const) {
+      try {
+        if ((await db.query(LIVE_KIND_SQL, [listingId, kind])).rows.length) continue;
+        const ranked = await suggestFor(deps, actor, listingId, kind);
+        if (!ranked.ok || ranked.value.length === 0) continue;
+        const asked = new Set((await db.query(PRIOR_CONTRACTORS_SQL, [listingId, kind])).rows.map(r => text(r["contractor_user_id"])));
+        const ok = new Set((await db.query(ELIGIBLE_SQL, [ranked.value.map(r => r.card.userId)])).rows.map(r => text(r["id"])));
+        const pick = ranked.value.find(r => ok.has(r.card.userId) && !asked.has(r.card.userId));
+        if (!pick) continue;
+        const booked = await bookContractor(deps, actor, listingId, { kind, contractorUserId: pick.card.userId }, "elena");
+        if (booked.ok) invited++;
+      } catch { /* one listing never stops the rest */ }
+    }
+  }
+  return invited;
 }
 
 // ---- The scheduler tick ---------------------------------------------------------------------------------------------------------
@@ -236,37 +338,23 @@ export async function deliveredCount(db: Queryable, job: JobRow): Promise<{ phot
 
 export interface TickResult { created: number; acted: number; invited: number }
 
-/** Listings where Elena handles jobs and a photographer or inspector slot is open (nobody live, or the last one declined). */
-export const DISPATCH_LISTINGS_SQL =
-  "SELECT l.id, l.owner_user_id, l.suburb, l.postcode FROM property_listing l JOIN elena_job_settings s ON s.listing_id = l.id AND s.handle_jobs " +
-  "WHERE l.status IN ('draft','pending_review','published') AND (" +
-  "SELECT count(*) FROM job_assignment a WHERE a.listing_id = l.id AND a.kind IN ('photographer','inspector') AND a.status <> 'cancelled') < 2 ORDER BY l.id LIMIT 25";
-
-/** Picks and invites contractors for those open slots, through the normal invitation (the contractor must accept; the owner can cancel). */
-export async function dispatchOpenSlots(db: Queryable, rows?: Record<string, unknown>[]): Promise<number> {
-  const repo = createPgAssignmentRepository(db);
-  const profiles = createPgContractorProfileStore(db);
-  let invited = 0;
-  for (const l of rows ?? (await db.query(DISPATCH_LISTINGS_SQL, [])).rows) {
-    const r = await autoDispatch(repo, profiles, { userId: text(l["owner_user_id"]), userType: "owner" }, text(l["id"]),
-      { ...(l["suburb"] ? { suburb: text(l["suburb"]) } : {}), ...(l["postcode"] ? { postcode: text(l["postcode"]).trim() } : {}) }, assignmentIds).catch(() => undefined);
-    if (r?.ok) invited += r.value.filter(o => o.result === "invited").length;
-  }
-  return invited;
-}
-
 export async function runDueElenaJobs(db: Queryable, now: string, sender: Sender = createNotifySender(db)): Promise<TickResult> {
   let created = 0, acted = 0;
   const invited = await dispatchOpenSlots(db).catch(() => 0);
   for (const a of (await db.query(NEW_JOBS_SQL, [])).rows) if (await createJob(db, sender, a, now).catch(() => false)) created++;
+  acted += await syncFromJobsPage(db, sender, now).catch(() => 0);
   const claimed = (await db.query(CLAIM_DUE_SQL, [now])).rows.map(r => text(r["id"]));
   for (const id of claimed) {
     try {
       const job = await getJob(db, id);
       if (!job) continue;
+      // A suspended contractor gets nothing more from Elena; the owner is told to choose someone else.
+      if (Boolean((await db.query(SUSPENDED_SQL, [job.contractorUserId])).rows[0]?.["suspended"])) {
+        await applySteps(db, sender, job, [{ type: "set", patch: { state: "needs_owner", nextActionAt: null, reason: "This contractor is no longer available. Please choose someone else." } }], now);
+        acted++; continue;
+      }
       const status = text((await db.query(ASSIGNMENT_STATUS_SQL, [job.assignmentId])).rows[0]?.["status"]) as "proposed" | "approved" | "completed" | "cancelled";
       const d = await deliveredCount(db, job);
-      // Put the claimed job back to its real time first; the steps set the next one.
       const steps = onDue(job, { assignmentStatus: status, deliveredFiles: d.photos + d.docs }, now);
       if (steps.length === 0) { await db.query("UPDATE elena_job SET next_action_at = NULL WHERE id = $1::uuid", [id]); continue; }
       const delivering = steps.some(s => s.type === "set" && s.patch.state === "delivered");
@@ -315,7 +403,7 @@ async function partyOf(db: Queryable, jobId: string, userId: string): Promise<{ 
   return job.ownerUserId === userId ? { job, party: "owner" } : job.contractorUserId === userId ? { job, party: "contractor" } : undefined;
 }
 
-export const LIVE_ASSIGNMENT_SQL = "SELECT 1 FROM job_assignment WHERE id = $1::uuid AND status IN ('proposed','approved')";
+export const LIVE_ASSIGNMENT_SQL = "SELECT 1 FROM job_assignment WHERE id = $1::uuid AND status IN ('proposed','approved') AND " + notSuspendedSql("contractor_user_id");
 const live = async (db: Queryable, job: JobRow) => (await db.query(LIVE_ASSIGNMENT_SQL, [job.assignmentId])).rows.length === 1;
 
 /** In-app: the owner or the contractor suggests a time. */
@@ -372,14 +460,15 @@ export type InboundResult = "ignored" | "handled" | "owner_only";
 export async function handleInboundJobEmail(
   db: Queryable, sender: Sender, m: { from: string; subject: string; text: string; verified: boolean }, now: string
 ): Promise<InboundResult> {
-  const ref = findRef(`${m.subject}\n${m.text}`);
-  if (!ref) return "ignored";
-  const jr = (await db.query(JOB_BY_REF_SQL, [ref])).rows[0];
+  const no = findJobNo(`${m.subject}\n${m.text}`);
+  if (no === undefined) return "ignored";
+  const jr = (await db.query(JOB_BY_NO_SQL, [no])).rows[0];
   if (!jr) return "ignored";
   const job = toJob(jr);
   const emails = new Map((await db.query(PARTY_EMAILS_SQL, [[job.ownerUserId, job.contractorUserId]])).rows.map(r => [text(r["id"]), text(r["email"]).toLowerCase()]));
   const from: Party | undefined = emails.get(job.ownerUserId) === m.from ? "owner" : emails.get(job.contractorUserId) === m.from ? "contractor" : undefined;
   if (!from) return "ignored";
+  if (from === "contractor" && Boolean((await db.query(SUSPENDED_SQL, [job.contractorUserId])).rows[0]?.["suspended"])) return "ignored";
   if (!m.verified) { await log(db, job.id, "in", from, "email", m.text, "ignored", "Sender could not be verified."); return "ignored"; }
   const settings = await getSettings(db, job.listingId);
   if (!settings.handleJobs) { await log(db, job.id, "in", from, "email", m.text, "ignored", "Elena is switched off for this listing."); return "ignored"; }

@@ -1,4 +1,5 @@
 import { scanContent } from "./content-filter";
+import { parseJobNumber } from "./contractor-market";
 import type { Jurisdiction } from "./jurisdiction";
 import { JURISDICTION_TIME_ZONE } from "./timezone";
 
@@ -117,7 +118,7 @@ export function readReply(text: string, now: string, jurisdiction: Jurisdiction)
 // ---- Messages -------------------------------------------------------------------------------------------------------------------
 
 export const MESSAGE_KINDS = [
-  "request", "request_reminder", "ask_time", "time_to_confirm", "time_reminder", "time_rejected", "confirmed", "appointment_reminder",
+  "request_reminder", "ask_time", "time_to_confirm", "time_reminder", "time_rejected", "confirmed", "appointment_reminder",
   "delivery_followup", "delivered_owner", "needs_owner", "files_added", "auto_reply_help", "contractor_reply"
 ] as const;
 export type MessageKind = (typeof MESSAGE_KINDS)[number];
@@ -125,15 +126,14 @@ export type MessageKind = (typeof MESSAGE_KINDS)[number];
 export interface MessageVars { address: string; contractor: string; owner: string; kindLabel: string; ref: string; when?: string; reason?: string; count?: number; quote?: string }
 export interface Draft { title: string; body: string }
 
-const REPLY_HINT = "Reply with a date and time, for example: 25 Nov 10:30am.";
+const REPLY_HINT = "Reply with a date and time, for example: 25 Nov 10:30am, or propose a time on your Jobs page.";
 const YN_HINT = "Reply yes to confirm, or no with a date and time that suits you better, for example: 26 Nov 2pm.";
 
 /** Fixed wording only, filled from stored fields. No prices, no promises about money, no contact details. */
 export function draftMessage(kind: MessageKind, v: MessageVars): Draft {
   const job = `${v.kindLabel} job ${v.ref} at ${v.address}`;
   switch (kind) {
-    case "request": return { title: `New job request: ${v.kindLabel}`, body: `Hi ${v.contractor}, ${v.owner} would like you for a ${job}. Please open your Jobs page to accept or decline. Pricing is agreed directly between you and the owner. Elena, on behalf of ${v.owner}.` };
-    case "request_reminder": return { title: `Reminder: ${v.kindLabel} request`, body: `Hi ${v.contractor}, a reminder that ${v.owner} is waiting to hear if you can take the ${job}. Please accept or decline on your Jobs page.` };
+    case "request_reminder": return { title: `Reminder: ${v.kindLabel} request`, body: `Hi ${v.contractor}, a reminder that ${v.owner} is waiting to hear if you can take the ${job}. Please accept or decline on your Jobs page, quoting ${v.ref} if you reply by email.` };
     case "ask_time": return { title: `When can you attend? ${v.ref}`, body: `Thanks for accepting the ${job}. When can you attend? ${REPLY_HINT}` };
     case "time_to_confirm": return { title: `Please confirm a time: ${v.ref}`, body: `A time has been suggested for the ${job}: ${v.when}. ${YN_HINT}` };
     case "time_reminder": return { title: `Reminder: time for ${v.ref}`, body: `Still waiting on a time for the ${job}. ${v.when ? `The suggestion is ${v.when}. ${YN_HINT}` : REPLY_HINT}` };
@@ -182,6 +182,19 @@ export function onAccepted(now: string): Step[] {
     { type: "set", patch: { state: "negotiating", nextActionAt: plus(now, LIMITS.reminderGapMs) } },
     { type: "send", to: "contractor", kind: "ask_time" }
   ];
+}
+
+/** A contractor proposed a time on the Jobs page: Elena only records it (the owner was already told there) so she can chase it. */
+export function onProposalElsewhere(job: ElenaJob, at: string, now: string): Step[] {
+  if (job.state !== "negotiating") return [];
+  return [{ type: "set", patch: { proposedAt: at, proposedBy: "contractor", rounds: job.rounds + 1, reminders: 0, nextActionAt: plus(now, LIMITS.reminderGapMs) } }];
+}
+
+/** The time was confirmed on the Jobs page: Elena records it and moves on to the reminder before the visit. */
+export function onScheduledElsewhere(job: ElenaJob, at: string, now: string): Step[] {
+  if (job.state !== "requested" && job.state !== "negotiating") return [];
+  const reminderAt = new Date(new Date(at).getTime() - 24 * 3600_000).toISOString();
+  return [{ type: "set", patch: { state: "scheduled", appointmentAt: at, proposedAt: undefined as never, proposedBy: undefined as never, reminders: 0, nextActionAt: new Date(reminderAt) > new Date(now) ? reminderAt : plus(at, LIMITS.deliveryGraceMs) } }];
 }
 
 /** One party proposed a time (in the app or by email). The other party is asked to confirm it. */
@@ -266,11 +279,7 @@ export function onReply(job: ElenaJob, from: Party, r: ReadReply, settings: JobS
   return { steps: reply ? [{ type: "send", to: from, kind: "auto_reply_help" }] : [], toOwner: true, reply };
 }
 
-export const KIND_LABEL: Record<string, string> = { photographer: "photographer", inspector: "building inspection", solicitor: "solicitor", agent: "agent", other: "contractor" };
+export const KIND_LABEL: Record<string, string> = { photographer: "photographer", inspector: "building inspection", pest_control: "pest control", solicitor: "solicitor", agent: "agent", other: "contractor" };
 
-/** A short, unguessable-enough reference to quote in messages: EJ- and six digits drawn from the job id. */
-export function contactRefFor(jobId: string): string {
-  const n = parseInt(jobId.replace(/-/g, "").slice(0, 8), 16) % 900000;
-  return `EJ-${String(100000 + n)}`;
-}
-export function findRef(text: string): string | undefined { return text.match(/\bEJ-\d{6}\b/i)?.[0]?.toUpperCase(); }
+/** The job number (JOB-5001) quoted in an email subject or reply, if any. */
+export const findJobNo = (text: string): number | undefined => parseJobNumber(text);

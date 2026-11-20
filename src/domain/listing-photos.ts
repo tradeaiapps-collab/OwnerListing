@@ -85,7 +85,8 @@ const MEDIA_ROLES: readonly JobAssignment["kind"][] = ["photographer", "agent"];
 /** Owner, or an approved photographer/agent on this listing, may add photos. */
 export function canUploadPhotos(userId: string, ownerUserId: string, listingId: string, assignments: readonly JobAssignment[]): boolean {
   if (userId === ownerUserId) return true;
-  return assignments.some(a => a.listingId === listingId && a.contractorUserId === userId && a.status === "approved" && MEDIA_ROLES.includes(a.kind));
+  return assignments.some(a => a.listingId === listingId && a.contractorUserId === userId && a.status === "approved" && MEDIA_ROLES.includes(a.kind) &&
+    !(a.kind === "photographer" && a.usageRightsConfirmed === false));
 }
 
 /** Draft photos: the owner and an approved or completed photographer/agent on the listing (staff are checked separately). */

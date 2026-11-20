@@ -18,7 +18,7 @@ CREATE TABLE elena_job (
   owner_user_id UUID NOT NULL REFERENCES app_user(id),
   contractor_user_id UUID NOT NULL REFERENCES app_user(id),
   kind TEXT NOT NULL,
-  -- Shown in every message so an email reply can be matched to the job. Package 1's JOB- number can replace it later.
+  -- The job's JOB- number, shown in every message so an email reply can be matched to the job.
   contact_ref TEXT NOT NULL UNIQUE,
   state TEXT NOT NULL DEFAULT 'requested' CHECK (state IN ('requested','negotiating','scheduled','awaiting_delivery','delivered','needs_owner','stopped')),
   proposed_at TIMESTAMPTZ,

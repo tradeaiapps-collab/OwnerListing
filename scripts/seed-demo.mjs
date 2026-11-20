@@ -236,6 +236,63 @@ async function seedProject(client) {
   }
 }
 
+// ---- Demo contractors (public pages, prices, gallery, finished jobs with feedback) ----------------------------------------------
+// Four contractor accounts (photographer, building inspector, pest control, cleaner) so /contractors, a contractor page, /contractor/jobs
+// and the stats have something to show. They are contractor (vendor) accounts, so /dev-login signs in as a real contractor. Photo links point at a public placeholder service. Idempotent: skipped once Priya exists.
+async function seedContractors(client) {
+  const D = "@demo.invalid";
+  // Databases seeded before contractor sign-up have these four as agent accounts: move them to the contractor type.
+  await client.query(`UPDATE app_user SET user_type = 'vendor', roles = '{}', active_role = NULL WHERE user_type = 'agent' AND email = ANY($1::text[])`,
+    [["priya.photos", "tom.inspect", "greta.pest", "sam.clean"].map(k => `${k}${D}`)]);
+  if ((await client.query(`SELECT 1 FROM app_user WHERE email = $1`, [`priya.photos${D}`])).rowCount) return;
+  await client.query("BEGIN");
+  const q = async (text, params) => (await client.query(text, params)).rows;
+  const owner = (await q(`SELECT id FROM app_user WHERE email = $1`, [`sarah.owner${D}`]))[0]?.id;
+  const listings = owner ? (await q(`SELECT id FROM property_listing WHERE owner_user_id = $1 ORDER BY created_at LIMIT 6`, [owner])).map(r => r.id) : [];
+  const people = [
+    { key: "priya.photos", name: "Priya Nair", business: "Priya Nair Property Photography", kind: "photographer", headline: "Bright, true-to-life photos, floor plans and twilight shots", licence: null,
+      about: "I have photographed homes across Brisbane for eight years. I shoot with a full-frame camera and deliver edited photos within 24 hours. Drone and twilight shots on request. Please have the house tidy and the lights on.",
+      suburbs: ["Paddington", "Red Hill", "Bardon", "Milton"], postcodes: ["4064", "4059", "4065"],
+      services: [["Standard photos (20 images)", 18000, "fixed", "Interior and exterior, edited and delivered in 24 hours."], ["Photos and floor plan", 26000, "fixed", "20 photos plus a measured floor plan."], ["Twilight shoot", 22000, "from", "Two exterior twilight images."]],
+      jobs: [["completed", 5, "Great photos, on time and easy to deal with."], ["completed", 5, "Made the house look wonderful."], ["completed", 4, "Very good. Arrived a little late but the pictures were lovely."], ["completed", 5, ""], ["cancelled", 0, ""], ["proposed", 0, ""]] },
+    { key: "tom.inspect", name: "Tom Ellis", business: "Ellis Building Inspections", kind: "inspector", headline: "Pre-sale building and pest inspections, report in 48 hours", licence: ["QLD", "1234567", true],
+      about: "Licensed builder with 15 years in residential construction. I give plain-English reports with photos so buyers and owners can act on them.",
+      suburbs: ["Paddington", "Toowong", "Indooroopilly"], postcodes: ["4064", "4066", "4068"],
+      services: [["Pre-sale building inspection", 52000, "fixed", "Structure, roof, wet areas, electrical and plumbing visible issues."], ["Combined building and pest", 69000, "fixed", "Both reports from one visit."]],
+      jobs: [["completed", 5, "Thorough report, explained everything."], ["completed", 4, ""], ["proposed", 0, ""]] },
+    { key: "greta.pest", name: "Greta Bauer", business: "GreenShield Pest Control", kind: "pest_control", headline: "Termite inspections and treatment, same-week bookings", licence: ["QLD", "PC-88421", false],
+      about: "Family-run pest control. We inspect, report and treat termites, rodents and cockroaches with low-odour products.",
+      suburbs: ["Paddington", "Bardon", "Ashgrove"], postcodes: ["4064", "4065", "4060"],
+      services: [["Termite inspection and report", 19500, "fixed", ""], ["General pest treatment", 24000, "from", "Interior and exterior."]],
+      jobs: [["completed", 5, "Quick and tidy."], ["proposed", 0, ""]] },
+    { key: "sam.clean", name: "Sam Roe", business: "Roe Pre-sale Cleaning", kind: "other", label: "Cleaner", headline: "Make the house sparkle before photos and inspections", licence: null,
+      about: "End-of-lease and pre-sale cleaning. Windows, carpets and kitchens a speciality.",
+      suburbs: ["Paddington", "Milton", "Toowong"], postcodes: ["4064", "4064"],
+      services: [["Pre-sale clean (3 bedroom)", 38000, "fixed", ""], ["Window cleaning", 9000, "per_hour", ""]], jobs: [] }
+  ];
+  for (const p of people) {
+    const uid = (await q(`INSERT INTO app_user (email, display_name, user_type, status, roles, active_role) VALUES ($1, $2, 'vendor', 'active', '{}', NULL) RETURNING id`, [`${p.key}${D}`, `${p.name} (contractor)`]))[0].id;
+    await q(`INSERT INTO contractor_profile (user_id, kind, accepting_new, service_postcodes, service_suburbs) VALUES ($1, $2, true, $3, $4)`, [uid, p.kind, [...new Set(p.postcodes)], p.suburbs]);
+    await q(`INSERT INTO contractor_page (user_id, business_name, headline, about, trade_label, licence_number, licence_state, licence_verified_at, is_public)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, true)`, [uid, p.business, p.headline, p.about, p.label ?? null, p.licence?.[1] ?? null, p.licence?.[0] ?? null, p.licence?.[2] ? new Date() : null]);
+    let order = 0;
+    for (const [name, cents, type, desc] of p.services) await q(`INSERT INTO contractor_service (user_id, kind, name, description, price_cents, price_type, sort_order) VALUES ($1, $2, $3, nullif($4, ''), $5, $6, $7)`, [uid, p.kind, name, desc, cents, type, order++]);
+    for (let i = 0; i < 4; i++) await q(`INSERT INTO contractor_media (user_id, media_type, url, caption, sort_order) VALUES ($1, 'photo', $2, $3, $4)`, [uid, `https://picsum.photos/seed/${p.key}${i}/600/450`, ["Living room", "Kitchen", "Front elevation", "Main bedroom"][i], i]);
+    for (const [i, [status, rating, body]] of p.jobs.entries()) {
+      const lid = listings[i % Math.max(listings.length, 1)];
+      if (!owner || !lid) break;
+      const ago = `${3 + i * 6} days`;
+      const [job] = await q(`INSERT INTO job_assignment (listing_id, owner_user_id, contractor_user_id, kind, status, approved_at, responded_at, completed_at, created_at, service_name, price_cents, contractor_done_at)
+        VALUES ($1, $2, $3, $4, $5, CASE WHEN $5 IN ('completed') THEN now() - $6::interval END, CASE WHEN $5 <> 'proposed' THEN now() - $6::interval + interval '3 hours' END,
+                CASE WHEN $5 = 'completed' THEN now() - $6::interval + interval '2 days' END, now() - $6::interval, $7, $8, CASE WHEN $5 = 'completed' THEN now() - $6::interval + interval '1 day' END) RETURNING id`,
+        [lid, owner, uid, p.kind, status, ago, p.services[0][0], p.services[0][1]]);
+      if (status === "completed") await q(`INSERT INTO contractor_review (assignment_id, contractor_user_id, owner_user_id, rating, body) VALUES ($1, $2, $3, $4, nullif($5, ''))`, [job.id, uid, owner, rating, body]);
+    }
+  }
+  await client.query("COMMIT");
+  console.log("Demo contractors: 4 public pages (photographer, inspector, pest control, cleaner) with prices, galleries, finished jobs and feedback.");
+}
+
 // ---- Demo map locations (search map) ------------------------------------------------------------------------------
 // Approximate street positions for the eight demo listings. Only fills listings that have no pin yet, so an owner's own pin is kept.
 const DEMO_LOCATIONS = [
@@ -1155,6 +1212,7 @@ try {
   await seedAdminExamples(db);
   await seedProject(db);
   await seedProjectDocuments(db);
+  await seedContractors(db);
 } catch (e) {
   await db.query("ROLLBACK").catch(() => undefined);
   console.error(`Seed failed: ${e.message}`);

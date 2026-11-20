@@ -1,15 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
-  LIMITS, checkOutbound, draftMessage, findRef, onAccepted, onAnswer, onDue, onProposal, onReply, parseProposedTime, rateLimited, readReply, zonedToUtc,
+  LIMITS, checkOutbound, draftMessage, findJobNo, onAccepted, onAnswer, onDue, onProposal, onProposalElsewhere, onScheduledElsewhere, onReply, parseProposedTime, rateLimited, readReply, zonedToUtc,
   type ElenaJob, type JobSettings, type MessageVars
 } from "../src/domain/elena-jobs";
 
 const NOW = "2026-11-20T00:00:00.000Z"; // 11am Sydney
-const job = (o: Partial<ElenaJob> = {}): ElenaJob => ({ id: "j1", assignmentId: "a1", listingId: "l1", kind: "photographer", contactRef: "EJ-123456", state: "negotiating", rounds: 0, reminders: 0, createdAt: NOW, ...o });
+const job = (o: Partial<ElenaJob> = {}): ElenaJob => ({ id: "j1", assignmentId: "a1", listingId: "l1", kind: "photographer", contactRef: "JOB-5001", state: "negotiating", rounds: 0, reminders: 0, createdAt: NOW, ...o });
 const on: JobSettings = { handleJobs: true, autoReply: false, hideNewFiles: false };
 const sends = (steps: ReturnType<typeof onDue>) => steps.filter(s => s.type === "send").map(s => (s.type === "send" ? `${s.to}:${s.kind}` : ""));
 const patch = (steps: ReturnType<typeof onDue>) => Object.assign({}, ...steps.filter(s => s.type === "set").map(s => (s.type === "set" ? s.patch : {})));
-const vars: MessageVars = { address: "12 Smith St, Newtown", contractor: "Pat", owner: "Olive", kindLabel: "photographer", ref: "EJ-123456", when: "Tuesday 25 November, 10:30 am" };
+const vars: MessageVars = { address: "12 Smith St, Newtown", contractor: "Pat", owner: "Olive", kindLabel: "photographer", ref: "JOB-5001", when: "Tuesday 25 November, 10:30 am" };
 
 describe("parseProposedTime", () => {
   it("reads day-first dates in the property's time zone", () => {
@@ -82,6 +82,18 @@ describe("time negotiation", () => {
   });
 });
 
+describe("staying in step with the Jobs page", () => {
+  it("records a contractor's proposal without messaging the owner again, and a confirmed time without confirming twice", () => {
+    const p = onProposalElsewhere(job(), "2026-11-26T03:00:00.000Z", NOW);
+    expect(sends(p)).toEqual([]);
+    expect(patch(p)).toMatchObject({ proposedBy: "contractor", proposedAt: "2026-11-26T03:00:00.000Z", rounds: 1 });
+    const c = onScheduledElsewhere(job(), "2026-11-26T03:00:00.000Z", NOW);
+    expect(sends(c)).toEqual([]);
+    expect(patch(c)).toMatchObject({ state: "scheduled", appointmentAt: "2026-11-26T03:00:00.000Z" });
+    expect(onScheduledElsewhere(job({ state: "delivered" }), "2026-11-26T03:00:00.000Z", NOW)).toEqual([]);
+  });
+});
+
 describe("reminders and follow-up", () => {
   const ctx = { assignmentStatus: "approved" as const, deliveredFiles: 0 };
   it("reminds the party being waited on, up to the limit, then hands back", () => {
@@ -151,9 +163,9 @@ describe("onReply (auto-reply mode)", () => {
 
 describe("outbound safety", () => {
   it("every template passes the filter and carries no amounts", () => {
-    for (const kind of ["request", "request_reminder", "ask_time", "time_to_confirm", "time_reminder", "time_rejected", "confirmed", "appointment_reminder", "delivery_followup", "delivered_owner", "needs_owner", "files_added", "auto_reply_help"] as const) {
+    for (const kind of ["request_reminder", "ask_time", "time_to_confirm", "time_reminder", "time_rejected", "confirmed", "appointment_reminder", "delivery_followup", "delivered_owner", "needs_owner", "files_added", "auto_reply_help"] as const) {
       const d = draftMessage(kind, { ...vars, count: 3, reason: "Please take a look." });
-      expect(checkOutbound({ title: d.title, body: `${d.body}\n\nJob ${vars.ref}` })).toEqual({ ok: true });
+      expect(checkOutbound({ title: d.title, body: `${d.body}\n\n${vars.ref}` })).toEqual({ ok: true });
       expect(d.body).not.toMatch(/\$\d/);
     }
   });
@@ -162,9 +174,6 @@ describe("outbound safety", () => {
     expect(checkOutbound({ title: "Hi", body: "email me at pat@example.com" }).ok).toBe(false);
     expect(checkOutbound({ title: "Hi", body: "The fee is $250 plus GST" }).ok).toBe(false);
     expect(checkOutbound({ title: "x".repeat(2000), body: "ok" }).ok).toBe(false);
-  });
-  it("states that pricing is between the contractor and owner, and never promises payment", () => {
-    expect(draftMessage("request", vars).body).toContain("agreed directly between you and the owner");
   });
   it("limits messages to one person per job per day", () => {
     const t = (h: number) => new Date(new Date(NOW).getTime() - h * 3600_000).toISOString();
@@ -177,7 +186,7 @@ describe("outbound safety", () => {
 
 describe("references", () => {
   it("finds the job reference in a subject or reply", () => {
-    expect(findRef("Re: Please confirm a time: ej-654321")).toBe("EJ-654321");
-    expect(findRef("hello")).toBeUndefined();
+    expect(findJobNo("Re: Please confirm a time: job-5021")).toBe(5021);
+    expect(findJobNo("hello")).toBeUndefined();
   });
 });

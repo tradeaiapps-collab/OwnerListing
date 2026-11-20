@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
-  answerTime, getSettings, handleInboundJobEmail, listJobsForOwner, ownerAction, proposeTime, runDueElenaJobs, saveSettings, type Sender
+  answerTime, dispatchOpenSlots, getSettings, handleInboundJobEmail, listJobsForOwner, ownerAction, proposeTime, runDueElenaJobs, saveSettings, type Sender
 } from "../src/server/elena-jobs-db";
 import { addListing, addUser, createTestDb, DATABASE_URL, type TestDb } from "./helpers/pg-db";
 
@@ -35,7 +35,7 @@ describe.skipIf(!DATABASE_URL)("Elena job handling on Postgres", () => {
     expect(ownerId).toBeTruthy();
   });
 
-  it("creates the job, sends the request and asks for a time once the contractor accepted", async () => {
+  it("creates the job without a second request, chases after a day, and asks for a time once the contractor accepted", async () => {
     outbox.length = 0;
     const now = new Date().toISOString();
     const a = await setup({ handleJobs: true, autoReply: false, hideNewFiles: false }, "proposed");
@@ -43,15 +43,107 @@ describe.skipIf(!DATABASE_URL)("Elena job handling on Postgres", () => {
     expect(r.created).toBeGreaterThanOrEqual(1);
     let j = await job(a.listingId, a.ownerId);
     expect(j).toMatchObject({ state: "requested", kind: "photographer" });
-    expect(outbox.filter(o => o.userId === a.contractorId)[0]!.title).toContain("New job request");
+    expect(j.ref).toMatch(/^JOB-\d+$/);
+    expect(outbox.filter(o => o.userId === a.contractorId)).toHaveLength(0); // the Jobs page already sent the offer
+
+    await runDueElenaJobs(t.db, hours(now, 25), sender);
+    expect(outbox.filter(o => o.userId === a.contractorId)[0]!.title).toContain("Reminder");
     expect(outbox[0]!.body).toContain(j.ref);
+    // before they accept, the contractor sees the suburb, never the street address
+    expect(outbox[0]!.body).not.toContain("12 Smith St");
 
     await t.db.query("UPDATE job_assignment SET status = 'approved' WHERE id = $1", [a.assignmentId]);
-    await t.db.query("UPDATE elena_job SET next_action_at = $2 WHERE assignment_id = $1", [a.assignmentId, now]);
-    await runDueElenaJobs(t.db, hours(now, 0.1), sender);
+    await runDueElenaJobs(t.db, hours(now, 26), sender);
     j = await job(a.listingId, a.ownerId);
     expect(j.state).toBe("negotiating");
     expect(outbox.some(o => o.userId === a.contractorId && o.title.startsWith("When can you attend"))).toBe(true);
+  });
+
+  it("stays in step with the Jobs page: a proposed time is chased, a confirmed time is recorded, a rejection asks both again", async () => {
+    outbox.length = 0;
+    const now = new Date().toISOString();
+    const a = await setup();
+    await runDueElenaJobs(t.db, now, sender);
+    const id = (await job(a.listingId, a.ownerId)).id;
+    const t1 = hours(now, 72), t2 = hours(now, 96);
+    await t.db.query("UPDATE job_assignment SET proposed_time = $2 WHERE id = $1", [a.assignmentId, t1]);
+    await runDueElenaJobs(t.db, hours(now, 0.1), sender);
+    let j = await job(a.listingId, a.ownerId);
+    expect(j).toMatchObject({ state: "negotiating", proposedBy: "contractor", proposedAt: new Date(t1).toISOString() });
+    expect(outbox.some(o => o.title.includes("confirm a time"))).toBe(false); // the Jobs page already told the owner
+
+    outbox.length = 0;
+    await t.db.query("UPDATE job_assignment SET proposed_time = NULL WHERE id = $1", [a.assignmentId]); // owner rejected there
+    await runDueElenaJobs(t.db, hours(now, 0.2), sender);
+    expect(outbox.map(o => o.userId).sort()).toEqual([a.ownerId, a.contractorId].sort());
+    expect((await job(a.listingId, a.ownerId)).proposedAt).toBeUndefined();
+
+    await t.db.query("UPDATE job_assignment SET scheduled_time = $2 WHERE id = $1", [a.assignmentId, t2]); // agreed there
+    await runDueElenaJobs(t.db, hours(now, 0.3), sender);
+    j = await job(a.listingId, a.ownerId);
+    expect(j).toMatchObject({ state: "scheduled", appointmentAt: new Date(t2).toISOString() });
+    expect(id).toBe(j.id);
+  });
+
+  it("writes an agreed time back to the job (and approves a still-offered job); a contractor proposal shows on the job", async () => {
+    outbox.length = 0;
+    const now = new Date().toISOString();
+    const a = await setup({ handleJobs: true, autoReply: false, hideNewFiles: false }, "proposed");
+    await runDueElenaJobs(t.db, now, sender);
+    await t.db.query("UPDATE job_assignment SET status = 'approved' WHERE id = $1", [a.assignmentId]);
+    await runDueElenaJobs(t.db, hours(now, 1), sender);
+    const id = (await job(a.listingId, a.ownerId)).id;
+    const slot = hours(now, 80);
+    expect(await proposeTime(t.db, sender, a.contractorId, id, slot, now)).toEqual({ ok: true });
+    const row = async () => (await t.db.query("SELECT proposed_time, scheduled_time, status FROM job_assignment WHERE id = $1", [a.assignmentId])).rows[0]!;
+    expect((((await row())["proposed_time"]) as Date).toISOString()).toBe(slot);
+    expect(await answerTime(t.db, sender, a.ownerId, id, true, now)).toEqual({ ok: true });
+    const r = await row();
+    expect((r["scheduled_time"] as Date).toISOString()).toBe(slot);
+    expect(r["proposed_time"]).toBeNull();
+    const audit = await t.db.query("SELECT count(*)::int AS n FROM audit_event WHERE aggregate_id = $1 AND event_type = 'job.time_confirmed_by_elena'", [a.assignmentId]);
+    expect(audit.rows[0]!["n"]).toBe(1);
+  });
+
+  it("hands the job to the owner when the contractor is suspended, and ignores their emails", async () => {
+    outbox.length = 0;
+    const now = new Date().toISOString();
+    const a = await setup();
+    await runDueElenaJobs(t.db, now, sender);
+    const j0 = await job(a.listingId, a.ownerId);
+    await t.db.query("INSERT INTO contractor_standing (user_id, suspended, reason) VALUES ($1, true, 'test')", [a.contractorId]);
+    await t.db.query("UPDATE elena_job SET next_action_at = $2 WHERE id = $1", [j0.id, now]);
+    await runDueElenaJobs(t.db, hours(now, 0.1), sender);
+    const j = await job(a.listingId, a.ownerId);
+    expect(j.state).toBe("needs_owner");
+    expect(j.needsOwnerReason).toContain("no longer available");
+    expect(await handleInboundJobEmail(t.db, sender, { from: await emailOf(a.contractorId), subject: j.ref, text: "Yes", verified: true }, now)).toBe("ignored");
+  });
+
+  it("offers the job to the best verified, insured, unsuspended contractor and never re-asks one who was asked", async () => {
+    const ownerId = await addUser(t.db, "owner");
+    const listingId = await addListing(t.db, ownerId, { suburb: "Newtown", postcode: "2042", address_text: "9 Dispatch St" });
+    await saveSettings(t.db, ownerId, listingId, { handleJobs: true, autoReply: false, hideNewFiles: false });
+    const mk = async (name: string, o: { verified: boolean; suspended?: boolean }) => {
+      const id = String((await t.db.query("INSERT INTO app_user (email, display_name, user_type, status) VALUES ($1,$2,'vendor','active') RETURNING id", [`${randomUUID()}@example.test`, name])).rows[0]!["id"]);
+      await t.db.query("INSERT INTO contractor_page (user_id, is_public) VALUES ($1, true) ON CONFLICT (user_id) DO UPDATE SET is_public = true", [id]);
+      await t.db.query("INSERT INTO contractor_profile (user_id, kind, accepting_new, service_postcodes, service_suburbs) VALUES ($1,'photographer',true,'{2042}','{Newtown}') ON CONFLICT (user_id, kind) DO UPDATE SET accepting_new = true", [id]);
+      if (o.verified) await t.db.query("INSERT INTO contractor_verification (user_id, business_name, abn, insurer, policy_number, insurance_expiry, status, reviewed_at, reviewed_by) VALUES ($1,'Biz','12345678901','Ins','P1', current_date + 200, 'verified', now(), $2)", [id, ownerId]);
+      if (o.suspended) await t.db.query("INSERT INTO contractor_standing (user_id, suspended, reason) VALUES ($1, true, 'test')", [id]);
+      return id;
+    };
+    const unverified = await mk("Una Verified", { verified: false });
+    const suspended = await mk("Sue Suspended", { verified: true, suspended: true });
+    const good = await mk("Gus Good", { verified: true });
+    expect(await dispatchOpenSlots(t.db, [{ id: listingId, owner_user_id: ownerId }])).toBe(1);
+    const who = async () => (await t.db.query("SELECT contractor_user_id, offer_source FROM job_assignment WHERE listing_id = $1 AND kind = 'photographer'", [listingId])).rows;
+    expect((await who()).map(x => x["contractor_user_id"])).toEqual([good]);
+    expect((await who())[0]!["offer_source"]).toBe("elena");
+    // a decline frees the slot, but nobody who was already asked is asked again, and the unqualified are never asked
+    await t.db.query("UPDATE job_assignment SET status = 'cancelled' WHERE listing_id = $1", [listingId]);
+    expect(await dispatchOpenSlots(t.db, [{ id: listingId, owner_user_id: ownerId }])).toBe(0);
+    expect((await who()).every(x => x["contractor_user_id"] === good)).toBe(true);
+    expect([unverified, suspended]).not.toContain(good);
   });
 
   it("goes back and forth until a time is agreed, then confirms both and reminds before the visit", async () => {
@@ -194,7 +286,7 @@ describe.skipIf(!DATABASE_URL)("Elena job handling on Postgres", () => {
       const spoof = { from: a.ownerEmail, subject: a.ref, text: "Yes, that works", verified: false };
       expect(await handleInboundJobEmail(t.db, sender, spoof, now)).toBe("ignored");
       expect(await handleInboundJobEmail(t.db, sender, { ...spoof, from: "nobody@example.test", verified: true }, now)).toBe("ignored");
-      expect(await handleInboundJobEmail(t.db, sender, { ...spoof, subject: "EJ-000000", verified: true }, now)).toBe("ignored");
+      expect(await handleInboundJobEmail(t.db, sender, { ...spoof, subject: "JOB-9999999", verified: true }, now)).toBe("ignored");
       expect((await job(a.listingId, a.ownerId)).state).toBe("negotiating");
     });
 
@@ -222,12 +314,13 @@ describe.skipIf(!DATABASE_URL)("Elena job handling on Postgres", () => {
 
     it("does nothing when the owner has not turned Elena on", async () => {
       const a = await setup({ handleJobs: false, autoReply: false, hideNewFiles: false });
-      await t.db.query("INSERT INTO elena_job (assignment_id, listing_id, owner_user_id, contractor_user_id, kind, contact_ref, state) VALUES ($1,$2,$3,$4,'photographer','EJ-424242','negotiating')", [a.assignmentId, a.listingId, a.ownerId, a.contractorId]);
+      const no = Number((await t.db.query("SELECT job_number FROM job_assignment WHERE id = $1", [a.assignmentId])).rows[0]!['job_number']);
+      await t.db.query("INSERT INTO elena_job (assignment_id, listing_id, owner_user_id, contractor_user_id, kind, contact_ref, state) VALUES ($1,$2,$3,$4,'photographer',$5,'negotiating')", [a.assignmentId, a.listingId, a.ownerId, a.contractorId, `JOB-${no}`]);
       outbox.length = 0;
-      const r = await handleInboundJobEmail(t.db, sender, { from: await emailOf(a.contractorId), subject: "EJ-424242", text: `I can do ${future()}`, verified: true }, new Date().toISOString());
+      const r = await handleInboundJobEmail(t.db, sender, { from: await emailOf(a.contractorId), subject: `JOB-${no}`, text: `I can do ${future()}`, verified: true }, new Date().toISOString());
       expect(r).toBe("ignored");
       expect(outbox).toHaveLength(0);
-      expect((await t.db.query("SELECT state FROM elena_job WHERE contact_ref = 'EJ-424242'")).rows[0]!["state"]).toBe("negotiating");
+      expect((await t.db.query("SELECT state FROM elena_job WHERE assignment_id = $1", [a.assignmentId])).rows[0]!["state"]).toBe("negotiating");
     });
   });
 });
