@@ -97,7 +97,7 @@ export default function Offers() {
     <main>
       <h1>Offers</h1>
       <p>Formal offers submitted through the offer form. The AI never accepts an offer: you decide. Open an offer to send a counter-offer with your own terms.</p>
-      <p><a href={`/listings/${id}/offer-analysis`}>Compare offers</a> · <a href={`/listings/${id}/mandate`}>Negotiation mandate</a> · <a href={`/listings/${id}/contract-draft`}>Preview a contract draft</a></p>
+      <p><a href={`/listings/${id}/offer-analysis`}>Compare offers</a> · <a href={`/listings/${id}/paperwork`}>Sale paperwork</a> · <a href={`/listings/${id}/mandate`}>Negotiation mandate</a> · <a href={`/listings/${id}/contract-draft`}>Preview a contract draft</a></p>
       {error ? <p role="alert">{error}</p> : null}
       {notice ? <p role="status">{notice}</p> : null}
       <section className="panel">
