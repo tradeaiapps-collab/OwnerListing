@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { runDueAutomations } from "../../../../../src/server/automation-db";
+import { runDueElenaJobs } from "../../../../../src/server/elena-jobs-db";
 import { runDueSchedulingMessages } from "../../../../../src/server/elena-scheduling-db";
 import { authorizeCron } from "../../../../../src/server/cron-secret-db";
 import { getDb } from "../../../../../src/server/context";
@@ -16,7 +17,9 @@ async function handlePost(req: Request) {
   const automations = await runDueAutomations(getDb(), now);
   // Elena's scheduling drafts ride on the same tick: due reminders become suggestions, stale drafts expire. Never fails the automation run.
   const scheduling = await runDueSchedulingMessages(getDb(), now).catch(() => ({ expired: 0, suggested: 0 }));
-  return NextResponse.json({ ...automations, scheduling });
+  // Contractor jobs Elena handles for owners who turned it on: new requests, reminders, time follow-ups and delivery chasing.
+  const elenaJobs = await runDueElenaJobs(getDb(), now).catch(() => ({ created: 0, acted: 0, invited: 0 }));
+  return NextResponse.json({ ...automations, scheduling, elenaJobs });
 }
 
 export const POST = withApi(handlePost);

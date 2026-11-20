@@ -599,3 +599,19 @@ button.role-item:hover:not(:disabled), a.role-item:hover, .role-item:focus-visib
 .approve-photos img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 8px; display: block; }
 .approve-desc { white-space: pre-line; overflow-wrap: anywhere; }
 @media (max-width: 639px) { .approve .form-bar > button, .approve .qs-nav > :is(button, a) { flex: 1 1 100%; } }
+
+/* Elena job handling (owner panel) */
+.ej-switches { display: grid; gap: var(--space-3); margin: var(--space-3) 0; }
+.ej-switch { display: flex; gap: var(--space-3); align-items: flex-start; }
+.ej-switch input { margin-top: var(--space-1); flex: none; }
+.ej-switch > span { display: grid; gap: var(--space-1); min-width: 0; }
+.ej-list { list-style: none; margin: var(--space-3) 0 0; padding: 0; display: grid; gap: var(--space-3); }
+.ej-job { display: grid; gap: var(--space-2); padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius); min-width: 0; }
+.ej-head { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: baseline; justify-content: space-between; }
+.ej-state { font-size: var(--text-sm, 0.875rem); }
+.ej-needs_owner .ej-state, .ej-state.ej-needs_owner { font-weight: 600; }
+.ej-ask, .ej-form { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: flex-end; }
+.ej-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.ej-log ul { list-style: none; margin: var(--space-2) 0 0; padding: 0; display: grid; gap: var(--space-2); }
+.ej-log li { display: grid; gap: var(--space-1); overflow-wrap: anywhere; }
+@media (max-width: 479px) { .ej-ask .qs-nav > button, .ej-form > button, .ej-actions > button { width: 100%; } }
