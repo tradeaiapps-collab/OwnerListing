@@ -1076,6 +1076,7 @@ try {
     await seedAdminExamples(db);
     await seedProject(db);
     await seedProjectDocuments(db);
+    await seedContractors(db);
     await db.end();
     process.exit(0);
   }
