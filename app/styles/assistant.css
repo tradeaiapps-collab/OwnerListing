@@ -74,6 +74,9 @@
   .ga-launcher span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
   .ga-launcher { width: 56px; height: 56px; padding: 0; justify-content: center; }
   .ga-launcher .ga-avatar { width: 48px; height: 48px; }
+  /* Slides off the right edge while scrolling down (see guide-assistant.tsx) so it does not cover the text being read. */
+  .ga-launcher { transition: transform var(--dur-1) var(--ease), opacity var(--dur-1) var(--ease), visibility 0s; }
+  .ga-launcher.is-tucked { transform: translateX(calc(100% + var(--space-4))); opacity: 0; visibility: hidden; transition: transform var(--dur-1) var(--ease), opacity var(--dur-1) var(--ease), visibility 0s var(--dur-1); }
   /* Phone: a bottom sheet by default, full screen when expanded. */
   .ga-panel { inset: auto 0 0 0; width: 100%; max-height: none; height: min(72dvh, 560px); border-radius: calc(var(--radius) + 4px) calc(var(--radius) + 4px) 0 0; border-width: 1px 0 0; }
   .ga-panel.is-expanded { inset: 0; height: 100dvh; border-radius: 0; border: 0; }

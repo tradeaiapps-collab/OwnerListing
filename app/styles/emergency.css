@@ -5,6 +5,11 @@
 .emg-head p { margin: 0; }
 .emg-danger { border: 1px solid color-mix(in srgb, var(--danger) 55%, var(--bg)); background: var(--danger-tint); border-radius: var(--radius); padding: var(--space-3) var(--space-4); }
 .emg-panel { border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); padding: var(--space-4); display: grid; gap: var(--space-3); min-width: 0; }
+.emg-one { gap: var(--space-4); }
+.emg-sec { display: grid; gap: var(--space-3); min-width: 0; }
+.emg-sec > h2 { margin: 0; font-size: 1.125rem; }
+.emg-sec p { margin: 0; overflow-wrap: anywhere; }
+.emg-rule { border: 0; border-top: 1px solid var(--border); margin: 0; width: 100%; }
 .emg-panel > h2 { margin: 0; font-size: 1.125rem; }
 .emg-panel p { margin: 0; overflow-wrap: anywhere; }
 .emg-form :is(input:not([type="checkbox"]), select, textarea) { font-size: 1rem; min-height: 44px; width: 100%; max-width: 100%; }
@@ -19,8 +24,8 @@
 .emg-hours { border: 1px solid var(--border); border-radius: var(--radius); padding: var(--space-3); display: grid; gap: var(--space-3); min-width: 0; margin: 0; }
 .emg-hours legend { font-weight: 600; padding-inline: var(--space-2); }
 .emg-window { display: grid; gap: var(--space-2); padding-bottom: var(--space-3); border-bottom: 1px solid var(--border); }
-.emg-days { display: flex; flex-wrap: wrap; gap: var(--space-2); }
-.emg-days button { min-width: 44px; min-height: 44px; padding: 0 var(--space-2); border: 1px solid var(--border); border-radius: 999px; background: var(--bg); color: var(--text); font-weight: 600; }
+.emg-days { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: var(--space-1); }
+.emg-days button { min-width: 0; width: 100%; min-height: 44px; padding: 0; font-size: 0.8125rem; border: 1px solid var(--border); border-radius: 999px; background: var(--bg); color: var(--text); font-weight: 600; }
 .emg-days button.on { background: var(--brand); color: var(--brand-text); border-color: var(--brand); }
 .emg-times { display: grid; gap: var(--space-2); grid-template-columns: 1fr 1fr; align-items: end; }
 .emg-times label { display: grid; gap: var(--space-1); font-weight: 600; font-size: 0.9375rem; }
@@ -30,6 +35,9 @@
 .emg-item { max-width: none; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); padding: var(--space-4); display: grid; gap: var(--space-2); min-width: 0; }
 .emg-top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2); }
 .emg-top strong { overflow-wrap: anywhere; }
+.emg-who { display: flex; align-items: center; gap: var(--space-3); min-width: 0; }
+.emg-who p { margin: 0; font-size: 0.875rem; }
+.emg-rating { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1); }
 .emg-quote { font-style: italic; }
 .emg-contact { font-weight: 600; }
 .emg-contact a { display: inline-block; min-height: 24px; }

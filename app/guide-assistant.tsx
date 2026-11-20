@@ -37,6 +37,7 @@ export default function GuideAssistant({ greeting, persona }: {
 }) {
   const [open, setOpen] = useState(false);
   const [expanded, setExpanded] = useState(false);
+  const [tucked, setTucked] = useState(false);
   const [msgs, setMsgs] = useState<Msg[]>([{ id: 0, from: "guide", text: greeting }]);
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
@@ -134,6 +135,20 @@ export default function GuideAssistant({ greeting, persona }: {
 
   useEffect(() => { window.dispatchEvent(new CustomEvent(GUIDE_STATE_EVENT, { detail: { open, busy, typing: text.trim() !== "" } })); }, [open, busy, text]);
 
+  // Phone: the round launcher slides off the edge while the visitor scrolls down to read, so it never sits on top of the text, and comes back on scrolling up, at the top or at the bottom of the page.
+  useEffect(() => {
+    let last = window.scrollY;
+    const onScroll = () => {
+      const y = window.scrollY, dy = y - last;
+      if (Math.abs(dy) < 6) return;
+      last = y;
+      const atEnd = window.innerHeight + y >= document.documentElement.scrollHeight - 80;
+      setTucked(dy > 0 && y > 80 && !atEnd && document.activeElement !== launcher.current);
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
   useEffect(() => { log.current?.lastElementChild?.scrollIntoView({ block: "nearest" }); }, [msgs]);
 
   async function ask(q: { intent: GuideIntent; label: string } | { text: string }) {
@@ -185,7 +200,7 @@ export default function GuideAssistant({ greeting, persona }: {
           </div>
         </div>
       )}
-      <button ref={launcher} type="button" className="ga-launcher" aria-haspopup="dialog" aria-expanded={open} onClick={() => (open ? close() : setOpen(true))}>
+      <button ref={launcher} type="button" className={`ga-launcher${tucked && !open ? " is-tucked" : ""}`} aria-haspopup="dialog" aria-expanded={open} onClick={() => (open ? close() : setOpen(true))}>
         <img className="ga-avatar" src={persona.icon} alt="" width={40} height={40} />
         <span>{open ? "Close help" : `Ask ${persona.name}`}</span>
       </button>

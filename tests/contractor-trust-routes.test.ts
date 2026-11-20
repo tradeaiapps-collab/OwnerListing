@@ -23,7 +23,7 @@ import * as rights from "../app/api/assignments/[id]/usage-rights/route";
 import * as jobTrust from "../app/api/assignments/[id]/trust/route";
 import * as quote from "../app/api/quotes/[id]/route";
 import * as reply from "../app/api/reviews/[id]/reply/route";
-import * as publicTrust from "../app/api/contractors/[id]/trust/route";
+import * as publicTrust from "../app/api/contractors/[no]/trust/route";
 import * as sVerifs from "../app/api/staff/contractors/verifications/route";
 import * as sVerif from "../app/api/staff/contractors/verifications/[id]/route";
 import * as sReports from "../app/api/staff/contractors/reports/route";
@@ -72,7 +72,7 @@ describe("contractor routes", () => {
     expect((await quotes.POST(post({ ...QUOTE, contractorId: OTHER }), ctx())).status).toBe(201);
     expect(called("sendQuote")[0]!.args.slice(1, 3)).toEqual([S.actor!.userId, ID]);
     expect((await quotes.POST(post(QUOTE), ctx("not-a-uuid"))).status).toBe(404);
-    expect((await publicTrust.GET(get(), ctx("nope"))).status).toBe(404);
+    expect((await publicTrust.GET(get(), { params: Promise.resolve({ no: "nope" }) })).status).toBe(404);
   });
   it("validates verification, quote and review input", async () => {
     expect((await trust.PUT(put({ ...VERIFICATION, abn: "11111111111" }))).status).toBe(400);

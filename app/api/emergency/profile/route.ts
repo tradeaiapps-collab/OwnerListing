@@ -18,7 +18,7 @@ async function handlePut(req: Request) {
   if (blocked) return blocked;
   const actor = await getActor(req);
   if (!actor) return unauthenticated();
-  if (actor.userType !== "vendor" && actor.userType !== "agent") return failure({ ok: false, code: "forbidden", message: "Only contractor accounts can take emergency jobs." });
+  if (actor.userType !== "vendor") return failure({ ok: false, code: "forbidden", message: "Only contractor accounts can take emergency jobs. Sign up as a contractor to list yourself." });
   const parsed = parseEmergencyProfile(await req.json().catch(() => null));
   if (!parsed.ok) return failure(parsed);
   await saveProfilePg(getDb(), actor.userId, parsed.value);

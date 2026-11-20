@@ -43,6 +43,7 @@ export const ROLE_NAV: Record<UserRole, readonly RoleNavItem[]> = {
   vendor: [
     { id: "contractor-profile", label: "My page", href: "/contractor/profile" },
     { id: "contractor-jobs", label: "Jobs", href: "/contractor/jobs" },
+    { id: "contractor-emergency", label: "Emergency", href: "/contractor/emergency" },
     { id: "contractor-public", label: "Public page", href: "/contractors" },
     PROJECTS,
     { id: "contractor-security", label: "Security", href: "/mfa" }
