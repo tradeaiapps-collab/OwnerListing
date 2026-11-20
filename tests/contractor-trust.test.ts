@@ -84,7 +84,7 @@ describe("job address and contractor routes", () => {
   const job = { address: "12 Secret Lane", suburb: "Paddington", status: "proposed", contractorUserId: "c", ownerUserId: "o" };
   it("hides the street from the contractor until the job is accepted, and again once cancelled", () => {
     expect(maskJobAddress(job, "c").address).toBe("Paddington (street address shown once you accept)");
-    expect(maskJobAddress({ ...job, suburb: undefined }, "c").address).not.toContain("Secret");
+    expect(maskJobAddress({ address: job.address, status: job.status, contractorUserId: job.contractorUserId }, "c").address).not.toContain("Secret");
     expect(maskJobAddress({ ...job, status: "cancelled" }, "c").address).not.toContain("Secret");
     expect(maskJobAddress({ ...job, status: "approved" }, "c").address).toBe("12 Secret Lane");
     expect(maskJobAddress({ ...job, status: "completed" }, "c").address).toBe("12 Secret Lane");
