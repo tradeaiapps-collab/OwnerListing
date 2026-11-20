@@ -7,6 +7,8 @@ export interface JobAssignment {
   contractorUserId: string;
   kind: "photographer" | "solicitor" | "inspector" | "agent" | "other";
   status: AssignmentStatus;
+  /** Photographer has ticked the usage-rights box. Set by the database; when explicitly false, photo upload is refused. */
+  usageRightsConfirmed?: boolean;
 }
 
 export interface ChatMessage {

@@ -7,7 +7,7 @@ export const CANDIDATES_SQL =
   "SELECT u.id, u.display_name, p.accepting_new, p.service_postcodes, p.service_suburbs, " +
   "(SELECT count(*) FROM job_assignment a WHERE a.contractor_user_id = u.id AND a.status IN ('proposed','approved')) AS open_jobs " +
   "FROM contractor_profile p JOIN app_user u ON u.id = p.user_id " +
-  "WHERE p.kind = $1::text AND p.accepting_new AND u.status NOT IN ('suspended','closed') AND u.user_type IN ('vendor','agent') ORDER BY u.id LIMIT 2000";
+  "WHERE p.kind = $1::text AND p.accepting_new AND u.status NOT IN ('suspended','closed') AND u.user_type IN ('vendor','agent') AND NOT EXISTS (SELECT 1 FROM contractor_standing cs WHERE cs.user_id = u.id AND cs.suspended) ORDER BY u.id LIMIT 2000";
 export const GET_SQL = "SELECT accepting_new, service_postcodes, service_suburbs FROM contractor_profile WHERE user_id = $1::uuid AND kind = $2::text";
 export const UPSERT_SQL =
   "INSERT INTO contractor_profile (user_id, kind, accepting_new, service_postcodes, service_suburbs, updated_at) VALUES ($1::uuid, $2::text, $3, $4::text[], $5::text[], now()) " +
