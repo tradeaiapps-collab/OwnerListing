@@ -615,3 +615,18 @@ button.role-item:hover:not(:disabled), a.role-item:hover, .role-item:focus-visib
 .ej-log ul { list-style: none; margin: var(--space-2) 0 0; padding: 0; display: grid; gap: var(--space-2); }
 .ej-log li { display: grid; gap: var(--space-1); overflow-wrap: anywhere; }
 @media (max-width: 479px) { .ej-ask .qs-nav > button, .ej-form > button, .ej-actions > button { width: 100%; } }
+
+/* Elena price suggestion */
+.eps-range { font-size: 1.375rem; margin: 0 0 var(--space-2); overflow-wrap: anywhere; }
+.eps-meta { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); margin: 0 0 var(--space-3); }
+.eps-conf { font-weight: 600; }
+.eps-conf-low { color: var(--warn); }
+.eps-conf-medium, .eps-conf-high { color: var(--ok); }
+.eps > button { margin-bottom: var(--space-3); }
+.eps-more { margin-top: var(--space-3); }
+.eps-more h3 { margin: var(--space-4) 0 var(--space-2); font-size: 1rem; }
+.eps .eps-num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.eps-more th, .eps-more td { vertical-align: top; }
+.eps .table-wrap > table { min-width: 0; }
+@media (max-width: 639px) { .eps .eps-opt { display: none; } }
+@media (max-width: 639px) { .eps > p > a.button, .eps > button { width: 100%; } }

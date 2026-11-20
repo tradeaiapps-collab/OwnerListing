@@ -4,6 +4,7 @@ import { useParams } from "next/navigation";
 import { AMENITY_LABELS, formatPrice, isAmenity } from "../../../../src/domain/listing-details";
 import { photoUrl, type PhotoView } from "../../../../src/domain/listing-photos";
 import type { ElenaFinding } from "../../../../src/domain/listing-validation";
+import { ElenaPriceSuggestion } from "../../elena-price-suggestion";
 import { JSON_HEADERS } from "../../ui";
 
 type Listing = { id: string; title: string; address: string; suburb?: string; state?: string; transactionType: "sale" | "rent"; status: string; priceCents?: number; bedrooms?: number; bathrooms?: number; parking?: number; amenities?: string[]; description?: string };
@@ -125,6 +126,8 @@ export default function ApproveListing() {
           {summary && (summary.state === "no_text" || summary.state === "unavailable") && (
             <p className="muted">Elena could not read your inspection report{summary.state === "unavailable" ? " (the AI reader is off)" : " (it looks like a scan)"}. Read it yourself before you approve.</p>
           )}
+
+          <ElenaPriceSuggestion listingId={id} rent={listing.transactionType === "rent"} editHref={`/listings/${id}/edit`} />
 
           <section className="panel" aria-labelledby="gate-h">
             <h2 id="gate-h">{check === null ? "Checking…" : blocked === 0 ? "Ready to publish" : `${blocked} ${blocked === 1 ? "thing" : "things"} stopping you from publishing`}</h2>
