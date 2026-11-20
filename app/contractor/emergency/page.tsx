@@ -76,7 +76,8 @@ export default function ContractorEmergency() {
       </header>
       {error && <p role="alert" className="emg-alert">{error}</p>}
 
-      <section className="emg-panel" aria-labelledby="emg-incoming">
+      <div className="emg-panel emg-one">
+      <section className="emg-sec" aria-labelledby="emg-incoming">
         <h2 id="emg-incoming">Urgent requests for you</h2>
         {reqs === null ? <p className="muted" role="status">Loading…</p> : reqs.length === 0 ? <p className="empty">No urgent requests yet. When someone nearby needs your trade while you are available, Elena sends it here and to you by email or text.</p> : (
           <ul className="emg-list">
@@ -99,7 +100,9 @@ export default function ContractorEmergency() {
         )}
       </section>
 
-      <form className="emg-panel emg-form" onSubmit={e => void save(e)}>
+      <hr className="emg-rule" />
+
+      <form className="emg-sec emg-form" onSubmit={e => void save(e)}>
         <h2>Your emergency listing</h2>
         <label className="field"><span>Trade</span>
           <select value={trade} onChange={e => { setTrade(e.target.value); setMsg(""); }}>{TRADE_OPTIONS.map(t => <option key={t.value} value={t.value}>{t.label}{saved[t.value]?.enabled ? " (listed)" : ""}</option>)}</select>
@@ -137,6 +140,7 @@ export default function ContractorEmergency() {
         <button type="submit" disabled={busy}>Save {tradeLabel(trade).toLowerCase()} settings</button>
         {msg && <p role="status">{msg}</p>}
       </form>
+      </div>
     </main>
   );
 }

@@ -5,6 +5,11 @@
 .emg-head p { margin: 0; }
 .emg-danger { border: 1px solid color-mix(in srgb, var(--danger) 55%, var(--bg)); background: var(--danger-tint); border-radius: var(--radius); padding: var(--space-3) var(--space-4); }
 .emg-panel { border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); padding: var(--space-4); display: grid; gap: var(--space-3); min-width: 0; }
+.emg-one { gap: var(--space-4); }
+.emg-sec { display: grid; gap: var(--space-3); min-width: 0; }
+.emg-sec > h2 { margin: 0; font-size: 1.125rem; }
+.emg-sec p { margin: 0; overflow-wrap: anywhere; }
+.emg-rule { border: 0; border-top: 1px solid var(--border); margin: 0; width: 100%; }
 .emg-panel > h2 { margin: 0; font-size: 1.125rem; }
 .emg-panel p { margin: 0; overflow-wrap: anywhere; }
 .emg-form :is(input:not([type="checkbox"]), select, textarea) { font-size: 1rem; min-height: 44px; width: 100%; max-width: 100%; }
