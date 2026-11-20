@@ -83,6 +83,7 @@ export default function ListingAssignments() {
             <strong>{a.counterpartName}</strong> · {a.kind} · {STATUS_LABELS[a.status] ?? a.status}
             <div className="actions">
               {a.status === "approved" && <a className="button" href={`/jobs/${a.id}/chat`}>Open chat</a>}
+              {(a.status === "proposed" || a.status === "approved") && <a className="button secondary" href={`/jobs/${a.id}/visit`}>Time and access</a>}
               {a.status === "approved" && <button type="button" className="secondary" disabled={busy} onClick={() => void act(a.id, "complete")}>Mark completed</button>}
               {(a.status === "proposed" || a.status === "approved") && <button type="button" className="secondary" disabled={busy} onClick={() => void act(a.id, "cancel")}>Cancel</button>}
             </div>
