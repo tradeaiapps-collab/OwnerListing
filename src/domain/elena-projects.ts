@@ -44,7 +44,15 @@ const clip = (s: string, max: number) => { const t = s.replace(/\s+/g, " ").trim
 /** Splits one page (or section) of already-masked text into short passages Elena can quote. */
 export function toPassages(docId: string | null, title: string, page: number | null, text: string, terms: readonly string[] = []): Passage[] {
   const masked = maskText(text, terms);
-  const sentences = splitSentences(masked);
+  // A sentence longer than a quote (text with no full stops, such as a table) is cut at word boundaries so none of it is unreachable.
+  const sentences = splitSentences(masked).flatMap(x => {
+    if (x.length <= LIMITS.quoteChars) return [x];
+    const parts: string[] = [];
+    let cur = "";
+    for (const w of x.split(" ")) { if (cur && cur.length + w.length + 1 > LIMITS.quoteChars - 20) { parts.push(cur); cur = ""; } cur = cur ? `${cur} ${w}` : w; }
+    if (cur) parts.push(cur);
+    return parts;
+  });
   const out: Passage[] = [];
   let cur = "";
   for (const s of sentences) {
@@ -211,7 +219,8 @@ export function draftUpdate(project: Pick<InvestmentProject, "title">, docs: rea
   const lines: string[] = [];
   for (const d of docs) {
     lines.push(`• New ${KIND_LABEL[d.kind]}: ${d.title} (added ${dateWord(d.uploadedAt)}).`);
-    const picks = keySentences(maskText(d.text, d.terms), 6).filter(s => !leaksAddress(s, d.terms) && !hasContact(s)).slice(0, 2);
+    const picks = keySentences(maskText(d.text, d.terms), 8)
+      .filter(s => !leaksAddress(s, d.terms) && !hasContact(s) && s.length <= 240 && !/^page \d+ of \d+/i.test(s) && !/demo data/i.test(s)).slice(0, 2);
     for (const s of picks) lines.push(`   “${s}”`);
   }
   const body = clip2(`${project.title}: new documents are now available to investors.\n\n${lines.join("\n")}\n\nThe figures above are quoted from the documents. They are the project owner's statements, not checked by the platform, and not financial advice.`, LIMITS.updateBody[1]);
