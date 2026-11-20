@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { runDueAutomations } from "../../../../../src/server/automation-db";
+import { runDueElenaEnquiries } from "../../../../../src/server/elena-enquiries-db";
 import { runDueElenaJobs } from "../../../../../src/server/elena-jobs-db";
+import { runOwnerDigests } from "../../../../../src/server/owner-today-db";
 import { runDueSchedulingMessages } from "../../../../../src/server/elena-scheduling-db";
 import { authorizeCron } from "../../../../../src/server/cron-secret-db";
 import { getDb } from "../../../../../src/server/context";
@@ -19,7 +21,10 @@ async function handlePost(req: Request) {
   const scheduling = await runDueSchedulingMessages(getDb(), now).catch(() => ({ expired: 0, suggested: 0 }));
   // Contractor jobs Elena handles for owners who turned it on: new requests, reminders, time follow-ups and delivery chasing.
   const elenaJobs = await runDueElenaJobs(getDb(), now).catch(() => ({ created: 0, acted: 0, invited: 0 }));
-  return NextResponse.json({ ...automations, scheduling, elenaJobs });
+  // Buyer messages Elena has not looked at yet (a missed request), and the owners' optional daily "what needs you" email.
+  const elenaEnquiries = await runDueElenaEnquiries(getDb(), now).catch(() => ({ handled: 0 }));
+  const ownerDigests = await runOwnerDigests(getDb(), now).catch(() => ({ sent: 0 }));
+  return NextResponse.json({ ...automations, scheduling, elenaJobs, elenaEnquiries, ownerDigests });
 }
 
 export const POST = withApi(handlePost);

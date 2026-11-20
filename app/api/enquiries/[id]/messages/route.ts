@@ -8,6 +8,7 @@ import { failure, unauthenticated } from "../../../../../src/server/http";
 import { screenWithDefaults } from "../../../../../src/server/message-safety";
 import { moderateSentMessage } from "../../../../../src/server/message-moderation-db";
 import { listingNumberPg } from "../../../../../src/server/listing-number";
+import { handleBuyerMessage } from "../../../../../src/server/elena-enquiries-db";
 import { notifyEnquiryMessage } from "../../../../../src/server/notifier";
 import { requireCurrentTerms } from "../../../../../src/server/terms-guard";
 import { withApi } from "../../../../../src/server/api/with-api";
@@ -52,6 +53,8 @@ async function handlePost(req: Request, { params }: Ctx) {
   // Seller-side messages only (the helper checks): store a moderation flag for staff. Never blocks or changes the message.
   if (enquiry) await moderateSentMessage(getDb(), enquiry, r.value);
   await notifyEnquiryMessage(getDb(), id, actor.userId);
+  // Elena (only when the owner switched her on for this listing): answers from the listing facts or hands it to the owner. Never blocks or fails the message.
+  if (enquiry && enquiry.buyerUserId === actor.userId) await handleBuyerMessage(getDb(), r.value.id, new Date().toISOString()).catch(() => undefined);
   return NextResponse.json({ message: r.value }, { status: 201 });
 }
 

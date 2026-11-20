@@ -76,6 +76,8 @@ export async function runOpenInspectionReminders(db: Queryable, nowIso: string, 
   const day = await claim("24hr", "$2::timestamptz + interval '24 hours'", REMINDER_WINDOWS["24hr"].minLeadHours, 120);
   const hour = await claim("1hr", "$2::timestamptz + interval '75 minutes'", REMINDER_WINDOWS["1hr"].minLeadHours, 0);
   for (const x of day) await notifyUser(db, String(x["buyer_id"]), "open_inspection_reminder_24h", { ...params(x), link: "/open-inspections" }, env);
+  // The owner (and appointed agent) get a heads-up the day before too, so both sides are reminded.
+  for (const x of day) for (const m of managers(x)) await notifyUser(db, m, "open_inspection_owner_reminder", { ...params(x), name: String(x["buyer_name"]), link: "/agent/inspections" }, env);
   for (const x of hour) await notifyUser(db, String(x["buyer_id"]), "open_inspection_reminder_1h", { ...params(x), link: "/open-inspections" }, env);
   return { day: day.length, hour: hour.length };
 }

@@ -6,6 +6,8 @@ const state = vi.hoisted(() => ({ calls: 0 }));
 vi.mock("../src/server/context", () => ({ getDb: () => ({}) }));
 vi.mock("../src/server/automation-db", () => ({ runDueAutomations: async () => { state.calls++; return { processed: 3 }; } }));
 vi.mock("../src/server/elena-jobs-db", () => ({ runDueElenaJobs: async () => ({ created: 1, acted: 2, invited: 0 }) }));
+vi.mock("../src/server/elena-enquiries-db", () => ({ runDueElenaEnquiries: async () => ({ handled: 4 }) }));
+vi.mock("../src/server/owner-today-db", () => ({ runOwnerDigests: async () => ({ sent: 5 }) }));
 vi.mock("../src/server/elena-scheduling-db", () => ({ runDueSchedulingMessages: async () => ({ expired: 1, suggested: 2 }) }));
 import { POST } from "../app/api/internal/automations/run/route";
 
@@ -27,7 +29,7 @@ describe("automation run route", () => {
     expect(state.calls).toBe(0);
     const ok = await call(SECRET);
     expect(ok.status).toBe(200);
-    expect(await ok.json()).toEqual({ processed: 3, scheduling: { expired: 1, suggested: 2 }, elenaJobs: { created: 1, acted: 2, invited: 0 } });
+    expect(await ok.json()).toEqual({ processed: 3, scheduling: { expired: 1, suggested: 2 }, elenaJobs: { created: 1, acted: 2, invited: 0 }, elenaEnquiries: { handled: 4 }, ownerDigests: { sent: 5 } });
   });
   it("has a scheduled workflow that calls the route with the shared secret", () => {
     const wf = readFileSync(path.join(__dirname, "..", ".github", "workflows", "automation-runs.yml"), "utf8");
