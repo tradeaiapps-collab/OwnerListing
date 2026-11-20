@@ -5,7 +5,7 @@ import type { Jurisdiction } from "./jurisdiction";
 import type { Actor, Result } from "./listing-service";
 import { licenceLocalDate } from "./timezone";
 
-export const ASSIGNMENT_KINDS = ["photographer", "solicitor", "inspector", "agent"] as const;
+export const ASSIGNMENT_KINDS = ["photographer", "solicitor", "inspector", "agent", "pest_control", "other"] as const;
 export type AssignmentKind = typeof ASSIGNMENT_KINDS[number];
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -91,7 +91,9 @@ function auditEvent(ids: AssignmentIds, actor: Actor, a: JobAssignment, eventTyp
 
 /** The owner invites a registered contractor. The owner id comes from the session, never the body. */
 export async function inviteContractor(
-  repo: AssignmentRepository, actor: Actor, listingId: string, input: unknown, ids: AssignmentIds
+  repo: AssignmentRepository, actor: Actor, listingId: string, input: unknown, ids: AssignmentIds,
+  /** Offer details already validated by the caller (booking): service, displayed price, note, preferred time. */
+  extras?: Pick<JobAssignment, "serviceName" | "priceCents" | "note" | "requestedTime" | "offerSource">
 ): Promise<Result<JobAssignment>> {
   if (!UUID.test(listingId)) return notFound;
   const listing = await repo.getListing(listingId);
@@ -100,7 +102,7 @@ export async function inviteContractor(
   if (typeof input !== "object" || input === null) return { ok: false, code: "invalid", message: "Send a JSON object." };
   const o = input as Record<string, unknown>;
   const kind = o["kind"];
-  if (!isKind(kind)) return { ok: false, code: "invalid", message: "Choose photographer, solicitor, inspector or agent." };
+  if (!isKind(kind)) return { ok: false, code: "invalid", message: "Choose photographer, solicitor, inspector, agent, pest control or other." };
   const ref = parseContractorRef(o);
   if (!ref) return { ok: false, code: "invalid", message: "Give the contractor's user id or email address." };
 
@@ -108,7 +110,7 @@ export async function inviteContractor(
   if (!contractor || contractor.id === actor.userId || !eligible(kind, contractor)) return cannotInvite;
 
   const a: JobAssignment = {
-    id: ids.newId(), listingId, ownerUserId: actor.userId, contractorUserId: contractor.id, kind, status: "proposed"
+    id: ids.newId(), listingId, ownerUserId: actor.userId, contractorUserId: contractor.id, kind, status: "proposed", ...(extras ?? {})
   };
   const stored = await repo.insertProposed(a, auditEvent(ids, actor, a, "assignment.invited", null));
   return stored
@@ -200,6 +202,7 @@ export function createInMemoryAssignmentRepository(seed: {
       const dup = assignments.some(x => x.listingId === a.listingId && x.contractorUserId === a.contractorUserId &&
         x.kind === a.kind && (x.status === "proposed" || x.status === "approved"));
       if (!l || l.ownerUserId !== a.ownerUserId || dup) return false;
+      a.jobNumber = 5001 + assignments.length;
       assignments.push({ ...a });
       audits.push(audit);
       return true;
