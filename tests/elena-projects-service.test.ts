@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { INVESTMENT_DISCLOSURE } from "../src/config/investment-disclosure";
 import type { AuditEvent } from "../src/domain/audit";
 import {
-  approveUpdate, askElena, createInMemoryElenaStore, draftForOwner, editDraft, listQuestions, listUpdates, replyToQuestion, reviewForOwner, setFollow,
+  approveUpdate, askElena, clearDocTextCache, createInMemoryElenaStore, draftForOwner, editDraft, listQuestions, listUpdates, replyToQuestion, reviewForOwner, setFollow,
   type DocTextPort, type ElenaPorts
 } from "../src/domain/elena-projects-service";
 import { createInMemoryInvestmentRepository, createProject, decideProject, type InvestmentDeps } from "../src/domain/investment-service";
@@ -35,6 +35,7 @@ const pagesByTag: Record<string, string[]> = {};
 const text: DocTextPort = { async pages(bytes) { const tag = Buffer.from(bytes).toString().split("\n")[1] ?? ""; return pagesByTag[tag] ?? []; } };
 
 beforeEach(async () => {
+  clearDocTextCache();
   n = 0; hits = 1; clock = "2026-11-20T00:00:00.000Z"; audit = []; notices = []; objects = new Map();
   for (const k of Object.keys(pagesByTag)) delete pagesByTag[k];
   mem = createInMemoryInvestmentRepository(); docs = createInMemoryProjectDocStore(); store = createInMemoryElenaStore();
@@ -245,5 +246,28 @@ describe("keeping the project current", () => {
     expect(d.ok).toBe(true);
     const p = d.ok ? await approveUpdate(deps, store, owner, id, d.value.id) : d;
     expect(!p.ok && p.code).toBe("conflict");
+  });
+});
+
+describe("security review fixes (service)", () => {
+  it("a document title with an address never reaches an investor's source label or the owner's draft", async () => {
+    const id = await approvedProject();
+    await addDoc(id, "Site plan 12 Smith St", ["Landscaping and stormwater works are completed before occupancy."], { kind: "plan" });
+    const r = await ask(id, "What does the plan say about landscaping and stormwater?");
+    expect(r.ok && r.value.outcome).toBe("answered");
+    expect(JSON.stringify(r)).not.toMatch(/Smith/);
+    expect(r.ok && r.value.sources[0]!.title).toBe("Plans");
+    const stored = JSON.stringify(store.questions);
+    expect(stored).not.toMatch(/Smith/);
+    const d = await draftForOwner(deps, store, docs.store, ports, owner, id);
+    expect(d.ok && d.value.body).not.toMatch(/Smith/);
+  });
+  it("a guaranteed-return sentence in a document is not quoted", async () => {
+    const id = await approvedProject();
+    await addDoc(id, "Info memo", ["Investors receive a guaranteed 12% return each year."]);
+    const r = await ask(id, "What does the memo say about payments each year?");
+    expect(r.ok && r.value.outcome).toBe("declined");
+    expect(JSON.stringify(r)).not.toMatch(/12%/);
+    expect(notices).toHaveLength(0);
   });
 });

@@ -1,6 +1,6 @@
 import type { ObjectStoragePort } from "../adapters/object-storage";
 import {
-  answerQuestion, draftUpdate, LIMITS, NOT_ADVICE, projectPassages, reviewProject, toPassages, validateQuestion, validateReply, validateUpdate,
+  answerQuestion, draftUpdate, LIMITS, safeTitle, NOT_ADVICE, projectPassages, reviewProject, toPassages, validateQuestion, validateReply, validateUpdate,
   type Answer, type Outcome, type Passage, type ReviewDoc, type ReviewFlag, type Source
 } from "./elena-projects";
 import type { InvestmentDeps } from "./investment-service";
@@ -68,6 +68,8 @@ const projectLink = (deps: InvestmentDeps, id: string, tail = "") => `${deps.app
 interface ReadableDoc { doc: ProjectDocRecord; pages: string[]; terms: readonly string[] }
 const cache = new Map<string, string[]>();
 const CACHE_MAX = 60;
+/** For tests, which reuse ids between cases. */
+export const clearDocTextCache = () => cache.clear();
 
 /** Current investor-visible documents with a confirmed mask, as text by page. A document that cannot be read is skipped, never guessed at. */
 async function readableDocs(deps: InvestmentDeps, docs: ProjectDocStore, ports: ElenaPorts, projectId: string): Promise<ReadableDoc[]> {
@@ -94,7 +96,7 @@ async function readableDocs(deps: InvestmentDeps, docs: ProjectDocStore, ports: 
   return out;
 }
 
-const docPassages = (r: ReadableDoc): Passage[] => r.pages.flatMap((t, i) => toPassages(r.doc.id, r.doc.title, i + 1, t, r.terms));
+const docPassages = (r: ReadableDoc): Passage[] => r.pages.flatMap((t, i) => toPassages(r.doc.id, safeTitle(r.doc.title, r.doc.kind, r.terms), i + 1, t, r.terms));
 
 // ---- Investor questions ---------------------------------------------------------------------------------------------------------
 

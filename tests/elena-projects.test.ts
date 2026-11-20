@@ -119,3 +119,35 @@ describe("keeping the project current", () => {
     expect(validateReply("It is at 12 Smith Street").ok).toBe(false);
   });
 });
+
+describe("security review fixes", () => {
+  it("safeTitle hides an address in a document title and falls back to the kind", async () => {
+    const { safeTitle } = await import("../src/domain/elena-projects");
+    expect(safeTitle("Site plan 12 Smith St.pdf", "plan")).toBe("Plans");
+    expect(safeTitle("Council approval", "approval")).toBe("Council approval");
+    expect(safeTitle("Report for Harbour House", "report", ["Harbour House"])).toBe("Report");
+    expect(safeTitle("Ring 0412 345 678", "other")).toBe("Project document");
+  });
+  it("never quotes guarantee or return sentences, and says so instead of passing them on", () => {
+    const passages = toPassages("d1", "Info memo", 2, "Investors receive a guaranteed 12% return each year. Construction starts in March 2027 after approval. Projected returns of 14% p.a. are expected.");
+    const a = answerQuestion("What does the memo say about payments each year?", passages);
+    expect(JSON.stringify(a)).not.toMatch(/12%|14%|guaranteed 12/);
+    expect(a.outcome).toBe("declined");
+    expect(a.reason).toBe("return_claims_not_quoted");
+    const b = answerQuestion("When does construction start after approval?", passages);
+    expect(b.outcome).toBe("answered");
+    expect(b.text).toContain("March 2027");
+    expect(b.text).not.toMatch(/guarantee|14%/);
+  });
+  it("declines more ways of asking for returns or advice", () => {
+    for (const q of ["What is the yield?", "What is the expected ROI", "Is this a good idea?", "Is it worth the risk?", "What are the chances of making money", "What would you do?", "What is the IRR?"])
+      expect(classifyQuestion(q)).toBe("advice");
+    expect(classifyQuestion("When is council approval expected?")).toBe("ok");
+  });
+  it("drafts leave out return claims and unsafe document titles", () => {
+    const d = draftUpdate(project(), [{ id: "d1", title: "Plan for 12 Smith Street", kind: "plan", uploadedAt: "2026-11-18T00:00:00.000Z", terms: [],
+      text: "Investors are promised a guaranteed 12% return. Landscaping and stormwater works are completed before occupancy." }], NOW)!;
+    expect(d.body).not.toMatch(/Smith|guarantee|12%/);
+    expect(d.body).toContain("Landscaping");
+  });
+});

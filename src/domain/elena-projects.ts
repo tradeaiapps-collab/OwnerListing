@@ -39,6 +39,28 @@ export function maskText(text: string, terms: readonly string[] = []): string {
 const leaksAddress = (text: string, terms: readonly string[]) => findAddressRanges(text, terms).length > 0;
 const hasContact = (text: string) => scanContent(text).hits.some(h => h.category === "contact_details");
 
+/**
+ * A document title is owner-typed and nobody masks it, so it can carry an address ("Site plan 12 Smith St"). Anywhere Elena shows a title
+ * to an investor she uses this: the title when nothing address-like is in it, otherwise a plain label from the kind.
+ */
+const KIND_FALLBACK: Record<ProjectDocKind, string> = { plan: "Plans", approval: "Approval document", feasibility: "Feasibility study", contract: "Contract document", report: "Report", other: "Project document" };
+export function safeTitle(title: string, kind: ProjectDocKind, terms: readonly string[] = []): string {
+  const t = title.replace(/\s+/g, " ").trim();
+  return leaksAddress(t, terms) || hasContact(t) ? KIND_FALLBACK[kind] : t;
+}
+
+/**
+ * Sentences that promise or forecast what an investor will earn. Elena does not repeat them, even as a quote: a quoted "guaranteed 12%"
+ * reads as her saying it. They stay in the document for the investor to read in context, with the risks around them.
+ */
+const RETURN_CLAIM = new RegExp([
+  String.raw`\b(?:guarantee[ds]?|guaranteeing|risk[\s-]?free|assured|capital[\s-]?protected|no\s+risk|can'?t\s+lose|cannot\s+lose)\b`,
+  String.raw`\b(?:forecast|projected|expected|anticipated|estimated|target(?:ed)?|indicative|predicted|promised|stated)\s+(?:\w+\s+){0,2}(?:returns?|yields?|profits?|IRR|ROI|distributions?|capital\s+growth|equity\s+multiple|margin)\b`,
+  String.raw`\b(?:returns?|yields?|profits?|IRR|ROI|distributions?)\b[^.]{0,60}\d+(?:\.\d+)?\s*%`,
+  String.raw`\d+(?:\.\d+)?\s*%\s*(?:p\.?\s?a\.?|per\s+annum|per\s+year|annual\w*|return|yield|IRR|ROI|profit)\b`
+].join("|"), "i");
+export const makesReturnClaim = (text: string): boolean => RETURN_CLAIM.test(text);
+
 const clip = (s: string, max: number) => { const t = s.replace(/\s+/g, " ").trim(); return t.length > max ? `${t.slice(0, max - 1)}…` : t; };
 
 /** Splits one page (or section) of already-masked text into short passages Elena can quote. */
@@ -56,6 +78,8 @@ export function toPassages(docId: string | null, title: string, page: number | n
   const out: Passage[] = [];
   let cur = "";
   for (const s of sentences) {
+    // A return or guarantee claim stands alone, so dropping it never takes a neighbouring sentence with it.
+    if (makesReturnClaim(s)) { if (cur) { out.push({ docId, title, page, text: cur }); cur = ""; } out.push({ docId, title, page, text: s }); continue; }
     if (cur && cur.length + s.length > LIMITS.quoteChars) { out.push({ docId, title, page, text: cur }); cur = ""; }
     cur = cur ? `${cur} ${s}` : s;
   }
@@ -81,7 +105,7 @@ export function projectPassages(p: InvestmentProject): Passage[] {
 export type QuestionKind = "ok" | "address" | "contact" | "advice" | "commit";
 const ADDRESS_Q = /\b(?:exact|full|street|precise|actual)\s+(?:address|location)\b|\bwhat(?:'s|\s+is)\s+the\s+address\b|\bwhere\s+(?:exactly|precisely)\b|\blot\s*(?:number|\/\s*plan)\b|\b(?:gps|coordinates|lat(?:itude)?\s*\/?\s*long(?:itude)?)\b|\bwhich\s+street\b|\bdrop\s+(?:a\s+)?pin\b/i;
 const CONTACT_Q = /\b(?:phone|mobile|email|e-mail|contact\s+(?:details|number|info\w*)|call\s+(?:him|her|them|the\s+owner)|whats\s?app|speak\s+(?:to|with)\s+the\s+owner)\b/i;
-const ADVICE_Q = /\b(?:should\s+i|would\s+you\s+(?:recommend|invest|buy)|do\s+you\s+recommend|is\s+(?:it|this)\s+(?:a\s+)?(?:good|safe|sound|smart|worth)|worth\s+(?:investing|it)|will\s+i\s+(?:make|get|earn|lose|profit)|how\s+much\s+(?:will|can|could|would)\s+i\s+(?:make|earn|get|profit)|guarantee\w*|risk[\s-]?free|safe\s+investment|best\s+investment|sure\s+thing|can\s+i\s+lose|expected\s+(?:return|profit|yield)|projected\s+(?:return|profit|yield)|what\s+(?:return|yield|profit)\s+(?:will|can))\b/i;
+const ADVICE_Q = /\b(?:should\s+i|would\s+you\s+(?:recommend|invest|buy)|do\s+you\s+recommend|is\s+(?:it|this)\s+(?:a\s+)?(?:good|safe|sound|smart|worth)|worth\s+(?:investing|it)|will\s+i\s+(?:make|get|earn|lose|profit)|how\s+much\s+(?:will|can|could|would)\s+i\s+(?:make|earn|get|profit)|guarantee\w*|risk[\s-]?free|safe\s+investment|best\s+investment|sure\s+thing|can\s+i\s+lose|is\s+(?:it|this)\s+(?:a\s+)?(?:good\s+idea|profitable|risky|likely)|worth\s+the\s+risk|what\s+are\s+the\s+chances|will\s+(?:it|this)\s+(?:go\s+up|make\s+money|be\s+profitable|pay\s+off)|do\s+you\s+think|what\s+would\s+you\s+do|(?:rate\s+of\s+)?returns?|yields?|roi|irr|profit\w*|return\s+on\s+investment|expected\s+(?:return|profit|yield)|projected\s+(?:return|profit|yield)|what\s+(?:return|yield|profit)\s+(?:will|can))\b/i;
 const COMMIT_Q = /\b(?:reserve|secure|lock\s+in|put\s+me\s+down|sign\s+me\s+up|take\s+my\s+(?:money|deposit)|invest\s+(?:now|for\s+me)|buy\s+in\s+for\s+me|transfer|wire|pay(?:ment)?\s+(?:now|today)|send\s+(?:you|the)\s+(?:money|funds|deposit))\b/i;
 
 export function classifyQuestion(q: string): QuestionKind {
@@ -151,11 +175,15 @@ export function answerQuestion(question: string, passages: readonly Passage[], t
   if (kind === "contact") return { outcome: "escalated", reason: "contact_request", sources: [],
     text: "I can't share anyone's contact details. I have passed your question to the project owner. You can also use Express interest to start a conversation on the platform." };
   const sources: Source[] = [];
+  let claims = 0;
   for (const p of retrieve(question, passages, LIMITS.maxAnswerSources + 3)) {
     if (leaksAddress(p.text, terms) || hasContact(p.text)) continue;
+    if (makesReturnClaim(p.text)) { claims++; continue; }
     sources.push({ docId: p.docId, title: p.title, page: p.page, quote: clip(p.text, LIMITS.quoteChars) });
     if (sources.length >= LIMITS.maxAnswerSources) break;
   }
+  if (sources.length === 0 && claims > 0) return { outcome: "declined", reason: "return_claims_not_quoted", sources: [],
+    text: "The closest material is a statement about returns or guarantees. I don't repeat those, because I can't tell you what you will earn and nobody has checked them. Please read the document yourself, with its risks, and speak to a licensed financial adviser. I have not passed this to the owner." };
   if (sources.length === 0) return { outcome: "escalated", reason: "not_in_documents", sources: [],
     text: "I couldn't find that in the documents and details the owner has published, and I won't guess. I have passed your question to the project owner." };
   return { outcome: "answered", sources,
@@ -218,9 +246,9 @@ export function draftUpdate(project: Pick<InvestmentProject, "title">, docs: rea
   if (docs.length === 0) return undefined;
   const lines: string[] = [];
   for (const d of docs) {
-    lines.push(`• New ${KIND_LABEL[d.kind]}: ${d.title} (added ${dateWord(d.uploadedAt)}).`);
+    lines.push(`• New ${KIND_LABEL[d.kind]}: ${safeTitle(d.title, d.kind, d.terms)} (added ${dateWord(d.uploadedAt)}).`);
     const picks = keySentences(maskText(d.text, d.terms), 8)
-      .filter(s => !leaksAddress(s, d.terms) && !hasContact(s) && s.length <= 240 && !/^page \d+ of \d+/i.test(s) && !/demo data/i.test(s)).slice(0, 2);
+      .filter(s => !leaksAddress(s, d.terms) && !hasContact(s) && !makesReturnClaim(s) && s.length <= 240 && !/^page \d+ of \d+/i.test(s) && !/demo data/i.test(s)).slice(0, 2);
     for (const s of picks) lines.push(`   “${s}”`);
   }
   const body = clip2(`${project.title}: new documents are now available to investors.\n\n${lines.join("\n")}\n\nThe figures above are quoted from the documents. They are the project owner's statements, not checked by the platform, and not financial advice.`, LIMITS.updateBody[1]);
