@@ -21,7 +21,9 @@ export const VENDOR_API_PREFIXES: readonly string[] = [
   "/api/assignments",
   "/api/quotes",
   "/api/reviews",
-  "/api/contractors"
+  "/api/contractors",
+  // Emergency jobs: their own settings and the urgent requests sent to them. Each route checks the person is a party.
+  "/api/emergency"
 ];
 
 /** True when a contractor session may call this API path. `/api/v1/...` is the same route as `/api/...`. Path traversal and encoded dots are refused. */

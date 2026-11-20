@@ -6,7 +6,7 @@ import { DAYS, STATUS_TEXT, TRADE_OPTIONS, tradeLabel, type Window } from "../..
 
 type Saved = { trade: string; enabled: boolean; timeZone: string; allHours: boolean; windows: Window[]; callOutCents: number | null; businessName: string | null; contactPhone: string; contactEmail: string | null; note: string | null; serviceSuburbs: string[]; servicePostcodes: string[] };
 type Form = { enabled: boolean; allHours: boolean; windows: Window[]; callOut: string; businessName: string; phone: string; email: string; note: string; suburbs: string; postcodes: string; timeZone: string };
-type Req = { id: string; number: number; role: string; status: string; trade: string; description: string; suburb: string | null; postcode: string | null; createdAt: string; requesterName: string; addressText: string | null; callbackPhone: string | null; myStatus: string | null };
+type Req = { id: string; number: number; jobNumber: number | null; assignmentId: string | null; role: string; status: string; trade: string; description: string; suburb: string | null; postcode: string | null; createdAt: string; requesterName: string; addressText: string | null; callbackPhone: string | null; myStatus: string | null };
 
 const zone = () => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || "Australia/Brisbane"; } catch { return "Australia/Brisbane"; } };
 const blank = (): Form => ({ enabled: true, allHours: false, windows: [{ days: [0, 1, 2, 3, 4, 5, 6], start: "18:00", end: "06:00" }], callOut: "", businessName: "", phone: "", email: "", note: "", suburbs: "", postcodes: "", timeZone: zone() });
@@ -82,10 +82,10 @@ export default function ContractorEmergency() {
           <ul className="emg-list">
             {reqs.map(r => (
               <li key={r.id} className="emg-item">
-                <div className="emg-top"><strong>EMG-{r.number} · {tradeLabel(r.trade)}</strong><span className={`emg-badge st-${r.myStatus ?? r.status}`}>{STATUS_TEXT[r.myStatus ?? r.status] ?? r.status}</span></div>
+                <div className="emg-top"><strong>{r.myStatus === "accepted" && r.jobNumber ? `JOB-${r.jobNumber}` : `EMG-${r.number}`} · {tradeLabel(r.trade)}</strong><span className={`emg-badge st-${r.myStatus ?? r.status}`}>{STATUS_TEXT[r.myStatus ?? r.status] ?? r.status}</span></div>
                 <p className="muted">{[r.suburb, r.postcode].filter(Boolean).join(" ")} · from {r.requesterName}</p>
                 <p className="emg-quote">“{r.description}”</p>
-                {r.myStatus === "accepted" && <p className="emg-contact"><strong>Address:</strong> {r.addressText}{r.callbackPhone && <> · <a href={`tel:${r.callbackPhone}`}>{r.callbackPhone}</a></>}</p>}
+                {r.myStatus === "accepted" && <p className="emg-contact"><strong>Address:</strong> {r.addressText}{r.callbackPhone && <> · <a href={`tel:${r.callbackPhone}`}>{r.callbackPhone}</a></>}{r.assignmentId && <> · <a href={`/jobs/${r.assignmentId}`}>Open the job</a></>}</p>}
                 {r.status === "open" && r.myStatus === "sent" && (
                   <div className="emg-actions">
                     <label className="emg-eta"><span>Arrive in (minutes)</span><input inputMode="numeric" value={eta[r.id] ?? ""} onChange={e => setEta({ ...eta, [r.id]: e.target.value.replace(/\D/g, "") })} /></label>

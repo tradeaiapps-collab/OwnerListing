@@ -1,7 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { parseEmergencyProfile, type EmergencyProfile } from "../src/domain/emergency";
-import { candidatesPg, getProfilesPg, listRequestsPg, saveProfilePg } from "../src/server/emergency-db";
-import { cancelRequest, replyToRequest, submitUrgentRequest } from "../src/server/emergency-dispatch";
+import { candidatesPg, emergencyOutboxPg, getProfilesPg, listRequestsPg, profileCardsPg, saveProfilePg, staffRequestsPg } from "../src/server/emergency-db";
+import { cancelRequest, replyToRequest, runDueEmergency, submitUrgentRequest } from "../src/server/emergency-dispatch";
+import { vendorMayCall } from "../src/domain/contractor-access";
 import { addListing, addUser, createTestDb, DATABASE_URL, type TestDb } from "./helpers/pg-db";
 
 // Real PostgreSQL: accepting is one guarded statement, so its WHERE clause is the rule (first accept wins, only a contractor who was asked).
@@ -111,5 +112,84 @@ describe.skipIf(!DATABASE_URL)("emergency contractors (Postgres)", () => {
     expect(ok.ok).toBe(true);
     expect(await one("SELECT property_kind, suburb FROM emergency_request WHERE listing_id = $1", [listingId])).toMatchObject({ property_kind: "rental", suburb: "Paddington" });
     expect((await submitUrgentRequest(db, {}, actorOf(other), { trade: "plumber", description: "Hot water system has burst", listingId }, NOW)).ok).toBe(false);
+  });
+  it("an accepted request becomes a numbered job: a real approved job on the owner's listing, or a JOB- number from the same sequence", async () => {
+    const c = await vendor(); await saveProfilePg(db, c, prof({ serviceSuburbs: ["Ashgrove"], servicePostcodes: ["4060"] }));
+    const owner = await addUser(db, "owner");
+    const listingId = await addListing(db, owner);
+    await db.query("UPDATE property_listing SET suburb = 'Ashgrove', postcode = '4060' WHERE id = $1", [listingId]);
+    const withListing = await submitUrgentRequest(db, {}, actorOf(owner), { trade: "plumber", description: "Hot water system has burst", listingId }, NOW);
+    const noListing = await submitUrgentRequest(db, {}, actorOf(await addUser(db, "owner")), { ...ask, suburb: "Ashgrove", postcode: "4060" }, NOW);
+    if (!withListing.ok || !noListing.ok) throw new Error("setup");
+    expect((await replyToRequest(db, {}, actorOf(c, "vendor"), withListing.value.id, { kind: "accept" })).ok).toBe(true);
+    expect((await replyToRequest(db, {}, actorOf(c, "vendor"), noListing.value.id, { kind: "accept" })).ok).toBe(true);
+    const a = await one("SELECT e.job_number, e.assignment_id, j.job_number AS jn, j.status, j.kind, j.owner_user_id, j.contractor_user_id, j.listing_id, j.service_name FROM emergency_request e JOIN job_assignment j ON j.id = e.assignment_id WHERE e.id = $1", [withListing.value.id]);
+    expect(a).toMatchObject({ status: "approved", kind: "other", owner_user_id: owner, contractor_user_id: c, listing_id: listingId, service_name: "Emergency plumber" });
+    expect(a["job_number"]).toBe(a["jn"]);
+    const b = await one("SELECT job_number, assignment_id FROM emergency_request WHERE id = $1", [noListing.value.id]);
+    expect(b["assignment_id"]).toBeNull();
+    expect(b["job_number"]).toBeGreaterThan(Number(a["job_number"]));
+    expect((await listRequestsPg(db, owner))[0]).toMatchObject({ jobNumber: a["job_number"], assignmentId: a["assignment_id"] });
+    // The cron repairs an accepted request that missed its number, and never gives it a second one.
+    await db.query("UPDATE emergency_request SET job_number = NULL, assignment_id = NULL WHERE id = $1", [noListing.value.id]);
+    expect((await runDueEmergency(db, {}, new Date().toISOString())).linked).toBe(1);
+    expect((await runDueEmergency(db, {}, new Date().toISOString())).linked).toBe(0);
+  });
+
+  it("widens an unanswered request to the next available contractors, in rounds, and stops once someone accepts", async () => {
+    const pros: string[] = [];
+    for (let i = 0; i < 7; i++) { const p = await vendor(); pros.push(p); await saveProfilePg(db, p, prof({ serviceSuburbs: ["Bardon"], servicePostcodes: ["4065"] })); }
+    const owner = await addUser(db, "owner");
+    const sent = await submitUrgentRequest(db, {}, actorOf(owner), { ...ask, suburb: "Bardon", postcode: "4065" }, NOW);
+    if (!sent.ok) throw new Error(sent.message);
+    const count = async () => Number((await one("SELECT count(*)::int AS n FROM emergency_request_contact WHERE request_id = $1", [sent.value.id]))["n"]);
+    expect(await count()).toBe(5);
+    const at = (min: number) => new Date(Date.now() + min * 60_000).toISOString();
+    await runDueEmergency(db, {}, at(5)); // too soon
+    expect(await count()).toBe(5);
+    expect((await runDueEmergency(db, {}, at(16))).widened).toBeGreaterThanOrEqual(1);
+    expect(await count()).toBe(7);
+    expect((await one("SELECT round FROM emergency_request WHERE id = $1", [sent.value.id]))["round"]).toBe(2);
+    expect((await one("SELECT count(*)::int AS n FROM notification WHERE user_id = $1 AND kind = 'emergency_update'", [owner]))["n"]).toBe(1);
+    // Nobody new is available: it only waits another interval, no new round and no message.
+    await runDueEmergency(db, {}, at(32));
+    expect(await count()).toBe(7);
+    expect((await one("SELECT round FROM emergency_request WHERE id = $1", [sent.value.id]))["round"]).toBe(2);
+    // An accepted request is never widened.
+    const accepter = (await db.query("SELECT contractor_user_id FROM emergency_request_contact WHERE request_id = $1 LIMIT 1", [sent.value.id])).rows[0]!["contractor_user_id"] as string;
+    expect((await replyToRequest(db, {}, actorOf(accepter, "vendor"), sent.value.id, { kind: "accept" })).ok).toBe(true);
+    const late = await vendor(); await saveProfilePg(db, late, prof({ serviceSuburbs: ["Bardon"], servicePostcodes: ["4065"] }));
+    await runDueEmergency(db, {}, at(60));
+    expect(await count()).toBe(7);
+  });
+
+  it("only vendor accounts are listed, and cards come from the published contractor page", async () => {
+    const agent = await addUser(db, "agent");
+    await saveProfilePg(db, agent, prof({ serviceSuburbs: ["Nundah"], servicePostcodes: ["4012"] }));
+    expect((await candidatesPg(db, "plumber")).map(c => c.userId)).not.toContain(agent);
+    const v = await vendor(), hidden = await vendor();
+    await saveProfilePg(db, v, prof()); await saveProfilePg(db, hidden, prof());
+    const o = await addUser(db, "owner"), l = await addListing(db, o);
+    await db.query("INSERT INTO contractor_page (user_id, headline, is_public, licence_verified_at) VALUES ($1, 'Fast and tidy', true, now()), ($2, 'Not public', false, null) ON CONFLICT (user_id) DO UPDATE SET headline = EXCLUDED.headline, is_public = EXCLUDED.is_public, licence_verified_at = EXCLUDED.licence_verified_at", [v, hidden]);
+    await db.query("INSERT INTO contractor_media (user_id, media_type, url) VALUES ($1, 'photo', 'https://example.test/p.jpg')", [v]);
+    const job = await one("INSERT INTO job_assignment (listing_id, owner_user_id, contractor_user_id, kind, status) VALUES ($1, $2, $3, 'other', 'completed') RETURNING id", [l, o, v]);
+    await db.query("INSERT INTO contractor_review (assignment_id, contractor_user_id, owner_user_id, rating, body) VALUES ($1, $2, $3, 5, 'Turned up in 20 minutes and fixed it.')", [job["id"], v, o]);
+    const cards = await profileCardsPg(db, [v, hidden]);
+    expect(cards.has(hidden)).toBe(false);
+    expect(cards.get(v)).toMatchObject({ headline: "Fast and tidy", verified: true, ratingAvg: 5, ratingCount: 1, completed: 1, photoUrl: "https://example.test/p.jpg", testimonial: "Turned up in 20 minutes and fixed it." });
+    expect(await profileCardsPg(db, [])).toEqual(new Map());
+  });
+
+  it("contractor sessions may call the emergency API; the staff view and log carry no address, phone or email", async () => {
+    expect(vendorMayCall("/api/emergency/requests")).toBe(true);
+    expect(vendorMayCall("/api/emergency/profile")).toBe(true);
+    expect(vendorMayCall("/api/v1/emergency/search")).toBe(true);
+    expect(vendorMayCall("/api/listings/mine")).toBe(false);
+    const rows = await staffRequestsPg(db, 200);
+    expect(rows.length).toBeGreaterThan(3);
+    expect(JSON.stringify(rows)).not.toMatch(/Example St|0412000111|@example\.test/);
+    expect(rows.find(r => r.accepted > 0)).toBeDefined();
+    await db.query("INSERT INTO messaging_outbox (channel, template, recipient_hash, status) VALUES ('email', 'emergency_request', 'h', 'sent'), ('sms', 'emergency_request', 'h', 'failed'), ('email', 'other', 'h', 'sent')");
+    expect((await emergencyOutboxPg(db)).map(o => o.status).sort()).toEqual(["failed", "sent"]);
   });
 });

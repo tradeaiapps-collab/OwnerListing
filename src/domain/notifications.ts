@@ -148,7 +148,8 @@ export const KINDS = {
   job_files_added: "appointments",
   job_reviewed: "messages",
   emergency_request: "messages",
-  emergency_accepted: "messages"
+  emergency_accepted: "messages",
+  emergency_update: "messages"
 } as const satisfies Record<string, Category>;
 export type Kind = keyof typeof KINDS;
 export const isKind = (v: unknown): v is Kind => typeof v === "string" && Object.prototype.hasOwnProperty.call(KINDS, v);
@@ -248,6 +249,7 @@ export function renderNotification(kind: Kind, p: NotificationParams = {}): Rend
     case "lead_followup_due": return t("Lead follow-up due", clip(p["text"], 300, `Follow up with ${name} about ${listing}.`), false);
     case "emergency_request": return t(`Urgent request ${clip(p["reference"], 20, "")}`, clip(p["text"], 300, "An owner needs an emergency contractor. Open it to accept or pass."), false);
     case "emergency_accepted": return t("A contractor accepted your urgent request", clip(p["text"], 300, `${name} accepted your urgent request. Open it for their contact details.`), false);
+    case "emergency_update": return t(clip(p["title"], 80, "Update on your urgent request"), clip(p["text"], 300, "Elena has an update on your urgent request."), false);
     case "automation_alert": return t(clip(p["title"], 80, "Automation update"), clip(p["text"], 400, "One of your automations ran."));
   }
 }

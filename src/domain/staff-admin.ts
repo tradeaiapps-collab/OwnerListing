@@ -36,6 +36,7 @@ export const STAFF_SECTIONS: readonly StaffSection[] = [
   { href: "/staff/listing-performance-analytics", label: "Listing performance", permissions: ["report.sales"] },
   { href: "/staff/agents-analytics", label: "Agent performance", permissions: ["report.sales"] },
   { href: "/staff/contractors", label: "Contractor report", permissions: ["report.operations"] },
+  { href: "/staff/emergency", label: "Emergency requests", permissions: ["report.operations"] },
   { href: "/staff/elena-insights", label: "Elena insights", permissions: ["report.sales"] },
   { href: "/staff/elena-training", label: "Elena training", permissions: ["report.sales"] },
   { href: "/staff/feasibility", label: "Project feasibility", permissions: ["report.operations", "report.sales"] },

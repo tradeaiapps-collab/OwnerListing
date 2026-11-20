@@ -29,7 +29,7 @@ export const CANDIDATES_SQL =
   "SELECT u.id, u.display_name, e.trade, e.enabled, e.time_zone, e.all_hours, e.windows, e.call_out_cents, e.business_name, e.contact_phone, e.contact_email, e.note, e.service_suburbs, e.service_postcodes, " +
   "(SELECT count(*) FROM emergency_request_contact c WHERE c.contractor_user_id = u.id AND c.sent_at > now() - interval '1 day')::int AS messages_today " +
   "FROM emergency_contractor e JOIN app_user u ON u.id = e.user_id " +
-  "WHERE e.enabled AND ($1::text IS NULL OR e.trade = $1::text) AND u.status NOT IN ('suspended','closed') AND u.deleted_at IS NULL AND u.user_type IN ('vendor','agent') AND " + notSuspendedSql("u.id") + " ORDER BY u.id LIMIT 2000";
+  "WHERE e.enabled AND ($1::text IS NULL OR e.trade = $1::text) AND u.status NOT IN ('suspended','closed') AND u.deleted_at IS NULL AND u.user_type = 'vendor' AND " + notSuspendedSql("u.id") + " ORDER BY u.id LIMIT 2000";
 
 export async function getProfilesPg(db: Queryable, userId: string): Promise<EmergencyProfile[]> {
   return (await db.query(PROFILES_SQL, [userId])).rows.map(toProfile);
@@ -71,13 +71,15 @@ export interface ContactView { contractorName: string; businessName: string | nu
 export interface RequestView {
   id: string; number: number; role: "requester" | "contractor"; status: "open" | "accepted" | "cancelled" | "expired";
   trade: EmergencyTrade; description: string; propertyKind: string; suburb: string | null; postcode: string | null; createdAt: string;
+  /** Set once a contractor accepts: the JOB- number, and the job screen when the request was about one of the requester's listings. */
+  jobNumber: number | null; assignmentId: string | null; round: number;
   requesterName: string; addressText: string | null; callbackPhone: string | null; myStatus: string | null; replies: ContactView[];
 }
 
 const STATUS_EXPR = `CASE WHEN r.status = 'open' AND r.created_at <= now() - interval '${OPEN_HOURS} hours' THEN 'expired' ELSE r.status END`;
 export const REQUESTS_SQL =
   `SELECT r.id, r.number, r.requester_user_id, ${STATUS_EXPR} AS status, r.trade, r.description, r.property_kind, r.suburb, r.postcode, r.created_at, r.address_text, r.callback_phone, ` +
-  "r.accepted_contractor_user_id, u.display_name AS requester_name, mc.status AS my_status " +
+  "r.accepted_contractor_user_id, r.job_number, r.assignment_id, r.round, u.display_name AS requester_name, mc.status AS my_status " +
   "FROM emergency_request r JOIN app_user u ON u.id = r.requester_user_id " +
   "LEFT JOIN emergency_request_contact mc ON mc.request_id = r.id AND mc.contractor_user_id = $1::uuid " +
   "WHERE (r.requester_user_id = $1::uuid OR mc.contractor_user_id IS NOT NULL) AND ($2::uuid IS NULL OR r.id = $2::uuid) ORDER BY r.created_at DESC LIMIT 50";
@@ -99,6 +101,7 @@ export async function listRequestsPg(db: Queryable, userId: string, id?: string)
       id: String(r["id"]), number: Number(r["number"]), role: requester ? "requester" : "contractor", status: r["status"] as RequestView["status"],
       trade: isTrade(r["trade"]) ? r["trade"] : "plumber", description: String(r["description"]), propertyKind: String(r["property_kind"]),
       suburb: str(r["suburb"]), postcode: str(r["postcode"]), createdAt: iso(r["created_at"]),
+      jobNumber: r["job_number"] === null || r["job_number"] === undefined ? null : Number(r["job_number"]), assignmentId: str(r["assignment_id"]), round: Number(r["round"]),
       requesterName: String(r["requester_name"]).split(" ")[0] ?? "Customer",
       addressText: requester || accepted ? String(r["address_text"]) : null, callbackPhone: requester || accepted ? str(r["callback_phone"]) : null,
       myStatus: requester ? null : str(r["my_status"]),
@@ -119,10 +122,10 @@ export const ACCEPT_SQL =
   `WHERE r.id = $1::uuid AND r.status = 'open' AND r.created_at > now() - interval '${OPEN_HOURS} hours' ` +
   "AND " + notSuspendedSql("$2::uuid") + " " +
   "AND EXISTS (SELECT 1 FROM emergency_request_contact c WHERE c.request_id = r.id AND c.contractor_user_id = $2::uuid AND c.status = 'sent') " +
-  "RETURNING r.id, r.number, r.requester_user_id), " +
+  "RETURNING r.id, r.number, r.requester_user_id, r.trade), " +
   "mine AS (UPDATE emergency_request_contact c SET status = 'accepted', note = $3, eta_minutes = $4, replied_at = now() FROM req WHERE c.request_id = req.id AND c.contractor_user_id = $2::uuid RETURNING 1), " +
   "others AS (UPDATE emergency_request_contact c SET status = 'closed', replied_at = now() FROM req WHERE c.request_id = req.id AND c.contractor_user_id <> $2::uuid AND c.status = 'sent' RETURNING 1) " +
-  "SELECT id, number, requester_user_id FROM req";
+  "SELECT id, number, requester_user_id, trade FROM req";
 export const DECLINE_SQL =
   "UPDATE emergency_request_contact c SET status = 'declined', note = $3, replied_at = now() FROM emergency_request r " +
   `WHERE r.id = c.request_id AND r.id = $1::uuid AND r.status = 'open' AND r.created_at > now() - interval '${OPEN_HOURS} hours' AND c.contractor_user_id = $2::uuid AND c.status = 'sent' RETURNING r.number`;
@@ -130,14 +133,114 @@ export const CANCEL_SQL =
   "WITH req AS (UPDATE emergency_request SET status = 'cancelled' WHERE id = $1::uuid AND requester_user_id = $2::uuid AND status = 'open' RETURNING id), " +
   "closed AS (UPDATE emergency_request_contact c SET status = 'closed' FROM req WHERE c.request_id = req.id AND c.status = 'sent' RETURNING 1) SELECT id FROM req";
 
+/**
+ * Gives an accepted request its JOB- number (from the job board's own sequence, so numbers never clash) and, when the request is about one of
+ * the requester's own listings, a real approved job so chat, visits and reviews work. Idempotent: does nothing once linked, so the cron can repair a gap.
+ * Params: 1 request id, 2 service label.
+ */
+export const LINK_JOB_SQL =
+  "WITH r AS (SELECT id, listing_id, requester_user_id, accepted_contractor_user_id, description FROM emergency_request " +
+  "WHERE id = $1::uuid AND status = 'accepted' AND job_number IS NULL FOR UPDATE), " +
+  "asg AS (INSERT INTO job_assignment (listing_id, owner_user_id, contractor_user_id, kind, status, approved_at, service_name, note, offer_source) " +
+  "SELECT r.listing_id, r.requester_user_id, r.accepted_contractor_user_id, 'other', 'approved', now(), $2::text, left(r.description, 1000), 'owner' FROM r " +
+  "WHERE r.listing_id IS NOT NULL RETURNING id, job_number), " +
+  "nums AS (SELECT id AS assignment_id, job_number FROM asg UNION ALL SELECT NULL::uuid, nextval('job_number_seq')::integer FROM r WHERE r.listing_id IS NULL) " +
+  "UPDATE emergency_request e SET assignment_id = nums.assignment_id, job_number = nums.job_number FROM r, nums WHERE e.id = r.id RETURNING e.job_number, e.assignment_id";
+export async function linkJobPg(db: Queryable, requestId: string, serviceLabel: string): Promise<{ jobNumber: number; assignmentId: string | null } | undefined> {
+  const row = (await db.query(LINK_JOB_SQL, [requestId, serviceLabel])).rows[0];
+  return row ? { jobNumber: Number(row["job_number"]), assignmentId: str(row["assignment_id"]) } : undefined;
+}
+
 /** One contractor takes the job. Guarded single statement: only the first accept wins, and only a contractor who was sent the request. Undefined when it is no longer open. */
-export async function acceptPg(db: Queryable, requestId: string, contractorId: string, r: { note: string | null; etaMinutes: number | null }): Promise<{ number: number; requesterId: string } | undefined> {
+export async function acceptPg(db: Queryable, requestId: string, contractorId: string, r: { note: string | null; etaMinutes: number | null }): Promise<{ number: number; requesterId: string; trade: EmergencyTrade } | undefined> {
   const row = (await db.query(ACCEPT_SQL, [requestId, contractorId, r.note, r.etaMinutes])).rows[0];
-  return row ? { number: Number(row["number"]), requesterId: String(row["requester_user_id"]) } : undefined;
+  return row ? { number: Number(row["number"]), requesterId: String(row["requester_user_id"]), trade: row["trade"] as EmergencyTrade } : undefined;
 }
 export async function declinePg(db: Queryable, requestId: string, contractorId: string, note: string | null): Promise<boolean> {
   return (await db.query(DECLINE_SQL, [requestId, contractorId, note])).rows.length > 0;
 }
 export async function cancelPg(db: Queryable, requestId: string, requesterId: string): Promise<boolean> {
   return (await db.query(CANCEL_SQL, [requestId, requesterId])).rows.length > 0;
+}
+
+// ---- Widening: an open request with no answer is offered to the next contractors who are available ------------------------------------
+export const WIDEN_AFTER_MINUTES = 15;
+export const MAX_ROUNDS = 3;
+export const MAX_CONTRACTORS_PER_REQUEST = 12;
+
+export interface DueRequest { id: string; number: number; requesterId: string; trade: EmergencyTrade; description: string; suburb: string | null; postcode: string | null; propertyKind: "sale" | "rental" | "other"; round: number; requesterName: string }
+/** Params: 1 now, 2 widen-after minutes, 3 max rounds. Open, unexpired, nobody accepted, last round at least that long ago. */
+export const DUE_SQL =
+  "SELECT r.id, r.number, r.requester_user_id, r.trade, r.description, r.suburb, r.postcode, r.property_kind, r.round, u.display_name " +
+  "FROM emergency_request r JOIN app_user u ON u.id = r.requester_user_id " +
+  `WHERE r.status = 'open' AND r.created_at > $1::timestamptz - interval '${OPEN_HOURS} hours' AND r.round < $3::integer ` +
+  "AND r.last_round_at <= $1::timestamptz - make_interval(mins => $2::integer) " +
+  "AND NOT EXISTS (SELECT 1 FROM emergency_request_contact c WHERE c.request_id = r.id AND c.status = 'accepted') ORDER BY r.last_round_at LIMIT 50";
+export async function dueRequestsPg(db: Queryable, nowIso: string): Promise<DueRequest[]> {
+  const { rows } = await db.query(DUE_SQL, [nowIso, WIDEN_AFTER_MINUTES, MAX_ROUNDS]);
+  return rows.map(r => ({
+    id: String(r["id"]), number: Number(r["number"]), requesterId: String(r["requester_user_id"]), trade: r["trade"] as EmergencyTrade, description: String(r["description"]),
+    suburb: str(r["suburb"]), postcode: str(r["postcode"]), propertyKind: r["property_kind"] as DueRequest["propertyKind"], round: Number(r["round"]),
+    requesterName: String(r["display_name"]).split(" ")[0] || "A customer"
+  }));
+}
+export async function contactedPg(db: Queryable, requestId: string): Promise<string[]> {
+  return (await db.query("SELECT contractor_user_id FROM emergency_request_contact WHERE request_id = $1::uuid", [requestId])).rows.map(r => String(r["contractor_user_id"]));
+}
+/** Moves the clock on. `newRound` is true when more contractors were asked; otherwise it only waits another interval. */
+export async function markRoundPg(db: Queryable, requestId: string, nowIso: string, newRound: boolean): Promise<void> {
+  await db.query("UPDATE emergency_request SET last_round_at = $2::timestamptz, round = CASE WHEN $3::boolean THEN least(round + 1, $4::integer) ELSE round END WHERE id = $1::uuid AND status = 'open'", [requestId, nowIso, newRound, MAX_ROUNDS]);
+}
+export async function unlinkedAcceptedPg(db: Queryable): Promise<{ id: string; trade: EmergencyTrade }[]> {
+  return (await db.query("SELECT id, trade FROM emergency_request WHERE status = 'accepted' AND job_number IS NULL LIMIT 50")).rows.map(r => ({ id: String(r["id"]), trade: r["trade"] as EmergencyTrade }));
+}
+
+// ---- Directory cards: the contractor's public page from the job board -----------------------------------------------------------------
+export interface ProfileCard { userId: string; contractorNo: number; headline: string; verified: boolean; ratingAvg: number | null; ratingCount: number; completed: number; photoUrl: string | null; testimonial: string | null }
+/** Only contractors who published their page have a card. Rating, jobs and testimonial come from the visible reviews and completed jobs. */
+export const CARDS_SQL =
+  "SELECT pg.user_id, pg.contractor_no, coalesce(pg.headline, '') AS headline, (pg.licence_verified_at IS NOT NULL) AS verified, " +
+  "(SELECT avg(r.rating)::float8 FROM contractor_review r WHERE r.contractor_user_id = pg.user_id AND r.status = 'visible') AS rating_avg, " +
+  "(SELECT count(*) FROM contractor_review r WHERE r.contractor_user_id = pg.user_id AND r.status = 'visible')::int AS rating_count, " +
+  "(SELECT count(*) FROM job_assignment a WHERE a.contractor_user_id = pg.user_id AND a.status = 'completed')::int AS completed, " +
+  "(SELECT m.url FROM contractor_media m WHERE m.user_id = pg.user_id AND m.media_type = 'photo' ORDER BY m.sort_order LIMIT 1) AS photo_url, " +
+  "(SELECT left(r.body, 160) FROM contractor_review r WHERE r.contractor_user_id = pg.user_id AND r.status = 'visible' AND r.rating >= 4 AND r.body IS NOT NULL ORDER BY r.created_at DESC LIMIT 1) AS testimonial " +
+  "FROM contractor_page pg WHERE pg.is_public AND pg.user_id = ANY($1::uuid[])";
+export async function profileCardsPg(db: Queryable, userIds: readonly string[]): Promise<Map<string, ProfileCard>> {
+  const out = new Map<string, ProfileCard>();
+  if (userIds.length === 0) return out;
+  for (const r of (await db.query(CARDS_SQL, [[...userIds]])).rows) {
+    out.set(String(r["user_id"]), {
+      userId: String(r["user_id"]), contractorNo: Number(r["contractor_no"]), headline: String(r["headline"]), verified: r["verified"] === true,
+      ratingAvg: r["rating_avg"] === null ? null : Number(r["rating_avg"]), ratingCount: Number(r["rating_count"]), completed: Number(r["completed"]),
+      photoUrl: str(r["photo_url"]), testimonial: str(r["testimonial"])
+    });
+  }
+  return out;
+}
+
+// ---- Staff view ------------------------------------------------------------------------------------------------------------------------
+export interface StaffRequestRow {
+  id: string; number: number; jobNumber: number | null; status: string; trade: string; suburb: string | null; postcode: string | null; propertyKind: string;
+  description: string; createdAt: string; round: number; asked: number; delivered: number; declined: number; accepted: number; requesterName: string;
+}
+/** Newest requests with how many contractors were asked, reached by email or text, declined or accepted. No street address, phone or email. Params: 1 limit. */
+export const STAFF_REQUESTS_SQL =
+  `SELECT r.id, r.number, r.job_number, ${STATUS_EXPR} AS status, r.trade, r.suburb, r.postcode, r.property_kind, r.description, r.created_at, r.round, u.display_name, ` +
+  "count(c.*)::int AS asked, count(*) FILTER (WHERE c.email_status = 'sent' OR c.sms_status = 'sent')::int AS delivered, " +
+  "count(*) FILTER (WHERE c.status = 'declined')::int AS declined, count(*) FILTER (WHERE c.status = 'accepted')::int AS accepted " +
+  "FROM emergency_request r JOIN app_user u ON u.id = r.requester_user_id LEFT JOIN emergency_request_contact c ON c.request_id = r.id " +
+  "GROUP BY r.id, u.display_name ORDER BY r.created_at DESC LIMIT $1::integer";
+export async function staffRequestsPg(db: Queryable, limit = 100): Promise<StaffRequestRow[]> {
+  return (await db.query(STAFF_REQUESTS_SQL, [limit])).rows.map(r => ({
+    id: String(r["id"]), number: Number(r["number"]), jobNumber: r["job_number"] === null ? null : Number(r["job_number"]), status: String(r["status"]), trade: String(r["trade"]),
+    suburb: str(r["suburb"]), postcode: str(r["postcode"]), propertyKind: String(r["property_kind"]), description: String(r["description"]), createdAt: iso(r["created_at"]), round: Number(r["round"]),
+    asked: Number(r["asked"]), delivered: Number(r["delivered"]), declined: Number(r["declined"]), accepted: Number(r["accepted"]), requesterName: String(r["display_name"])
+  }));
+}
+export interface OutboxRow { channel: string; status: string; errorCode: string | null; at: string }
+/** The emergency rows of the email and text log: channel, result and time only (the log holds no address, number or text). */
+export async function emergencyOutboxPg(db: Queryable, limit = 100): Promise<OutboxRow[]> {
+  return (await db.query("SELECT channel, status, error_code, created_at FROM messaging_outbox WHERE template = 'emergency_request' ORDER BY created_at DESC, id DESC LIMIT $1::integer", [limit]))
+    .rows.map(r => ({ channel: String(r["channel"]), status: String(r["status"]), errorCode: str(r["error_code"]), at: iso(r["created_at"]) }));
 }

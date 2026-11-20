@@ -1,11 +1,14 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
+import "../styles/agent-marketplace.css";
 import { JSON_HEADERS } from "../listings/ui";
+import { Avatar, Stars } from "../marketplace/agents/ui";
 import { DAYS, STATUS_TEXT, TRADE_OPTIONS, dollars, tradeLabel, type Window } from "./shared";
 
-type Result = { id: string; name: string; trade: string; availableNow: boolean; callOutCents: number | null; hours: string | Window[]; timeZone: string; phone: string; email: string | null; note: string | null; suburbs: string[]; postcodes: string[] };
+type Card = { contractorNo: number; headline: string; verified: boolean; ratingAvg: number | null; ratingCount: number; completed: number; photoUrl: string | null; testimonial: string | null };
+type Result = { card: Card | null; id: string; name: string; trade: string; availableNow: boolean; callOutCents: number | null; hours: string | Window[]; timeZone: string; phone: string; email: string | null; note: string | null; suburbs: string[]; postcodes: string[] };
 type Reply = { contractorName: string; businessName: string | null; status: string; etaMinutes: number | null; note: string | null; phone: string | null; email: string | null };
-type Req = { id: string; number: number; role: string; status: string; trade: string; description: string; suburb: string | null; postcode: string | null; createdAt: string; addressText: string | null; replies: Reply[] };
+type Req = { id: string; number: number; jobNumber: number | null; assignmentId: string | null; round: number; role: string; status: string; trade: string; description: string; suburb: string | null; postcode: string | null; createdAt: string; addressText: string | null; replies: Reply[] };
 type Listing = { id: string; title?: string; addressText?: string };
 
 const hoursText = (h: string | Window[]) => (typeof h === "string" ? h : h.map(w => `${w.days.map(d => DAYS[d]).join(" ")} ${w.start}–${w.end}`).join(" · "));
@@ -108,7 +111,7 @@ export default function EmergencyPage() {
           <ul className="emg-list">
             {reqs.map(r => (
               <li key={r.id} className="emg-item">
-                <div className="emg-top"><strong>EMG-{r.number} · {tradeLabel(r.trade)}</strong><span className={`emg-badge st-${r.status}`}>{STATUS_TEXT[r.status] ?? r.status}</span></div>
+                <div className="emg-top"><strong>{r.jobNumber ? `JOB-${r.jobNumber}` : `EMG-${r.number}`} · {tradeLabel(r.trade)}</strong><span className={`emg-badge st-${r.status}`}>{STATUS_TEXT[r.status] ?? r.status}</span></div>
                 <p className="muted">{[r.suburb, r.postcode].filter(Boolean).join(" ")} · {new Date(r.createdAt).toLocaleString("en-AU", { dateStyle: "medium", timeStyle: "short" })}</p>
                 <p className="emg-quote">“{r.description}”</p>
                 {r.replies.length === 0 ? <p className="muted">{r.status === "open" ? "No contractor was available to ask. Use the search below." : ""}</p> : (
@@ -122,6 +125,8 @@ export default function EmergencyPage() {
                     ))}
                   </ul>
                 )}
+                {r.status === "accepted" && r.assignmentId && <p><a href={`/jobs/${r.assignmentId}`}>Open the job</a> to chat, add photos and leave feedback.</p>}
+                {r.status === "open" && r.round > 1 && <p className="muted">Elena has asked more contractors (round {r.round} of 3).</p>}
                 {r.status === "open" && <button type="button" className="secondary" onClick={() => void cancel(r.id)}>Cancel request</button>}
               </li>
             ))}
@@ -145,7 +150,19 @@ export default function EmergencyPage() {
           <ul className="emg-list">
             {results.map(c => (
               <li key={`${c.id}-${c.trade}`} className="emg-item">
-                <div className="emg-top"><strong>{c.name}</strong><span className={`emg-badge ${c.availableNow ? "st-accepted" : "st-closed"}`}>{c.availableNow ? "Available now" : "Not available now"}</span></div>
+                <div className="emg-top">
+                  <div className="emg-who">
+                    <Avatar name={c.name} photoUrl={c.card?.photoUrl ?? null} />
+                    <div>
+                      <strong>{c.card ? <a href={`/contractors/${c.card.contractorNo}`}>{c.name}</a> : c.name}</strong>
+                      {c.card && <p className="muted">CON-{c.card.contractorNo}{c.card.verified ? " · Licence checked" : ""}</p>}
+                    </div>
+                  </div>
+                  <span className={`emg-badge ${c.availableNow ? "st-accepted" : "st-closed"}`}>{c.availableNow ? "Available now" : "Not available now"}</span>
+                </div>
+                {c.card && <p className="emg-rating"><Stars value={c.card.ratingAvg} count={c.card.ratingCount} />{c.card.completed > 0 && <span className="muted"> · {c.card.completed} {c.card.completed === 1 ? "job" : "jobs"} completed</span>}</p>}
+                {c.card?.headline && <p>{c.card.headline}</p>}
+                {c.card?.testimonial && <p className="emg-quote">“{c.card.testimonial}”</p>}
                 <p className="muted">{tradeLabel(c.trade)} · Call-out {dollars(c.callOutCents)}</p>
                 <p className="muted">Hours ({c.timeZone}): {hoursText(c.hours)}</p>
                 <p className="muted">Covers: {[...c.suburbs, ...c.postcodes].join(", ") || "—"}</p>
