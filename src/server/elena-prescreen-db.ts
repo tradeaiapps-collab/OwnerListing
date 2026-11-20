@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import {
-  agreed, groupModeration, moderationGroupKey, recommendComplaint, recommendModeration, recommendVerification,
+  agreed, groupModeration, ruleText, moderationGroupKey, recommendComplaint, recommendModeration, recommendVerification,
   type ComplaintFacts, type PrescreenAction, type PrescreenQueue, type Recommendation, type StaffAction
 } from "../domain/elena-prescreen";
 import { appendAuditPg, type Queryable } from "./db";
@@ -28,7 +28,7 @@ async function logRecommendations(db: Queryable, queue: PrescreenQueue, rows: { 
       await db.query(
         `INSERT INTO elena_staff_recommendation (queue, subject_id, fingerprint, action, confidence, rule, reason)
          VALUES ($1, $2::uuid, $3, $4, $5, $6, $7) ON CONFLICT (queue, subject_id, fingerprint) DO NOTHING`,
-        [queue, r.subjectId, r.fingerprint, r.rec.action, r.rec.confidence, r.rec.rule, r.rec.reason.slice(0, 1000)]);
+        [queue, r.subjectId, r.fingerprint, r.rec.action, r.rec.confidence, r.rec.rule, ruleText(r.rec.rule)]);
     }
     const got = await db.query(
       "SELECT id, subject_id, fingerprint FROM elena_staff_recommendation WHERE queue = $1 AND subject_id = ANY($2::uuid[])", [queue, rows.map(r => r.subjectId)]);
@@ -157,6 +157,18 @@ export async function logOutcomePg(db: Queryable, o: { queue: PrescreenQueue; su
     });
     return true;
   } catch { return false; }
+}
+
+/**
+ * Runs `fn` while holding a per-staff advisory lock, so two bulk requests from the same person cannot both read a low hourly count.
+ * The lock lives on one transaction; the decisions inside `fn` commit on their own connections. Test doubles without transactions just run `fn`.
+ */
+export async function withBulkLockPg<T>(db: Queryable, staffId: string, fn: () => Promise<T>): Promise<T> {
+  if (!db.transaction) return fn();
+  return db.transaction(async tx => {
+    await tx.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`elena_bulk:${staffId}`]);
+    return fn();
+  });
 }
 
 /** Bulk confirms this staff member made in the last hour (the per-hour cap is checked against it). */

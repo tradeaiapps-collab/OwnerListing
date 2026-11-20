@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { insertComplaint } from "../src/server/contractor-ops-db";
 import { decideReportPg, decideVerificationPg, listReportsPg, listVerificationsPg, submitVerificationPg } from "../src/server/contractor-trust-db";
-import { accuracyPg, bulkCountLastHourPg, complaintFactsPg, logOutcomePg, prescreenComplaintsPg, prescreenModerationPg, prescreenVerificationsPg } from "../src/server/elena-prescreen-db";
+import { accuracyPg, withBulkLockPg, bulkCountLastHourPg, complaintFactsPg, logOutcomePg, prescreenComplaintsPg, prescreenModerationPg, prescreenVerificationsPg } from "../src/server/elena-prescreen-db";
 import { decideQueueItemPg, enqueueModerationItemPg, listQueuePg } from "../src/server/moderation-queue-db";
 import { addListing, addUser, createTestDb, DATABASE_URL, type TestDb } from "./helpers/pg-db";
 
@@ -98,5 +98,38 @@ describe.skipIf(!DATABASE_URL)("Elena staff pre-screening (Postgres)", () => {
     expect(s.get(mine.id)!.summary!.join(" ")).toContain("1 job");
     expect(await decideReportPg(db, mine.id, staff, "dismiss", "Contractor had a valid reason.")).toBe("ok");
     expect((await prescreenComplaintsPg(db, await listReportsPg(db, "decided"))).size).toBe(0);
+  });
+
+  it("a decision bound to the screened submission does not apply after a re-submission", async () => {
+    const c = await addUser(db, "agent");
+    const staff = await addUser(db, "admin");
+    await submitVerificationPg(db, c, details);
+    const screened = (await listVerificationsPg(db, "pending", TODAY)).find(v => v.userId === c)!;
+    await new Promise(r => setTimeout(r, 15));
+    await submitVerificationPg(db, c, { ...details, insurer: "Changed after the check" });
+    expect(await decideVerificationPg(db, c, staff, "verify", "x", screened.submittedAt)).toBe(false);
+    const now = (await listVerificationsPg(db, "pending", TODAY)).find(v => v.userId === c)!;
+    expect(now.status).toBe("pending");
+    expect(await decideVerificationPg(db, c, staff, "verify", "x", now.submittedAt)).toBe(true);
+  });
+
+  it("the permanent log keeps the rule in general words, never quoted text or names", async () => {
+    const owner = await addUser(db, "owner");
+    const l = await addListing(db, owner, { title: "Quote test" });
+    const id = (await enqueueModerationItemPg(db, { subjectType: "listing", subjectId: l, subjectLabel: "x", subjectOwnerId: owner, source: "content_filter", reason: "Flagged: abuse", detail: "you stupid idiot", severity: "high" }))!;
+    const s = await prescreenModerationPg(db, await listQueuePg(db, { view: "open" }));
+    expect(s.get(id)!.reason).toContain("idiot");
+    const stored = (await db.query("SELECT reason FROM elena_staff_recommendation WHERE subject_id = $1::uuid", [id])).rows[0]!["reason"] as string;
+    expect(stored).not.toContain("idiot");
+    expect(stored).toBe("Blocked abusive wording matched.");
+  });
+
+  it("bulk requests from one staff member run one at a time", async () => {
+    const staff = await addUser(db, "admin");
+    const order: string[] = [];
+    const run = (n: string) => withBulkLockPg(db, staff, async () => { order.push(`${n}:start`); await new Promise(r => setTimeout(r, 60)); order.push(`${n}:end`); });
+    await Promise.all([run("a"), run("b")]);
+    expect(order[0]!.split(":")[0]).toBe(order[1]!.split(":")[0]);
+    expect(order[1]!.endsWith(":end")).toBe(true);
   });
 });

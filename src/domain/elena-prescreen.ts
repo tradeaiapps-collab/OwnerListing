@@ -249,3 +249,24 @@ export const moderationStaffAction = (decision: "approve" | "reject" | "escalate
 export const bulkEligible = (r: Recommendation): boolean => r.action === "approve" && r.confidence === "high";
 export const BULK_MAX_IDS = 25;
 export const BULK_MAX_PER_HOUR = 100;
+
+/**
+ * What is stored in the permanent recommendation log: the rule in general words only. The live reason quotes matched text, names and policy
+ * numbers; those must never reach a table that cannot be deleted (account deletion has to be honoured).
+ */
+export const RULE_TEXT: Record<string, string> = {
+  "mod.unknown_source": "Source gives no text Elena can check.", "mod.abuse_repeat": "Blocked abusive wording from an account with repeated rejections.",
+  "mod.abuse_blocked": "Blocked abusive wording matched.", "mod.contact_details": "Contact details or an outside link matched.",
+  "mod.abuse_mild": "Only mild wording matched.", "mod.spam": "A spam signal matched.", "mod.no_match": "Spam-only flag that no longer matches any rule.",
+  "mod.no_match_history": "No rule matches now, but the flag cannot be re-checked or the account has history.",
+  "ver.abn_invalid": "ABN fails the checksum.", "ver.abn_duplicate": "ABN is used by another account.", "ver.insurance_expired": "Insurance has expired.",
+  "ver.insurance_soon": "Insurance expires soon.", "ver.policy_placeholder": "Policy number looks like a placeholder.", "ver.licence_missing": "Licence missing for a licensed trade.",
+  "ver.licence_no_expiry": "Licence given without an expiry.", "ver.licence_expired": "Licence has expired.", "ver.licence_soon": "Licence expires soon.",
+  "ver.licence_placeholder": "Licence number looks like a placeholder.", "ver.name_mismatch": "Business name and account name share no word.",
+  "ver.complete": "All text checks pass; the register and certificate were not checked.",
+  "cmp.repeat_dismissed": "Same owner's earlier complaints about this contractor were all dismissed.", "cmp.conduct_repeat": "Conduct complaint and an earlier upheld complaint.",
+  "cmp.conduct": "Conduct complaint needs judgement.", "cmp.no_show_confirmed": "Scheduled time passed and the job was never marked done.",
+  "cmp.no_show_unclear": "No-show cannot be confirmed from the job record.", "cmp.poor_work_pattern": "Several earlier complaints were upheld.",
+  "cmp.subjective": "Complaint turns on judgement."
+};
+export const ruleText = (rule: string): string => RULE_TEXT[rule] ?? "Rule fired.";

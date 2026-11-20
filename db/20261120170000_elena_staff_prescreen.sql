@@ -1,6 +1,6 @@
 -- Elena pre-screens the staff queues (moderation, contractor verification, complaints). She only recommends; staff decide.
 -- Every recommendation she shows and what staff then did are kept permanently, so her accuracy can be reviewed. No personal text is stored here:
--- the reason sentence cites rules and short matched words only, and the subject id points at the queue row.
+-- the stored reason is the rule in general words (no quoted text, names or numbers), and the subject id points at the queue row.
 CREATE TABLE elena_staff_recommendation (
   id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   queue       TEXT NOT NULL CHECK (queue IN ('moderation', 'verification', 'complaint')),
