@@ -2,11 +2,11 @@
  * The header menu is rebuilt on every full page load. Remembering who was last seen for this tab lets it draw the
  * right links straight away while it re-checks, so repeated taps on the same link never leave the menu empty.
  */
-export type NavWho = "out" | "staff" | "owner" | "buyer";
+export type NavWho = "out" | "staff" | "owner" | "buyer" | "vendor";
 export interface NavSnapshot { who: NavWho; role: string | null }
 
 export const NAV_CACHE_KEY = "ol.nav.v1";
-const WHO: readonly string[] = ["out", "staff", "owner", "buyer"];
+const WHO: readonly string[] = ["out", "staff", "owner", "buyer", "vendor"];
 
 export function parseNavSnapshot(raw: string | null | undefined): NavSnapshot | null {
   if (!raw) return null;

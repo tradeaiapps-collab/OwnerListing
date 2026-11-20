@@ -25,7 +25,7 @@ export const INSERT_PROPOSED_SQL =
   "INSERT INTO job_assignment (id, listing_id, owner_user_id, contractor_user_id, kind, status, service_name, price_cents, note, requested_time, offer_source) " +
   "SELECT $1::uuid, l.id, l.owner_user_id, c.id, $5::text, 'proposed', $11::text, $12::integer, $13::text, $14::timestamptz, $15::text FROM property_listing l, app_user c " +
   "WHERE l.id = $2::uuid AND l.owner_user_id = $3::uuid AND c.id = $4::uuid AND c.id <> l.owner_user_id " +
-  "AND c.status NOT IN ('suspended', 'closed') " +
+  "AND c.status NOT IN ('suspended', 'closed') AND NOT EXISTS (SELECT 1 FROM contractor_standing cs WHERE cs.user_id = c.id AND cs.suspended) " +
   "AND NOT EXISTS (SELECT 1 FROM job_assignment x WHERE x.listing_id = l.id AND x.contractor_user_id = c.id " +
   "AND x.kind = $5::text AND x.status IN ('proposed', 'approved')) RETURNING id) " +
   "INSERT INTO audit_event (id, occurred_at, actor_type, actor_id, aggregate_type, aggregate_id, event_type, correlation_id, payload) " +
@@ -38,7 +38,8 @@ export const TRANSITION_SQL =
   "responded_at = CASE WHEN $3::text = 'contractor' AND $5::text IN ('approved', 'cancelled') AND responded_at IS NULL THEN now() ELSE responded_at END, " +
   "completed_at = CASE WHEN $5::text = 'completed' THEN now() ELSE completed_at END " +
   "WHERE id = $1::uuid AND status = ANY($4::text[]) " +
-  "AND (CASE WHEN $3::text = 'owner' THEN owner_user_id ELSE contractor_user_id END) = $2::uuid RETURNING id) " +
+  "AND (CASE WHEN $3::text = 'owner' THEN owner_user_id ELSE contractor_user_id END) = $2::uuid " +
+  "AND NOT ($3::text = 'contractor' AND $5::text = 'approved' AND EXISTS (SELECT 1 FROM contractor_standing cs WHERE cs.user_id = contractor_user_id AND cs.suspended)) RETURNING id) " +
   "INSERT INTO audit_event (id, occurred_at, actor_type, actor_id, aggregate_type, aggregate_id, event_type, correlation_id, payload) " +
   "SELECT $6::uuid, $7::timestamptz, 'user', $2::text, 'job_assignment', moved.id::text, $8::text, $9::text, $10::jsonb FROM moved RETURNING aggregate_id";
 

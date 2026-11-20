@@ -1,3 +1,4 @@
+import { maskJobAddress } from "../domain/contractor-trust";
 import { formatJobNo } from "../domain/contractor-market";
 import type { JobNotify } from "../domain/job-board";
 import type { Queryable } from "./db";
@@ -8,7 +9,7 @@ export function makeJobNotify(db: Queryable): JobNotify {
   return async (to, kind, job, extra = {}) => {
     try {
       const toContractor = to === job.contractorUserId;
-      await notifyUser(db, to, kind, { listing: job.address, name: toContractor ? job.ownerName : job.contractorName, job: formatJobNo(job.jobNumber), link: `/jobs/${job.id}`, ...extra });
+      await notifyUser(db, to, kind, { listing: maskJobAddress(job, to).address, name: toContractor ? job.ownerName : job.contractorName, job: formatJobNo(job.jobNumber), link: `/jobs/${job.id}`, ...extra });
     } catch { /* a notification never blocks the action */ }
   };
 }

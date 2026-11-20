@@ -67,6 +67,6 @@ export function parseContractorProfile(input: unknown): Result<{ kind: Trade; pr
   const postcodes = list(o["servicePostcodes"] ?? []), suburbs = list(o["serviceSuburbs"] ?? []);
   if (!postcodes || !suburbs || postcodes.length > 200 || suburbs.length > 200) return bad("Areas must be lists of up to 200 postcodes and suburbs.");
   if (!postcodes.every(p => POSTCODE.test(p)) || !suburbs.every(s => s.length <= 80)) return bad("Postcodes are four digits; suburb names are under 80 characters.");
-  if (typeof (o["acceptingNew"] ?? true) !== "boolean") return bad("acceptingNew must be true or false.");
-  return { ok: true, value: { kind: o["kind"], profile: { acceptingNew: (o["acceptingNew"] ?? true) as boolean, servicePostcodes: [...new Set(postcodes)], serviceSuburbs: [...new Set(suburbs.map(s => s))] } } };
+  if (typeof (o["acceptingNew"] ?? false) !== "boolean") return bad("acceptingNew must be true or false.");
+  return { ok: true, value: { kind: o["kind"], profile: { acceptingNew: (o["acceptingNew"] ?? false) as boolean, servicePostcodes: [...new Set(postcodes)], serviceSuburbs: [...new Set(suburbs.map(s => s))] } } };
 }

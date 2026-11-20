@@ -106,6 +106,9 @@ export const KINDS = {
   open_inspection_reminder_1h: "appointments",
   open_inspection_cancelled: "appointments",
   booking_conflict: "appointments",
+  job_new: "appointments",
+  job_time_changed: "appointments",
+  job_reminder: "appointments",
   offer_received: "offers",
   offer_accepted: "offers",
   offer_rejected: "offers",
@@ -143,13 +146,15 @@ export const KINDS = {
   job_time_confirmed: "appointments",
   job_done: "appointments",
   job_files_added: "appointments",
-  job_reviewed: "messages"
+  job_reviewed: "messages",
+  emergency_request: "messages",
+  emergency_accepted: "messages"
 } as const satisfies Record<string, Category>;
 export type Kind = keyof typeof KINDS;
 export const isKind = (v: unknown): v is Kind => typeof v === "string" && Object.prototype.hasOwnProperty.call(KINDS, v);
 
 /** Kinds worth a text message when the user has opted in: they are time-critical and short. */
-const SMS_KINDS: ReadonlySet<Kind> = new Set<Kind>(["message_received", "appointment_invited", "appointment_reminder", "consultation_booked", "consultation_cancelled", "offer_received", "offer_accepted", "offer_rejected", "offer_countered", "offer_buyer_countered", "offer_terms_agreed", "fall_through_proposed", "offer_fallen_through", "automation_alert"]);
+const SMS_KINDS: ReadonlySet<Kind> = new Set<Kind>(["message_received", "appointment_invited", "appointment_reminder", "job_new", "job_time_changed", "job_reminder", "consultation_booked", "consultation_cancelled", "offer_received", "offer_accepted", "offer_rejected", "offer_countered", "offer_buyer_countered", "offer_terms_agreed", "fall_through_proposed", "offer_fallen_through", "automation_alert"]);
 
 export interface NotificationParams { [key: string]: string | undefined }
 export interface RenderedNotification { kind: Kind; category: Category; title: string; body: string; link: string | null; smsText: string | null }
@@ -201,6 +206,9 @@ export function renderNotification(kind: Kind, p: NotificationParams = {}): Rend
     case "open_inspection_cancelled": return t("Inspection cancelled", `The inspection of ${listing} on ${when} was cancelled. ${clip(p["next"], 200, "Open the listing to book another time.")}`);
     case "booking_received": return t("New booking from a portal", `${name} booked ${listing} through a listing portal. The dates are now blocked on your calendar.`);
     case "booking_conflict": return t("Booking clashes with another", `A booking from ${name} for ${listing} overlaps dates that are already booked. Contact the portal or the guest to sort it out.`);
+    case "job_new": return t("New job request", `${name} asked you to do a ${clip(p["job"], 40, "job")} at ${listing}. Open it to accept or decline.`);
+    case "job_time_changed": return t("Job time changed", `The time for your ${clip(p["job"], 40, "job")} at ${listing} is now ${when}. Open it to confirm.`);
+    case "job_reminder": return t("Job coming up", `Your ${clip(p["job"], 40, "job")} at ${listing} is on ${when}.`);
     case "offer_received": return t("New offer received", `A new offer was made on ${listing}. Review it in your offers.`);
     case "offer_accepted": return t("Offer accepted", `Your offer on ${listing} was accepted by the owner.`);
     case "offer_rejected": return t("Offer not accepted", `Your offer on ${listing} was not accepted.`);
@@ -238,6 +246,8 @@ export function renderNotification(kind: Kind, p: NotificationParams = {}): Rend
     case "scheduling_message": return t(clip(p["title"], 80, "A message about your inspection"), clip(p["text"], 1500, "There is an update about your inspection."));
     case "scheduling_suggestion": return t(clip(p["title"], 80, "Elena drafted a message"), clip(p["text"], 400, "Review the draft and send, edit or skip it."));
     case "lead_followup_due": return t("Lead follow-up due", clip(p["text"], 300, `Follow up with ${name} about ${listing}.`), false);
+    case "emergency_request": return t(`Urgent request ${clip(p["reference"], 20, "")}`, clip(p["text"], 300, "An owner needs an emergency contractor. Open it to accept or pass."), false);
+    case "emergency_accepted": return t("A contractor accepted your urgent request", clip(p["text"], 300, `${name} accepted your urgent request. Open it for their contact details.`), false);
     case "automation_alert": return t(clip(p["title"], 80, "Automation update"), clip(p["text"], 400, "One of your automations ran."));
   }
 }

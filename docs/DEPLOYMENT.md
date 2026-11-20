@@ -48,6 +48,7 @@ Do not turn this on for real users until counsel has approved the retention peri
 
 ## 4c. Agent invitation reminders (hourly)
 - `.github/workflows/agent-invite-reminders.yml` calls `POST $APP_URL/api/internal/appointments/reminders` with header `x-cron-secret` at 15 past every hour. Set repository secrets `APP_URL` and `APPOINTMENT_REMINDER_CRON_SECRET` (same value as the app, 32+ chars). Until both are set the run is skipped with a warning.
+- Contractor job reminders: have a scheduler call `POST $APP_URL/api/internal/job-reminders` hourly with header `x-cron-secret` set to `JOB_REMINDER_CRON_SECRET` (32+ chars; the route answers 503 while it is unset). Job access details are sealed with `MESSAGING_SETTINGS_KEY`; without it owners cannot save a lockbox code or key location.
 - `.github/workflows/signing-reminders.yml` calls `POST $APP_URL/api/internal/signing/reminders` with header `x-cron-secret` at 25 past every hour. Set repository secret `SIGNING_REMINDER_CRON_SECRET` (same value as the app, 32+ chars) next to `APP_URL`. Until both are set the run is skipped with a warning.
 - Each invitation unanswered for 48 hours gets one reminder to the agent. Safe to repeat; answers `{reminded}`.
 - Elena lead qualifier: `.github/workflows/lead-followups.yml` every 15 minutes; setup in `docs/ELENA_LEAD_QUALIFIER.md`.

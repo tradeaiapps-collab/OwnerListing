@@ -1,3 +1,4 @@
+import { notSuspendedSql } from "./contractor-standing-sql";
 import type { AuditEvent } from "../domain/audit";
 import { buildStats, type ContractorStats, type MarketCard, type PageInput, type Trade } from "../domain/contractor-market";
 import type { JobDetail, MarketStore, ServiceRow } from "../domain/job-board";
@@ -55,15 +56,15 @@ const withAudit = (update: string, n: number) =>
   AUDIT_FROM.replace("$A", `$${n}`).replace("$B", `$${n + 1}`).replace("$C", `$${n + 2}`).replace("$D", `$${n + 3}`).replace("$E", `$${n + 4}`).replace("$ACTOR", "$2");
 
 export const PROPOSE_TIME_SQL = withAudit(
-  "UPDATE job_assignment SET proposed_time = $3::timestamptz WHERE id = $1::uuid AND contractor_user_id = $2::uuid AND status IN ('proposed','approved')", 4);
+  "UPDATE job_assignment SET proposed_time = $3::timestamptz WHERE id = $1::uuid AND contractor_user_id = $2::uuid AND status IN ('proposed','approved') AND " + notSuspendedSql("contractor_user_id"), 4);
 export const ACCEPT_TIME_SQL = withAudit(
   "UPDATE job_assignment SET scheduled_time = proposed_time, proposed_time = NULL, " +
   "approved_at = CASE WHEN status = 'proposed' THEN now() ELSE approved_at END, status = CASE WHEN status = 'proposed' THEN 'approved' ELSE status END, " +
-  "responded_at = coalesce(responded_at, now()) WHERE id = $1::uuid AND owner_user_id = $2::uuid AND proposed_time IS NOT NULL AND status IN ('proposed','approved')", 3);
+  "responded_at = coalesce(responded_at, now()) WHERE id = $1::uuid AND owner_user_id = $2::uuid AND proposed_time IS NOT NULL AND status IN ('proposed','approved') AND " + notSuspendedSql("contractor_user_id"), 3);
 export const REJECT_TIME_SQL = withAudit(
   "UPDATE job_assignment SET proposed_time = NULL WHERE id = $1::uuid AND owner_user_id = $2::uuid AND proposed_time IS NOT NULL AND status IN ('proposed','approved')", 3);
 export const MARK_DONE_SQL = withAudit(
-  "UPDATE job_assignment SET contractor_done_at = now() WHERE id = $1::uuid AND contractor_user_id = $2::uuid AND status = 'approved' AND contractor_done_at IS NULL", 3);
+  "UPDATE job_assignment SET contractor_done_at = now() WHERE id = $1::uuid AND contractor_user_id = $2::uuid AND status = 'approved' AND contractor_done_at IS NULL AND " + notSuspendedSql("contractor_user_id"), 3);
 export const ADD_REVIEW_SQL =
   "WITH moved AS (INSERT INTO contractor_review (assignment_id, contractor_user_id, owner_user_id, rating, body) " +
   "SELECT a.id, a.contractor_user_id, a.owner_user_id, $3::integer, nullif($4::text, '') FROM job_assignment a " +

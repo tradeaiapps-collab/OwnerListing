@@ -33,6 +33,7 @@ export type EmailAuthResult<T = object> =
   | ({ ok: true } & T)
   | { ok: false; code: "invalid" | "rate_limited" | "not_configured" | "bad_credentials" | "link_invalid" | "account_exists"; message: string };
 
+type SignInType = "owner" | "agent" | "buyer" | "vendor";
 const fail = (code: Exclude<EmailAuthResult, { ok: true }>["code"], message: string) => ({ ok: false as const, code, message });
 const keyed = (secret: string, label: string, v: string) => createHmac("sha256", secret).update(`email-auth:${label}:${v}`).digest("hex");
 const nowOf = (d: EmailAuthDeps) => (d.now ?? (() => new Date()))();
@@ -74,7 +75,7 @@ export async function startSignup(d: EmailAuthDeps, body: unknown, ip: string): 
   const r = readSignup(body);
   if (!r.ok) return fail("invalid", r.message);
   if (!canDeliver(d)) return notConfigured();
-  const { email, name, password, userType } = r.value;
+  const { email, name, password, userType, trade } = r.value;
   // The display name is shown to other people. Abuse and contact details are refused; the account is not created yet, so nothing is stored.
   if (scanContent(name).action === "block") return fail("invalid", "That name can't be used. Please use your real name, without contact details or offensive words.");
   if (!(await allowed(d, "link", ip, email))) return fail("rate_limited", "Too many attempts. Try again in an hour.");
@@ -89,9 +90,9 @@ export async function startSignup(d: EmailAuthDeps, body: unknown, ip: string): 
   const token = randomToken();
   const at = nowOf(d);
   await d.db.query(
-    `INSERT INTO email_auth_token (purpose, email, display_name, user_type, password_hash, token_hash, expires_at)
-     VALUES ('signup', $1, $2, $3, $4, $5, $6)`,
-    [email, name, userType, passwordHash, keyed(d.secret, "token", token), new Date(at.getTime() + SIGNUP_LINK_HOURS * 3600_000).toISOString()]
+    `INSERT INTO email_auth_token (purpose, email, display_name, user_type, password_hash, token_hash, expires_at, trade)
+     VALUES ('signup', $1, $2, $3, $4, $5, $6, $7)`,
+    [email, name, userType, passwordHash, keyed(d.secret, "token", token), new Date(at.getTime() + SIGNUP_LINK_HOURS * 3600_000).toISOString(), trade]
   );
   const link = `${d.appUrl}/signup/verify?token=${encodeURIComponent(token)}`;
   await deliver(d, "signup", email, signupVerifyEmail(d.brand, link, SIGNUP_LINK_HOURS), link);
@@ -99,7 +100,7 @@ export async function startSignup(d: EmailAuthDeps, body: unknown, ip: string): 
 }
 
 /** Step 2 of sign-up: uses the link and creates the account. The caller signs the person in. */
-export async function completeSignup(d: EmailAuthDeps, token: unknown): Promise<EmailAuthResult<{ user: { id: string; userType: "owner" | "agent" | "buyer" } }>> {
+export async function completeSignup(d: EmailAuthDeps, token: unknown): Promise<EmailAuthResult<{ user: { id: string; userType: SignInType } }>> {
   if (typeof token !== "string" || token.length < 20 || token.length > 100) return fail("link_invalid", "This link is not valid. Sign up again to get a new one.");
   if (!d.db.transaction) throw new Error("Transactions are required.");
   const at = nowOf(d);
@@ -107,7 +108,7 @@ export async function completeSignup(d: EmailAuthDeps, token: unknown): Promise<
     const t = (await tx.query(
       `UPDATE email_auth_token SET consumed_at = $3
         WHERE token_hash = $1 AND purpose = 'signup' AND consumed_at IS NULL AND expires_at > $2
-        RETURNING email::text AS email, display_name, user_type, password_hash`,
+        RETURNING email::text AS email, display_name, user_type, password_hash, trade`,
       [keyed(d.secret, "token", token), at.toISOString(), at.toISOString()]
     )).rows[0];
     if (!t) return fail("link_invalid", "This link has expired or was already used. Sign up again to get a new one.");
@@ -121,14 +122,19 @@ export async function completeSignup(d: EmailAuthDeps, token: unknown): Promise<
     if (!created) return fail("account_exists", "This email already has an account. Sign in instead.");
     // Any other sign-up link for the same address stops working.
     await tx.query("UPDATE email_auth_token SET consumed_at = $2 WHERE email = $1 AND purpose = 'signup' AND consumed_at IS NULL", [t["email"], at.toISOString()]);
-    const user = { id: String(created["id"]), userType: created["user_type"] as "owner" | "agent" | "buyer" };
+    const user = { id: String(created["id"]), userType: created["user_type"] as SignInType };
+    // A contractor starts with an unpublished page and an empty service area for the trade they chose; they finish both on the profile screen.
+    if (user.userType === "vendor" && typeof t["trade"] === "string") {
+      await tx.query("INSERT INTO contractor_page (user_id) VALUES ($1::uuid) ON CONFLICT (user_id) DO NOTHING", [user.id]);
+      await tx.query("INSERT INTO contractor_profile (user_id, kind) VALUES ($1::uuid, $2) ON CONFLICT (user_id, kind) DO NOTHING", [user.id, t["trade"]]);
+    }
     await audit(tx, user.id, "user.signed_up", at);
     return { ok: true as const, user };
   });
 }
 
-/** Email and password sign-in for owner, agent and buyer accounts. One generic failure for every reason. */
-export async function passwordSignIn(d: EmailAuthDeps, body: unknown, ip: string): Promise<EmailAuthResult<{ user: { id: string; userType: "owner" | "agent" | "buyer" } }>> {
+/** Email and password sign-in for owner, agent, buyer and contractor accounts. One generic failure for every reason. */
+export async function passwordSignIn(d: EmailAuthDeps, body: unknown, ip: string): Promise<EmailAuthResult<{ user: { id: string; userType: SignInType } }>> {
   const b = (typeof body === "object" && body !== null ? body : {}) as Record<string, unknown>;
   const email = normaliseEmail(b["email"]);
   const password = typeof b["password"] === "string" && b["password"].length <= 1024 ? b["password"] : "";
@@ -136,24 +142,24 @@ export async function passwordSignIn(d: EmailAuthDeps, body: unknown, ip: string
   if (!(await allowed(d, "login", ip, email))) return fail("rate_limited", "Too many attempts. Wait 15 minutes and try again, or reset your password.");
   const row = (await d.db.query(
     `SELECT id, user_type, password_hash FROM app_user
-      WHERE email = $1 AND status = 'active' AND deleted_at IS NULL AND user_type IN ('owner', 'agent', 'buyer')`,
+      WHERE email = $1 AND status = 'active' AND deleted_at IS NULL AND user_type IN ('owner', 'agent', 'buyer', 'vendor')`,
     [email]
   )).rows[0];
   const hash = typeof row?.["password_hash"] === "string" ? row["password_hash"] : null;
   if (!(await verifyPassword(password, hash)) || !row) return fail("bad_credentials", "Email or password is incorrect.");
-  const user = { id: String(row["id"]), userType: row["user_type"] as "owner" | "agent" | "buyer" };
+  const user = { id: String(row["id"]), userType: row["user_type"] as SignInType };
   await audit(d.db, user.id, "user.signed_in_password", nowOf(d));
   return { ok: true, user };
 }
 
-/** Sends a reset link when the address belongs to an owner, agent or buyer account (Google-only accounts can add a password this way). */
+/** Sends a reset link when the address belongs to an owner, agent, buyer or contractor account (Google-only accounts can add a password this way). */
 export async function requestPasswordReset(d: EmailAuthDeps, body: unknown, ip: string): Promise<EmailAuthResult> {
   const email = normaliseEmail((body as Record<string, unknown> | null)?.["email"]);
   if (!email) return fail("invalid", "Enter a valid email address.");
   if (!canDeliver(d)) return fail("not_configured", "Password reset by email is not available yet.");
   if (!(await allowed(d, "link", ip, email))) return fail("rate_limited", "Too many attempts. Try again in an hour.");
   const row = (await d.db.query(
-    `SELECT id FROM app_user WHERE email = $1 AND status = 'active' AND deleted_at IS NULL AND user_type IN ('owner', 'agent', 'buyer')`, [email]
+    `SELECT id FROM app_user WHERE email = $1 AND status = 'active' AND deleted_at IS NULL AND user_type IN ('owner', 'agent', 'buyer', 'vendor')`, [email]
   )).rows[0];
   if (!row) return { ok: true };
   const token = randomToken();
