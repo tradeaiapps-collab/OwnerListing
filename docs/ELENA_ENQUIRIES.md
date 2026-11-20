@@ -12,4 +12,4 @@ Per listing the owner switches Elena on (Listing edit, Review step, "Let Elena a
 
 **Owner list.** `GET /api/owner/today` builds the list from live tables: replies to approve, buyer questions waiting, offers, contractor times/jobs needing the owner, inspections in the next 24h, old drafts. Each item has one action (a POST such as approve, or a link). Optional daily email (`owner_digest_setting`), sent from 7 am local, once per day, only when something needs the owner, from the existing automations tick.
 
-**Ops.** Migration `db/20261120150000_elena_enquiries.sql`. The `/api/internal/automations/run` tick also handles missed buyer messages and the digest. No new env vars.
+**Ops.** Migration `db/20261120160000_elena_enquiries.sql`. The `/api/internal/automations/run` tick also handles missed buyer messages and the digest. No new env vars.
