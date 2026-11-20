@@ -3,6 +3,7 @@ import { use, useEffect, useState } from "react";
 import { dollarsToCents } from "../../../src/domain/listing-details";
 import type { PhotoView } from "../../../src/domain/listing-photos";
 import { STAGE_TAG } from "../project-card";
+import { InvestorElena } from "../elena-project";
 import { ProjectDocumentsSection } from "../project-documents";
 import { ProjectSlider } from "../project-slider";
 import { aud, label, send, STATUS_LABEL, type Project } from "../ui";
@@ -82,6 +83,7 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
                 {p.status !== "rejected" && <a className="button" href={`/investments/${p.id}/edit`}>Edit (goes back to review)</a>}
                 {p.status !== "rejected" && <a className="button secondary" href={`/investments/${p.id}/photos`}>Manage photos</a>}
                 {p.status !== "rejected" && <a className="button secondary" href={`/investments/${p.id}/documents`}>Manage documents</a>}
+                {p.status !== "rejected" && <a className="button secondary" href={`/investments/${p.id}/elena`}>Elena: questions and updates</a>}
               </div>
             ) : (
               <div className="inv-aside-actions"><a className="button" href="#interest">Express interest</a></div>
@@ -102,6 +104,7 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
             {p.issuerStatement && <p className="inv-section">{p.issuerStatement}</p>}
             <p className="muted">Stated by the issuer, not checked or endorsed by the platform.</p>
           </section>
+          {!mine && <InvestorElena projectId={p.id} />}
           {!mine && (
             <section className="panel" id="interest">
               <h2>Express interest</h2>

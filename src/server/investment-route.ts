@@ -35,3 +35,5 @@ export async function investStaffGate(req: Request, deps: InvestmentDeps, p: Sta
 
 export const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export type Ctx = { params: Promise<{ id: string }> };
+
+export type Ctx2 = { params: Promise<{ id: string; sub: string }> };
