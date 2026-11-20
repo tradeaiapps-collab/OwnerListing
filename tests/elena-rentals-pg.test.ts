@@ -4,6 +4,7 @@ import {
   addSlots, bookViewing, cancelSlot, cancelViewing, decideApplication, deskFor, endTenancy, getRepair, getRepairPhoto, getSettings, markAttendance, myRentals, ownerRepairAction,
   runDueRentals, saveSettings, startTenancy, submitApplication, submitRepair, tenantRepairAction, withdrawApplication, type RentalSender
 } from "../src/server/elena-rentals-db";
+import { png } from "./helpers/image-fixtures";
 import { addListing, addUser, createTestDb, DATABASE_URL, type TestDb } from "./helpers/pg-db";
 
 // Real PostgreSQL. Skipped without DATABASE_URL (CI sets it).
@@ -18,7 +19,9 @@ describe.skipIf(!DATABASE_URL)("Elena rentals on Postgres", () => {
   const sender: RentalSender = { async send(userId, kind, title, body) { outbox.push({ userId, kind, title, body }); return true; } };
   const to = (id: string, kind?: string) => outbox.filter(o => o.userId === id && (!kind || o.kind === kind));
   const env = {};
-  const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0, 0, 0, 0, 0]);
+  const PNG = png({ extra: [["tEXt", "GPS\0-27.46,153.02"]] });
+  const scanner = { configured: true, async scan() { return "clean" as const; } };
+  const infected = { configured: true, async scan() { return "infected" as const; } };
   const GOOD_SETTINGS = { elenaOn: true, maxRentPct: 35, minHistoryMonths: 12, minReferences: 2, moveInFrom: "2026-11-01", moveInTo: "2036-12-31", autoRepairOffers: false, autoEmergency: false };
 
   async function rental(settings: Record<string, unknown> | null = GOOD_SETTINGS) {
@@ -80,7 +83,7 @@ describe.skipIf(!DATABASE_URL)("Elena rentals on Postgres", () => {
     expect((await decideApplication(t.db, sender, await addUser(t.db, "owner"), strong.appId, "approve", NOW)).ok).toBe(false);
     expect((await decideApplication(t.db, sender, ownerId, strong.appId, "shortlist", NOW)).ok).toBe(true);
     expect((await decideApplication(t.db, sender, ownerId, weak.appId, "decline", NOW)).ok).toBe(true);
-    expect(to(weak.userId, "decision_declined")[0]!.body).toBe("Hi Test, The owner of 12 Smith St, Newtown has chosen another applicant. Thanks for applying.");
+    expect(to(weak.userId, "decision_declined")[0]!.body).toBe("Hi Test, The owner of Newtown 2042 has chosen another applicant. Thanks for applying.");
     expect((await t.db.query("SELECT status FROM rental_application WHERE id = $1", [weak.appId])).rows[0]!["status"]).toBe("declined");
     // The owner's audit trail records the decision.
     expect((await t.db.query("SELECT 1 FROM audit_event WHERE aggregate_id = $1 AND event_type = 'rental_application_declined'", [weak.appId])).rows).toHaveLength(1);
@@ -190,8 +193,8 @@ describe.skipIf(!DATABASE_URL)("Elena rentals on Postgres", () => {
     const { tenantId, tenancyId } = await tenancy(o);
     // a stranger without a tenancy cannot report; a bad photo is refused
     expect((await submitRepair(t.db, sender, env, await addUser(t.db, "buyer"), { tenancyId, category: "plumbing", description: "Kitchen tap drips all day" }, [], NOW)).ok).toBe(false);
-    expect((await submitRepair(t.db, sender, env, tenantId, { tenancyId, category: "plumbing", description: "Kitchen tap drips all day" }, [{ bytes: new Uint8Array([1, 2, 3]) }], NOW)).ok).toBe(false);
-    const r = await submitRepair(t.db, sender, env, tenantId, { tenancyId, category: "plumbing", description: "The bathroom tap is loose and wobbles" }, [{ bytes: PNG }], NOW);
+    expect((await submitRepair(t.db, sender, env, tenantId, { tenancyId, category: "plumbing", description: "Kitchen tap drips all day" }, [{ bytes: new Uint8Array([1, 2, 3]) }], NOW, scanner)).ok).toBe(false);
+    const r = await submitRepair(t.db, sender, env, tenantId, { tenancyId, category: "plumbing", description: "The bathroom tap is loose and wobbles" }, [{ bytes: PNG }], NOW, scanner);
     expect(r).toMatchObject({ ok: true, value: { urgency: "routine", emergencySent: false } });
     const id = r.ok ? r.value.id : "";
     expect(to(tenantId, "repair_received")).toHaveLength(1);
@@ -348,5 +351,71 @@ describe.skipIf(!DATABASE_URL)("Elena rentals on Postgres", () => {
     expect((await myRentals(t.db, await addUser(t.db, "buyer"), NOW))).toEqual({ applications: [], tenancies: [], repairs: [] });
     // the log of what Elena sent cannot be edited or deleted
     await expect(t.db.query("DELETE FROM rental_message")).rejects.toThrow();
+  });
+
+  it("shows the suburb, not the street address, until the applicant is shortlisted or has a booked viewing", async () => {
+    outbox.length = 0;
+    const { ownerId, listingId } = await rental();
+    const a = await applicant(listingId, { weeklyIncome: 2000, rentalHistoryMonths: 30, referencesCount: 3, moveInDate: "2026-12-10" });
+    const everyBody = () => outbox.filter(m => m.userId === a.userId).map(m => `${m.title} ${m.body}`).join(" | ");
+    expect(everyBody()).toContain("Newtown 2042");
+    expect(everyBody()).not.toContain("Smith St");
+    expect((await myRentals(t.db, a.userId, NOW)).applications[0]!.address).toBe("Newtown 2042");
+    await addSlots(t.db, sender, ownerId, listingId, { slots: [{ startsAt: hours(NOW, 30) }] }, NOW);
+    const slot = (await deskFor(t.db, ownerId, listingId))!.slots[0]!;
+    expect((await bookViewing(t.db, sender, a.userId, a.appId, slot.id, NOW)).ok).toBe(true);
+    expect(to(a.userId, "viewing_confirmed")[0]!.body).toContain("12 Smith St");
+    expect((await myRentals(t.db, a.userId, NOW)).applications[0]!.address).toContain("Smith St");
+    const b = await applicant(listingId, { weeklyIncome: 2000 });
+    expect((await myRentals(t.db, b.userId, NOW)).applications[0]!.address).toBe("Newtown 2042");
+    await decideApplication(t.db, sender, ownerId, b.appId, "shortlist", NOW);
+    expect((await myRentals(t.db, b.userId, NOW)).applications[0]!.address).toContain("Smith St");
+  });
+
+  it("hides the applicant's name and note from the owner until shortlisted", async () => {
+    outbox.length = 0;
+    const { ownerId, listingId } = await rental();
+    const a = await applicant(listingId, { weeklyIncome: 2000, rentalHistoryMonths: 30, referencesCount: 3, moveInDate: "2026-12-10", note: "I am a tidy tenant and always pay early" });
+    await t.db.query("UPDATE app_user SET display_name = $2 WHERE id = $1", [a.userId, "Zelda Zimmerman"]);
+    const name = "Zelda Zimmerman";
+    let row = (await deskFor(t.db, ownerId, listingId))!.applications.find(x => x.id === a.appId)!;
+    expect(row.applicantName).toMatch(/^Applicant \d+$/);
+    expect(row.note).toBeUndefined();
+    expect(row.identityHidden).toBe(true);
+    await addSlots(t.db, sender, ownerId, listingId, { slots: [{ startsAt: hours(NOW, 30) }] }, NOW);
+    const slot = (await deskFor(t.db, ownerId, listingId))!.slots[0]!;
+    await bookViewing(t.db, sender, a.userId, a.appId, slot.id, NOW);
+    const ownerText = outbox.filter(m => m.userId === ownerId).map(m => m.body).join(" | ");
+    expect(ownerText).toContain("Applicant ");
+    expect(ownerText).not.toContain("Zelda");
+    await decideApplication(t.db, sender, ownerId, a.appId, "shortlist", NOW);
+    row = (await deskFor(t.db, ownerId, listingId))!.applications.find(x => x.id === a.appId)!;
+    expect(row.applicantName).toBe(name);
+    expect(row.note).toContain("tidy tenant");
+  });
+
+  it("does not contact emergency contractors on a tenant's own emergency tick, even with automatic emergencies on", async () => {
+    const o = await rental({ ...GOOD_SETTINGS, autoEmergency: true });
+    const { tenantId, tenancyId } = await tenancy(o);
+    const r = await submitRepair(t.db, sender, env, tenantId, { tenancyId, category: "plumbing", description: "The tap is annoying me", emergency: "true" }, [], NOW);
+    expect(r).toMatchObject({ ok: true, value: { urgency: "emergency", emergencySent: false } });
+    expect((await t.db.query("SELECT 1 FROM emergency_request WHERE requester_user_id = $1", [o.ownerId])).rows).toHaveLength(0);
+    expect(to(o.ownerId, "repair_emergency_owner").length).toBeGreaterThan(0);
+  });
+
+  it("re-checks the contractor when the owner approves, and refuses infected or unreadable photos", async () => {
+    const o = await rental();
+    const good = await contractor("Gus Good");
+    const { tenantId, tenancyId } = await tenancy(o);
+    expect((await submitRepair(t.db, sender, env, tenantId, { tenancyId, category: "plumbing", description: "Bathroom tap is loose" }, [{ bytes: PNG }], NOW, infected)).ok).toBe(false);
+    expect((await submitRepair(t.db, sender, env, tenantId, { tenancyId, category: "plumbing", description: "Bathroom tap is loose" }, [{ bytes: PNG }], NOW)).ok).toBe(false);
+    const r = await submitRepair(t.db, sender, env, tenantId, { tenancyId, category: "plumbing", description: "Bathroom tap is loose" }, [{ bytes: PNG }], NOW, scanner);
+    const id = r.ok ? r.value.id : "";
+    const stored = (await t.db.query("SELECT bytes FROM rental_repair_photo WHERE repair_id = $1", [id])).rows[0]!["bytes"] as Uint8Array;
+    expect(Buffer.from(stored).includes(Buffer.from("GPS"))).toBe(false);
+    expect((await getRepair(t.db, id))!.proposedContractorId).toBe(good);
+    await t.db.query("INSERT INTO contractor_standing (user_id, suspended, reason) VALUES ($1, true, 'later')", [good]);
+    expect((await ownerRepairAction(t.db, sender, env, o.ownerId, id, "approve", NOW)).ok).toBe(false);
+    expect((await getRepair(t.db, id))!.status).toBe("awaiting_owner");
   });
 });

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getActor, getDb } from "../../../src/server/context";
+import { getActor, getDb, getUploadPorts } from "../../../src/server/context";
 import { csrfGuard } from "../../../src/server/csrf";
 import { createRentalSender, submitRepair } from "../../../src/server/elena-rentals-db";
 import { failure, unauthenticated } from "../../../src/server/http";
@@ -26,7 +26,7 @@ async function handlePost(req: Request) {
   for (const f of form.getAll("photo").slice(0, 4)) if (f instanceof File && f.size > 0) photos.push({ bytes: new Uint8Array(await f.arrayBuffer()) });
   const body = Object.fromEntries([...form.entries()].filter(([k, v]) => k !== "photo" && typeof v === "string"));
   const db = getDb();
-  const r = await submitRepair(db, createRentalSender(db), process.env, actor.userId, body, photos, new Date().toISOString());
+  const r = await submitRepair(db, createRentalSender(db), process.env, actor.userId, body, photos, new Date().toISOString(), getUploadPorts().scanner);
   return r.ok ? NextResponse.json(r.value, { status: 201 }) : failure(r);
 }
 

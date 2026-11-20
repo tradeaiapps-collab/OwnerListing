@@ -10,6 +10,8 @@ import { isJurisdiction, type Jurisdiction } from "../domain/jurisdiction";
 import { bookContractor, suggestFor } from "../domain/job-board";
 import { parseTenantNotice } from "../domain/contractor-ops";
 import { sniffMime } from "../domain/file-sniff";
+import { stripImageMetadata } from "../domain/image-meta";
+import type { MalwareScanPort } from "../adapters/malware-scan";
 import { assignmentIds, createPgAssignmentRepository } from "./assignment-db";
 import { createPgMarketStore } from "./contractor-market-db";
 import { getJobContext } from "./contractor-ops-db";
@@ -54,9 +56,28 @@ const NAME_SQL = "SELECT display_name FROM app_user WHERE id = $1::uuid";
 
 interface Say { listingId: string; subjectType: "application" | "viewing" | "repair"; subjectId: string; to: string; kind: RentalMessageKind; vars: Omit<RentalVars, "name"> & { name?: string }; link: string; now: string; address: string }
 /** One message: fixed wording, content-checked, rate-limited per person per subject, logged. Returns how it went. A blocked message is never sent. */
+/** Until the applicant is shortlisted, approved or has a booked viewing, they and the owner see the suburb only: the street address and the applicant's identity stay private. */
+const IDENTITY_STATUSES: readonly string[] = ["shortlisted", "approved"];
+const placeLabel = (suburb: unknown, postcode: unknown): string => [suburb, postcode].map(x => (typeof x === "string" ? x.trim() : "")).filter(Boolean).join(" ") || "this rental";
+const REVEAL_SQL = "SELECT a.status, a.applicant_user_id, l.suburb, l.postcode, EXISTS (SELECT 1 FROM rental_viewing v WHERE v.application_id = a.id AND v.status IN ('booked','attended','no_show')) AS booked FROM rental_application a JOIN property_listing l ON l.id = a.listing_id WHERE a.id = $1::uuid";
+/** The address an applicant may be told: the street address only once shortlisted, approved or with a booked viewing; the suburb before that. */
+export async function addressForApplicant(db: Queryable, appId: string, applicantId: string, fullAddress: string): Promise<string> {
+  if (!UUID.test(appId)) return fullAddress;
+  const r = (await db.query(REVEAL_SQL, [appId])).rows[0];
+  if (!r || str(r["applicant_user_id"]) !== applicantId) return fullAddress;
+  return IDENTITY_STATUSES.includes(str(r["status"])) || r["booked"] === true ? fullAddress : placeLabel(r["suburb"], r["postcode"]);
+}
+/** What the owner sees for an applicant: a first name only once shortlisted or approved, otherwise "Applicant N". */
+async function ownerLabel(db: Queryable, appId: string): Promise<string> {
+  const r = (await db.query(APP_BY_ID_SQL, [appId])).rows[0];
+  if (!r) return "An applicant";
+  return IDENTITY_STATUSES.includes(str(r["status"])) ? first(str(r["display_name"])) : `Applicant ${Number(r["applicant_no"])}`;
+}
+
 async function say(db: Queryable, sender: RentalSender, m: Say): Promise<"sent" | "blocked" | "rate_limited" | "failed"> {
   const name = first(str((await db.query(NAME_SQL, [m.to])).rows[0]?.["display_name"] ?? ""));
-  const draft = draftRental(m.kind, { ...m.vars, address: m.address, name: m.vars.name ?? name });
+  const address = m.subjectType === "repair" ? m.address : await addressForApplicant(db, m.subjectId, m.to, m.address);
+  const draft = draftRental(m.kind, { ...m.vars, address, name: m.vars.name ?? name });
   const log = (status: string, reason?: string) => db.query(LOG_SQL, [randomUUID(), m.listingId, m.subjectType, m.subjectId, m.to, m.kind, draft.body.slice(0, 2000), status, reason ?? null]);
   const check = checkRentalOutbound(draft);
   if (!check.ok) { await log("blocked", check.reason); return "blocked"; }
@@ -127,11 +148,11 @@ export async function saveSettings(db: Queryable, ownerId: string, listingId: st
 
 // ---- Applications ---------------------------------------------------------------------------------------------------------------
 
-export interface ApplicationRow extends ApplicationFields { id: string; listingId: string; applicantId: string; applicantName: string; status: string; note?: string; noteWithheld: boolean; infoRequests: number; createdAt: string; updatedAt: string }
-const APP_COLS = "a.id, a.listing_id, a.applicant_user_id, u.display_name, a.status, a.weekly_income_cents, a.rental_history_months, a.references_count, a.move_in_date, a.note, a.note_withheld, a.info_requests, a.created_at, a.updated_at";
+export interface ApplicationRow extends ApplicationFields { id: string; listingId: string; applicantId: string; applicantName: string; applicantNo: number; identityHidden?: boolean; status: string; note?: string; noteWithheld: boolean; infoRequests: number; createdAt: string; updatedAt: string }
+const APP_COLS = "a.id, a.listing_id, a.applicant_user_id, u.display_name, a.status, a.weekly_income_cents, a.rental_history_months, a.references_count, a.move_in_date, a.note, a.note_withheld, a.info_requests, a.created_at, a.updated_at, (SELECT count(*) FROM rental_application b WHERE b.listing_id = a.listing_id AND (b.created_at, b.id) <= (a.created_at, a.id))::int AS applicant_no";
 const APP_FROM = " FROM rental_application a JOIN app_user u ON u.id = a.applicant_user_id";
 const toApp = (r: Record<string, unknown>): ApplicationRow => ({
-  id: str(r["id"]), listingId: str(r["listing_id"]), applicantId: str(r["applicant_user_id"]), applicantName: str(r["display_name"]), status: str(r["status"]),
+  id: str(r["id"]), listingId: str(r["listing_id"]), applicantId: str(r["applicant_user_id"]), applicantName: str(r["display_name"]), applicantNo: Number(r["applicant_no"]), status: str(r["status"]),
   ...(r["weekly_income_cents"] === null ? {} : { weeklyIncomeCents: Number(r["weekly_income_cents"]) }),
   ...(r["rental_history_months"] === null ? {} : { rentalHistoryMonths: Number(r["rental_history_months"]) }),
   ...(r["references_count"] === null ? {} : { referencesCount: Number(r["references_count"]) }),
@@ -317,7 +338,7 @@ export async function bookViewing(db: Queryable, sender: RentalSender, userId: s
   const when = formatAppointment(r.value.startsAt, l.jurisdiction);
   await audit(db, userId, "rental_viewing", r.value.viewingId, "rental_viewing_booked", { listingId: l.id });
   await say(db, sender, { listingId: l.id, subjectType: "viewing", subjectId: appId, to: userId, kind: "viewing_confirmed", vars: { address: l.address, when }, link: "/rentals", now, address: l.address });
-  await say(db, sender, { listingId: l.id, subjectType: "viewing", subjectId: appId, to: l.ownerId, kind: "viewing_confirmed_owner", vars: { address: l.address, when, name: first(str(app["display_name"])) }, link: `/listings/${l.id}/rentals`, now, address: l.address });
+  await say(db, sender, { listingId: l.id, subjectType: "viewing", subjectId: appId, to: l.ownerId, kind: "viewing_confirmed_owner", vars: { address: l.address, when, name: await ownerLabel(db, appId) }, link: `/listings/${l.id}/rentals`, now, address: l.address });
   return { ok: true, value: { viewingId: r.value.viewingId, startsAt: r.value.startsAt } };
 }
 
@@ -330,7 +351,7 @@ export async function cancelViewing(db: Queryable, sender: RentalSender, userId:
   const l = (await rentListing(db, str(app["listing_id"])))!;
   const slot = (await db.query("SELECT starts_at FROM rental_viewing_slot WHERE id = $1::uuid", [str(v["slot_id"])])).rows[0]!;
   await audit(db, userId, "rental_viewing", appId, "rental_viewing_cancelled", { listingId: l.id });
-  await say(db, sender, { listingId: l.id, subjectType: "viewing", subjectId: appId, to: l.ownerId, kind: "viewing_cancelled_owner", vars: { address: l.address, when: formatAppointment(iso(slot["starts_at"]), l.jurisdiction), name: first(str(app["display_name"])) }, link: `/listings/${l.id}/rentals`, now, address: l.address });
+  await say(db, sender, { listingId: l.id, subjectType: "viewing", subjectId: appId, to: l.ownerId, kind: "viewing_cancelled_owner", vars: { address: l.address, when: formatAppointment(iso(slot["starts_at"]), l.jurisdiction), name: await ownerLabel(db, appId) }, link: `/listings/${l.id}/rentals`, now, address: l.address });
   return { ok: true, value: true };
 }
 
@@ -422,7 +443,7 @@ export const INSERT_REPAIR_SQL =
  * how urgent it is, and then either proposes a contractor for the owner to approve, or, where the owner turned it on, sends the offer herself.
  * Emergencies go to the emergency contractor flow only where the owner turned that on; otherwise the owner gets an urgent alert with one button.
  */
-export async function submitRepair(db: Queryable, sender: RentalSender, env: Env, tenantId: string, input: unknown, photos: readonly PhotoUpload[], now: string): Promise<Result<RepairOutcome>> {
+export async function submitRepair(db: Queryable, sender: RentalSender, env: Env, tenantId: string, input: unknown, photos: readonly PhotoUpload[], now: string, scanner?: MalwareScanPort): Promise<Result<RepairOutcome>> {
   const p = parseRepair(input);
   if (!p.ok) return p;
   const t = (await db.query(TENANCY_FOR_TENANT_SQL, [p.value.tenancyId, tenantId])).rows[0];
@@ -432,7 +453,12 @@ export async function submitRepair(db: Queryable, sender: RentalSender, env: Env
   for (const ph of photos) {
     const mime = sniffMime(ph.bytes);
     if (ph.bytes.byteLength === 0 || ph.bytes.byteLength > RENTAL_LIMITS.maxPhotoBytes || (mime !== "image/jpeg" && mime !== "image/png" && mime !== "image/webp")) return fail("invalid", "Photos must be JPEG, PNG or WebP, up to 2 MB each.");
-    clean.push({ mime, bytes: ph.bytes });
+    // Same intake as the other upload paths: metadata (EXIF/GPS) stripped, then a malware scan. Nothing is stored unless both pass.
+    const stripped = stripImageMetadata(ph.bytes, mime);
+    if (!stripped.ok) return fail("invalid", "One of the photos could not be read. Try another.");
+    if (!scanner || !scanner.configured) return fail("unavailable", "Photo upload is not available right now. Send the report without photos.");
+    if ((await scanner.scan(stripped.bytes).catch(() => "error")) !== "clean") return fail("invalid", "A photo did not pass the security scan.");
+    clean.push({ mime, bytes: stripped.bytes });
   }
   if (!(await withinRates(db, "rental-repair-hour", [tenantId], { windowMs: 3600_000, limit: RENTAL_LIMITS.repairsPerHour }, new Date(now))) ||
       !(await withinRates(db, "rental-repair-day", [tenantId], { windowMs: 24 * 3600_000, limit: RENTAL_LIMITS.repairsPerDay }, new Date(now)))) return fail("rate_limited", "You have sent several repair requests. Add to an existing request instead, or try again later.");
@@ -453,7 +479,9 @@ export async function submitRepair(db: Queryable, sender: RentalSender, env: Env
   let message: string | undefined;
   if (tri.urgency === "emergency") {
     await say(db, sender, { ...base, to: ownerId, kind: "repair_emergency_owner", vars, link: ownerLink(listingId) });
-    if (settings.elenaOn && settings.autoEmergency) {
+    // A tenant's own "emergency" tick is not enough to contact contractors automatically: only a fixed safety rule (gas, fire, flooding...) is.
+    const ruleMatched = triage(p.value.category, p.value.description, false, false).urgency === "emergency";
+    if (settings.elenaOn && settings.autoEmergency && ruleMatched) {
       const sent = await dispatchEmergency(db, sender, env, (await getRepair(db, id))!, now);
       emergencySent = sent.ok;
       if (!sent.ok) message = sent.message;
@@ -511,6 +539,8 @@ async function offerRepair(db: Queryable, sender: RentalSender, repair: RepairRo
   if (!repair.proposedContractorId) return fail("conflict", "There is no contractor to ask yet.");
   const l = (await rentListing(db, repair.listingId))!;
   const note = `Rental repair ${refOf(repair.no)} (${REPAIR_LABELS[repair.category]}, ${repair.urgency}): ${repair.description.slice(0, 600)}`;
+  // The contractor may have been suspended or lost insurance since Elena proposed them.
+  if ((await db.query(ELIGIBLE_SQL, [[repair.proposedContractorId]])).rows.length === 0) return fail("conflict", "That contractor is no longer verified, insured and available. Choose another.");
   // Claim the repair first, so two approvals (or an approval and Elena's automatic offer) cannot send two job offers.
   if ((await db.query("UPDATE rental_repair SET status = 'offered', updated_at = now() WHERE id = $1::uuid AND status IN ('awaiting_owner','needs_owner') RETURNING id", [repair.id])).rows.length === 0) return fail("conflict", "This repair is not waiting for approval.");
   const booked = await bookContractor(deps(db), ACTOR(repair.ownerId), repair.listingId, { kind: "other", contractorUserId: repair.proposedContractorId, note }, "elena");
@@ -714,6 +744,13 @@ async function messagesBySubject(db: Queryable, ids: string[], toUser: string): 
   return map;
 }
 
+/** The owner sees "Applicant N" and no free-text note until they shortlist the applicant. The scored facts are all they need to compare. */
+function hideIdentity(a: ApplicationRow): ApplicationRow {
+  if (IDENTITY_STATUSES.includes(a.status)) return a;
+  const { note: _note, ...rest } = a;
+  return { ...rest, applicantName: `Applicant ${a.applicantNo}`, identityHidden: true };
+}
+
 export async function deskFor(db: Queryable, ownerId: string, listingId: string): Promise<Desk | undefined> {
   const l = await ownRent(db, ownerId, listingId);
   if (!l) return undefined;
@@ -731,7 +768,7 @@ export async function deskFor(db: Queryable, ownerId: string, listingId: string)
   const tenancies = (await db.query("SELECT t.id, t.status, u.display_name FROM rental_tenancy t JOIN app_user u ON u.id = t.tenant_user_id WHERE t.listing_id = $1::uuid ORDER BY t.created_at", [listingId])).rows;
   return {
     listing: { id: l.id, address: l.address, ...(l.weeklyRentCents ? { weeklyRentCents: l.weeklyRentCents } : {}), published: l.status === "published" }, settings,
-    applications: apps.map(a => ({ ...a, rank: ranks.get(a.id)!, evaluation: evals.get(a.id)!, ...(viewings.has(a.id) ? { viewing: viewings.get(a.id)! } : {}) })).sort((a, b) => a.rank - b.rank),
+    applications: apps.map(a => hideIdentity(a)).map(a => ({ ...a, rank: ranks.get(a.id)!, evaluation: evals.get(a.id)!, ...(viewings.has(a.id) ? { viewing: viewings.get(a.id)! } : {}) })).sort((a, b) => a.rank - b.rank),
     slots: await slotsFor(db, listingId),
     tenancies: tenancies.map(t => ({ id: str(t["id"]), tenantName: str(t["display_name"]), status: str(t["status"]) })),
     repairs: repairs.map(r => ({ ...r, photoIds: photos.filter(p => str(p["repair_id"]) === r.id).map(p => str(p["id"])), messages: repairMsgs.get(r.id) ?? [], assignmentStatus: facts.get(r.id)?.status ?? "none", ...(facts.get(r.id)?.scheduledAt ? { visitAt: facts.get(r.id)!.scheduledAt! } : {}) }))
@@ -753,7 +790,7 @@ export async function myRentals(db: Queryable, userId: string, now: string): Pro
     const v = (await db.query(VIEWINGS_SQL, [[a.id]])).rows.find(x => x["status"] === "booked");
     const open = ["submitted", "info_requested", "shortlisted", "approved"].includes(a.status);
     apps.push({
-      id: a.id, listingId: a.listingId, address: l.address, ...(l.weeklyRentCents ? { weeklyRentCents: l.weeklyRentCents } : {}), status: a.status, evaluationMissing: ev.missing,
+      id: a.id, listingId: a.listingId, address: await addressForApplicant(db, a.id, userId, l.address), ...(l.weeklyRentCents ? { weeklyRentCents: l.weeklyRentCents } : {}), status: a.status, evaluationMissing: ev.missing,
       ...(v ? { viewing: { startsAt: iso(v["starts_at"]) } } : {}), offers: open ? pickOffers(await slotsFor(db, a.listingId), now, 6) : [], messages: (await messagesBySubject(db, [a.id], userId)).get(a.id) ?? [], updatedAt: a.updatedAt
     });
   }
@@ -884,7 +921,7 @@ async function runViewingSummaries(db: Queryable, sender: RentalSender, now: str
     if (guests.length === 0) continue;
     const l = (await rentListing(db, str(s["listing_id"])))!;
     const desk = await deskFor(db, l.ownerId, l.id);
-    const list = guests.map(g => `${first(str(g["display_name"]))}${desk ? ` (comparison position ${desk.applications.find(a => a.id === str(g["id"]))?.rank ?? "n/a"} of ${desk.applications.length})` : ""}`).join(", ");
+    const list = (await Promise.all(guests.map(async g => `${await ownerLabel(db, str(g["id"]))}${desk ? ` (comparison position ${desk.applications.find(a => a.id === str(g["id"]))?.rank ?? "n/a"} of ${desk.applications.length})` : ""}`))).join(", ");
     await say(db, sender, { listingId: l.id, subjectType: "viewing", subjectId: str(s["id"]), to: l.ownerId, kind: "viewing_summary", vars: { address: l.address, when: formatAppointment(iso(s["starts_at"]), l.jurisdiction), count: guests.length, list }, link: ownerLink(l.id), now, address: l.address });
     n++;
   }

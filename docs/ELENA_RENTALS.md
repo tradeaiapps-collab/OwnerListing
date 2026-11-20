@@ -21,8 +21,17 @@ Appointed agents cannot approve repairs (owner only); the visit time is read fro
 
 ## Known residual risks
 
+- Applicant data (income, history, notes) has no automatic retention or deletion yet. It is kept until a deletion path is built; this should be decided with counsel before real applicants.
 - Tenant free text in a repair report goes to contractors before they accept the job. The tenant form says so.
 - The applicant-note filter is a pattern list and can miss paraphrases. The owner desk carries a banner, and notes are never scored.
 - Messages that are not sent (blocked by the filter or rate limit) are still logged in `rental_message` without a cap.
 - A tenant can self-declare an emergency. This only dispatches automatically if the owner turned on `auto_emergency` (off by default). Reports are rate limited.
 - Repair photo upload needs a declared Content-Length (411 if missing, 413 over 8 MB, at most 4 photos).
+
+## Privacy rules added after security review
+
+- The street address is shown to an applicant (page and messages) only once they are shortlisted, approved or have a booked viewing. Before that, only the suburb and postcode. The apply endpoint never returns the street address.
+- The owner sees "Applicant N" and no free-text note until they shortlist the applicant. Viewing messages and summaries to the owner use the same label.
+- Automatic emergency dispatch needs a fixed safety rule (gas, fire, flooding and so on) to match the description. A tenant's own emergency tick still alerts the owner at once, but the owner presses the button.
+- Approving a repair re-checks that the proposed contractor is still verified, insured and not suspended.
+- Repair photos are metadata-stripped (EXIF/GPS) and malware scanned like other uploads. With no scanner configured, photos are refused and the report can be sent without them.

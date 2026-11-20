@@ -5,7 +5,7 @@ import { APP_STATUS, CRITERION_STATUS, JSON_HEADERS, REPAIR_STATUS, URGENCY, cat
 
 type Crit = { key: string; label: string; status: string; reason: string };
 type Msg = { id: string; kind: string; body: string; status: string; reason?: string; at: string };
-type App = { id: string; applicantName: string; status: string; rank: number; note?: string; noteWithheld: boolean; createdAt: string; evaluation: { criteria: Crit[]; headline: string; missing: string[] }; viewing?: { startsAt: string; status: string } };
+type App = { id: string; applicantName: string; status: string; rank: number; note?: string; noteWithheld: boolean; identityHidden?: boolean; createdAt: string; evaluation: { criteria: Crit[]; headline: string; missing: string[] }; viewing?: { startsAt: string; status: string } };
 type Settings = { elenaOn: boolean; maxRentPct: number; minHistoryMonths: number; minReferences: number; moveInFrom?: string; moveInTo?: string; autoRepairOffers: boolean; autoEmergency: boolean };
 type Slot = { id: string; startsAt: string; durationMin: number; capacity: number; booked: number; status: string };
 type Repair = { id: string; no: number; category: string; description: string; urgency: string; urgencyReason: string; status: string; tenantName: string; proposedContractorName?: string; proposedReasons: string[]; photoIds: string[]; messages: Msg[]; needsOwnerReason?: string; visitAt?: string; createdAt: string };
@@ -80,10 +80,10 @@ export default function RentalsDesk() {
                 </li>
               ))}
             </ul>
-            {desk.applications.some(a => a.note || a.noteWithheld) && (
+            {desk.applications.some(a => a.note || a.noteWithheld || a.identityHidden) && (
               <details className="rn-log"><summary>Notes from applicants</summary>
                 <p className="rn-hint">These are the applicants&apos; own words. Elena holds back notes that mention personal details, but she cannot catch everything: do not weigh anything personal in a note.</p>
-                <ul>{desk.applications.map(a => <li key={a.id}><strong>{a.applicantName}:</strong> {a.note ? <span className="rn-wrap">{a.note}</span> : a.noteWithheld ? <span className="muted">Withheld: it mentioned something personal that Elena does not use and you should not weigh.</span> : <span className="muted">No note.</span>}</li>)}</ul></details>
+                <ul>{desk.applications.map(a => <li key={a.id}><strong>{a.applicantName}:</strong> {a.note ? <span className="rn-wrap">{a.note}</span> : a.identityHidden ? <span className="muted">Hidden until you shortlist this applicant.</span> : a.noteWithheld ? <span className="muted">Withheld: it mentioned something personal that Elena does not use and you should not weigh.</span> : <span className="muted">No note.</span>}</li>)}</ul></details>
             )}
           </>
         )}

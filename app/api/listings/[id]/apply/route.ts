@@ -8,14 +8,14 @@ import { withApi } from "../../../../../src/server/api/with-api";
 type Ctx = { params: Promise<{ id: string }> };
 const NOT_FOUND = { ok: false, code: "not_found", message: "Not found." } as const;
 
-/** What an applicant sees before applying: the address and weekly rent of a published rental. Nothing about the owner's criteria. */
+/** What an applicant sees before applying: the suburb (never the street address) and weekly rent of a published rental. Nothing about the owner's criteria. */
 async function handleGet(req: Request, { params }: Ctx) {
   const actor = await getActor(req);
   if (!actor) return unauthenticated();
   const { id } = await params;
   const l = await rentListing(getDb(), id);
   if (!l || l.status !== "published") return failure(NOT_FOUND);
-  return NextResponse.json({ address: l.address, ...(l.weeklyRentCents ? { weeklyRentCents: l.weeklyRentCents } : {}) });
+  return NextResponse.json({ address: [l.suburb, l.postcode].filter(Boolean).join(" ") || "this rental", ...(l.weeklyRentCents ? { weeklyRentCents: l.weeklyRentCents } : {}) });
 }
 
 /** Body: { weeklyIncome?, rentalHistoryMonths?, referencesCount?, moveInDate?, note? }. Sending again updates the application. */
