@@ -12,7 +12,7 @@ import { messageWordingError } from "./discrimination-filter";
 
 export interface Enquiry { id: string; listingId: string; buyerUserId: string; createdAt: string }
 /** senderUserId is null for automated system messages (the chat-offer notice). */
-export interface EnquiryMessage { id: string; enquiryId: string; senderUserId: string | null; automated: boolean; body: string; sentAt: string }
+export interface EnquiryMessage { id: string; enquiryId: string; senderUserId: string | null; automated: boolean; /** Sent by Elena for the owner (an automated message that is not a system notice). */ elena?: boolean; body: string; sentAt: string }
 /** An enquiry as shown in an inbox: which listing it is about, the viewer's side, and unread messages from the other side. */
 export interface InboxItem { enquiry: Enquiry; listingTitle: string; role: "buyer" | "owner"; unread: number }
 

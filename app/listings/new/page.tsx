@@ -10,6 +10,7 @@ import { QuickSetupPanel, type Drafted, type QuickFiles } from "../quick-setup";
 import { ElenaPublishCheck } from "../elena-publish-check";
 import { PhotosStep } from "./photos-step";
 import { ContractorSection } from "../contractor-section";
+import { ElenaEnquiriesPanel } from "../elena-enquiries-panel";
 import { ElenaJobsPanel } from "../elena-jobs-panel";
 import type { FieldStep } from "../fields";
 
@@ -271,6 +272,7 @@ export default function NewListing() {
           )}
           <ContractorSection listingId={draftId} />
           <ElenaJobsPanel listingId={draftId} />
+          <ElenaEnquiriesPanel listingId={draftId} />
           <p><a className="button" href={`/listings/${draftId}/approve`}>Review and approve your ad</a></p>
           <ElenaPublishCheck listingId={draftId} />
         </section>
