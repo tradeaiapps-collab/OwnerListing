@@ -36,7 +36,7 @@ export default function ContractorProfile() {
   return (
     <main>
       <h1>Your service areas</h1>
-      <p className="muted">Tell us where you work. When an owner lists a home in one of these suburbs or postcodes, Elena invites you. You can always accept or decline.</p>
+      <p className="muted">Tell us where you work. When an owner lists a home in one of these suburbs or postcodes, Elena invites you. You can always accept or decline. <a href="/contractor/emergency">Set up emergency jobs</a></p>
       {error && <p role="alert">{error}</p>}
       {(["photographer", "inspector"] as const).map(kind => (
         <form key={kind} className="panel" onSubmit={e => { e.preventDefault(); void save(kind); }}>
