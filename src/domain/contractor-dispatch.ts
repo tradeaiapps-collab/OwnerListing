@@ -1,4 +1,5 @@
 import { inviteContractor, listAssignments, type AssignmentIds, type AssignmentRepository } from "./assignment-service";
+import { isTrade, type Trade } from "./contractor-market";
 import type { Actor, Result } from "./listing-service";
 
 export const DISPATCH_KINDS = ["photographer", "inspector"] as const;
@@ -10,8 +11,8 @@ export interface ContractorCandidate { userId: string; displayName: string; prof
 export interface ContractorProfileStore {
   /** Active, non-suspended accounts with a profile for this kind. */
   candidates(kind: DispatchKind): Promise<ContractorCandidate[]>;
-  get(userId: string, kind: DispatchKind): Promise<ContractorProfile | undefined>;
-  save(userId: string, kind: DispatchKind, p: ContractorProfile): Promise<void>;
+  get(userId: string, kind: Trade): Promise<ContractorProfile | undefined>;
+  save(userId: string, kind: Trade, p: ContractorProfile): Promise<void>;
 }
 
 const norm = (s: string) => s.trim().toLowerCase();
@@ -57,11 +58,11 @@ export async function autoDispatch(
 
 const POSTCODE = /^\d{4}$/;
 /** Validates a contractor's own profile body. */
-export function parseContractorProfile(input: unknown): Result<{ kind: DispatchKind; profile: ContractorProfile }> {
+export function parseContractorProfile(input: unknown): Result<{ kind: Trade; profile: ContractorProfile }> {
   const bad = (m: string): Result<never> => ({ ok: false, code: "invalid", message: m });
   if (typeof input !== "object" || input === null) return bad("Send a JSON object.");
   const o = input as Record<string, unknown>;
-  if (o["kind"] !== "photographer" && o["kind"] !== "inspector") return bad("Choose photographer or inspector.");
+  if (!isTrade(o["kind"])) return bad("Choose photographer, building inspector, pest control or other trade.");
   const list = (v: unknown) => (Array.isArray(v) && v.every(x => typeof x === "string") ? (v as string[]).map(s => s.trim()).filter(Boolean) : undefined);
   const postcodes = list(o["servicePostcodes"] ?? []), suburbs = list(o["serviceSuburbs"] ?? []);
   if (!postcodes || !suburbs || postcodes.length > 200 || suburbs.length > 200) return bad("Areas must be lists of up to 200 postcodes and suburbs.");
