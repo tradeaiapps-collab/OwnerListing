@@ -146,7 +146,9 @@ export const KINDS = {
   job_time_confirmed: "appointments",
   job_done: "appointments",
   job_files_added: "appointments",
-  job_reviewed: "messages"
+  job_reviewed: "messages",
+  emergency_request: "messages",
+  emergency_accepted: "messages"
 } as const satisfies Record<string, Category>;
 export type Kind = keyof typeof KINDS;
 export const isKind = (v: unknown): v is Kind => typeof v === "string" && Object.prototype.hasOwnProperty.call(KINDS, v);
@@ -244,6 +246,8 @@ export function renderNotification(kind: Kind, p: NotificationParams = {}): Rend
     case "scheduling_message": return t(clip(p["title"], 80, "A message about your inspection"), clip(p["text"], 1500, "There is an update about your inspection."));
     case "scheduling_suggestion": return t(clip(p["title"], 80, "Elena drafted a message"), clip(p["text"], 400, "Review the draft and send, edit or skip it."));
     case "lead_followup_due": return t("Lead follow-up due", clip(p["text"], 300, `Follow up with ${name} about ${listing}.`), false);
+    case "emergency_request": return t(`Urgent request ${clip(p["reference"], 20, "")}`, clip(p["text"], 300, "An owner needs an emergency contractor. Open it to accept or pass."), false);
+    case "emergency_accepted": return t("A contractor accepted your urgent request", clip(p["text"], 300, `${name} accepted your urgent request. Open it for their contact details.`), false);
     case "automation_alert": return t(clip(p["title"], 80, "Automation update"), clip(p["text"], 400, "One of your automations ran."));
   }
 }

@@ -10,6 +10,7 @@ import { THEME_INIT_SCRIPT } from "./theme-toggle";
 import ThemePreviewBridge from "./theme-preview-bridge";
 import "./styles/a11y.css";
 import "./styles/inspections.css";
+import "./styles/emergency.css";
 import "./styles/pwa.css";
 import PwaRegister from "./pwa-register";
 import { appOriginFor, readAppMode } from "../src/config/app-mode";
@@ -28,7 +29,7 @@ const admin = readAppMode() === "admin";
 /** Footer columns used until an admin sets footer links at /staff/site (then those links replace the columns). */
 const FOOTER_COLUMNS = [
   { title: "Buy or rent", links: [{ label: "Browse listings", href: "/listings" }, { label: "Saved searches", href: "/buyer/saved-searches" }, { label: "Verify your account", href: "/buyer/verification" }] },
-  { title: "Owners", links: [{ label: "List your property", href: "/listings/new" }, { label: "Plans and fees", href: "/plans" }, { label: "My listings", href: "/listings/mine" }] },
+  { title: "Owners", links: [{ label: "List your property", href: "/listings/new" }, { label: "Plans and fees", href: "/plans" }, { label: "Emergency contractors", href: "/emergency" }, { label: "My listings", href: "/listings/mine" }] },
   { title: "Help", links: [{ label: "How it works", href: "/#home-how" }, { label: "Questions", href: "/#home-faq" }, { label: "Dashboard", href: "/dashboard" }, { label: "Terms", href: "/terms" }] }
 ];
 

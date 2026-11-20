@@ -70,7 +70,7 @@ export default function ContractorProfile() {
     <main className="ma cm">
       <header>
         <h1>Your contractor page</h1>
-        <p className="muted" style={{ margin: 0 }}>{no !== null && <><span className="cm-num">{conNo(no)}</span> · </>}{page.isPublic && no !== null ? <a href={`/contractors/${no}`}>View your public page</a> : "Owners can find you once your page is public."} · <a href="/contractor/jobs">Your jobs</a></p>
+        <p className="muted" style={{ margin: 0 }}>{no !== null && <><span className="cm-num">{conNo(no)}</span> · </>}{page.isPublic && no !== null ? <a href={`/contractors/${no}`}>View your public page</a> : "Owners can find you once your page is public."} · <a href="/contractor/jobs">Your jobs</a> · <a href="/contractor/trust">Verification and reviews</a> · <a href="/contractor/emergency">Emergency call-outs</a></p>
       </header>
       {error && <p className="ma-state ma-error" role="alert">{error}</p>}
       {!loaded && !error && <p className="ma-state" role="status">Loading…</p>}

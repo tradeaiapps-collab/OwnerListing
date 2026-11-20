@@ -1,0 +1,52 @@
+/* Emergency contractors. Mobile first; tokens only. */
+.emg-page { display: grid; gap: var(--space-4); max-width: 760px; margin-inline: auto; }
+.emg-head { display: grid; gap: var(--space-2); }
+.emg-head h1 { margin: 0; overflow-wrap: anywhere; }
+.emg-head p { margin: 0; }
+.emg-danger { border: 1px solid color-mix(in srgb, var(--danger) 55%, var(--bg)); background: var(--danger-tint); border-radius: var(--radius); padding: var(--space-3) var(--space-4); }
+.emg-panel { border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); padding: var(--space-4); display: grid; gap: var(--space-3); min-width: 0; }
+.emg-panel > h2 { margin: 0; font-size: 1.125rem; }
+.emg-panel p { margin: 0; overflow-wrap: anywhere; }
+.emg-form :is(input:not([type="checkbox"]), select, textarea) { font-size: 1rem; min-height: 44px; width: 100%; max-width: 100%; }
+.emg-form textarea { min-height: 96px; }
+.emg-form button, .emg-actions button, .emg-search button { min-height: 44px; }
+.emg-check { display: flex; align-items: center; gap: var(--space-2); min-height: 44px; font-weight: 600; }
+.emg-check input { width: 20px; height: 20px; flex: none; }
+.emg-two { display: grid; gap: var(--space-3); grid-template-columns: 2fr 1fr; }
+.emg-hint { font-size: 0.875rem; }
+.emg-alert { color: var(--danger); font-weight: 600; }
+.emg-ok { color: var(--ok); font-weight: 600; }
+.emg-hours { border: 1px solid var(--border); border-radius: var(--radius); padding: var(--space-3); display: grid; gap: var(--space-3); min-width: 0; margin: 0; }
+.emg-hours legend { font-weight: 600; padding-inline: var(--space-2); }
+.emg-window { display: grid; gap: var(--space-2); padding-bottom: var(--space-3); border-bottom: 1px solid var(--border); }
+.emg-days { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.emg-days button { min-width: 44px; min-height: 44px; padding: 0 var(--space-2); border: 1px solid var(--border); border-radius: 999px; background: var(--bg); color: var(--text); font-weight: 600; }
+.emg-days button.on { background: var(--brand); color: var(--brand-text); border-color: var(--brand); }
+.emg-times { display: grid; gap: var(--space-2); grid-template-columns: 1fr 1fr; align-items: end; }
+.emg-times label { display: grid; gap: var(--space-1); font-weight: 600; font-size: 0.9375rem; }
+.emg-times input { min-height: 44px; width: 100%; }
+.emg-times button { grid-column: 1 / -1; }
+.emg-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-3); }
+.emg-item { max-width: none; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); padding: var(--space-4); display: grid; gap: var(--space-2); min-width: 0; }
+.emg-top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2); }
+.emg-top strong { overflow-wrap: anywhere; }
+.emg-quote { font-style: italic; }
+.emg-contact { font-weight: 600; }
+.emg-contact a { display: inline-block; min-height: 24px; }
+.emg-replies { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-2); }
+.emg-badge { display: inline-flex; align-items: center; min-height: 26px; padding: 0 var(--space-3); border-radius: 999px; border: 1px solid var(--border); font-size: 0.75rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; white-space: nowrap; background: var(--surface); color: var(--muted); }
+.emg-badge.st-accepted { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 45%, var(--bg)); background: var(--ok-tint); }
+.emg-badge.st-open, .emg-badge.st-sent { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 45%, var(--bg)); background: var(--warn-tint); }
+.emg-badge.st-failed, .emg-badge.st-cancelled { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 45%, var(--bg)); background: var(--danger-tint); }
+.emg-actions { display: grid; gap: var(--space-2); }
+.emg-eta { display: grid; gap: var(--space-1); font-weight: 600; font-size: 0.9375rem; }
+.emg-eta input { min-height: 44px; width: 100%; }
+.emg-search { display: grid; gap: var(--space-3); }
+.emg-search .field { margin: 0; }
+button.secondary { background: transparent; color: var(--text); border: 1px solid var(--border); }
+@media (min-width: 640px) {
+  .emg-times { grid-template-columns: 1fr 1fr auto; }
+  .emg-times button { grid-column: auto; }
+  .emg-actions { grid-template-columns: 200px auto auto; align-items: end; justify-content: start; }
+  .emg-search { grid-template-columns: 1.2fr 1.2fr 0.8fr auto; align-items: end; }
+}
