@@ -238,9 +238,12 @@ async function seedProject(client) {
 
 // ---- Demo contractors (public pages, prices, gallery, finished jobs with feedback) ----------------------------------------------
 // Four contractor accounts (photographer, building inspector, pest control, cleaner) so /contractors, a contractor page, /contractor/jobs
-// and the stats have something to show. They are agent-type accounts: vendor-type accounts cannot sign in yet (no vendor role). Photo links point at a public placeholder service. Idempotent: skipped once Priya exists.
+// and the stats have something to show. They are contractor (vendor) accounts, so /dev-login signs in as a real contractor. Photo links point at a public placeholder service. Idempotent: skipped once Priya exists.
 async function seedContractors(client) {
   const D = "@demo.invalid";
+  // Databases seeded before contractor sign-up have these four as agent accounts: move them to the contractor type.
+  await client.query(`UPDATE app_user SET user_type = 'vendor', roles = '{}', active_role = NULL WHERE user_type = 'agent' AND email = ANY($1::text[])`,
+    [["priya.photos", "tom.inspect", "greta.pest", "sam.clean"].map(k => `${k}${D}`)]);
   if ((await client.query(`SELECT 1 FROM app_user WHERE email = $1`, [`priya.photos${D}`])).rowCount) return;
   await client.query("BEGIN");
   const q = async (text, params) => (await client.query(text, params)).rows;
@@ -268,7 +271,7 @@ async function seedContractors(client) {
       services: [["Pre-sale clean (3 bedroom)", 38000, "fixed", ""], ["Window cleaning", 9000, "per_hour", ""]], jobs: [] }
   ];
   for (const p of people) {
-    const uid = (await q(`INSERT INTO app_user (email, display_name, user_type, status, roles, active_role) VALUES ($1, $2, 'agent', 'active', ARRAY['agent'], 'agent') RETURNING id`, [`${p.key}${D}`, `${p.name} (contractor)`]))[0].id;
+    const uid = (await q(`INSERT INTO app_user (email, display_name, user_type, status, roles, active_role) VALUES ($1, $2, 'vendor', 'active', '{}', NULL) RETURNING id`, [`${p.key}${D}`, `${p.name} (contractor)`]))[0].id;
     await q(`INSERT INTO contractor_profile (user_id, kind, accepting_new, service_postcodes, service_suburbs) VALUES ($1, $2, true, $3, $4)`, [uid, p.kind, [...new Set(p.postcodes)], p.suburbs]);
     await q(`INSERT INTO contractor_page (user_id, business_name, headline, about, trade_label, licence_number, licence_state, licence_verified_at, is_public)
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, true)`, [uid, p.business, p.headline, p.about, p.label ?? null, p.licence?.[1] ?? null, p.licence?.[0] ?? null, p.licence?.[2] ? new Date() : null]);
