@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { moderationStaffAction } from "../../../../../src/domain/elena-prescreen";
+import { logOutcomePg } from "../../../../../src/server/elena-prescreen-db";
 import { planDecision, planSuspension } from "../../../../../src/domain/moderation-queue";
 import { getDb } from "../../../../../src/server/context";
 import { userTarget } from "../../../../../src/server/admin-moderation-db";
@@ -33,11 +35,13 @@ async function handlePost(req: Request, { params }: Ctx) {
   if ("action" in sus) return fail(sus.status, sus.error);
   if (sus.kind === "none") {
     if (!(await decideQueueItemPg(db, id, staff, plan.decision, plan.from, plan.note))) return fail(409, "Someone else already decided this item.");
+    await logOutcomePg(db, { queue: "moderation", subjectId: id, staffId: staff.id, staffRole: staff.role, staffAction: moderationStaffAction(plan.decision, "none") });
     return NextResponse.json({ ok: true, status: plan.to });
   }
   try {
     const r = await rejectAndSuspendPg(db, id, staff, plan.from, plan.note, sus);
     if (!r.decided) return fail(409, "Someone else already decided this item.");
+    await logOutcomePg(db, { queue: "moderation", subjectId: id, staffId: staff.id, staffRole: staff.role, staffAction: moderationStaffAction(plan.decision, sus.kind) });
     return NextResponse.json({ ok: true, status: plan.to, suspended: sus.kind, listingsSuspended: r.listingsSuspended });
   } catch (e) {
     if (e instanceof SuspensionConflict) return fail(409, "The listing or account changed in the meantime, so nothing was changed. Reload and try again.");

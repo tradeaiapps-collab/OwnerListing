@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { staffCan } from "../../../../src/domain/staff-access";
 import { decisionsFor, isSubjectType } from "../../../../src/domain/moderation-queue";
 import { getDb } from "../../../../src/server/context";
+import { prescreenModerationPg } from "../../../../src/server/elena-prescreen-db";
 import { listQueuePg, queueCountsPg, type QueueView } from "../../../../src/server/moderation-queue-db";
 import { staffGate } from "../../../../src/server/staff-route";
 import { withApi } from "../../../../src/server/api/with-api";
@@ -19,9 +20,10 @@ async function handleGet(req: Request) {
   if (type && !isSubjectType(type)) return NextResponse.json({ error: "Unknown type." }, { status: 400 });
   const db = getDb();
   const [items, counts] = await Promise.all([listQueuePg(db, { view, ...(type && isSubjectType(type) ? { subjectType: type } : {}) }), queueCountsPg(db)]);
+  const screened = await prescreenModerationPg(db, items).catch(() => new Map());
   const decisions = { open: decisionsFor(staff, "open"), escalated: decisionsFor(staff, "escalated") };
   const canSuspend = { listing: staffCan(staff, "listing.moderate"), account: staffCan(staff, "user.manage") };
-  return NextResponse.json({ items, counts, me: staff.id, decisions, canSuspend }, { headers: { "cache-control": "no-store" } });
+  return NextResponse.json({ items: items.map(i => ({ ...i, elena: screened.get(i.id) ?? null })), counts, me: staff.id, decisions, canSuspend }, { headers: { "cache-control": "no-store" } });
 }
 
 export const GET = withApi(handleGet);
