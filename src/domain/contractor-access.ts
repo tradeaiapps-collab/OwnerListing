@@ -11,6 +11,8 @@ export const VENDOR_API_PREFIXES: readonly string[] = [
   "/api/contractor-page",
   "/api/contractor-profile",
   "/api/jobs",
+  // Elena's hands-off job handling: the contractor answers a time she asked about. Each route checks the user is a party.
+  "/api/elena-jobs",
   "/api/inspector",
   "/api/notifications",
   "/api/push",
