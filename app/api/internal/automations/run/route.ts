@@ -4,6 +4,7 @@ import { runDueRentals } from "../../../../../src/server/elena-rentals-db";
 import { runDueElenaEnquiries } from "../../../../../src/server/elena-enquiries-db";
 import { runDueElenaJobs } from "../../../../../src/server/elena-jobs-db";
 import { runOwnerDigests } from "../../../../../src/server/owner-today-db";
+import { runInvestorDigests } from "../../../../../src/server/investor-digest-db";
 import { runDuePaperwork } from "../../../../../src/server/sale-paperwork-db";
 import { runDueSchedulingMessages } from "../../../../../src/server/elena-scheduling-db";
 import { authorizeCron } from "../../../../../src/server/cron-secret-db";
@@ -30,7 +31,9 @@ async function handlePost(req: Request) {
   const ownerDigests = await runOwnerDigests(getDb(), now).catch(() => ({ sent: 0 }));
   // Sale paperwork reminders for owners who switched them on: owner and buyer are told only about their own open items. Never fails the run.
   const paperwork = await runDuePaperwork(getDb(), now).catch(() => ({ listings: 0, sent: 0, stopped: 0, done: 0 }));
-  return NextResponse.json({ ...automations, scheduling, elenaJobs, rentals, elenaEnquiries, ownerDigests, paperwork });
+  // Weekly investor update digest for followers of approved projects; a no-op while the investor module is off. Never fails the run.
+  const investorDigests = await runInvestorDigests(getDb(), now).catch(() => ({ sent: 0, skipped: 0 }));
+  return NextResponse.json({ ...automations, scheduling, elenaJobs, rentals, elenaEnquiries, ownerDigests, paperwork, investorDigests });
 }
 
 export const POST = withApi(handlePost);
