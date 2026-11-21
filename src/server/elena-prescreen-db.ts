@@ -139,24 +139,47 @@ export async function prescreenComplaintsPg(db: Queryable, reports: readonly Rep
 
 // ---------- Outcomes ----------
 /**
- * Records what staff did with the latest recommendation Elena showed for this subject, and writes an audit event. Called after the decision
- * itself committed, and never throws: staff decisions must not fail because the accuracy log did. Returns false if logging failed.
+ * Records what staff did with the latest recommendation Elena showed for this subject, and writes an audit event. Pass it to the decision as
+ * its `inside` step so it runs on the decision's own transaction: the decision, this outcome and the audit event commit or roll back together.
+ * It throws on failure on purpose (a failed statement would abort the transaction anyway).
  */
-export async function logOutcomePg(db: Queryable, o: { queue: PrescreenQueue; subjectId: string; staffId: string; staffRole: string; staffAction: StaffAction; viaBulk?: boolean }): Promise<boolean> {
-  try {
-    const rec = (await db.query(
-      "SELECT id, action, confidence, rule FROM elena_staff_recommendation WHERE queue = $1 AND subject_id = $2::uuid ORDER BY created_at DESC, id DESC LIMIT 1", [o.queue, o.subjectId])).rows[0];
-    const ok = rec ? agreed(text(rec["action"]) as PrescreenAction, o.staffAction) : null;
-    await db.query(
-      `INSERT INTO elena_staff_outcome (recommendation_id, queue, subject_id, staff_id, staff_action, agreed, via_bulk) VALUES ($1::uuid, $2, $3::uuid, $4::uuid, $5, $6, $7)`,
-      [rec ? text(rec["id"]) : null, o.queue, o.subjectId, o.staffId, o.staffAction, ok, o.viaBulk === true]);
-    await appendAuditPg(db, {
-      id: randomUUID(), occurredAt: new Date().toISOString(), actorType: "user", actorId: o.staffId, aggregateType: "elena_staff_prescreen", aggregateId: o.subjectId,
-      eventType: ok === false ? "elena_staff_prescreen.override" : "elena_staff_prescreen.outcome", correlationId: randomUUID(),
-      payload: { role: o.staffRole, queue: o.queue, staffAction: o.staffAction, agreed: ok, viaBulk: o.viaBulk === true, ...(rec ? { recommended: text(rec["action"]), confidence: text(rec["confidence"]), rule: text(rec["rule"]) } : {}) }
-    });
-    return true;
-  } catch { return false; }
+export async function logOutcomePg(db: Queryable, o: { queue: PrescreenQueue; subjectId: string; staffId: string; staffRole: string; staffAction: StaffAction; viaBulk?: boolean }): Promise<void> {
+  const rec = (await db.query(
+    "SELECT id, action, confidence, rule FROM elena_staff_recommendation WHERE queue = $1 AND subject_id = $2::uuid ORDER BY created_at DESC, id DESC LIMIT 1", [o.queue, o.subjectId])).rows[0];
+  const ok = rec ? agreed(text(rec["action"]) as PrescreenAction, o.staffAction) : null;
+  await db.query(
+    `INSERT INTO elena_staff_outcome (recommendation_id, queue, subject_id, staff_id, staff_action, agreed, via_bulk) VALUES ($1::uuid, $2, $3::uuid, $4::uuid, $5, $6, $7)`,
+    [rec ? text(rec["id"]) : null, o.queue, o.subjectId, o.staffId, o.staffAction, ok, o.viaBulk === true]);
+  await appendAuditPg(db, {
+    id: randomUUID(), occurredAt: new Date().toISOString(), actorType: "user", actorId: o.staffId, aggregateType: "elena_staff_prescreen", aggregateId: o.subjectId,
+    eventType: ok === false ? "elena_staff_prescreen.override" : "elena_staff_prescreen.outcome", correlationId: randomUUID(),
+    payload: { role: o.staffRole, queue: o.queue, staffAction: o.staffAction, agreed: ok, viaBulk: o.viaBulk === true, ...(rec ? { recommended: text(rec["action"]), confidence: text(rec["confidence"]), rule: text(rec["rule"]) } : {}) }
+  });
+}
+
+/**
+ * Checks Elena's text rules cannot make, run on the server before a bulk verify. Returns a reason per contractor that must be looked at one by one:
+ * a suspended contractor, open complaints against them, no trade profile (so licence needs cannot be judged), or an earlier rejection.
+ */
+export async function bulkVerifyBlockersPg(db: Queryable, userIds: readonly string[]): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  if (userIds.length === 0) return out;
+  const r = await db.query(
+    `SELECT u.id,
+       COALESCE((SELECT s.suspended FROM contractor_standing s WHERE s.user_id = u.id), false) AS suspended,
+       (SELECT count(*) FROM contractor_complaint c JOIN job_assignment a ON a.id = c.assignment_id WHERE a.contractor_user_id = u.id AND c.status = 'open')::int AS open_complaints,
+       (SELECT count(*) FROM contractor_profile p WHERE p.user_id = u.id)::int AS profiles,
+       (SELECT count(*) FROM contractor_verification_event e WHERE e.user_id = u.id AND e.action = 'reject')::int AS rejections
+     FROM app_user u WHERE u.id = ANY($1::uuid[])`, [userIds]);
+  for (const x of r.rows) {
+    const id = text(x["id"]);
+    if (x["suspended"] === true) out.set(id, "This contractor is suspended. Decide it on its own.");
+    else if (num(x["open_complaints"]) > 0) out.set(id, "This contractor has an open complaint. Decide it on its own.");
+    else if (num(x["profiles"]) === 0) out.set(id, "This contractor has no trade profile, so licence needs cannot be checked. Decide it on its own.");
+    else if (num(x["rejections"]) > 0) out.set(id, "This contractor was rejected before. Decide it on its own.");
+  }
+  for (const id of userIds) if (!out.has(id) && !r.rows.some(x => text(x["id"]) === id)) out.set(id, "Account not found.");
+  return out;
 }
 
 /**

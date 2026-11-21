@@ -10,16 +10,16 @@ import { getSigningRepo } from "./signing-db";
  * rather than quietly signed by the weaker method. Documents already out for signature keep the provider they started with.
  */
 export type SigningMode = "builtin" | "docusign";
-export const signingMode = (env: NodeJS.ProcessEnv = process.env): SigningMode => ((env["SIGNING_PROVIDER"] ?? "").trim().toLowerCase() === "docusign" ? "docusign" : "builtin");
+export const signingMode = (env: Record<string, string | undefined> = process.env): SigningMode => ((env["SIGNING_PROVIDER"] ?? "").trim().toLowerCase() === "docusign" ? "docusign" : "builtin");
 
-export const appUrl = (env: NodeJS.ProcessEnv = process.env) => (env["APP_URL"] ?? "").replace(/\/+$/, "");
+export const appUrl = (env: Record<string, string | undefined> = process.env) => (env["APP_URL"] ?? "").replace(/\/+$/, "");
 
 let override: EsignDeps | null | undefined;
 /** Tests inject a fake here; production leaves it undefined. */
 export const setEsignOverride = (d: EsignDeps | null | undefined) => { override = d; };
 
 /** Everything the DocuSign flow needs, or undefined when DocuSign is not configured. */
-export function getEsignDeps(env: NodeJS.ProcessEnv = process.env): EsignDeps | undefined {
+export function getEsignDeps(env: Record<string, string | undefined> = process.env): EsignDeps | undefined {
   if (override !== undefined) return override ?? undefined;
   const cfg = docusignConfigFromEnv(env);
   if (!cfg || !appUrl(env)) return undefined;

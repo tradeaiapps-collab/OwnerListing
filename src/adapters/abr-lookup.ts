@@ -62,7 +62,7 @@ export function parseAbrReply(body: string, requestedAbn: string): AbnRecord | n
 }
 
 /** Builds the lookup from ABN_LOOKUP_GUID. Returns null when unset: callers then record "format valid, not confirmed" (fails closed). */
-export function abrLookupFromEnv(env: NodeJS.ProcessEnv = process.env, fetchFn?: FetchLike): AbnLookupPort | null {
+export function abrLookupFromEnv(env: Record<string, string | undefined> = process.env, fetchFn?: FetchLike): AbnLookupPort | null {
   const guid = (env.ABN_LOOKUP_GUID ?? "").trim();
   return guid === "" ? null : createAbrLookup(guid, fetchFn);
 }

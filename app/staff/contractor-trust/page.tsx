@@ -68,7 +68,7 @@ export default function StaffContractors() {
         <p className="muted">Compare the details below with the contractor&apos;s real licence, insurance certificate and the ABN register. Nothing is checked automatically; only the ABN format was validated. Insurance that has expired removes the badge by itself.</p>
         <label><input type="checkbox" checked={showAll} onChange={e => setShowAll(e.target.checked)} /> Include decided (to find expiring or expired insurance)</label>
         {!showAll && (
-          <ElenaBulkBar queue="verification" items={vs.map(v => ({ id: v.userId, elena: v.elena ?? null }))} filterOn={elenaOnly} setFilterOn={setElenaOnly}
+          <ElenaBulkBar queue="verification" items={vs.map(v => ({ id: v.userId, elena: v.elena ?? null, label: `${v.businessName} (ABN ${v.abn})`, hasLicence: !!v.licenceNumber }))} filterOn={elenaOnly} setFilterOn={setElenaOnly}
             onDone={() => void load()} setMessage={setMessage} />
         )}
         {loaded && shownVs.length === 0 && <p className="empty">{elenaOnly && vs.length > 0 ? "Elena does not recommend verifying anyone here." : showAll ? "No contractor has submitted details." : "Nothing waiting for a check."}</p>}

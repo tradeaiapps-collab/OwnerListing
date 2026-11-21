@@ -128,7 +128,7 @@ export async function getQueueTargetPg(db: Queryable, id: string): Promise<{ id:
  */
 export async function decideQueueItemPg(
   db: Queryable, id: string, staff: { id: string; role: string }, decision: Decision, from: "open" | "escalated", note: string,
-  extra: Record<string, unknown> = {}
+  extra: Record<string, unknown> = {}, inside?: (tx: Queryable) => Promise<void>
 ): Promise<boolean> {
   const to = NEXT_STATUS[decision];
   const final = to === "approved" || to === "rejected";
@@ -148,6 +148,8 @@ export async function decideQueueItemPg(
       payload: { role: staff.role, from, to, subjectType: String(row["subject_type"]), subjectId: String(row["subject_id"]), reason: note, ...extra }
     };
     await appendAuditPg(tx, event);
+    // Runs on the decision's own transaction: if it throws, the decision rolls back with it.
+    if (inside) await inside(tx);
     return true;
   });
 }
@@ -160,12 +162,13 @@ export class SuspensionConflict extends Error {}
  * listing or account is no longer in the state the staff member saw.
  */
 export async function rejectAndSuspendPg(
-  db: Queryable, id: string, staff: { id: string; role: string }, from: "open" | "escalated", note: string, plan: Exclude<SuspensionPlan, { action: "deny" }>
+  db: Queryable, id: string, staff: { id: string; role: string }, from: "open" | "escalated", note: string, plan: Exclude<SuspensionPlan, { action: "deny" }>,
+  inside?: (tx: Queryable) => Promise<void>
 ): Promise<{ decided: boolean; listingsSuspended: number }> {
   return inTx(db, async tx => {
     const extra = plan.kind === "listing" ? { suspended: "listing", listingId: plan.listingId }
       : plan.kind === "account" ? { suspended: "account", userId: plan.userId, listings: plan.withListings ? "suspended" : "kept" } : {};
-    if (!(await decideQueueItemPg(tx, id, staff, "reject", from, note, extra))) return { decided: false, listingsSuspended: 0 };
+    if (!(await decideQueueItemPg(tx, id, staff, "reject", from, note, extra, inside))) return { decided: false, listingsSuspended: 0 };
     if (plan.kind === "listing") {
       const now = new Date().toISOString();
       const ok = await moderateListing(tx, plan.listingId, "published", "suspended", {

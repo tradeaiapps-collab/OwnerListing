@@ -11,14 +11,13 @@ describe.skipIf(!DATABASE_URL)("open inspection scheduling on Postgres", () => {
   afterAll(async () => { await t?.close(); });
 
   const repo = () => createPgOpenInspectionRepo(t.db);
-  // Dates are derived from the real clock so the suite does not age: NOW is the start of today (UTC) and SAT_10 is
+  // Dates are derived from the real clock so the suite does not age: SAT_10 is
   // 10:00 Sydney time on the first Saturday at least two days later (its UTC offset follows daylight saving).
   const sydneyOffsetMs = (at: number) => {
     const p = Object.fromEntries(new Intl.DateTimeFormat("en-US", { timeZone: "Australia/Sydney", hourCycle: "h23", year: "numeric", month: "numeric", day: "numeric", hour: "numeric", minute: "numeric", second: "numeric" }).formatToParts(new Date(at)).map(x => [x.type, Number(x.value)]));
     return Date.UTC(p["year"]!, p["month"]! - 1, p["day"]!, p["hour"], p["minute"], p["second"]) - Math.floor(at / 1000) * 1000;
   };
   const dayStart = Math.floor(Date.now() / 86_400_000) * 86_400_000;
-  const NOW = new Date(dayStart).toISOString();
   const SAT_10_MS = (() => {
     for (let d = 2; d <= 9; d++) {
       const day = new Date(dayStart + d * 86_400_000 + 12 * 3_600_000); // midday UTC falls on the same Sydney date
@@ -29,6 +28,8 @@ describe.skipIf(!DATABASE_URL)("open inspection scheduling on Postgres", () => {
     }
     throw new Error("no Saturday found");
   })();
+  // NOW is two days before that Saturday, so the first free slot from NOW is always SAT_10 (a Saturday that is still "today" in Sydney would otherwise offer earlier slots).
+  const NOW = new Date(SAT_10_MS - 2 * 86_400_000).toISOString();
   const sat = (hours: number) => new Date(SAT_10_MS + hours * 3_600_000).toISOString(); // an instant relative to Saturday 10:00 Sydney
   const SAT_10 = sat(0), SAT_1030 = sat(0.5);
   const rule = { type: "rule", recurrence: "weekly", dayOfWeek: 6, start: "10:00", end: "14:00", slotMinutes: 30 };
