@@ -12,3 +12,5 @@
 @media (min-width: 560px) { .lr-row { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); } .lr-row legend { grid-column: 1 / -1; } }
 .lr-check { display: flex; gap: var(--space-2); align-items: flex-start; }
 .lr-check input { margin-top: 0.25rem; flex: none; }
+.lr-suggest { display: grid; gap: var(--space-2); border: 1px solid var(--border); border-radius: var(--radius); padding: var(--space-3); margin-bottom: var(--space-4); background: var(--surface); }
+.lr-suggest p { margin: 0; overflow-wrap: anywhere; }

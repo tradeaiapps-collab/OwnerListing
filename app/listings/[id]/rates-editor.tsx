@@ -34,6 +34,7 @@ export function RatesEditor({ listingId }: { listingId: string }) {
   const [asAt, setAsAt] = useState("");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
+  const [suggest, setSuggest] = useState<{ rates: ListingRates; source: string; asAt: string; view: { lines: { label: string; amount: string }[] } | null } | null>(null);
 
   const apply = useCallback((r: ListingRates) => {
     setCouncil(toRow(r.council)); setWater(toRow(r.water));
@@ -45,6 +46,10 @@ export function RatesEditor({ listingId }: { listingId: string }) {
       if (!r.ok) return;
       const d = await r.json();
       if (d.editable) { apply(d.rates ?? {}); setShown(true); }
+      if (d.editable && !d.rates?.council && !d.rates?.water) {
+        const s = await fetch(`/api/listings/${listingId}/rates/suggest`).then(x => (x.ok ? x.json() : null)).catch(() => null);
+        if (s?.suggestion) setSuggest(s.suggestion);
+      }
     }).catch(() => undefined);
   }, [listingId, apply]);
   if (!shown) return null;
@@ -79,6 +84,12 @@ export function RatesEditor({ listingId }: { listingId: string }) {
     <section className="panel" aria-label="Council and water rates">
       <h2>Council and water rates</h2>
       <p className="muted">Optional. Buyers see these on your listing as figures you stated. Copy them from your latest rates notices.{council.amount && dollarsToCents(council.amount) ? ` Council: about ${formatAud((dollarsToCents(council.amount) ?? 0) * (council.period === "quarter" ? 4 : 1))} a year.` : ""}</p>
+      {suggest && (
+        <div className="lr-suggest" role="region" aria-label="Figures found for this address">
+          <p><strong>We hold figures for this address.</strong> {suggest.view?.lines.map(l => `${l.label}: ${l.amount}`).join("; ")}. Source: {suggest.source}, as at {suggest.asAt}.</p>
+          <div className="actions"><button type="button" className="secondary" disabled={busy} onClick={() => { apply(suggest.rates); setSuggest(null); setMsg("Figures filled in. Check them against your latest notice, then save."); }}>Use these figures</button></div>
+        </div>
+      )}
       <form className="lr-form" onSubmit={save} noValidate>
         <ChargeFields legend="Council rates" row={council} onChange={setCouncil} disabled={busy} />
         <ChargeFields legend="Water rates" row={water} onChange={setWater} disabled={busy} />

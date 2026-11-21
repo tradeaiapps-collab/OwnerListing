@@ -153,6 +153,7 @@ export const KINDS = {
   elena_enquiry: "messages",
   open_inspection_owner_reminder: "appointments",
   owner_digest: "messages",
+  investor_digest: "messages",
   rental_update: "messages",
   rental_urgent: "messages",
   // Required account notices: a licence or insurance certificate is about to expire or has expired.
@@ -261,6 +262,7 @@ export function renderNotification(kind: Kind, p: NotificationParams = {}): Rend
     case "elena_enquiry": return t(clip(p["title"], 80, "Elena update"), clip(p["text"], 400, "Elena has an update on a buyer enquiry."));
     case "open_inspection_owner_reminder": return t("Inspection coming up", `${name} is booked to inspect ${listing} on ${when}.`);
     case "owner_digest": return t(clip(p["title"], 80, "What needs you today"), clip(p["text"], 1500, "Open your dashboard to see what needs you today."), false);
+    case "investor_digest": return t(clip(p["title"], 90, "Your weekly project update"), clip(p["text"], 1500, "Open your investor projects to see what is new."), false);
     case "rental_update": return t(clip(p["title"], 80, "Rental update"), clip(p["text"], 700, "There is an update on your rental."));
     case "rental_urgent": return t(clip(p["title"], 80, "Urgent rental update"), clip(p["text"], 700, "There is an urgent update on your rental."));
     case "cert_expiring": return t(clip(p["title"], 80, "A certificate is expiring"), clip(p["text"], 500, "Upload your renewed certificate and send the new details for verification."), false);

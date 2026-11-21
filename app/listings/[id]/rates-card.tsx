@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import type { RatesView } from "../../../src/domain/listing-rates";
 import "../../styles/listing-rates.css";
 
-/** Buyer-facing council and water rates for a sale listing, as the seller stated them. Renders nothing when none were stated. */
+/** Buyer-facing council and water rates for a sale listing, with where each figure came from. Renders nothing when none were stated. */
 export function RatesCard({ listingId }: { listingId: string }) {
   const [view, setView] = useState<RatesView | null>(null);
   useEffect(() => {
@@ -18,7 +18,7 @@ export function RatesCard({ listingId }: { listingId: string }) {
         {view.totalYearly && <><dt>Combined</dt><dd className="lr-total">{view.totalYearly}</dd></>}
       </dl>
       {view.waterUsageNote && <p>{view.waterUsageNote}</p>}
-      <p className="muted"><small>Stated by the seller{view.asAt ? ` from the notice dated ${view.asAt}` : ""}. Check the current notices before you buy.</small></p>
+      <p className="muted"><small>{view.sourceLabel}{view.sourceName ? ` (${view.sourceName})` : ""}{view.asAt ? `, as at ${view.asAt}` : ""}. Check the current notices before you buy.</small></p>
     </section>
   );
 }
