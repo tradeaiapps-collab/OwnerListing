@@ -174,6 +174,7 @@ function Prefs({ onMessage }: { onMessage: (m: string) => void }) {
       {!phone ? <p className="nt-sms-note">To get text messages, <a href="/buyer/verification">verify your phone number</a> first.</p> : null}
       <div><button type="submit" disabled={busy}>{busy ? "Saving…" : "Save settings"}</button></div>
       <Digest onMessage={onMessage} />
+      <InvestorDigest onMessage={onMessage} />
     </form>
   );
 }
@@ -215,6 +216,39 @@ function Digest({ onMessage }: { onMessage: (m: string) => void }) {
         <label>Time zone<select value={d.timezone} disabled={!d.enabled} onChange={e => setD({ ...d, timezone: e.target.value })}>{zones.map(z => <option key={z} value={z}>{z.replace("_", " ")}</option>)}</select></label>
       </div>
       <div><button type="button" onClick={save} disabled={busy}>{busy ? "Saving…" : "Save digest"}</button></div>
+    </fieldset>
+  );
+}
+
+function InvestorDigest({ onMessage }: { onMessage: (m: string) => void }) {
+  const [on, setOn] = useState<boolean | null>(null);
+  const [lastSent, setLastSent] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState(false);
+  useEffect(() => {
+    fetch("/api/investments/investor/digest").then(async r => {
+      if (!r.ok) return setErr(true);
+      const j = (await r.json()) as { digest: { enabled: boolean; lastSentAt: string | null } };
+      setOn(j.digest.enabled); setLastSent(j.digest.lastSentAt);
+    }).catch(() => setErr(true));
+  }, []);
+  if (err) return <p role="alert">Could not load your project update settings.</p>;
+  if (on === null) return <p className="muted" role="status">Loading…</p>;
+  const save = async () => {
+    setBusy(true); onMessage("");
+    const r = await api("/api/investments/investor/digest", "PUT", { enabled: on });
+    setBusy(false);
+    if (!r) return onMessage("Could not save. Check your connection and try again.");
+    const j = (await r.json().catch(() => ({}))) as { error?: string };
+    onMessage(r.ok ? "Project update email saved." : j.error ?? "Could not save.");
+  };
+  return (
+    <fieldset className="nt-digest">
+      <legend>Weekly project updates</legend>
+      <p className="muted">If you follow investor projects, we email you once a week with new owner-approved updates and answers to your questions. Nothing is sent in a week with nothing new. It follows your Messages email choice above.</p>
+      <label className="nt-digest-row"><input type="checkbox" checked={on} onChange={e => setOn(e.target.checked)} /> Email me a weekly project update</label>
+      {lastSent ? <p className="muted">Last sent {when(lastSent)}.</p> : null}
+      <div><button type="button" onClick={save} disabled={busy}>{busy ? "Saving…" : "Save project updates"}</button></div>
     </fieldset>
   );
 }
