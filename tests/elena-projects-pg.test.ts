@@ -38,4 +38,20 @@ describe.skipIf(!DATABASE_URL)("Elena investor project tables on Postgres", () =
     expect(c).toMatch(/approved_by IS NOT NULL/);
     expect(typeof createPgElenaProjectStore(db).followers).toBe("function");
   });
+  it("lists the projects an investor follows, newest follow first, only theirs", async () => {
+    const store = createPgElenaProjectStore(db);
+    const investor = await addUser(db, "buyer"), other = await addUser(db, "buyer");
+    const mk = async (title: string) => String((await db.query(
+      `INSERT INTO investment_project (owner_user_id, title, location, jurisdiction, project_type, summary, stage, funding_target_cents, minimum_ticket_cents, timeline, risks, structure_description,
+         visible_to, issuer_name, issuer_licence_basis, issuer_statement, issuer_authorised_confirmed, status, posting_model, commission_type, commission_bps, commission_fixed_cents, upfront_fee_cents, upfront_fee_status, model2_disclosure)
+       VALUES ($1,$2,'Bulimba QLD','QLD','residential_development','Twelve townhouses on a riverside site.','approved',240000000,5000000,'14 months','Cost and sales risk.','Unit trust.','all_verified','Riverside Pty Ltd','s708','',true,'approved','commission_on_contract','percent',400,0,0,'not_required','off') RETURNING id`, [owner, title])).rows[0]!["id"]);
+    const a = await mk("First"), b = await mk("Second"), c = await mk("Third");
+    await store.setFollow(a, investor, true, "2026-11-01T00:00:00Z");
+    await store.setFollow(b, investor, true, "2026-11-02T00:00:00Z");
+    await store.setFollow(c, other, true, "2026-11-03T00:00:00Z");
+    expect(await store.followedBy(investor, 10)).toEqual([b, a]);
+    expect(await store.followedBy(investor, 1)).toEqual([b]);
+    await store.setFollow(b, investor, false, "2026-11-04T00:00:00Z");
+    expect(await store.followedBy(investor, 10)).toEqual([a]);
+  });
 });
