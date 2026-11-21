@@ -262,3 +262,9 @@ body.doc-viewer-open { overflow: hidden; }
 .elena-edit input, .elena-edit textarea { font: inherit; width: 100%; box-sizing: border-box; padding: var(--space-2) var(--space-3); min-height: 44px; }
 .elena-edit textarea { min-height: 180px; }
 @media (max-width: 479px) { .elena-actions > * { flex: 1 1 100%; } .elena-form .elena-row > button { width: 100%; } }
+
+/* Elena due-diligence summary. Tokens only. */
+.dd-report { display: grid; gap: var(--space-3); min-width: 0; }
+.dd-report h3 { margin: var(--space-3) 0 0; font-size: 1rem; }
+.dd-outdated { border-color: var(--warn); }
+.elena-list > li.elena-flag { border-left-width: 4px; }
