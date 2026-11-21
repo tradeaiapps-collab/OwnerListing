@@ -5,6 +5,7 @@ import { AMENITY_LABELS, formatPrice, isAmenity } from "../../../src/domain/list
 import { actionHref } from "../../../src/domain/listing-actions";
 import { ListingGallery } from "../gallery";
 import MortgageCalc from "../../mortgage-calc";
+import ReturnsCalc from "../../returns-calc";
 import { monthlyEstimate } from "../../../src/domain/mortgage";
 import { VideoTour } from "../video-tour";
 import { LocationMap } from "../location-map";
@@ -386,6 +387,14 @@ export default function ListingDetail() {
           {tx === "sale" && listing.priceCents !== undefined && (
             <section className="pd-section" id="pd-mortgage" aria-label="Mortgage calculator">
               <MortgageCalc price={listing.priceCents / 100} heading="Estimate your repayments for this home" />
+            </section>
+          )}
+
+          {listing.priceCents !== undefined && (
+            <section className="pd-section" id="pd-returns" aria-label="Returns and yield calculator">
+              {tx === "sale"
+                ? <ReturnsCalc kind="property" price={listing.priceCents / 100} heading="Returns and yield if you rent this home out" />
+                : <ReturnsCalc kind="property" weeklyRent={listing.priceCents / 100} heading="Yield for an investor buying a similar rental" />}
             </section>
           )}
 
