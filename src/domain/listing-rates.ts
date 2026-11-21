@@ -22,7 +22,14 @@ export interface ListingRates {
   waterUsageBilledSeparately?: boolean;
   /** Date of the notice the figures come from, YYYY-MM-DD. Required when a charge is given. */
   asAt?: string;
+  /** Where the figures came from. Absent = typed by the seller. Set by the server, never by the owner form. */
+  source?: { kind: RateSourceKind; name?: string };
 }
+export const RATE_SOURCE_KINDS = ["owner", "staff", "import", "provider"] as const;
+export type RateSourceKind = (typeof RATE_SOURCE_KINDS)[number];
+const SOURCE_LABEL: Record<RateSourceKind, string> = {
+  owner: "Stated by the seller", staff: "Entered by our staff", import: "From imported council and water data", provider: "From a rates data provider"
+};
 
 export const annualCents = (c: Charge): number => c.cents * PERIODS_PER_YEAR[c.period];
 
@@ -73,7 +80,7 @@ export function parseRates(body: unknown, today: string): { ok: true; value: Lis
 }
 
 export interface RatesLine { label: string; amount: string; yearly: string }
-export interface RatesView { lines: RatesLine[]; totalYearly: string | null; waterUsageNote: string | null; asAt: string | null }
+export interface RatesView { lines: RatesLine[]; totalYearly: string | null; waterUsageNote: string | null; asAt: string | null; sourceKind: RateSourceKind; sourceLabel: string; sourceName: string | null }
 
 const PERIOD_WORD: Record<RatePeriod, string> = { quarter: "per quarter", year: "per year" };
 
@@ -91,6 +98,7 @@ export function toRatesView(r: ListingRates): RatesView | null {
     lines,
     totalYearly: both ? `${formatAud(annualCents(r.council!) + annualCents(r.water!))} per year` : null,
     waterUsageNote: r.waterUsageBilledSeparately === undefined ? null : r.waterUsageBilledSeparately ? "Water use is billed separately on top of the water rate." : "Water use is included or does not apply.",
-    asAt: r.asAt ?? null
+    asAt: r.asAt ?? null,
+    sourceKind: r.source?.kind ?? "owner", sourceLabel: SOURCE_LABEL[r.source?.kind ?? "owner"], sourceName: r.source?.name ?? null
   };
 }
