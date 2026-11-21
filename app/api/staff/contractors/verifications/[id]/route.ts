@@ -17,8 +17,9 @@ async function handlePost(req: Request, { params }: Ctx) {
   const d = parseVerificationDecision(await readJsonObject(req));
   if (!d.ok) return fail(400, d.message);
   const db = getDb();
-  if (!(await decideVerificationPg(db, id, staff.id, d.value.action, d.value.note))) return fail(409, "Already decided, not found, or this is your own account.");
-  await logOutcomePg(db, { queue: "verification", subjectId: id, staffId: staff.id, staffRole: staff.role, staffAction: d.value.action === "verify" ? "verify" : "needs_info" });
+  // The outcome log runs inside the decision's transaction: both commit, or neither.
+  if (!(await decideVerificationPg(db, id, staff.id, d.value.action, d.value.note, undefined,
+    tx => logOutcomePg(tx, { queue: "verification", subjectId: id, staffId: staff.id, staffRole: staff.role, staffAction: d.value.action === "verify" ? "verify" : "needs_info" })))) return fail(409, "Already decided, not found, or this is your own account.");
   return NextResponse.json({ ok: true });
 }
 

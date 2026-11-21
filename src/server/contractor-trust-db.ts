@@ -61,7 +61,7 @@ export async function listVerificationsPg(db: Queryable, view: "pending" | "all"
 }
 
 /** Staff decision on pending details only; staff cannot decide on themselves. */
-export async function decideVerificationPg(db: Queryable, userId: string, staffId: string, action: "verify" | "reject", note: string | null, expectedSubmittedAt?: string): Promise<boolean> {
+export async function decideVerificationPg(db: Queryable, userId: string, staffId: string, action: "verify" | "reject", note: string | null, expectedSubmittedAt?: string, inside?: (tx: Queryable) => Promise<void>): Promise<boolean> {
   return inTx(db, async tx => {
     // expectedSubmittedAt: the submission the decision was made on. If the contractor re-submitted since, nothing is decided (millisecond match, as JS dates hold).
     const r = await tx.query(
@@ -72,6 +72,7 @@ export async function decideVerificationPg(db: Queryable, userId: string, staffI
     if (r.rows.length !== 1) return false;
     await tx.query("INSERT INTO contractor_verification_event (user_id, actor_id, action, note) VALUES ($1::uuid, $2::uuid, $3, $4)", [userId, staffId, action, note]);
     await audit(tx, staffId, "contractor_verification", userId, `contractor_verification.${action}`);
+    if (inside) await inside(tx);
     return true;
   });
 }
@@ -129,7 +130,7 @@ export async function listReportsPg(db: Queryable, view: "open" | "decided"): Pr
 
 export type DecideReportResult = "ok" | "conflict";
 /** Decides an open complaint once. "uphold_and_suspend" also suspends the contractor in the same transaction. Staff on either side of the job cannot decide it. */
-export async function decideReportPg(db: Queryable, reportId: string, staffId: string, action: "dismiss" | "uphold" | "uphold_and_suspend", note: string): Promise<DecideReportResult> {
+export async function decideReportPg(db: Queryable, reportId: string, staffId: string, action: "dismiss" | "uphold" | "uphold_and_suspend", note: string, inside?: (tx: Queryable) => Promise<void>): Promise<DecideReportResult> {
   return inTx(db, async tx => {
     const r = await tx.query(
       `UPDATE contractor_complaint c SET status = $3, decided_by = $2::uuid, decided_at = now(), decision_note = $4 FROM job_assignment a
@@ -142,6 +143,7 @@ export async function decideReportPg(db: Queryable, reportId: string, staffId: s
       [contractorId, reportId, staffId, action === "dismiss" ? "dismiss" : "uphold", note]);
     await audit(tx, staffId, "contractor_complaint", reportId, `contractor_complaint.${action}`);
     if (action === "uphold_and_suspend") await setSuspension(tx, staffId, contractorId, true, note, reportId);
+    if (inside) await inside(tx);
     return "ok";
   });
 }

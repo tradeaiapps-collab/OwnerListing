@@ -1,24 +1,27 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const S = vi.hoisted(() => ({
-  staff: null as { id: string; role: string } | null, used: 0, logOk: true, outcomes: [] as unknown[], decided: [] as unknown[][], verified: [] as unknown[][],
+  staff: null as { id: string; role: string } | null, used: 0, logOk: true, blocked: "" as string, licence: "" as string, outcomes: [] as unknown[], decided: [] as unknown[][], verified: [] as unknown[][],
   target: { id: "", status: "open", subjectOwnerId: null as string | null, subjectType: "message", subjectId: "" },
   rec: { action: "approve", confidence: "high" as string, rule: "mod.no_match", reason: "no match" }
 }));
+// The real decision functions run the `inside` step on their own transaction and roll back when it throws; the doubles mimic that order.
+const runInside = async (a: unknown[]) => { const f = a.find(x => typeof x === "function") as ((tx: unknown) => Promise<void>) | undefined; if (f) await f({}); };
 const A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", ME = "a1111111-1111-4111-8111-111111111111";
 vi.mock("../src/server/context", () => ({ getStaff: async () => S.staff, getDb: () => ({}) }));
 vi.mock("../src/server/moderation-queue-db", () => ({
   listQueuePg: async () => [{ id: A, status: "open", createdAt: "2026-01-01", subjectOwnerId: null }, { id: B, status: "open", createdAt: "2026-01-02", subjectOwnerId: ME }],
   getQueueTargetPg: async (_d: unknown, id: string) => ({ ...S.target, id, subjectOwnerId: id === B ? ME : null }),
-  decideQueueItemPg: async (...a: unknown[]) => { S.decided.push(a); return true; }
+  decideQueueItemPg: async (...a: unknown[]) => { await runInside(a); S.decided.push(a); return true; }
 }));
 vi.mock("../src/server/contractor-trust-db", () => ({
-  listVerificationsPg: async () => [{ userId: A, status: "pending", submittedAt: "2026-11-20T01:02:03.456Z" }],
-  decideVerificationPg: async (...a: unknown[]) => { S.verified.push(a); return true; }
+  listVerificationsPg: async () => [{ userId: A, status: "pending", submittedAt: "2026-11-20T01:02:03.456Z", licenceNumber: S.licence || null }],
+  decideVerificationPg: async (...a: unknown[]) => { await runInside(a); S.verified.push(a); return true; }
 }));
 vi.mock("../src/server/elena-prescreen-db", () => ({
   bulkCountLastHourPg: async () => S.used,
-  logOutcomePg: async (_d: unknown, o: unknown) => { S.outcomes.push(o); return S.logOk; },
+  logOutcomePg: async (_d: unknown, o: unknown) => { if (!S.logOk) throw new Error("log failed"); S.outcomes.push(o); },
+  bulkVerifyBlockersPg: async () => new Map(S.blocked ? [[A, S.blocked]] : []),
   withBulkLockPg: async (_d: unknown, _id: string, fn: () => Promise<unknown>) => fn(),
   prescreenModerationPg: async (_d: unknown, items: { id: string }[]) => new Map(items.map(i => [i.id, { ...S.rec, recommendationId: "r" }])),
   prescreenVerificationsPg: async () => new Map([[A, { ...S.rec, rule: "ver.complete", recommendationId: "r" }]]),
@@ -34,7 +37,7 @@ const OK = { queue: "moderation", ids: [A], confirm: true };
 
 beforeEach(() => {
   process.env["APP_URL"] = "http://test";
-  S.staff = { id: ME, role: "support" }; S.used = 0; S.logOk = true; S.outcomes = []; S.decided = []; S.verified = [];
+  S.staff = { id: ME, role: "support" }; S.used = 0; S.logOk = true; S.blocked = ""; S.licence = ""; S.outcomes = []; S.decided = []; S.verified = [];
   S.rec = { action: "approve", confidence: "high", rule: "mod.no_match", reason: "no match" };
 });
 
@@ -82,20 +85,55 @@ describe("Elena bulk confirm", () => {
     expect(body.results[0]).toMatchObject({ ok: false, message: "You cannot review your own content." });
     expect(S.decided).toHaveLength(0);
   });
-  it("verifies through the same decision, as a compliance role", async () => {
+  const EVID = { [A]: { abnRegister: true, insuranceCertificate: true } };
+  const VER = { queue: "verification", ids: [A], confirm: true, evidence: EVID };
+  it("verifies through the same decision, as a compliance role, once the evidence is confirmed", async () => {
     S.staff = { id: ME, role: "compliance" };
-    const body = await (await bulk.POST(post({ queue: "verification", ids: [A], confirm: true }))).json();
+    const body = await (await bulk.POST(post(VER))).json();
     expect(body.applied).toBe(1);
     expect(S.verified[0]!.slice(1, 4)).toEqual([A, ME, "verify"]);
     // The decision is bound to the submission that was screened, so a re-submission in between cannot be approved unseen.
     expect(S.verified[0]![5]).toBe("2026-11-20T01:02:03.456Z");
+    // The note records what the person attested.
+    expect(String(S.verified[0]![4])).toContain("Staff confirmed: ABN register, insurance certificate.");
     expect(S.outcomes[0]).toMatchObject({ queue: "verification", staffAction: "verify", viaBulk: true });
   });
-  it("stops, and says so, when an outcome cannot be logged", async () => {
+  it("does not bulk-verify without per-contractor evidence", async () => {
+    S.staff = { id: ME, role: "compliance" };
+    for (const evidence of [undefined, {}, { [A]: { abnRegister: true } }, { [A]: { abnRegister: true, insuranceCertificate: "yes" } }, [EVID]]) {
+      const body = await (await bulk.POST(post({ ...VER, evidence }))).json();
+      expect(body.applied).toBe(0);
+      expect(body.results[0].ok).toBe(false);
+    }
+    expect(S.verified).toHaveLength(0);
+    expect(S.outcomes).toHaveLength(0);
+  });
+  it("needs the licence confirmation when the contractor gave a licence", async () => {
+    S.staff = { id: ME, role: "compliance" };
+    S.licence = "L123";
+    let body = await (await bulk.POST(post(VER))).json();
+    expect(body.applied).toBe(0);
+    expect(body.results[0].message).toMatch(/licence/i);
+    body = await (await bulk.POST(post({ ...VER, evidence: { [A]: { abnRegister: true, insuranceCertificate: true, licenceRegister: true } } }))).json();
+    expect(body.applied).toBe(1);
+    expect(String(S.verified[0]![4])).toContain("licence with the issuing authority");
+  });
+  it("refuses a bulk verify the server's own checks block, even with evidence ticked", async () => {
+    S.staff = { id: ME, role: "compliance" };
+    S.blocked = "This contractor is suspended. Decide it on its own.";
+    const body = await (await bulk.POST(post(VER))).json();
+    expect(body.applied).toBe(0);
+    expect(body.results[0].message).toBe(S.blocked);
+    expect(S.verified).toHaveLength(0);
+  });
+  it("stops, and says so, when an outcome cannot be logged: the decision does not apply", async () => {
     S.logOk = false;
     const body = await (await bulk.POST(post({ ...OK, ids: [A, "cccccccc-cccc-4ccc-8ccc-cccccccccccc"] }))).json();
-    expect(S.decided).toHaveLength(1);
+    expect(S.decided).toHaveLength(0);
+    expect(S.outcomes).toHaveLength(0);
+    expect(body.applied).toBe(0);
     expect(body.results.at(-1)).toMatchObject({ ok: false });
+    expect(body.results).toHaveLength(1);
   });
   it("reports ids that are not open", async () => {
     const body = await (await bulk.POST(post({ ...OK, ids: ["cccccccc-cccc-4ccc-8ccc-cccccccccccc"] }))).json();

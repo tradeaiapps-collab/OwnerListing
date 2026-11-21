@@ -17,8 +17,9 @@ async function handlePost(req: Request, { params }: Ctx) {
   const d = parseReportDecision(await readJsonObject(req));
   if (!d.ok) return fail(400, d.message);
   const db = getDb();
-  if ((await decideReportPg(db, id, staff.id, d.value.action, d.value.note)) !== "ok") return fail(409, "Already decided, not found, or you are a party to it.");
-  await logOutcomePg(db, { queue: "complaint", subjectId: id, staffId: staff.id, staffRole: staff.role, staffAction: d.value.action });
+  // The outcome log runs inside the decision's transaction (suspension included): all commit, or none.
+  if ((await decideReportPg(db, id, staff.id, d.value.action, d.value.note,
+    tx => logOutcomePg(tx, { queue: "complaint", subjectId: id, staffId: staff.id, staffRole: staff.role, staffAction: d.value.action }))) !== "ok") return fail(409, "Already decided, not found, or you are a party to it.");
   return NextResponse.json({ ok: true });
 }
 

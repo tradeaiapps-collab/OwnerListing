@@ -113,7 +113,7 @@ describe("staff routes", () => {
     S.staff = { id: "a1111111-1111-4111-8111-111111111111", role: "support" };
     expect((await sReport.POST(post({ action: "uphold_and_suspend" }), ctx())).status).toBe(400);
     expect((await sReport.POST(post({ action: "uphold_and_suspend", note: "Confirmed no-show.", staffId: OTHER }), ctx())).status).toBe(200);
-    expect(called("decideReport")[0]!.args.slice(1)).toEqual([ID, S.staff.id, "uphold_and_suspend", "Confirmed no-show."]);
+    expect(called("decideReport")[0]!.args.slice(1, 5)).toEqual([ID, S.staff.id, "uphold_and_suspend", "Confirmed no-show."]);
     expect((await sStanding.POST(post({ action: "reinstate", note: "Cleared." }), ctx())).status).toBe(200);
     expect(called("suspend")[0]!.args.slice(1)).toEqual([S.staff.id, ID, false, "Cleared."]);
     S.staff = { id: "a1111111-1111-4111-8111-111111111111", role: "compliance" };
