@@ -62,6 +62,7 @@ export const STAFF_SECTIONS: readonly StaffSection[] = [
   { href: "/staff/valuation-settings", label: "Property valuations", permissions: ["valuation.manage"] },
   { href: "/staff/listing-optimization-settings", label: "Listing optimization", permissions: ["listing_optimization.manage"] },
   { href: "/staff/cron-secrets", label: "Scheduler secrets", permissions: ["config.edit"] },
+  { href: "/staff/applicant-retention", label: "Applicant data retention", permissions: ["config.edit"] },
   { href: "/staff/campaigns", label: "Campaigns", permissions: ["campaign.manage"] },
   { href: "/staff/feeds", label: "Property data feeds", permissions: ["feeds.manage"] },
   { href: "/staff/suburb-data", label: "Suburb data", permissions: ["feeds.manage"] },
