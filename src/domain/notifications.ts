@@ -154,7 +154,10 @@ export const KINDS = {
   open_inspection_owner_reminder: "appointments",
   owner_digest: "messages",
   rental_update: "messages",
-  rental_urgent: "messages"
+  rental_urgent: "messages",
+  // Required account notices: a licence or insurance certificate is about to expire or has expired.
+  cert_expiring: "account",
+  cert_expired: "account"
 } as const satisfies Record<string, Category>;
 export type Kind = keyof typeof KINDS;
 export const isKind = (v: unknown): v is Kind => typeof v === "string" && Object.prototype.hasOwnProperty.call(KINDS, v);
@@ -260,6 +263,8 @@ export function renderNotification(kind: Kind, p: NotificationParams = {}): Rend
     case "owner_digest": return t(clip(p["title"], 80, "What needs you today"), clip(p["text"], 1500, "Open your dashboard to see what needs you today."), false);
     case "rental_update": return t(clip(p["title"], 80, "Rental update"), clip(p["text"], 700, "There is an update on your rental."));
     case "rental_urgent": return t(clip(p["title"], 80, "Urgent rental update"), clip(p["text"], 700, "There is an urgent update on your rental."));
+    case "cert_expiring": return t(clip(p["title"], 80, "A certificate is expiring"), clip(p["text"], 500, "Upload your renewed certificate and send the new details for verification."), false);
+    case "cert_expired": return t(clip(p["title"], 80, "A certificate has expired"), clip(p["text"], 500, "Upload your renewed certificate and send the new details for verification."), false);
     case "automation_alert": return t(clip(p["title"], 80, "Automation update"), clip(p["text"], 400, "One of your automations ran."));
   }
 }

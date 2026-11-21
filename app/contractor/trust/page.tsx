@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { JSON_HEADERS } from "../../listings/ui";
 
 interface Verification { businessName: string; abn: string; licenceNumber: string | null; licenceAuthority: string | null; licenceExpiry: string | null; insurer: string; policyNumber: string; insuranceExpiry: string; status: string; reviewNote: string | null }
+interface Cert { id: string; kind: "insurance" | "licence"; expiry: string; mime: string; uploadedAt: string }
 interface State { status: string; badge: boolean; warnings: string[] }
 interface Review { id: string; rating: number; comment: string | null; createdAt: string; reply: string | null; reviewerFirstName: string }
 const EMPTY = { businessName: "", abn: "", licenceNumber: "", licenceAuthority: "", licenceExpiry: "", insurer: "", policyNumber: "", insuranceExpiry: "" };
@@ -19,6 +20,8 @@ export default function ContractorTrust() {
   const [error, setError] = useState("");
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
+  const [certs, setCerts] = useState<Cert[]>([]);
+  const [certMsg, setCertMsg] = useState("");
 
   const load = useCallback(async () => {
     try {
@@ -28,7 +31,7 @@ export default function ContractorTrust() {
       const d = await r.json();
       const v: Verification | null = d.verification;
       if (v) setForm({ businessName: v.businessName, abn: v.abn, licenceNumber: v.licenceNumber ?? "", licenceAuthority: v.licenceAuthority ?? "", licenceExpiry: v.licenceExpiry ?? "", insurer: v.insurer, policyNumber: v.policyNumber, insuranceExpiry: v.insuranceExpiry });
-      setState(d.state); setNote(v?.reviewNote ?? null); setReviews(d.reviews); setSuspended(d.standing.suspended ? d.standing.reason ?? "Suspended." : null);
+      setState(d.state); setNote(v?.reviewNote ?? null); setReviews(d.reviews); setCerts(d.certificates ?? []); setSuspended(d.standing.suspended ? d.standing.reason ?? "Suspended." : null);
     } catch { setError("Could not load your verification."); }
   }, []);
   useEffect(() => { void load(); }, [load]);
@@ -39,6 +42,14 @@ export default function ContractorTrust() {
     const r = await fetch("/api/contractor/trust", { method: "PUT", headers: JSON_HEADERS, body: JSON.stringify(form) }).catch(() => null);
     const d = r ? await r.json().catch(() => ({})) : {};
     if (r?.ok) { setMsg("Sent. Staff will check your details. Your badge shows once they verify them."); await load(); } else setError(d.error ?? "Could not send your details.");
+    setBusy(false);
+  }
+  async function uploadCert(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault(); setBusy(true); setError(""); setCertMsg("");
+    const form = e.currentTarget;
+    const r = await fetch("/api/contractor/certificates", { method: "POST", body: new FormData(form) }).catch(() => null);
+    const d = r ? await r.json().catch(() => ({})) : {};
+    if (r?.ok) { setCertMsg("Uploaded. Staff compare it with your details. If the date changed, also send your new details above."); form.reset(); await load(); } else setError(d.error ?? "Could not upload the certificate.");
     setBusy(false);
   }
   async function reply(id: string) {
@@ -79,6 +90,27 @@ export default function ContractorTrust() {
         <button type="submit" disabled={busy}>{busy ? "Sending…" : "Send for verification"}</button>
         {msg && <p role="status">{msg}</p>}
       </form>
+
+      <h2>Certificates</h2>
+      <p className="muted">Upload a PDF or a photo of your insurance certificate and your licence. Staff compare them with the details above. We email you 30 days and 7 days before a date, and when it passes; an expired certificate turns your verified badge off and Elena stops inviting you to new jobs.</p>
+      <ul className="card-list">
+        {(["insurance", "licence"] as const).map(k => {
+          const c = certs.find(x => x.kind === k);
+          return (
+            <li key={k} className="card">
+              <h3>{k === "insurance" ? "Insurance certificate" : "Licence"}</h3>
+              {c ? <p>Uploaded {new Date(c.uploadedAt).toLocaleDateString("en-AU")}, expires {c.expiry}. <a href={`/api/contractor/certificates/${c.id}/file`}>Download</a></p> : <p className="muted">Nothing uploaded yet.</p>}
+              <form className="stack" onSubmit={uploadCert}>
+                <input type="hidden" name="kind" value={k} />
+                <label>{c ? "Replace with a newer file" : "File"} (PDF, JPEG, PNG, WebP or HEIC, up to 10 MB)<input type="file" name="file" required accept="application/pdf,image/jpeg,image/png,image/webp,image/heic" /></label>
+                <label>Expiry date on the certificate<input type="date" name="expiry" required /></label>
+                <button type="submit" disabled={busy}>{busy ? "Uploading…" : c ? "Replace" : "Upload"}</button>
+              </form>
+            </li>
+          );
+        })}
+      </ul>
+      {certMsg && <p role="status">{certMsg}</p>}
 
       <h2>Your reviews</h2>
       {reviews.length === 0 && <p className="empty">No reviews yet. Owners can rate you after a job they mark completed.</p>}
