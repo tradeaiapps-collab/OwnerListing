@@ -262,3 +262,28 @@ body.doc-viewer-open { overflow: hidden; }
 .elena-edit input, .elena-edit textarea { font: inherit; width: 100%; box-sizing: border-box; padding: var(--space-2) var(--space-3); min-height: 44px; }
 .elena-edit textarea { min-height: 180px; }
 @media (max-width: 479px) { .elena-actions > * { flex: 1 1 100%; } .elena-form .elena-row > button { width: 100%; } }
+
+/* Elena investor matching: chat turns, answer chips, result cards. Mobile first. */
+.match { display: grid; gap: var(--space-4); }
+.match-chat { display: grid; gap: var(--space-4); min-width: 0; }
+.match-turn { display: grid; gap: var(--space-2); min-width: 0; }
+.match-bubble { margin: 0; padding: var(--space-3); border-radius: var(--radius); max-width: 40rem; overflow-wrap: anywhere; border: 1px solid var(--border); }
+.match-bubble.elena { background: var(--surface); }
+.match-bubble.me { margin-left: auto; display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; justify-content: space-between; border-color: var(--brand); width: min(100%, 28rem); box-sizing: border-box; }
+.match-change { min-height: 44px; }
+.match-hint { margin: 0; max-width: 40rem; }
+.match-form { display: grid; gap: var(--space-2); max-width: 28rem; }
+.match-form fieldset { border: 1px solid var(--border); border-radius: var(--radius); padding: var(--space-3); margin: 0; min-width: 0; }
+.match-form input[type="number"], .match-form input[type="text"] { font: inherit; min-height: 44px; padding: var(--space-2) var(--space-3); width: 100%; box-sizing: border-box; }
+.match-form button, .match-options button { min-height: 44px; }
+.match-chips { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.match-chips button[aria-pressed="true"] { border-color: var(--brand); font-weight: 600; }
+.match-check { display: inline-flex; gap: var(--space-1); align-items: center; min-height: 44px; padding: 0 var(--space-3); border: 1px solid var(--border); border-radius: 999px; }
+.match-options { display: grid; gap: var(--space-2); max-width: 28rem; }
+.match-options button { text-align: left; }
+.match-list { margin: 0; padding: 0; list-style: none; display: grid; gap: var(--space-3); }
+.match-card { padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius); display: grid; gap: var(--space-2); min-width: 0; overflow-wrap: anywhere; }
+.match-card h3 { margin: var(--space-2) 0 0; font-size: 1rem; }
+.match-card ul { margin: 0; padding-left: var(--space-4); display: grid; gap: var(--space-1); }
+.match-cautions { color: var(--warn); }
+@media (min-width: 768px) { .match-list { grid-template-columns: repeat(2, minmax(0, 1fr)); } }

@@ -46,6 +46,7 @@ export default function BrowseProjects() {
           <p className="muted">Property development projects posted by their owners and reviewed by our staff. Interest is non-binding.</p>
         </div>
         <nav className="inv-page-links" aria-label="Investor pages">
+          <a href="/investments/match">Match me with Elena</a>
           <a href="/investments/threads">My conversations</a>
           <a href="/investments/mine">My posted projects</a>
           <a className="button" href="/investments/new">Post a project</a>

@@ -58,7 +58,8 @@ export const INVESTMENT_RATE = {
   newInterest: { windowMs: 24 * 60 * 60 * 1000, perUser: 10 },
   message: { windowMs: 60 * 60 * 1000, perUser: 30 },
   toggle: { windowMs: 60 * 60 * 1000, perUser: 10 },
-  contractUpload: { windowMs: 24 * 60 * 60 * 1000, perUser: 5 }
+  contractUpload: { windowMs: 24 * 60 * 60 * 1000, perUser: 5 },
+  elenaMatch: { windowMs: 60 * 60 * 1000, perUser: 60 }
 } as const;
 
 /** Guide assistant questions (public, signed in or not), per client IP hash. Counted before anything else; fails closed. */
