@@ -248,6 +248,22 @@ export const moderationStaffAction = (decision: "approve" | "reject" | "escalate
 /** Bulk confirm is allowed only for an approve at high confidence. */
 export const bulkEligible = (r: Recommendation): boolean => r.action === "approve" && r.confidence === "high";
 export const BULK_MAX_IDS = 25;
+
+/**
+ * What staff must confirm for EACH contractor before a bulk verify applies. Elena's text checks cannot see the ABN register or the certificates,
+ * so bulk verify needs a per-item attestation that a person looked at them. A licence confirmation is needed only when a licence was given.
+ */
+export interface VerifyEvidence { abnRegister: true; insuranceCertificate: true; licenceRegister?: true }
+export function verifyEvidenceProblem(ev: unknown, hasLicence: boolean): string | null {
+  if (typeof ev !== "object" || ev === null || Array.isArray(ev)) return "Confirm for this contractor that you checked the ABN register, the insurance certificate and the licence.";
+  const e = ev as Record<string, unknown>;
+  if (e["abnRegister"] !== true) return "Confirm you checked this ABN on the ABN register.";
+  if (e["insuranceCertificate"] !== true) return "Confirm you checked the insurance certificate of currency.";
+  if (hasLicence && e["licenceRegister"] !== true) return "Confirm you checked the licence with the issuing authority.";
+  return null;
+}
+/** Plain wording stored in the decision note so the audit trail shows what the person attested. */
+export const evidenceNote = (hasLicence: boolean): string => `Staff confirmed: ABN register, insurance certificate${hasLicence ? ", licence with the issuing authority" : ""}.`;
 export const BULK_MAX_PER_HOUR = 100;
 
 /**

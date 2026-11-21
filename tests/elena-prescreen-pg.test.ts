@@ -1,8 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { insertComplaint } from "../src/server/contractor-ops-db";
 import { decideReportPg, decideVerificationPg, listReportsPg, listVerificationsPg, submitVerificationPg } from "../src/server/contractor-trust-db";
-import { accuracyPg, withBulkLockPg, bulkCountLastHourPg, complaintFactsPg, logOutcomePg, prescreenComplaintsPg, prescreenModerationPg, prescreenVerificationsPg } from "../src/server/elena-prescreen-db";
-import { decideQueueItemPg, enqueueModerationItemPg, listQueuePg } from "../src/server/moderation-queue-db";
+import { accuracyPg, bulkVerifyBlockersPg, withBulkLockPg, bulkCountLastHourPg, complaintFactsPg, logOutcomePg, prescreenComplaintsPg, prescreenModerationPg, prescreenVerificationsPg } from "../src/server/elena-prescreen-db";
+import { decideQueueItemPg, enqueueModerationItemPg, listQueuePg, rejectAndSuspendPg } from "../src/server/moderation-queue-db";
 import { addListing, addUser, createTestDb, DATABASE_URL, type TestDb } from "./helpers/pg-db";
 
 const TODAY = "2026-11-20";
@@ -31,7 +31,7 @@ describe.skipIf(!DATABASE_URL)("Elena staff pre-screening (Postgres)", () => {
     expect(Number((await db.query("SELECT count(*) AS n FROM elena_staff_recommendation WHERE queue = 'moderation'")).rows[0]!["n"])).toBe(2);
 
     await decideQueueItemPg(db, a, { id: staff, role: "admin" }, "approve", "open", "Looks fine to me.");
-    expect(await logOutcomePg(db, { queue: "moderation", subjectId: a, staffId: staff, staffRole: "admin", staffAction: "approve" })).toBe(true);
+    await logOutcomePg(db, { queue: "moderation", subjectId: a, staffId: staff, staffRole: "admin", staffAction: "approve" });
     await decideQueueItemPg(db, b, { id: staff, role: "admin" }, "reject", "open", "Not fine at all, rejecting it.");
     await logOutcomePg(db, { queue: "moderation", subjectId: b, staffId: staff, staffRole: "admin", staffAction: "hide", viaBulk: true });
     const acc = await accuracyPg(db, 30);
@@ -131,5 +131,79 @@ describe.skipIf(!DATABASE_URL)("Elena staff pre-screening (Postgres)", () => {
     await Promise.all([run("a"), run("b")]);
     expect(order[0]!.split(":")[0]).toBe(order[1]!.split(":")[0]);
     expect(order[1]!.endsWith(":end")).toBe(true);
+  });
+
+  describe("outcome log is inside the decision transaction", () => {
+    const boom = async () => { throw new Error("log failed"); };
+    const count = async (sql: string, p: unknown[]) => Number((await db.query(sql, p)).rows[0]!["n"]);
+
+    it("moderation: decision and outcome commit together, and a failed log rolls the decision back", async () => {
+      const owner = await addUser(db, "owner"); const staff = await addUser(db, "admin");
+      const l = await addListing(db, owner, { title: "Tx moderation" });
+      const id = (await enqueueModerationItemPg(db, { subjectType: "listing", subjectId: l, subjectLabel: "x", subjectOwnerId: owner, source: "content_filter", reason: "Flagged: spam", detail: "Nice home", severity: "medium" }))!;
+      const me = { id: staff, role: "admin" };
+      const events = () => count("SELECT count(*) AS n FROM moderation_item_event WHERE item_id = $1::uuid", [id]);
+      const before = await events();
+      await expect(decideQueueItemPg(db, id, me, "approve", "open", "Looks fine to me.", {}, boom)).rejects.toThrow("log failed");
+      expect(String((await db.query("SELECT status FROM moderation_item WHERE id = $1::uuid", [id])).rows[0]!["status"])).toBe("open");
+      expect(await events()).toBe(before);
+      expect(await decideQueueItemPg(db, id, me, "approve", "open", "Looks fine to me.", {}, tx => logOutcomePg(tx, { queue: "moderation", subjectId: id, staffId: staff, staffRole: "admin", staffAction: "approve" }))).toBe(true);
+      expect(await count("SELECT count(*) AS n FROM elena_staff_outcome WHERE subject_id = $1::uuid", [id])).toBe(1);
+      // Someone else deciding first means no decision, so no outcome row either.
+      expect(await decideQueueItemPg(db, id, me, "approve", "open", "Second press.", {}, tx => logOutcomePg(tx, { queue: "moderation", subjectId: id, staffId: staff, staffRole: "admin", staffAction: "approve" }))).toBe(false);
+      expect(await count("SELECT count(*) AS n FROM elena_staff_outcome WHERE subject_id = $1::uuid", [id])).toBe(1);
+    });
+
+    it("moderation reject with suspension: a failed log undoes the rejection and the suspension", async () => {
+      const owner = await addUser(db, "owner"); const staff = await addUser(db, "admin");
+      const l = await addListing(db, owner, { title: "Tx suspend", status: "published" });
+      const id = (await enqueueModerationItemPg(db, { subjectType: "listing", subjectId: l, subjectLabel: "x", subjectOwnerId: owner, source: "content_filter", reason: "Flagged: contact", detail: "call me", severity: "high" }))!;
+      const plan = { kind: "listing" as const, listingId: l, from: "published" as const, reason: "Contact details in the description." };
+      await expect(rejectAndSuspendPg(db, id, { id: staff, role: "admin" }, "open", "Contact details in the description.", plan, boom)).rejects.toThrow("log failed");
+      expect(String((await db.query("SELECT status FROM moderation_item WHERE id = $1::uuid", [id])).rows[0]!["status"])).toBe("open");
+      expect(String((await db.query("SELECT status FROM property_listing WHERE id = $1::uuid", [l])).rows[0]!["status"])).toBe("published");
+    });
+
+    it("verification: a failed log leaves the contractor pending", async () => {
+      const c = await addUser(db, "agent"); const staff = await addUser(db, "admin");
+      await submitVerificationPg(db, c, details);
+      const events = () => count("SELECT count(*) AS n FROM contractor_verification_event WHERE user_id = $1::uuid", [c]);
+      const before = await events();
+      await expect(decideVerificationPg(db, c, staff, "verify", "x", undefined, boom)).rejects.toThrow("log failed");
+      expect(String((await db.query("SELECT status FROM contractor_verification WHERE user_id = $1::uuid", [c])).rows[0]!["status"])).toBe("pending");
+      expect(await events()).toBe(before);
+      expect(await decideVerificationPg(db, c, staff, "verify", "x", undefined, tx => logOutcomePg(tx, { queue: "verification", subjectId: c, staffId: staff, staffRole: "admin", staffAction: "verify" }))).toBe(true);
+      expect(await count("SELECT count(*) AS n FROM elena_staff_outcome WHERE subject_id = $1::uuid", [c])).toBe(1);
+    });
+
+    it("complaint: a failed log undoes the decision and the suspension that went with it", async () => {
+      const owner = await addUser(db, "owner"); const contractor = await addUser(db, "agent"); const staff = await addUser(db, "admin");
+      const listing = await addListing(db, owner, { title: "Tx complaint" });
+      const job = String((await db.query("INSERT INTO job_assignment (listing_id, owner_user_id, contractor_user_id, kind, status) VALUES ($1,$2,$3,'photographer','approved') RETURNING id", [listing, owner, contractor])).rows[0]!["id"]);
+      await insertComplaint(db, job, owner, "no_show", "Never arrived.");
+      const rep = (await listReportsPg(db, "open")).find(r => r.contractorId === contractor)!;
+      await expect(decideReportPg(db, rep.id, staff, "uphold_and_suspend", "Second no-show.", boom)).rejects.toThrow("log failed");
+      expect(String((await db.query("SELECT status FROM contractor_complaint WHERE id = $1::uuid", [rep.id])).rows[0]!["status"])).toBe("open");
+      expect(await count("SELECT count(*) AS n FROM contractor_standing WHERE user_id = $1::uuid AND suspended", [contractor])).toBe(0);
+      expect(await decideReportPg(db, rep.id, staff, "dismiss", "Valid reason.", tx => logOutcomePg(tx, { queue: "complaint", subjectId: rep.id, staffId: staff, staffRole: "admin", staffAction: "dismiss" }))).toBe("ok");
+      expect(await count("SELECT count(*) AS n FROM elena_staff_outcome WHERE subject_id = $1::uuid", [rep.id])).toBe(1);
+    });
+  });
+
+  it("bulk verify blockers: suspended, open complaint, no profile, earlier rejection each need a one-by-one look", async () => {
+    const owner = await addUser(db, "owner"); const staff = await addUser(db, "admin");
+    const mkC = async () => { const c = await addUser(db, "agent"); await db.query("INSERT INTO contractor_profile (user_id, kind) VALUES ($1::uuid, 'photographer') ON CONFLICT DO NOTHING", [c]); return c; };
+    const clean = await mkC(), suspended = await mkC(), complained = await mkC(), rejected = await mkC(), noProfile = await addUser(db, "agent");
+    await db.query("INSERT INTO contractor_standing (user_id, suspended, reason, changed_by) VALUES ($1::uuid, true, 'x', $2::uuid)", [suspended, staff]);
+    const listing = await addListing(db, owner, { title: "Blockers" });
+    const job = String((await db.query("INSERT INTO job_assignment (listing_id, owner_user_id, contractor_user_id, kind, status) VALUES ($1,$2,$3,'photographer','approved') RETURNING id", [listing, owner, complained])).rows[0]!["id"]);
+    await insertComplaint(db, job, owner, "no_show", "Never arrived.");
+    await db.query("INSERT INTO contractor_verification_event (user_id, actor_id, action, note) VALUES ($1::uuid, $2::uuid, 'reject', 'n')", [rejected, staff]);
+    const got = await bulkVerifyBlockersPg(db, [clean, suspended, complained, rejected, noProfile]);
+    expect(got.has(clean)).toBe(false);
+    expect(got.get(suspended)).toMatch(/suspended/);
+    expect(got.get(complained)).toMatch(/open complaint/);
+    expect(got.get(rejected)).toMatch(/rejected before/);
+    expect(got.get(noProfile)).toMatch(/no trade profile/);
   });
 });

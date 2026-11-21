@@ -55,7 +55,7 @@ describe("staff review queue routes", () => {
   });
   it("records a decision once, with the reason", async () => {
     expect((await decide.POST(post(OK), ctx(ID))).status).toBe(200);
-    expect(state.decided[0]!.slice(2)).toEqual([state.staff, "reject", "open", "Breaks the listing rules."]);
+    expect(state.decided[0]!.slice(2, 6)).toEqual([state.staff, "reject", "open", "Breaks the listing rules."]);
     expect((await decide.POST(post(OK), ctx(ID))).status).toBe(409);
   });
   it("rejects bad input, missing items, own content and escalated items for junior reviewers", async () => {
