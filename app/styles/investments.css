@@ -262,3 +262,10 @@ body.doc-viewer-open { overflow: hidden; }
 .elena-edit input, .elena-edit textarea { font: inherit; width: 100%; box-sizing: border-box; padding: var(--space-2) var(--space-3); min-height: 44px; }
 .elena-edit textarea { min-height: 180px; }
 @media (max-width: 479px) { .elena-actions > * { flex: 1 1 100%; } .elena-form .elena-row > button { width: 100%; } }
+.inv-doc-history { flex-basis: 100%; }
+.inv-doc-history summary { cursor: pointer; font-size: 0.9rem; }
+.inv-doc-history ul { margin-top: var(--space-2); }
+.inv-doc-history li { border-style: dashed; }
+.inv-views { margin: 0; padding: 0; list-style: none; display: grid; gap: var(--space-2); }
+.inv-views li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2); padding: var(--space-2) var(--space-3); border: 1px solid var(--border); border-radius: var(--radius); }
+.inv-view-meta { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-3); }

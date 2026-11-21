@@ -2,7 +2,7 @@
 import { useParams } from "next/navigation";
 import { useRef, useState } from "react";
 import { PROJECT_DOC_KIND_LABEL, PROJECT_DOC_KINDS, PROJECT_DOC_MAX_BYTES, PROJECT_DOC_MIMES, type ProjectDocView } from "../../../../src/domain/project-documents";
-import { DocumentList, useProjectDocuments, VISIBILITY_LABEL } from "../../project-documents";
+import { DocumentList, DocumentViewLog, useProjectDocuments, VISIBILITY_LABEL } from "../../project-documents";
 
 /** Owner screen: add project documents (plans, approvals, feasibility studies, contracts, reports), choose who sees each, replace a version. */
 export default function ProjectDocuments() {
@@ -65,6 +65,7 @@ export default function ProjectDocuments() {
         <h2>All documents</h2>
         {!data && !error ? <p className="muted" role="status">Loading…</p> : data && <DocumentList docs={data.documents} showVisibility {...(editable ? { onReplace: setReplacing } : {})} />}
       </section>
+      {data?.canManage !== undefined && <DocumentViewLog projectId={id} />}
     </main>
   );
 }
