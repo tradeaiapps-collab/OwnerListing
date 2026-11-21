@@ -4,7 +4,7 @@ import { useParams } from "next/navigation";
 import { BondPathwayField, ListingFields, type BondState, type FieldStep, type ListingDefaults } from "../../fields";
 import { JSON_HEADERS, listingFormBody } from "../../ui";
 import { PhotoManager } from "../../photo-manager";
-import { PriceGuidanceCard } from "../../price-guidance-card";
+import { ElenaPriceSuggestion } from "../../elena-price-suggestion";
 import { WordingFlagList, type WordingFlagView } from "../../wording-hint";
 import { LocationPicker } from "../../location-picker";
 import { ElenaPublishCheck } from "../../elena-publish-check";
@@ -202,7 +202,7 @@ export default function EditListing() {
                     ))}
                     <ElenaPublishCheck listingId={listing.id} />
                     <ElenaEnquiriesPanel listingId={listing.id} />
-                    <PriceGuidanceCard listingId={listing.id} rent={listing.transactionType === "rent"} />
+                    <ElenaPriceSuggestion listingId={listing.id} rent={listing.transactionType === "rent"} />
                     <SuggestDescription id={id} />
                   </div>
                 )}
