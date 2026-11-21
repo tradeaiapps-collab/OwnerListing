@@ -51,6 +51,8 @@ export interface ElenaProjectStore {
   publish(id: string, approverId: string, at: string): Promise<boolean>;
   setFollow(projectId: string, userId: string, on: boolean, at: string): Promise<void>;
   isFollowing(projectId: string, userId: string): Promise<boolean>;
+  /** Project ids this investor follows, newest follow first. */
+  followedBy(userId: string, limit: number): Promise<string[]>;
   followers(projectId: string, limit: number): Promise<string[]>;
   /** One decision per drafted answer. False when the question was already decided. */
   addReview(r: AnswerReviewRecord): Promise<boolean>;
@@ -379,6 +381,7 @@ export function createInMemoryElenaStore(): ElenaProjectStore & { questions: Que
     async reviewsFor(ids) { return reviews.filter(r => ids.includes(r.questionId)); },
     async answerMode(p) { return modes.get(p) ?? "approve_first"; },
     async setAnswerMode(p, m) { modes.set(p, m); },
+    async followedBy(u, limit) { return [...follows].filter(k => k.endsWith(`|${u}`)).map(k => k.split("|")[0]!).reverse().slice(0, limit); },
     async followers(p) { return [...follows].filter(k => k.startsWith(`${p}|`)).map(k => k.split("|")[1]!); }
   };
 }

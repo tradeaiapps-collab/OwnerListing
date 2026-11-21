@@ -1,9 +1,9 @@
-import type { ListingRates, RatePeriod } from "../domain/listing-rates";
+import type { ListingRates, RatePeriod, RateSourceKind } from "../domain/listing-rates";
 import type { Queryable } from "./db";
 
 export async function getRatesPg(db: Queryable, listingId: string): Promise<ListingRates | null> {
   const { rows } = await db.query(
-    `SELECT council_cents, council_period, water_cents, water_period, water_usage_billed_separately, to_char(as_at, 'YYYY-MM-DD') AS as_at
+    `SELECT council_cents, council_period, water_cents, water_period, water_usage_billed_separately, to_char(as_at, 'YYYY-MM-DD') AS as_at, source_kind, source_name
        FROM listing_rates WHERE listing_id = $1`, [listingId]);
   const r = rows[0];
   if (!r) return null;
@@ -12,6 +12,7 @@ export async function getRatesPg(db: Queryable, listingId: string): Promise<List
   if (r["water_cents"] !== null) out.water = { cents: Number(r["water_cents"]), period: r["water_period"] as RatePeriod };
   if (r["water_usage_billed_separately"] !== null) out.waterUsageBilledSeparately = r["water_usage_billed_separately"] as boolean;
   if (r["as_at"] !== null) out.asAt = r["as_at"] as string;
+  if (r["source_kind"] !== "owner") out.source = { kind: r["source_kind"] as RateSourceKind, ...(r["source_name"] ? { name: r["source_name"] as string } : {}) };
   return out;
 }
 
@@ -22,10 +23,10 @@ export async function saveRatesPg(db: Queryable, listingId: string, rates: Listi
     return;
   }
   await db.query(
-    `INSERT INTO listing_rates (listing_id, council_cents, council_period, water_cents, water_period, water_usage_billed_separately, as_at, updated_by, updated_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+    `INSERT INTO listing_rates (listing_id, council_cents, council_period, water_cents, water_period, water_usage_billed_separately, as_at, updated_by, updated_at, source_kind, source_name)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
      ON CONFLICT (listing_id) DO UPDATE SET council_cents=$2, council_period=$3, water_cents=$4, water_period=$5,
-       water_usage_billed_separately=$6, as_at=$7, updated_by=$8, updated_at=$9`,
+       water_usage_billed_separately=$6, as_at=$7, updated_by=$8, updated_at=$9, source_kind=$10, source_name=$11`,
     [listingId, rates.council?.cents ?? null, rates.council?.period ?? null, rates.water?.cents ?? null, rates.water?.period ?? null,
-     rates.waterUsageBilledSeparately ?? null, rates.asAt ?? null, userId, now]);
+     rates.waterUsageBilledSeparately ?? null, rates.asAt ?? null, userId, now, rates.source?.kind ?? "owner", rates.source?.name ?? null]);
 }

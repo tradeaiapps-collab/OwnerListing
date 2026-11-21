@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import type { ObjectStoragePort } from "../adapters/object-storage";
 import { sniffMime } from "./file-sniff";
 import { viewProject, type InvestmentDeps } from "./investment-service";
-import type { MaskBox } from "./doc-masking";
+import { maskTitle, type MaskBox } from "./doc-masking";
 import { maskContacts } from "./investment-terms";
 import { ownerMayEdit } from "./investor-projects";
 import type { Actor, Failure, Result } from "./listing-service";
@@ -88,8 +88,9 @@ export async function listProjectDocuments(
   const replaced = new Set(all.map(d => d.supersedesId).filter((x): x is string => !!x));
   const visible = all.filter(d => mayViewDoc(viewer, d.visibility) && (viewer === "owner" || !replaced.has(d.id)));
   const withMask = await Promise.all(visible.map(async d => {
-    const masking: MaskingStatus = d.visibility !== "investors" ? "not_needed" : (await store.latestMask(d.id))?.confirmed ? "confirmed" : "pending";
-    return { d, masking };
+    const mask = d.visibility !== "investors" ? undefined : await store.latestMask(d.id);
+    const masking: MaskingStatus = d.visibility !== "investors" ? "not_needed" : mask?.confirmed ? "confirmed" : "pending";
+    return { d: viewer === "investor" ? { ...d, title: maskTitle(d.title, mask?.terms ?? []) } : d, masking };
   }));
   const documents = withMask
     // An investor never sees a document whose address masking has not been confirmed by staff.

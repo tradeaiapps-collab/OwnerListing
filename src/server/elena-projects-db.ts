@@ -82,6 +82,7 @@ export function createPgElenaProjectStore(db: Queryable): ElenaProjectStore {
         "INSERT INTO elena_project_answer_setting (project_id, answer_mode, updated_by, updated_at) VALUES ($1::uuid, $2, $3::uuid, $4::timestamptz) ON CONFLICT (project_id) DO UPDATE SET answer_mode = EXCLUDED.answer_mode, updated_by = EXCLUDED.updated_by, updated_at = EXCLUDED.updated_at",
         [projectId, mode, userId, at]);
     },
+    async followedBy(userId, limit) { return (await db.query("SELECT project_id FROM investment_project_follow WHERE user_id = $1::uuid ORDER BY created_at DESC LIMIT $2::int", [userId, limit])).rows.map(r => String(r["project_id"])); },
     async followers(projectId, limit) { return (await db.query("SELECT user_id FROM investment_project_follow WHERE project_id = $1::uuid ORDER BY created_at LIMIT $2::int", [projectId, limit])).rows.map(r => String(r["user_id"])); }
   };
 }

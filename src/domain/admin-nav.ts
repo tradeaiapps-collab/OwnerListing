@@ -76,10 +76,12 @@ const META: Record<string, { group: string; icon: AdminIcon; blurb: string }> = 
   "/staff/ad-leads": { group: "insights", icon: "team", blurb: "Leads from Facebook, Instagram and Google ads, assignment, cost per lead" },
   "/staff/automation": { group: "settings", icon: "toggle", blurb: "Workflow rules and scheduled tasks" },
   "/staff/cron-secrets": { group: "settings", icon: "key", blurb: "Generate, regenerate and pause the secrets that scheduled jobs use" },
+  "/staff/applicant-retention": { group: "settings", icon: "key", blurb: "How long rental applicant data is kept, and a purge with an audit record" },
   "/staff/campaigns": { group: "marketplace", icon: "message", blurb: "Email and SMS campaigns with open and click rates" },
   "/staff/lead-scoring": { group: "settings", icon: "chart", blurb: "Hot and warm thresholds and how engagement, property fit and follow-up timing blend into a lead score" },
   "/staff/feeds": { group: "settings", icon: "chart", blurb: "Agency CRM and Domain feeds, territory, schedule and licences" },
   "/staff/suburb-data": { group: "settings", icon: "chart", blurb: "Load suburb figures from a licensed source for the buyer suburb snapshot" },
+  "/staff/rates-data": { group: "settings", icon: "chart", blurb: "Load council and water rates per address from a licensed source for sellers and buyers" },
   "/staff/invites": { group: "team", icon: "team", blurb: "Invite staff and manage their access" },
   "/staff/roles": { group: "team", icon: "key", blurb: "What each role can see and do" },
   "/staff/security/mfa-reset": { group: "team", icon: "key", blurb: "Reset a user's two-step sign-in after a lost phone" }
