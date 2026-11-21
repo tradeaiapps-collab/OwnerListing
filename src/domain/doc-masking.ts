@@ -1,3 +1,4 @@
+import { maskContacts } from "./investment-terms";
 /**
  * Address masking for investor project documents (pure, no I/O). Elena's auto-mask finds street addresses, unit and lot numbers,
  * plan references, PO boxes and "suburb STATE postcode" lines in a page's text and turns them into black boxes that are burned into
@@ -163,4 +164,14 @@ export function isCovered(needle: MaskBox, boxes: readonly MaskBox[]): boolean {
 /** Auto boxes that the saved boxes do not cover (the admin removed them, or the text changed since). */
 export function uncoveredAuto(auto: readonly MaskBox[], saved: readonly MaskBox[]): MaskBox[] {
   return auto.filter(a => !isCovered(a, saved));
+}
+
+/** Document title shown to investors: address-like text, the stored mask terms, emails, phones and links are replaced. Owner-typed titles can carry the address. */
+export function maskTitle(title: string, terms: readonly string[] = []): string {
+  const hidden = "[hidden]";
+  const ranges = findAddressRanges(title, terms);
+  let out = "", at = 0;
+  for (const r of ranges) { out += title.slice(at, r.start) + hidden; at = r.end; }
+  out += title.slice(at);
+  return maskContacts(out).text.replace(/(\[hidden\]\s*){2,}/g, hidden + " ").trim();
 }

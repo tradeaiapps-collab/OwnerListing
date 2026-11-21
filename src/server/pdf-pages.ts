@@ -78,6 +78,58 @@ export async function extractPdfPages(bytes: Uint8Array): Promise<string[]> {
   } catch { return []; } finally { await opened?.doc.destroy().catch(() => undefined); }
 }
 
+/** Picture of one embedded image as RGBA, or undefined for a layout this reader does not handle. */
+function toRgba(img: { width: number; height: number; kind?: number; data?: Uint8ClampedArray | Uint8Array }): Uint8ClampedArray | undefined {
+  const { width: w, height: h, data } = img;
+  if (!data || w < 1 || h < 1 || w * h > 40_000_000) return undefined;
+  const out = new Uint8ClampedArray(w * h * 4);
+  if (img.kind === 3 && data.length >= w * h * 4) { out.set(data.subarray(0, w * h * 4)); return out; }
+  if (img.kind === 2 && data.length >= w * h * 3) { for (let i = 0, j = 0; i < w * h; i++, j += 3) { out[i * 4] = data[j]!; out[i * 4 + 1] = data[j + 1]!; out[i * 4 + 2] = data[j + 2]!; out[i * 4 + 3] = 255; } return out; }
+  if (img.kind === 1) {
+    const rowBytes = (w + 7) >> 3;
+    if (data.length < rowBytes * h) return undefined;
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const v = (data[y * rowBytes + (x >> 3)]! >> (7 - (x & 7))) & 1 ? 255 : 0; const o = (y * w + x) * 4; out[o] = out[o + 1] = out[o + 2] = v; out[o + 3] = 255; }
+    return out;
+  }
+  return undefined;
+}
+
+/**
+ * The picture on each of the first `maxPages` pages of a scanned PDF as PNG (the largest embedded image per page, about 1600 px wide), for text
+ * recognition. The images are read from the PDF and drawn directly: pdf.js painting images onto the server canvas crashes the process on some
+ * machines, so this path never asks it to. Pages with no picture (real text pages) are skipped. Throws on an unreadable file.
+ */
+export async function renderPdfPagesPng(bytes: Uint8Array, maxPages: number): Promise<Uint8Array[]> {
+  const { lib, doc } = await openPdf(bytes);
+  try {
+    const out: Uint8Array[] = [];
+    for (let n = 1; n <= Math.min(doc.numPages, maxPages); n++) {
+      const page = await doc.getPage(n);
+      const ops = await page.getOperatorList();
+      let best: { width: number; height: number; rgba: Uint8ClampedArray } | undefined;
+      for (let i = 0; i < ops.fnArray.length; i++) {
+        if (ops.fnArray[i] !== lib.OPS.paintImageXObject) continue;
+        const name = (ops.argsArray[i] as unknown[])[0] as string;
+        const img = await new Promise<{ width: number; height: number; kind?: number; data?: Uint8ClampedArray } | undefined>(res => page.objs.get(name, res));
+        if (!img || (best && img.width * img.height <= best.width * best.height)) continue;
+        const rgba = toRgba(img);
+        if (rgba) best = { width: img.width, height: img.height, rgba };
+      }
+      page.cleanup();
+      if (!best) continue;
+      const src = nc.createCanvas(best.width, best.height);
+      src.getContext("2d").putImageData(new nc.ImageData(best.rgba, best.width, best.height), 0, 0);
+      const scale = Math.min(1, 1600 / best.width);
+      const canvas = nc.createCanvas(Math.max(1, Math.round(best.width * scale)), Math.max(1, Math.round(best.height * scale)));
+      const ctx = canvas.getContext("2d");
+      ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(src, 0, 0, canvas.width, canvas.height);
+      out.push(new Uint8Array(canvas.toBuffer("image/png")));
+    }
+    return out;
+  } finally { await doc.destroy(); }
+}
+
 export function createPageRenderer(): PageRenderer {
   return {
     async analyse(bytes, mime) {

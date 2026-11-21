@@ -3,6 +3,7 @@ import { parseBuyerDetails } from "../../../../src/domain/prequalification";
 import { csrfGuard } from "../../../../src/server/csrf";
 import { getActor, getDb, getDeps, getUploadPorts } from "../../../../src/server/context";
 import { extractText } from "../../../../src/server/doc-extract";
+import { createOcrPort } from "../../../../src/server/ocr";
 import { failure, unauthenticated } from "../../../../src/server/http";
 import { listForBuyer } from "../../../../src/server/prequalification-db";
 import { MAX_PREQUAL_BYTES, submitPrequalification } from "../../../../src/server/prequalification-service";
@@ -43,7 +44,7 @@ async function handlePost(req: Request) {
   const details = parseBuyerDetails({ amount: field("amount"), rate: field("rate"), term: field("term"), conditions: field("conditions"), listingId: field("listingId"), share: field("share") });
   if (!details.ok) return NextResponse.json({ error: details.error }, { status: 400 });
   const r = await submitPrequalification(
-    { db: getDb(), storage: ports.storage, scanner: ports.scanner, now: () => getDeps().now(), extract: async (b, t) => { const x = await extractText(b, t); return x.ok ? { ok: true, text: x.text } : { ok: false, message: x.message }; } },
+    { db: getDb(), storage: ports.storage, scanner: ports.scanner, now: () => getDeps().now(), extract: async (b, t) => { const x = await extractText(b, t, createOcrPort()); return x.ok ? { ok: true, text: x.text } : { ok: false, message: x.message }; } },
     actor.userId, new Uint8Array(await file.arrayBuffer()), file.type, details.value
   );
   return r.ok ? NextResponse.json(r.value, { status: 201 }) : failure(r);

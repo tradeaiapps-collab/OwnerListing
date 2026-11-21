@@ -39,7 +39,7 @@ export function securityHeaderRules(dev = process.env.NODE_ENV !== "production")
 export default {
   distDir: process.env.NEXT_DIST_DIR || ".next",
   /** PDF page rendering (investor project documents) runs on the server and loads native code, so these stay outside the bundle. */
-  serverExternalPackages: ["pdfjs-dist", "@napi-rs/canvas"],
+  serverExternalPackages: ["pdfjs-dist", "@napi-rs/canvas", "tesseract.js", "@tesseract.js-data/eng"],
   async headers() { return securityHeaderRules(); },
   /** The investor projects module lives at /investments; these are the names people type. */
   async redirects() {
