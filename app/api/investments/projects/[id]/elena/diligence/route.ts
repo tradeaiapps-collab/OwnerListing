@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { elenaGate, invFailure } from "../../../../../../../src/server/elena-projects-route";
+import { elenaGate, invFailure, ocrText } from "../../../../../../../src/server/elena-projects-route";
 import { createPgDiligenceStore } from "../../../../../../../src/server/elena-diligence-db";
 import { getDb } from "../../../../../../../src/server/context";
 import { ok } from "../../../../../../../src/server/investment-route";
@@ -19,7 +19,7 @@ async function handlePost(req: Request, { params }: { params: Promise<{ id: stri
   const { id } = await params;
   const g = await elenaGate(req, [id]);
   if (g instanceof NextResponse) return g;
-  const r = await generateDiligence(g.deps, createPgDiligenceStore(getDb()), g.docs, g.ports, g.actor, id);
+  const r = await generateDiligence(g.deps, createPgDiligenceStore(getDb()), g.docs, { ...g.ports, text: ocrText }, g.actor, id);
   return r.ok ? ok({ summary: r.value }, 201) : invFailure(r);
 }
 export const GET = withApi(handleGet);

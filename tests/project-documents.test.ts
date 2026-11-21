@@ -166,6 +166,17 @@ describe("who sees project documents", () => {
     expect(await titles(id, owner)).toContain("Investor feasibility");
   });
 
+  it("an investor sees the title with addresses and contact details hidden; the owner and staff see it as typed", async () => {
+    const id = await setup();
+    await add(id, { title: "Plans for 12 Smith Street Bulimba", visibility: "investors" });
+    await confirmMask("Plans for 12 Smith Street Bulimba");
+    const t = (await titles(id, wholesale)) as string[];
+    expect(t.join("|")).not.toMatch(/Smith/);
+    expect(t.join("|")).toContain("[hidden]");
+    expect(await titles(id, owner)).toContain("Plans for 12 Smith Street Bulimba");
+    expect(await titles(id, null, { staffId: admin.id })).toContain("Plans for 12 Smith Street Bulimba");
+  });
+
   it("an investor sees nothing while the masking is unconfirmed, and again after a later unconfirmed revision", async () => {
     const id = await setup();
     await confirmMask("Investor feasibility");

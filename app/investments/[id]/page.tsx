@@ -7,6 +7,7 @@ import { InvestorDiligence } from "../diligence";
 import { InvestorElena } from "../elena-project";
 import { ProjectDocumentsSection } from "../project-documents";
 import { ProjectSlider } from "../project-slider";
+import ReturnsCalc from "../../returns-calc";
 import { aud, label, send, STATUS_LABEL, type Project } from "../ui";
 
 export default function ProjectDetail({ params }: { params: Promise<{ id: string }> }) {
@@ -97,6 +98,7 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
           <section className="panel"><h2>Timeline</h2><p className="inv-section">{p.timeline}</p></section>
           <section className="panel"><h2>Risks</h2><p className="inv-section">{p.risks}</p></section>
           <section className="panel"><h2>Structure</h2><p className="inv-section">{p.structureDescription}</p></section>
+          <section className="panel" id="returns"><ReturnsCalc kind="project" amount={p.minimumTicketCents / 100} heading="Model your returns on this project" /></section>
           <ProjectDocumentsSection projectId={p.id} mine={mine} editable={p.status !== "rejected"} />
           <section className="panel">
             <h2>Issuer declaration</h2>
