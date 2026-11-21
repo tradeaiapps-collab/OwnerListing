@@ -69,3 +69,13 @@ describe("box validation and coverage", () => {
     expect(uncoveredAuto(auto, [{ ...ok, page: 2 } as never])).toHaveLength(1);
   });
 });
+
+describe("maskTitle", () => {
+  it("hides street addresses, mask terms, emails and phone numbers, and leaves plain titles alone", async () => {
+    const { maskTitle } = await import("../src/domain/doc-masking");
+    expect(maskTitle("Feasibility study")).toBe("Feasibility study");
+    expect(maskTitle("DA plans 12 Smith Street Bulimba")).not.toMatch(/Smith/);
+    expect(maskTitle("Plans for Riverview Estate", ["Riverview Estate"])).toBe("Plans for [hidden]");
+    expect(maskTitle("Contact joe@example.com or 0412 345 678")).not.toMatch(/joe@|0412/);
+  });
+});

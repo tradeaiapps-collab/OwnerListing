@@ -1,6 +1,6 @@
 import type { ObjectStoragePort } from "../adapters/object-storage";
 import { readBrand } from "../config/brand";
-import { autoMaskBoxes, cleanTerms, uncoveredAuto, validateBoxes, type MaskBox, type PageText } from "./doc-masking";
+import { autoMaskBoxes, maskTitle, cleanTerms, uncoveredAuto, validateBoxes, type MaskBox, type PageText } from "./doc-masking";
 import type { InvestmentDeps } from "./investment-service";
 import type { Actor, Failure, Result } from "./listing-service";
 import { mayViewDoc, viewerOf, type MaskRevision, type ProjectDocRecord, type ProjectDocStore, type StaffView } from "./project-documents";
@@ -54,7 +54,7 @@ export async function documentPageInfo(
   const mask = await store.latestMask(docId);
   if (l.viewer === "investor") {
     if (!mask?.confirmed) return notFound();
-    return { ok: true, value: { title: l.doc.title, pageCount: mask.pageCount, masked: true } };
+    return { ok: true, value: { title: maskTitle(l.doc.title, mask.terms), pageCount: mask.pageCount, masked: true } };
   }
   if (mask) return { ok: true, value: { title: l.doc.title, pageCount: mask.pageCount, masked: false } };
   const o = await original(store, ports, l.doc);
