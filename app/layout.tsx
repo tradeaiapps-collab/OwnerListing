@@ -11,6 +11,7 @@ import ThemePreviewBridge from "./theme-preview-bridge";
 import "./styles/a11y.css";
 import "./styles/inspections.css";
 import "./styles/emergency.css";
+import "./styles/rentals.css";
 import "./styles/pwa.css";
 import PwaRegister from "./pwa-register";
 import { appOriginFor, readAppMode } from "../src/config/app-mode";
