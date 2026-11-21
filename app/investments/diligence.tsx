@@ -24,7 +24,6 @@ export function DiligenceReport({ d }: { d: DView }) {
   const s = d.summary;
   return (
     <div className="dd-report">
-      <p className="elena-notice" role="note"><strong>AI-generated, not advice.</strong> {d.notice}</p>
       {d.outdated && <p className="elena-notice dd-outdated" role="status">The project's documents have changed since this summary was written, so parts of it may be out of date.</p>}
       <p className="elena-a"><strong>{s.headline}</strong></p>
       {d.developerNote && <blockquote className="elena-src"><strong>The developer's note</strong><br />{d.developerNote}<cite>Written by the developer, not by Elena</cite></blockquote>}
@@ -53,6 +52,7 @@ export function DiligenceReport({ d }: { d: DView }) {
       <Flags title="Missing or out-of-date documents" items={s.missing} empty="Nothing obvious is missing for this stage." />
       {s.notRead.length > 0 && <Flags title="Not covered by this summary" items={s.notRead} empty="" />}
       <p className="muted inv-small">Written {when(d.createdAt)}{d.approvedAt ? `, approved by the developer ${when(d.approvedAt)}` : ""}.</p>
+      <p className="elena-notice" role="note"><strong>AI-generated, not advice.</strong> {d.notice}</p>
     </div>
   );
 }
