@@ -15,7 +15,8 @@ describe("local disk storage", () => {
     const s = createLocalDiskStorage(root);
     await s.put(KEY, new Uint8Array([1, 2, 3]), "image/png");
     expect([...(await s.get(KEY))]).toEqual([1, 2, 3]);
-    expect((await stat(path.join(root, KEY))).mode & 0o777).toBe(0o600);
+    // Windows (NTFS) has no POSIX permission bits: stat reports 0o666 whatever mode was asked for, so the check only means something elsewhere.
+    if (process.platform !== "win32") expect((await stat(path.join(root, KEY))).mode & 0o777).toBe(0o600);
   });
   it("never overwrites an existing object", async () => {
     const s = createLocalDiskStorage(await mkdtemp(path.join(os.tmpdir(), "ol-store-")));

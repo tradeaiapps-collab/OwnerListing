@@ -82,7 +82,7 @@ describe("POST /api/dev/login", () => {
     delete process.env["VERCEL"];
     ROWS.current = [{ id: "11111111-1111-1111-1111-111111111111", user_type: "owner", role: null }];
   });
-  afterEach(() => { for (const k of KEYS) { if (saved[k] === undefined) delete process.env[k]; else process.env[k] = saved[k]; } });
+  afterEach(() => { vi.unstubAllEnvs(); for (const k of KEYS) { if (saved[k] === undefined) delete process.env[k]; else process.env[k] = saved[k]; } });
   const call = (headers: Record<string, string> = {}, body: unknown = { userId: "11111111-1111-1111-1111-111111111111" }, url = "http://localhost:3005/api/dev/login") =>
     POST(new Request(url, { method: "POST", headers: { host: new URL(url).host, origin: new URL(url).origin, "content-type": "application/json", ...headers }, body: JSON.stringify(body) }));
 
@@ -116,8 +116,8 @@ describe("POST /api/dev/login", () => {
     expect((await res.json()).redirect).toBe("/dashboard");
   });
   it("404 in production, without DEV_LOGIN, on Vercel, and for a non-local host", async () => {
-    process.env["NODE_ENV"] = "production"; expect((await call()).status).toBe(404);
-    process.env["NODE_ENV"] = "development";
+    vi.stubEnv("NODE_ENV", "production"); expect((await call()).status).toBe(404);
+    vi.stubEnv("NODE_ENV", "development");
     delete process.env["DEV_LOGIN"]; expect((await call()).status).toBe(404);
     process.env["DEV_LOGIN"] = "1";
     process.env["VERCEL"] = "1"; expect((await call()).status).toBe(404);
@@ -150,7 +150,7 @@ describe("POST /api/dev/login", () => {
 describe("seed-demo database guard", () => {
   const run = async (env: Record<string, string>) => {
     const { spawnSync } = await import("node:child_process");
-    const r = spawnSync(process.execPath, ["scripts/seed-demo.mjs"], { env: { PATH: process.env["PATH"] ?? "", ...env }, encoding: "utf8", timeout: 20000 });
+    const r = spawnSync(process.execPath, ["scripts/seed-demo.mjs"], { env: ({ PATH: process.env["PATH"] ?? "", ...env } as unknown as NodeJS.ProcessEnv), encoding: "utf8", timeout: 20000 });
     return { code: r.status, err: r.stderr };
   };
   it.each([
