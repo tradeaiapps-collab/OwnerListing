@@ -47,6 +47,7 @@ export default function BrowseProjects() {
         </div>
         <nav className="inv-page-links" aria-label="Investor pages">
           <a href="/investments/portfolio">My portfolio</a>
+          <a href="/investments/match">Match me with Elena</a>
           <a href="/investments/threads">My conversations</a>
           <a href="/investments/mine">My posted projects</a>
           <a className="button" href="/investments/new">Post a project</a>
