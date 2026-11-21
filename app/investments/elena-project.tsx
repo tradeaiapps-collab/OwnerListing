@@ -90,7 +90,6 @@ export function InvestorElena({ projectId }: { projectId: string }) {
       </section>
       <section className="panel elena-box" id="ask-elena" aria-labelledby="ask-h">
         <h2 id="ask-h">Ask Elena about this project</h2>
-        <p className="elena-notice" role="note">{NOT_ADVICE}</p>
         <p className="muted inv-small">Elena answers only from the documents and details the owner has published, and quotes them. The project owner may check her answer before you see it. If she can't find an answer, your question goes to the owner. She never shows the project's exact address.</p>
         <form className="elena-form" onSubmit={ask}>
           <label htmlFor="elena-q">Your question</label>
@@ -104,6 +103,7 @@ export function InvestorElena({ projectId }: { projectId: string }) {
           <details><summary>Your earlier questions ({questions.length - 1})</summary><ul className="elena-list">{questions.slice(1).map(q => <QuestionCard key={q.id} q={q} />)}</ul></details>
         )}
         {questions && questions.length === 0 && !loadError && <p className="muted" role="status">You haven't asked anything yet.</p>}
+        <p className="elena-notice" role="note">{NOT_ADVICE}</p>
       </section>
     </>
   );
