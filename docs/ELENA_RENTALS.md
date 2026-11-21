@@ -21,7 +21,7 @@ Appointed agents cannot approve repairs (owner only); the visit time is read fro
 
 ## Known residual risks
 
-- Applicant data (income, history, notes) has no automatic retention or deletion yet. It is kept until a deletion path is built; this should be decided with counsel before real applicants.
+- Applicant data retention: `/staff/applicant-retention` (config.edit) sets a period of 90 to 3650 days (default 365, automatic purge off until switched on). A purge, by staff or the daily automation tick, scrubs income, history, references, move-in date and note on rental applications, and the draft text and topics of Elena's enquiry actions, older than the period; rows, statuses and the audit trail stay, and every run is audited with counts only. Chat and Elena message records are never deletable and are not touched, so counsel should decide whether their wording needs a separate rule. The period itself is still for counsel to set before real applicants.
 - Tenant free text in a repair report goes to contractors before they accept the job. The tenant form says so.
 - The applicant-note filter is a pattern list and can miss paraphrases. The owner desk carries a banner, and notes are never scored.
 - Messages that are not sent (blocked by the filter or rate limit) are still logged in `rental_message` without a cap.

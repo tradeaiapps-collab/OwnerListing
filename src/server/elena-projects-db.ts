@@ -63,6 +63,7 @@ export function createPgElenaProjectStore(db: Queryable): ElenaProjectStore {
       else await db.query("DELETE FROM investment_project_follow WHERE project_id = $1::uuid AND user_id = $2::uuid", [projectId, userId]);
     },
     async isFollowing(projectId, userId) { return (await db.query("SELECT 1 FROM investment_project_follow WHERE project_id = $1::uuid AND user_id = $2::uuid", [projectId, userId])).rows.length === 1; },
+    async followedBy(userId, limit) { return (await db.query("SELECT project_id FROM investment_project_follow WHERE user_id = $1::uuid ORDER BY created_at DESC LIMIT $2::int", [userId, limit])).rows.map(r => String(r["project_id"])); },
     async followers(projectId, limit) { return (await db.query("SELECT user_id FROM investment_project_follow WHERE project_id = $1::uuid ORDER BY created_at LIMIT $2::int", [projectId, limit])).rows.map(r => String(r["user_id"])); }
   };
 }

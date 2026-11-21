@@ -40,6 +40,8 @@ export interface ElenaProjectStore {
   publish(id: string, approverId: string, at: string): Promise<boolean>;
   setFollow(projectId: string, userId: string, on: boolean, at: string): Promise<void>;
   isFollowing(projectId: string, userId: string): Promise<boolean>;
+  /** Project ids this investor follows, newest follow first. */
+  followedBy(userId: string, limit: number): Promise<string[]>;
   followers(projectId: string, limit: number): Promise<string[]>;
 }
 
@@ -281,6 +283,7 @@ export function createInMemoryElenaStore(): ElenaProjectStore & { questions: Que
     async publish(id, by, at) { const u = updates.find(x => x.id === id); if (!u || u.status !== "draft") return false; u.status = "published"; u.approvedBy = by; u.approvedAt = at; return true; },
     async setFollow(p, u, on) { if (on) follows.add(key(p, u)); else follows.delete(key(p, u)); },
     async isFollowing(p, u) { return follows.has(key(p, u)); },
+    async followedBy(u, limit) { return [...follows].filter(k => k.endsWith(`|${u}`)).map(k => k.split("|")[0]!).reverse().slice(0, limit); },
     async followers(p) { return [...follows].filter(k => k.startsWith(`${p}|`)).map(k => k.split("|")[1]!); }
   };
 }
