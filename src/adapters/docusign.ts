@@ -26,7 +26,7 @@ const MAX_PDF_BYTES = 40 * 1024 * 1024;
 export interface DocusignConfig { integrationKey: string; userId: string; accountId: string; privateKey: string; basePath: string; oauthHost: string }
 
 /** Reads DOCUSIGN_* settings. Returns undefined unless every required key is present and well formed (provider-check says which is wrong). */
-export function docusignConfigFromEnv(env: NodeJS.ProcessEnv): DocusignConfig | undefined {
+export function docusignConfigFromEnv(env: Record<string, string | undefined>): DocusignConfig | undefined {
   const g = (k: string) => (env[k] ?? "").trim();
   const privateKey = g("DOCUSIGN_PRIVATE_KEY").replace(/\\n/g, "\n");
   const cfg = { integrationKey: g("DOCUSIGN_INTEGRATION_KEY"), userId: g("DOCUSIGN_USER_ID"), accountId: g("DOCUSIGN_ACCOUNT_ID"), privateKey,

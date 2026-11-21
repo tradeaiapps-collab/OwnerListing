@@ -184,7 +184,7 @@ export function parsePhoton(j: Record<string, unknown>): AddressSuggestion[] {
 }
 
 /** GOOGLE_PLACES_API_KEY picks Google; otherwise Photon (ADDRESS_PHOTON_URL or the public instance). ADDRESS_LOOKUP=off turns it off. */
-export function addressLookupFromEnv(env: NodeJS.ProcessEnv = process.env, fetchFn?: FetchLike): AddressLookupPort | null {
+export function addressLookupFromEnv(env: Record<string, string | undefined> = process.env, fetchFn?: FetchLike): AddressLookupPort | null {
   if ((env.ADDRESS_LOOKUP ?? "").trim().toLowerCase() === "off") return null;
   const key = (env.GOOGLE_PLACES_API_KEY ?? "").trim();
   if (key !== "") return createGooglePlaces(key, fetchFn);
