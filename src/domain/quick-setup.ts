@@ -72,7 +72,7 @@ export function extractFromNotes(raw: string, hint?: "sale" | "rent"): QuickFiel
 }
 
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
-function ruleTitle(f: QuickFields, highlight?: string): string {
+export function ruleTitle(f: QuickFields, highlight?: string): string {
   const what = f.bedrooms !== undefined && ["house", "unit", "townhouse"].includes(f.propertyType) ? `${f.bedrooms} bedroom ${f.propertyType}` : cap(f.propertyType);
   const where = f.suburb ? ` in ${f.suburb}` : "";
   const extra = f.amenities.includes("pool") ? " with pool" : highlight ? ` with ${highlight.toLowerCase()}` : "";
