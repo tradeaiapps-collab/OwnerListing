@@ -31,6 +31,16 @@ const FEATURE_WORDS: [RegExp, Amenity][] = [
   [/\b(study|home office)\b/i, "study"], [/\blift\b/i, "lift"]
 ];
 
+const NAME_WORDS: [RegExp, string][] = [
+  [/kitchen/i, "kitchen"], [/bath|ensuite/i, "bathroom"], [/bed(room)?s?\b|master/i, "bedroom"], [/living|lounge|family/i, "living room"],
+  [/dining/i, "dining area"], [/garage|carport/i, "garage"], [/pool/i, "pool"], [/garden|yard|lawn/i, "garden"], [/balcon|deck|patio|alfresco/i, "outdoor area"],
+  [/front|exterior|facade|street/i, "exterior"], [/study|office/i, "study"], [/laundry/i, "laundry"]
+];
+/** Offline photo reading: room words in the file names the owner chose ("kitchen.jpg"). Nothing is guessed from the pixels. */
+export function observationsFromNames(names: readonly string[]): string[] {
+  return names.map(n => NAME_WORDS.filter(([re]) => re.test(n)).map(([, w]) => w)).filter(w => w.length > 0).map(w => w.join(", "));
+}
+
 /** Keeps only plain observations (no contact details, no absolute claims), de-duplicated, and works out which known features they show. */
 export function readObservations(perPhoto: readonly (readonly string[])[]): { seen: string[]; amenities: Amenity[] } {
   const seen: string[] = [];
@@ -81,7 +91,7 @@ export function ruleDescription(f: QuickFields, area: AreaInfo, seen: readonly s
 /** What a good ad needs that we do not have yet, phrased as questions. */
 export function draftQuestions(f: QuickFields, seen: readonly string[], notes?: string, photos: PhotoState = "none"): string[] {
   const q: string[] = [];
-  if (photos !== "read") q.push("Elena reads photos only with the vision model. Without it, tick the features your photos show in the form below (pool, garden, air conditioning, solar, study), and add them in the notes.");
+  if (photos !== "read") q.push("Which features do your photos show (pool, garden, air conditioning, solar, study)? Tick them in the form below.");
   const built = ["house", "unit", "townhouse"].includes(f.propertyType);
   if (built && f.bedrooms === undefined) q.push("How many bedrooms does it have?");
   if (built && f.bathrooms === undefined) q.push("How many bathrooms?");
@@ -97,11 +107,18 @@ export function draftQuestions(f: QuickFields, seen: readonly string[], notes?: 
 export async function buildQuickDraft(engine: AiEnginePort, input: DraftInput, photos: readonly { name: string; mimeType: string; bytes: Uint8Array }[], area: AreaInfo): Promise<QuickDraftResult> {
   const perPhoto: string[][] = [];
   let photoState: PhotoState = photos.length === 0 ? "none" : "off";
+  if (photos.length > 0) {
+    // Offline path first: room words in the file names. A vision model (when one is switched on) adds to it.
+    const fromNames = observationsFromNames(photos.map(p => p.name));
+    if (fromNames.length > 0) perPhoto.push(fromNames);
+  }
   if (photos.length > 0 && isEngineUsable(engine)) {
     for (const p of photos.slice(0, MAX_DRAFT_PHOTOS)) {
       try { perPhoto.push([...(await engine.describePhoto(p))]); } catch { /* skip this photo */ }
     }
     photoState = perPhoto.length > 0 ? "read" : "failed";
+  } else if (photos.length > 0) {
+    photoState = perPhoto.length > 0 ? "read" : "off";
   }
   const { seen, amenities } = readObservations(perPhoto);
   const r = await buildQuickSetup(engine, draftNotes(input, seen), input.transactionType);

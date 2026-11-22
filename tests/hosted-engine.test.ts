@@ -48,3 +48,10 @@ describe("rules-only draft", () => {
     expect(draftQuestions(f, [])).toContain("How many bedrooms does it have?");
   });
 });
+
+import { observationsFromNames } from "../src/domain/quick-draft";
+describe("offline photo reading from file names", () => {
+  it("picks room words from names and ignores the rest", () => {
+    expect(observationsFromNames(["Kitchen-1.jpg", "IMG_2041.jpg", "front_garden.jpg"])).toEqual(["kitchen", "garden, exterior"]);
+  });
+});
