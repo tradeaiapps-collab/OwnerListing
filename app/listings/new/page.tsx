@@ -74,7 +74,10 @@ export default function NewListing() {
     setPending({ photos: [], plan: null });
     setUploads(items.map(i => ({ name: i.file.name, state: "waiting" })));
     const set = (i: number, u: Partial<Upload>) => setUploads(prev => prev.map((x, j) => (j === i ? { ...x, ...u } : x)));
+    // Storage or the scanner is not set up: the first 503 stops the rest instead of sending every file to fail the same way.
+    let unavailable = false;
     for (let i = 0; i < items.length; i++) {
+      if (unavailable) { set(i, { state: "error", message: "File upload is not available yet." }); continue; }
       set(i, { state: "uploading" });
       const fd = new FormData();
       fd.set("file", items[i]!.file); fd.set("kind", items[i]!.kind);
@@ -84,6 +87,7 @@ export default function NewListing() {
       try {
         const r = await fetch(`/api/listings/${id}/${pdf ? "documents" : "photos"}`, { method: "POST", body: fd });
         if (r.ok) set(i, { state: "done" });
+        else if (r.status === 503) { unavailable = true; set(i, { state: "error", message: "File upload is not available yet." }); }
         else set(i, { state: "error", message: r.status === 503 ? "File upload is not available yet." : (await r.json().catch(() => ({}))).error ?? "Upload failed." });
       } catch { set(i, { state: "error", message: "Network error." }); }
     }
