@@ -63,7 +63,9 @@ export function stateChecklist(state: string | undefined): string[] {
 }
 
 export function draftNotes(i: DraftInput, seen: readonly string[]): string {
-  const place = [i.address, i.suburb, i.state, i.postcode].filter(Boolean).join(" ");
+  // The address picker often returns the full line ("12 Jacaranda Place, Indooroopilly QLD 4068"), so only add the parts it does not already hold.
+  const have = (i.address ?? "").toLowerCase();
+  const place = [i.address, ...[i.suburb, i.state, i.postcode].filter(x => x && !have.includes(x.toLowerCase()))].filter(Boolean).join(" ");
   const facts = [
     i.bedrooms !== undefined ? `${i.bedrooms} bedrooms` : "", i.bathrooms !== undefined ? `${i.bathrooms} bathrooms` : "", i.parking !== undefined ? `${i.parking} car spaces` : "",
     i.priceDollars !== undefined ? (i.transactionType === "rent" ? `$${i.priceDollars} per week` : `Asking $${i.priceDollars.toLocaleString("en-AU")}`) : ""

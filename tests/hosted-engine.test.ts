@@ -70,3 +70,12 @@ describe("rules writer quality", () => {
     }
   });
 });
+
+import { draftNotes } from "../src/domain/quick-draft";
+describe("draft notes address", () => {
+  it("does not repeat suburb, state or postcode already in the address", () => {
+    const n = draftNotes({ address: "12 Jacaranda Place, Indooroopilly QLD 4068", suburb: "Indooroopilly", state: "QLD", postcode: "4068" }, []);
+    expect(n).toBe("Property at 12 Jacaranda Place, Indooroopilly QLD 4068.");
+    expect(draftNotes({ address: "12 Jacaranda Place", suburb: "Indooroopilly", state: "QLD", postcode: "4068" }, [])).toBe("Property at 12 Jacaranda Place Indooroopilly QLD 4068.");
+  });
+});
