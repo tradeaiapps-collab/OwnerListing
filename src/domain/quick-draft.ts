@@ -71,20 +71,26 @@ export function draftNotes(i: DraftInput, seen: readonly string[]): string {
   return [`Property at ${place}.`, facts && `${facts}.`, i.notes?.trim(), seen.length > 0 ? `Seen in the photos: ${seen.join(", ")}.` : ""].filter(Boolean).join(" ").slice(0, MAX_QUICK_NOTES);
 }
 
-/** Plain sentences built only from facts the owner gave, what was seen in photos and the area facts. Nothing is invented. */
+const list = (xs: readonly string[]) => (xs.length <= 1 ? (xs[0] ?? "") : `${xs.slice(0, -1).join(", ")} and ${xs[xs.length - 1]}`);
+const count = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+const sentence = (t: string) => { const x = t.replace(/\s+/g, " ").trim(); return x === "" ? "" : `${x.charAt(0).toUpperCase()}${x.slice(1)}${/[.!?]$/.test(x) ? "" : "."}`; };
+
+/** Buyer-friendly sentences built only from facts the owner gave, what the photo names show and the area facts. Nothing is invented. */
 export function ruleDescription(f: QuickFields, area: AreaInfo, seen: readonly string[], notes?: string): string {
+  const rent = f.transactionType === "rent";
+  const where = [f.suburb, f.jurisdiction].filter(Boolean).join(", ");
   const kind = f.propertyType === "unit" ? "unit" : f.propertyType;
-  const where = [f.suburb, f.jurisdiction].filter(Boolean).join(" ");
   const parts: string[] = [];
-  const lead = f.transactionType === "rent" ? "available to rent" : "for sale";
-  const layout = [f.bedrooms !== undefined ? `${f.bedrooms} bedroom${f.bedrooms === 1 ? "" : "s"}` : "", f.bathrooms !== undefined ? `${f.bathrooms} bathroom${f.bathrooms === 1 ? "" : "s"}` : "", f.parking !== undefined ? `${f.parking} car space${f.parking === 1 ? "" : "s"}` : ""].filter(Boolean);
-  parts.push(`This ${kind}${where ? ` in ${where}` : ""} is ${lead}${layout.length ? `, with ${layout.join(", ")}` : ""}.`);
-  if (f.amenities.length) parts.push(`Features include ${f.amenities.map(a => AMENITY_LABELS[a].toLowerCase()).join(", ")}.`);
-  if (seen.length) parts.push(`The photos show ${seen.slice(0, 8).join(", ")}.`);
-  if (notes?.trim()) parts.push(notes.trim().replace(/\s+/g, " ").slice(0, 600).replace(/([^.!?])$/, "$1."));
-  if (area.suburbFacts.length) parts.push(`About the area${area.suburbSource ? ` (${area.suburbSource})` : ""}: ${area.suburbFacts.slice(0, 4).map(x => `${x.label.toLowerCase()} ${x.value}`).join("; ")}.`);
-  if (f.priceCents !== undefined) parts.push(f.transactionType === "rent" ? `Rent is ${formatAud(f.priceCents)} per week.` : `Asking price ${formatAud(f.priceCents)}.`);
-  parts.push("Contact the owner through this site to arrange an inspection.");
+  parts.push(sentence(`${/^[aeiou]/i.test(kind) ? "an" : "a"} ${kind}${where ? ` in ${where}` : ""} is now ${rent ? "available to rent" : "for sale"}`));
+  const layout = [f.bedrooms !== undefined ? count(f.bedrooms, "bedroom") : "", f.bathrooms !== undefined ? count(f.bathrooms, "bathroom") : "", f.parking !== undefined ? (f.parking === 0 ? "no car space" : `parking for ${count(f.parking, "car")}`) : ""].filter(Boolean);
+  if (layout.length) parts.push(sentence(`The ${kind} has ${list(layout)}`));
+  if (f.amenities.length) parts.push(sentence(`Features: ${list(f.amenities.map(a => AMENITY_LABELS[a].toLowerCase()))}`));
+  const rooms = [...new Set(seen.slice(0, 8))];
+  if (rooms.length) parts.push(sentence(`The photos show ${list(rooms.map(r => (/^(a|an|the)\b/i.test(r) ? r : `the ${r}`)))}`));
+  if (notes?.trim()) parts.push(sentence(notes.trim().slice(0, 600)));
+  if (area.suburbFacts.length) parts.push(sentence(`In ${f.suburb ?? "the area"}, ${list(area.suburbFacts.slice(0, 3).map(x => `the ${x.label.toLowerCase()} is ${x.value}`))}${area.suburbSource ? ` (${area.suburbSource})` : ""}`));
+  if (f.priceCents !== undefined) parts.push(sentence(rent ? `The rent is ${formatAud(f.priceCents)} per week` : `The asking price is ${formatAud(f.priceCents)}`));
+  parts.push("Message the owner through this site to arrange an inspection or to make an offer.");
   return parts.join(" ");
 }
 
@@ -134,6 +140,8 @@ export async function buildQuickDraft(engine: AiEnginePort, input: DraftInput, p
   if (input.parking !== undefined) f.parking = input.parking;
   if (input.priceDollars !== undefined) f.priceCents = Math.round(input.priceDollars * 100);
   f.amenities = [...new Set([...f.amenities, ...amenities])];
+  // A "3/9 Beach Pde" style address is a unit unless the owner's words said otherwise.
+  if (r.source === "rules" && f.propertyType === "house" && /^\s*(unit\s*)?\d+[a-z]?\s*\/\s*\d+/i.test(input.address) && !/\b(house|home|villa|cottage)\b/i.test(input.notes ?? "")) f.propertyType = "unit";
   const questions = draftQuestions(f, seen, input.notes, photoState);
   // Without the AI the rules writer still writes a full, factual ad and a proper title, so the owner edits instead of starting blank.
   if (r.source === "rules") { f.description = ruleDescription(f, area, seen, input.notes); f.title = ruleTitle(f); }
