@@ -1,6 +1,6 @@
 import type { ObjectStoragePort } from "../adapters/object-storage";
 import {
-  answerQuestion, draftUpdate, LIMITS, safeTitle, NOT_ADVICE, projectPassages, reviewProject, toPassages, validateQuestion, validateReply, validateUpdate,
+  makesReturnClaim, answerQuestion, draftUpdate, LIMITS, safeTitle, NOT_ADVICE, projectPassages, reviewProject, toPassages, validateQuestion, validateReply, validateUpdate,
   type Answer, type Outcome, type Passage, type ReviewDoc, type ReviewFlag, type Source
 } from "./elena-projects";
 import type { InvestmentDeps } from "./investment-service";
@@ -16,13 +16,24 @@ import { withinLimit } from "./rate-limit";
  */
 export interface QuestionRecord {
   id: string; projectId: string; askerUserId: string; question: string; answer: string; outcome: Outcome; reason?: string; sources: Source[]; createdAt: string;
+  /** True when Elena's answer is only a draft until the owner decides (approve-first projects). */
+  needsApproval?: boolean;
 }
+export type AnswerMode = "approve_first" | "instant";
+export type ReviewDecision = "approved" | "edited" | "discarded";
+export interface AnswerReviewRecord { questionId: string; ownerUserId: string; decision: ReviewDecision; body?: string; createdAt: string }
+/** What an investor sees for a question: the answer is released only once it needs no approval or the owner decided. */
+export type QuestionState = "pending_owner" | "owner_approved" | "owner_edited" | "owner_discarded";
 export interface ReplyRecord { id: string; questionId: string; ownerUserId: string; body: string; createdAt: string }
 export interface UpdateRecord {
   id: string; projectId: string; title: string; body: string; status: "draft" | "published"; sourceDocIds: string[]; createdBy: "elena" | "owner";
   createdByUser: string; approvedBy?: string; approvedAt?: string; createdAt: string;
 }
-export interface QuestionView extends Omit<QuestionRecord, "askerUserId" | "projectId"> { replies: Omit<ReplyRecord, "ownerUserId" | "questionId">[]; mine?: boolean }
+export interface QuestionView extends Omit<QuestionRecord, "askerUserId" | "projectId" | "needsApproval"> {
+  replies: Omit<ReplyRecord, "ownerUserId" | "questionId">[]; mine?: boolean; state?: QuestionState;
+  /** Owner only: the text Elena drafted, while the investor sees the holding message. */
+  draft?: { text: string; sources: Source[] };
+}
 
 export interface ElenaProjectStore {
   addQuestion(q: QuestionRecord): Promise<void>;
@@ -43,6 +54,11 @@ export interface ElenaProjectStore {
   /** Project ids this investor follows, newest follow first. */
   followedBy(userId: string, limit: number): Promise<string[]>;
   followers(projectId: string, limit: number): Promise<string[]>;
+  /** One decision per drafted answer. False when the question was already decided. */
+  addReview(r: AnswerReviewRecord): Promise<boolean>;
+  reviewsFor(questionIds: readonly string[]): Promise<AnswerReviewRecord[]>;
+  answerMode(projectId: string): Promise<AnswerMode>;
+  setAnswerMode(projectId: string, mode: AnswerMode, userId: string, at: string): Promise<void>;
 }
 
 /** Plain text of each page of a stored document (empty for images and scans). */
@@ -102,7 +118,9 @@ const docPassages = (r: ReadableDoc): Passage[] => r.pages.flatMap((t, i) => toP
 
 // ---- Investor questions ---------------------------------------------------------------------------------------------------------
 
-export interface AskResult { id: string; outcome: Outcome; text: string; sources: Source[]; notice: string }
+export interface AskResult { id: string; outcome: Outcome; text: string; sources: Source[]; notice: string; pending?: boolean }
+const HOLDING = "Elena has drafted an answer from the published documents. The project owner checks it before you see it. You will get a notice when it is ready.";
+const DISCARDED = "The project owner will answer this question personally. You will get a notice when they reply.";
 
 /** An investor asks Elena. Rate limited; checked by the content filter; always logged (except refused text, which is never stored). */
 export async function askElena(
@@ -122,29 +140,103 @@ export async function askElena(
   const terms = readable.flatMap(r => r.terms);
   const answer: Answer = answerQuestion(q.value, [...projectPassages(c.project), ...readable.flatMap(docPassages)], terms);
   const id = deps.newId();
+  // Only a quoted answer waits for the owner. Declines (advice, returns, commitments) are fixed refusals; escalations already go to the owner.
+  const needsApproval = answer.outcome === "answered" && (await store.answerMode(projectId)) === "approve_first";
   await store.addQuestion({
     id, projectId, askerUserId: actor.userId, question: q.value, answer: answer.text, outcome: answer.outcome, ...(answer.reason ? { reason: answer.reason } : {}),
-    sources: answer.sources, createdAt: deps.now()
+    sources: answer.sources, createdAt: deps.now(), needsApproval
   });
   if (guard?.ok && guard.after) await guard.after(id).catch(() => undefined);
-  await audit(deps, actor.userId, projectId, "investment.elena_question", { questionId: id, outcome: answer.outcome, reason: answer.reason ?? null, sources: answer.sources.length });
+  await audit(deps, actor.userId, projectId, "investment.elena_question", { questionId: id, outcome: answer.outcome, reason: answer.reason ?? null, sources: answer.sources.length, needsApproval });
+  if (needsApproval) {
+    await safeNotify(deps, c.project.ownerUserId, "elena_project_draft", "Elena drafted an answer for you to approve",
+      `An investor asked a question and Elena drafted an answer from your published documents. The investor sees nothing until you approve, edit or discard it: ${projectLink(deps, projectId, "/elena")}`);
+    return { ok: true, value: { id, outcome: answer.outcome, text: HOLDING, sources: [], notice: NOT_ADVICE, pending: true } };
+  }
   if (answer.outcome === "escalated")
     await safeNotify(deps, c.project.ownerUserId, "elena_project_question", "An investor has a question about your project",
       `An investor asked a question Elena could not answer from your published material. Open Elena on your project to read it and reply: ${projectLink(deps, projectId, "/elena")}`);
   return { ok: true, value: { id, outcome: answer.outcome, text: answer.text, sources: answer.sources, notice: NOT_ADVICE } };
 }
 
-/** The owner sees every question with replies; an investor sees only their own. */
-export async function listQuestions(deps: InvestmentDeps, store: ElenaProjectStore, actor: Actor, projectId: string): Promise<Result<{ questions: QuestionView[]; role: "owner" | "investor" }>> {
+/**
+ * The owner sees every question with replies and any draft awaiting a decision; an investor sees only their own, and never an answer
+ * the owner has not released (a draft shows a holding message, an edit shows the owner's words, a discard says the owner will reply).
+ */
+export async function listQuestions(deps: InvestmentDeps, store: ElenaProjectStore, actor: Actor, projectId: string): Promise<Result<{ questions: QuestionView[]; role: "owner" | "investor"; answerMode?: AnswerMode }>> {
   const c = await context(deps, actor, projectId);
   if (isFail(c)) return c;
   if (c.viewer === "staff") return NOT_FOUND;
-  const rows = await store.questionsFor(projectId, c.viewer === "owner" ? undefined : actor.userId);
-  const replies = await store.repliesFor(rows.map(r => r.id));
-  return { ok: true, value: { role: c.viewer === "owner" ? "owner" : "investor", questions: rows.map(r => ({
-    id: r.id, question: r.question, answer: r.answer, outcome: r.outcome, sources: r.sources, createdAt: r.createdAt, ...(r.reason ? { reason: r.reason } : {}),
-    replies: replies.filter(x => x.questionId === r.id).map(x => ({ id: x.id, body: x.body, createdAt: x.createdAt }))
-  })) } };
+  const isOwner = c.viewer === "owner";
+  const rows = await store.questionsFor(projectId, isOwner ? undefined : actor.userId);
+  const ids = rows.map(r => r.id);
+  const replies = await store.repliesFor(ids);
+  const reviews = await store.reviewsFor(ids);
+  const questions = rows.map((r): QuestionView => {
+    const base = {
+      id: r.id, question: r.question, outcome: r.outcome, createdAt: r.createdAt, ...(r.reason ? { reason: r.reason } : {}),
+      replies: replies.filter(x => x.questionId === r.id).map(x => ({ id: x.id, body: x.body, createdAt: x.createdAt }))
+    };
+    if (!r.needsApproval) return { ...base, answer: r.answer, sources: r.sources };
+    const rv = reviews.find(x => x.questionId === r.id);
+    const state: QuestionState = !rv ? "pending_owner" : rv.decision === "approved" ? "owner_approved" : rv.decision === "edited" ? "owner_edited" : "owner_discarded";
+    const released = state === "owner_approved" ? { answer: r.answer, sources: r.sources }
+      : state === "owner_edited" ? { answer: rv!.body ?? "", sources: [] as Source[] }
+      : { answer: state === "pending_owner" ? HOLDING : DISCARDED, sources: [] as Source[] };
+    const draft = isOwner && state !== "owner_approved" ? { draft: { text: r.answer, sources: r.sources } } : {};
+    return { ...base, ...released, state, ...draft };
+  });
+  return { ok: true, value: { role: isOwner ? "owner" : "investor", questions, ...(isOwner ? { answerMode: await store.answerMode(projectId) } : {}) } };
+}
+
+const RETURN_WORDS = /\b(?:guarantee[ds]?|risk[\s-]?free|can'?t\s+lose|assured\s+returns?)\b/i;
+
+/**
+ * The owner decides on Elena's drafted answer: approve it as written, replace it with their own wording, or discard it. One decision per
+ * question. The investor is told by notice only (no text in the notice). Elena never decides this for the owner.
+ */
+export async function decideAnswer(
+  deps: InvestmentDeps, store: ElenaProjectStore, actor: Actor, projectId: string, questionId: string, decision: unknown, rawBody?: unknown
+): Promise<Result<{ decision: ReviewDecision }>> {
+  const c = await context(deps, actor, projectId);
+  if (isFail(c) || c.viewer !== "owner") return NOT_FOUND;
+  const q = await store.questionById(questionId);
+  if (!q || q.projectId !== projectId) return NOT_FOUND;
+  if (!q.needsApproval) return fail("conflict", "Elena did not draft an answer that needs your approval for this question.");
+  const d: ReviewDecision | undefined = decision === "approve" ? "approved" : decision === "edit" ? "edited" : decision === "discard" ? "discarded" : undefined;
+  if (!d) return fail("invalid", "Choose approve, edit or discard.");
+  if (!withinLimit(await deps.countHit(`elena-project-review:${actor.userId}`, 60 * 60 * 1000).catch(() => undefined), 60)) return fail("rate_limited", "Too many decisions. Try again later.");
+  let body: string | undefined;
+  if (d === "edited") {
+    const v = validateReply(rawBody);
+    if (!v.ok) return fail("invalid", v.error);
+    if (RETURN_WORDS.test(v.value) || makesReturnClaim(v.value)) return fail("invalid", "Answers cannot promise, forecast or guarantee returns. Point investors to the documents instead.");
+    const guard = await deps.contentGuard?.({ userId: actor.userId, text: v.value });
+    if (guard && !guard.ok) return fail("invalid", guard.message);
+    body = v.value;
+  }
+  if (!(await store.addReview({ questionId, ownerUserId: actor.userId, decision: d, ...(body !== undefined ? { body } : {}), createdAt: deps.now() })))
+    return fail("conflict", "You already decided on this answer.");
+  await audit(deps, actor.userId, projectId, "investment.elena_answer_reviewed", { questionId, decision: d });
+  await safeNotify(deps, q.askerUserId, "elena_project_answer", "Your question about a project has an answer",
+    d === "discarded" ? `The owner of ${c.project.title} will reply to your question personally. Check back here: ${projectLink(deps, projectId)}`
+      : `The owner of ${c.project.title} approved an answer to your question. Read it here: ${projectLink(deps, projectId)}`);
+  return { ok: true, value: { decision: d } };
+}
+
+/** Owner only: how Elena answers on this project. */
+export async function getAnswerMode(deps: InvestmentDeps, store: ElenaProjectStore, actor: Actor, projectId: string): Promise<Result<{ answerMode: AnswerMode }>> {
+  const c = await context(deps, actor, projectId);
+  if (isFail(c) || c.viewer !== "owner") return NOT_FOUND;
+  return { ok: true, value: { answerMode: await store.answerMode(projectId) } };
+}
+export async function setAnswerMode(deps: InvestmentDeps, store: ElenaProjectStore, actor: Actor, projectId: string, mode: unknown): Promise<Result<{ answerMode: AnswerMode }>> {
+  const c = await context(deps, actor, projectId);
+  if (isFail(c) || c.viewer !== "owner") return NOT_FOUND;
+  if (mode !== "approve_first" && mode !== "instant") return fail("invalid", "Choose approve_first or instant.");
+  await store.setAnswerMode(projectId, mode, actor.userId, deps.now());
+  await audit(deps, actor.userId, projectId, "investment.elena_answer_mode_set", { mode });
+  return { ok: true, value: { answerMode: mode } };
 }
 
 /** Owner answers a question that Elena passed on. The asker is told by email notice (no text in the email). */
@@ -153,6 +245,7 @@ export async function replyToQuestion(deps: InvestmentDeps, store: ElenaProjectS
   if (isFail(c) || c.viewer !== "owner") return NOT_FOUND;
   const q = await store.questionById(questionId);
   if (!q || q.projectId !== projectId) return NOT_FOUND;
+  if (q.needsApproval && (await store.reviewsFor([q.id])).length === 0) return fail("conflict", "Approve, edit or discard Elena's draft first.");
   if (!withinLimit(await deps.countHit(`elena-project-reply:${actor.userId}`, 60 * 60 * 1000).catch(() => undefined), 30)) return fail("rate_limited", "Too many replies. Try again later.");
   const v = validateReply(raw);
   if (!v.ok) return fail("invalid", v.error);
@@ -268,6 +361,7 @@ export async function setFollow(deps: InvestmentDeps, store: ElenaProjectStore, 
 
 export function createInMemoryElenaStore(): ElenaProjectStore & { questions: QuestionRecord[]; updates: UpdateRecord[]; follows: Set<string> } {
   const questions: QuestionRecord[] = [], replies: ReplyRecord[] = [], updates: UpdateRecord[] = [], follows = new Set<string>();
+  const reviews: AnswerReviewRecord[] = [], modes = new Map<string, AnswerMode>();
   const key = (p: string, u: string) => `${p}|${u}`;
   return {
     questions, updates, follows,
@@ -283,6 +377,10 @@ export function createInMemoryElenaStore(): ElenaProjectStore & { questions: Que
     async publish(id, by, at) { const u = updates.find(x => x.id === id); if (!u || u.status !== "draft") return false; u.status = "published"; u.approvedBy = by; u.approvedAt = at; return true; },
     async setFollow(p, u, on) { if (on) follows.add(key(p, u)); else follows.delete(key(p, u)); },
     async isFollowing(p, u) { return follows.has(key(p, u)); },
+    async addReview(r) { if (reviews.some(x => x.questionId === r.questionId)) return false; reviews.push(r); return true; },
+    async reviewsFor(ids) { return reviews.filter(r => ids.includes(r.questionId)); },
+    async answerMode(p) { return modes.get(p) ?? "approve_first"; },
+    async setAnswerMode(p, m) { modes.set(p, m); },
     async followedBy(u, limit) { return [...follows].filter(k => k.endsWith(`|${u}`)).map(k => k.split("|")[0]!).reverse().slice(0, limit); },
     async followers(p) { return [...follows].filter(k => k.startsWith(`${p}|`)).map(k => k.split("|")[1]!); }
   };

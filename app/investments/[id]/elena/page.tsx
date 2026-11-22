@@ -2,7 +2,8 @@
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import type { ReviewFlag } from "../../../../src/domain/elena-projects";
-import { QuestionCard, UpdatesList, type QView, type UView } from "../../elena-project";
+import { QuestionCard, SourceList, UpdatesList, type QView, type UView } from "../../elena-project";
+import { OwnerDiligence } from "../../diligence";
 import { send } from "../../ui";
 
 /** Owner screen: what Elena thinks is missing, her draft updates for approval, and the questions investors asked. */
@@ -18,6 +19,8 @@ export default function OwnerElena() {
   const [busy, setBusy] = useState(false);
   const [edit, setEdit] = useState<{ id: string; title: string; body: string } | null>(null);
   const [reply, setReply] = useState<{ id: string; body: string } | null>(null);
+  const [mode, setMode] = useState<"approve_first" | "instant">("approve_first");
+  const [rev, setRev] = useState<{ id: string; body: string } | null>(null);
 
   const load = useCallback(async () => {
     const rs = await Promise.all([fetch(`${base}/elena/review`), fetch(`${base}/updates`), fetch(`${base}/elena/questions`)]).catch(() => null);
@@ -26,7 +29,8 @@ export default function OwnerElena() {
     const rv = (await rs[0]!.json()) as { flags: ReviewFlag[]; newDocuments: number };
     setFlags(rv.flags); setFresh(rv.newDocuments);
     setUpdates(((await rs[1]!.json()) as { updates: UView[] }).updates);
-    setQuestions(((await rs[2]!.json()) as { questions: QView[] }).questions);
+    const qd = (await rs[2]!.json()) as { questions: QView[]; answerMode?: "approve_first" | "instant" };
+    setQuestions(qd.questions); if (qd.answerMode) setMode(qd.answerMode);
   }, [base]);
   useEffect(() => { void load(); }, [load]);
 
@@ -43,8 +47,14 @@ export default function OwnerElena() {
   async function save() { if (edit && (await act(() => send(`${base}/updates/${edit.id}`, "PATCH", { title: edit.title, body: edit.body }), "Draft saved."))) setEdit(null); }
   async function sendReply() { if (reply && (await act(() => send(`${base}/elena/questions/${reply.id}/reply`, "POST", { body: reply.body }), "Reply sent."))) setReply(null); }
 
+  const decide = (qid: string, decision: "approve" | "edit" | "discard", body?: string) =>
+    act(() => send(`${base}/elena/questions/${qid}/review`, "POST", { decision, ...(body !== undefined ? { body } : {}) }),
+      decision === "approve" ? "Approved. The investor can now read Elena's answer." : decision === "edit" ? "Your answer was sent to the investor." : "Discarded. Reply to the investor yourself when you are ready.");
+  const changeMode = (m: "approve_first" | "instant") => act(() => send(`${base}/elena/settings`, "PUT", { answerMode: m }), m === "approve_first" ? "Elena will draft answers for you to approve." : "Elena will now answer straight away from your documents.");
+
   const drafts = (updates ?? []).filter(u => u.status === "draft");
   const published = (updates ?? []).filter(u => u.status === "published");
+  const waiting = (questions ?? []).filter(q => q.state === "pending_owner");
   const open = (questions ?? []).filter(q => q.outcome === "escalated" && q.replies.length === 0);
 
   return (
@@ -54,6 +64,8 @@ export default function OwnerElena() {
       <p className="muted">Elena answers investors only from what you publish, and passes on what she can't answer. She never promises returns, never shows the exact address and never commits anyone to anything. Nothing reaches investors until you approve it.</p>
       {msg && <p role="status" className="inv-visitor">{msg}</p>}
       {error && <p role="alert" className="inv-visitor">{error}</p>}
+
+      <OwnerDiligence projectId={id} />
 
       <section className="panel elena-box" aria-labelledby="flags-h">
         <h2 id="flags-h">Keeping the project current</h2>
@@ -91,11 +103,36 @@ export default function OwnerElena() {
       </section>
 
       <section className="panel elena-box" aria-labelledby="q-h">
-        <h2 id="q-h">Investor questions{open.length > 0 ? ` (${open.length} waiting for you)` : ""}</h2>
+        <h2 id="q-h">Investor questions{waiting.length + open.length > 0 ? ` (${waiting.length + open.length} waiting for you)` : ""}</h2>
+        <fieldset className="elena-mode">
+          <legend>How Elena answers investors</legend>
+          <label><input type="radio" name="mode" checked={mode === "approve_first"} disabled={busy} onChange={() => changeMode("approve_first")} /> Draft first, I approve (recommended). Investors see an answer only after you approve it.</label>
+          <label><input type="radio" name="mode" checked={mode === "instant"} disabled={busy} onChange={() => changeMode("instant")} /> Answer straight away by quoting my published documents.</label>
+        </fieldset>
         {!questions ? <p className="muted" role="status">Loading…</p> : questions.length === 0 ? <p className="muted" role="status">No investor has asked Elena anything yet.</p> : (
           <ul className="elena-list">{questions.map(q => (
             <QuestionCard key={q.id} q={q}>
-              {q.outcome === "escalated" && (reply?.id === q.id ? (
+              {q.state === "pending_owner" && q.draft && (
+                <div className="elena-edit">
+                  <span className="elena-tag draft">Elena's draft, only you can see it</span>
+                  <p className="elena-a">Elena would quote the published documents:</p>
+                  <SourceList sources={q.draft.sources} />
+                  {rev?.id === q.id ? (
+                    <>
+                      <label htmlFor={`e-${q.id}`}>Your answer (no contact details, street address or promised returns)</label>
+                      <textarea id={`e-${q.id}`} value={rev.body} maxLength={2000} onChange={e => setRev({ id: q.id, body: e.target.value })} />
+                      <div className="elena-actions"><button type="button" onClick={async () => { if (await decide(q.id, "edit", rev.body)) setRev(null); }} disabled={busy || rev.body.trim().length < 2}>Send my answer</button><button type="button" className="secondary" onClick={() => setRev(null)}>Cancel</button></div>
+                    </>
+                  ) : (
+                    <div className="elena-actions">
+                      <button type="button" onClick={() => decide(q.id, "approve")} disabled={busy}>Approve Elena's answer</button>
+                      <button type="button" className="secondary" onClick={() => setRev({ id: q.id, body: "" })} disabled={busy}>Write my own</button>
+                      <button type="button" className="secondary" onClick={() => decide(q.id, "discard")} disabled={busy}>Discard</button>
+                    </div>
+                  )}
+                </div>
+              )}
+              {q.outcome === "escalated" && q.state === undefined && (reply?.id === q.id ? (
                 <div className="elena-edit">
                   <label htmlFor={`r-${q.id}`}>Your reply (no contact details or street address)</label>
                   <textarea id={`r-${q.id}`} value={reply.body} maxLength={2000} onChange={e => setReply({ id: q.id, body: e.target.value })} />

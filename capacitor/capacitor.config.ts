@@ -14,7 +14,7 @@ const config: CapacitorConfig = {
   webDir: "www",
   ...(url ? { server: { url, cleartext: url.startsWith("http://"), allowNavigation: [new URL(url).host] } } : {}),
   ios: { contentInset: "automatic", backgroundColor: "#14213d" },
-  android: { backgroundColor: "#14213d", allowMixedContent: false },
+  android: { backgroundColor: "#14213d", allowMixedContent: false, adjustMarginsForEdgeToEdge: "force" },
   plugins: {
     SplashScreen: { backgroundColor: "#14213d", launchShowDuration: 800 },
     StatusBar: { style: "DARK", backgroundColor: "#14213d" }
