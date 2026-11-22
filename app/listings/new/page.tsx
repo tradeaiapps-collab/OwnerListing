@@ -103,7 +103,7 @@ export default function NewListing() {
   function readPreview(form: HTMLFormElement) {
     const fd = new FormData(form), g = (k: string) => String(fd.get(k) ?? "").trim();
     const rent = g("transactionType") === "rent";
-    const cents = dollarsToCents(g("price"));
+    const cents = priceInputToCents(g("price"));
     const price = cents === undefined || g("price") === "" ? "Price not set" : `$${(cents / 100).toLocaleString("en-AU")}${rent ? " pw" : ""}`;
     const rooms = ["bedrooms", "bathrooms", "parking"].map((k, i) => (g(k) === "" ? "" : `${g(k)} ${["bed", "bath", "car"][i]}`)).filter(Boolean).join(" · ");
     const addr = [g("address"), [g("suburb"), g("jurisdiction"), g("postcode")].filter(Boolean).join(" ")].filter(Boolean).join(", ");
