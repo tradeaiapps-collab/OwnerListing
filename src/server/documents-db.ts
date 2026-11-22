@@ -44,13 +44,19 @@ export function createPgDocumentStore(db: Queryable): UploadStore {
       const r = d.record;
       await db.query(
         `WITH ins AS (
-           INSERT INTO property_document (id, property_id, listing_id, kind, storage_key, sha256, uploaded_by, source, declared_mime, size_bytes, visibility, status, supersedes_id)
-           SELECT $1, l.property_id, l.id, $2, $3, $4, $5, $6, $7, $8, $9, 'active', $10::uuid FROM property_listing l WHERE l.id = $11
+           INSERT INTO property_document (id, property_id, listing_id, kind, storage_key, sha256, uploaded_by, source, declared_mime, size_bytes, visibility, status, supersedes_id, filename)
+           SELECT $1, l.property_id, l.id, $2, $3, $4, $5, $6, $7, $8, $9, 'active', $10::uuid, $12 FROM property_listing l WHERE l.id = $11
            RETURNING id)
          UPDATE property_document SET status = 'superseded' WHERE id = $10::uuid AND EXISTS (SELECT 1 FROM ins)`,
         [r.id, r.kind, d.storageKey, d.sha256, r.uploadedBy, r.uploadedBy === r.ownerUserId ? "owner_supplied" : "platform",
-          d.declaredMime, d.sizeBytes, r.visibility, supersede?.id ?? null, r.listingId]
+          d.declaredMime, d.sizeBytes, r.visibility, supersede?.id ?? null, r.listingId, d.filename ?? null]
       );
+    },
+    async filenameTaken(listingId, filename, exceptId) {
+      const res = await db.query(
+        "SELECT 1 FROM property_document WHERE listing_id = $1 AND status = 'active' AND lower(filename) = lower($2) AND ($3::uuid IS NULL OR id <> $3::uuid) LIMIT 1",
+        [listingId, filename, exceptId ?? null]);
+      return res.rows.length > 0;
     },
     async bytesUploadedSince(userId, sinceIso) {
       const res = await db.query("SELECT COALESCE(SUM(size_bytes), 0) AS total FROM property_document WHERE uploaded_by = $1::uuid AND uploaded_at >= $2::timestamptz", [userId, sinceIso]);

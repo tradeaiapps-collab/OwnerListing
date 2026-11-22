@@ -1,5 +1,6 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { stepFromHash, stepHash } from "../../../src/domain/wizard-history";
 import { BondPathwayField, ListingFields, type BondState, type ListingDefaults } from "../fields";
 import { TemplatePicker } from "../template-picker";
 import type { TemplateView } from "../../../src/domain/listing-template";
@@ -41,6 +42,23 @@ export default function NewListing() {
   const [uploads, setUploads] = useState<Upload[]>([]);
   const [step, setStep] = useState(0);
   const [reached, setReached] = useState(0);
+  const [dirty, setDirty] = useState(false);
+  const reachedRef = useRef(0);
+  reachedRef.current = reached;
+  // Back and Forward move between steps (entered data stays: every step stays mounted). The first entry is step 1.
+  useEffect(() => {
+    if (!window.location.hash.startsWith("#step-")) window.history.replaceState({ wizStep: 0 }, "", stepHash(0));
+    const onPop = () => setStep(stepFromHash(window.location.hash, reachedRef.current, STEPS.length - 1));
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
+  // Warn before leaving with changes that are not saved as a draft.
+  useEffect(() => {
+    if (!dirty || draftId) return;
+    const warn = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ""; };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [dirty, draftId]);
   const [review, setReview] = useState<[string, string][]>([]);
   const [live, setLive] = useState({ price: "Price not set", title: "Untitled listing", addr: "Address not set", rooms: "" });
   const uploading = uploads.some(u => u.state === "waiting" || u.state === "uploading");
@@ -151,6 +169,7 @@ export default function NewListing() {
     setError("");
     setFieldErrors({});
     if (next === LAST) setReview(reviewRows(form));
+    if (next !== step) window.history.pushState({ wizStep: next }, "", stepHash(next));
     setStep(next); setReached(r => Math.max(r, next));
     document.getElementById("wiz-top")?.scrollIntoView({ block: "start" });
   }
@@ -252,7 +271,7 @@ export default function NewListing() {
               <h2>{TITLES[step]}</h2>
               <p className="muted">{INTROS[step]}</p>
             </header>
-            <form id="new-listing-form" onSubmit={onSubmit} onInput={e => { setLive(readPreview(e.currentTarget)); const n = (e.target as HTMLInputElement).name; if (n && fieldErrors[n] !== undefined) { const { [n]: _gone, ...rest } = fieldErrors; setFieldErrors(rest); if (Object.keys(rest).length === 0) setError(""); } }} noValidate>
+            <form id="new-listing-form" onSubmit={onSubmit} onInput={e => { setDirty(true); setLive(readPreview(e.currentTarget)); const n = (e.target as HTMLInputElement).name; if (n && fieldErrors[n] !== undefined) { const { [n]: _gone, ...rest } = fieldErrors; setFieldErrors(rest); if (Object.keys(rest).length === 0) setError(""); } }} noValidate>
               <div className="wiz-body">
                 <ListingFields key={fieldsKey} defaults={defaults} step={FIELD_STEPS[step] ?? "none"} errors={fieldErrors} />
                 <div hidden={step !== 3}><PhotosStep files={pending} onChange={setPending} /></div>
@@ -260,7 +279,9 @@ export default function NewListing() {
                   {review.map(([k, v], i) => (
                     <div key={k} className="wiz-rv"><h3>{k}</h3><p>{v}</p><button type="button" className="link-button" onClick={() => goTo(i)}>Edit</button></div>
                   ))}
-                  <p className="muted">Saving creates a draft. Then you can invite your photographer and building inspector. Nothing is public until you publish.</p>
+                  {draftId
+                    ? <p className="muted">Draft saved, next: invite or publish. Nothing is public until you publish.</p>
+                    : <p className="muted">Saving creates a draft. Then you can invite your photographer and building inspector. Nothing is public until you publish.</p>}
                 </div>
               </div>
               <div className="wiz-nav">
@@ -279,19 +300,32 @@ export default function NewListing() {
       {draftId && (
         <section role="status" className="panel">
           <h2>Draft saved</h2>
-          <p><a href={`/listings/${draftId}/edit`}>Edit this draft</a></p>
-          {uploads.length > 0 && (
-            <ul className="plain-list" role="status" aria-label="Uploads">{uploads.map((u, i) => <li key={i}>{u.name}: {u.state === "waiting" ? "waiting" : u.state === "uploading" ? "uploading..." : u.state === "done" ? "added" : u.message}</li>)}</ul>
-          )}
-          {!uploading && <PhotoManager key={uploads.length} listingId={draftId} />}
-          {isRent && (
-            <BondPathwayField value={bond} state={bondState} onChange={saveBond} />
-          )}
-          <ContractorSection listingId={draftId} />
-          <ElenaJobsPanel listingId={draftId} />
-          <ElenaEnquiriesPanel listingId={draftId} />
-          <p><a className="button" href={`/listings/${draftId}/approve`}>Review and approve your ad</a></p>
-          <ElenaPublishCheck listingId={draftId} />
+          <div className="post-save">
+            <section className="post-save-group" aria-labelledby="ps-publish">
+              <h3 id="ps-publish">Publish</h3>
+              <p className="muted">You do not need a photographer, inspector or any contractor to publish. Elena lists exactly what must be done first (for example disclosures, ID check or trust account), with a link to fix each one.</p>
+              <ElenaPublishCheck listingId={draftId} />
+              <p><a href={`/listings/${draftId}/approve`}>Preview your ad as buyers see it</a> · <a href={`/listings/${draftId}/edit`}>Edit this draft</a></p>
+            </section>
+            <details className="post-save-group">
+              <summary>Photos and plan already added ({uploads.filter(u => u.state === "done").length || "see"}): change or reorder</summary>
+              {uploads.length > 0 && (
+                <ul className="plain-list" role="status" aria-label="Uploads">{uploads.map((u, i) => <li key={i}>{u.name}: {u.state === "waiting" ? "waiting" : u.state === "uploading" ? "uploading..." : u.state === "done" ? "added" : u.message}</li>)}</ul>
+              )}
+              {!uploading && <PhotoManager key={uploads.length} listingId={draftId} />}
+            </details>
+            {isRent && (
+              <section className="post-save-group" aria-label="Rental bond">
+                <BondPathwayField value={bond} state={bondState} onChange={saveBond} />
+              </section>
+            )}
+            <details className="post-save-group">
+              <summary>Optional: invite a photographer or inspector (skip if you do not need them)</summary>
+              <ContractorSection listingId={draftId} />
+              <ElenaJobsPanel listingId={draftId} />
+              <ElenaEnquiriesPanel listingId={draftId} />
+            </details>
+          </div>
         </section>
       )}
       <p><a className="button secondary" href="/listings/mine">Back to my listings</a></p>

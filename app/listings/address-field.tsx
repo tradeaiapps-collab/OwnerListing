@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState } from "react";
 
-interface Parts { address: string; suburb?: string; state?: string; postcode?: string }
+interface Parts { address: string; street?: string; suburb?: string; state?: string; postcode?: string }
 interface Suggestion { id: string; main: string; secondary: string; parts?: Parts }
 type Status = "idle" | "loading" | "ready" | "error" | "signin";
 
@@ -60,7 +60,7 @@ export function AddressField({ defaultValue = "", invalid = false }: { defaultVa
   async function pick(s: Suggestion) {
     setOpen(false);
     setQuery(null);
-    setValue(s.parts?.address ?? [s.main, s.secondary].filter(Boolean).join(", "));
+    setValue(s.parts?.street ?? s.parts?.address ?? s.main);
     let parts = s.parts;
     if (!parts) {
       try {
@@ -70,7 +70,7 @@ export function AddressField({ defaultValue = "", invalid = false }: { defaultVa
     }
     session.current = newSession(); // a pick ends the billing session
     if (!parts) return;
-    setValue(parts.address);
+    setValue(parts.street ?? parts.address); // street line only; suburb, state and postcode have their own fields
     const form = inputRef.current?.form ?? null;
     setFormField(form, "suburb", parts.suburb);
     setFormField(form, "postcode", parts.postcode);

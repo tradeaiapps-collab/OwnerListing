@@ -200,7 +200,7 @@ export default function EditListing() {
                 {step === 3 && <PhotoManager listingId={listing.id} />}
                 {step === 4 && (
                   <>
-                    <LocationPicker listingId={listing.id} address={listing.address} latitude={listing.latitude} longitude={listing.longitude} />
+                    <LocationPicker listingId={listing.id} address={[listing.address, listing.suburb, listing.jurisdiction, listing.postcode].filter(Boolean).join(" ")} latitude={listing.latitude} longitude={listing.longitude} />
                     <section className="panel">
                       {listing.transactionType === "rent" && <BondPathwayField value={bond} state={bondState} onChange={saveBond} />}
                       <p><a href={`/listings/${listing.id}/disclosures`}>Required disclosures for your state</a></p>
