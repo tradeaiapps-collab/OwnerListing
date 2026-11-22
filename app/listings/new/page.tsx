@@ -210,8 +210,8 @@ export default function NewListing() {
       <div id="panel-manual" role="tabpanel" aria-labelledby="tab-manual" hidden={mode !== "manual"}>
         {filled && (
           <section role="status" className="panel qs-result">
-            <h2>Elena wrote your listing. Check it below.</h2>
-            <p className="muted">{filled.source === "ai" ? "Elena wrote the title and description from your notes. " : "Elena read your notes to fill in the details. "}Check everything below and change what is wrong. Nothing is saved until you press Save draft.</p>
+            <h2>{filled.source === "ai" ? "Elena wrote your listing. Check it below." : "Elena is offline, so the description is not written."}</h2>
+            <p className="muted">{filled.source === "ai" ? "Elena wrote the title and description from your notes. " : "Elena is offline right now, so she only filled in the details she could read from your address. Please write the title and description yourself below. "}Check everything below and change what is wrong. Nothing is saved until you press Save draft.</p>
             <ul className="plain-list">{filled.filled.map(x => <li key={x.key}><strong>{x.label}:</strong> {x.value}</li>)}</ul>
             {filled.photoState === "read" && filled.seen && filled.seen.length > 0 && <p><strong>Elena saw in your photos:</strong> {filled.seen.join(", ")}.</p>}
             {filled.photoState === "off" && <p className="muted">Elena can&apos;t look at photos on this server yet (no vision model installed), so she wrote from your address and notes. Your photos are still added when you save.</p>}
