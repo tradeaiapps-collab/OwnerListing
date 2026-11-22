@@ -90,6 +90,15 @@ export default function NewListing() {
   }, [dirty, draftId]);
   const [review, setReview] = useState<[string, string][]>([]);
   const [live, setLive] = useState({ price: "Price not set", title: "Untitled listing", addr: "Address not set", rooms: "" });
+  /** The "Still needed" list follows the form, so answers given to Elena (or typed) drop off it straight away. */
+  const FIELD_OF: Record<string, string> = { Suburb: "suburb", "Street address": "address", Bedrooms: "bedrooms", Bathrooms: "bathrooms", "Parking spaces": "parking", "Asking price": "price", "Weekly rent": "price" };
+  const stillNeeded = (missing: readonly string[]) => {
+    void live; // re-evaluated on every form input
+    const f = typeof document === "undefined" ? null : document.getElementById("new-listing-form");
+    if (!(f instanceof HTMLFormElement)) return [...missing];
+    const fd = new FormData(f);
+    return missing.filter(m => !FIELD_OF[m] || String(fd.get(FIELD_OF[m]!) ?? "").trim() === "");
+  };
   const uploading = uploads.some(u => u.state === "waiting" || u.state === "uploading");
 
   /** Elena's quick setup fills the form. Whatever the person had already typed is kept where Elena found nothing. */
@@ -272,18 +281,20 @@ export default function NewListing() {
       <div id="panel-manual" role="tabpanel" aria-labelledby="tab-manual" hidden={mode !== "manual"}>
         {filled && (
           <section role="status" className="panel qs-result">
-            <h2>Elena wrote your listing. Check it below.</h2>
-            <p className="muted">{filled.source === "ai" ? "Elena wrote the title and description from your notes. " : "Elena read your notes to fill in the details. "}Check everything below and change what is wrong. Nothing is saved until you press Save draft.</p>
+            <h2>{filled.source === "ai" ? "Elena wrote your listing. Check it below." : "Elena wrote your draft from your details and the area. Check it below."}</h2>
+            <p className="muted">{filled.source === "ai" ? "Elena wrote the title and description from your notes. " : "This draft is built from your address, your details, area data and Elena's own writing rules. Add what she asks below to make it better. "}Check everything below and change what is wrong. Nothing is saved until you press Save draft.</p>
+            {filled.provenance && <p className="muted"><strong>Where this came from:</strong> description {filled.provenance.description === "ai" ? "written by AI" : "built from rules (no AI)"}; photos {filled.provenance.photos === "read" ? "used for room names" : filled.provenance.photos === "none" ? "not added" : "added to your draft"}; area facts {filled.provenance.area ? "included" : "not found"}.</p>}
+            {filled.questions && filled.questions.length > 0 && <><p><strong>Elena needs to know:</strong></p><ul className="plain-list">{filled.questions.map(x => <li key={x}>{x}</li>)}</ul></>}
             <ul className="plain-list">{filled.filled.map(x => <li key={x.key}><strong>{x.label}:</strong> {x.value}</li>)}</ul>
             {filled.photoState === "read" && filled.seen && filled.seen.length > 0 && <p><strong>Elena saw in your photos:</strong> {filled.seen.join(", ")}.</p>}
-            {filled.photoState === "off" && <p className="muted">Elena can&apos;t look at photos on this server yet (no vision model installed), so she wrote from your address and notes. {photosOff ? "" : "Your photos are still added when you save."}</p>}
+            {filled.photoState === "off" && <p className="muted">{photosOff ? "Photos can be added after the draft is saved." : "Your photos are added when you save."} Tick the features they show in the form below.</p>}
             {filled.photoState === "failed" && <p className="muted">Elena couldn&apos;t read the photos this time. {photosOff ? "" : "Your photos are still added when you save."}</p>}
             {filled.area && filled.area.suburbFacts.length > 0 && <>
               <p><strong>What we know about the area</strong> <span className="muted">({filled.area.suburbSource})</span></p>
               <ul className="plain-list">{filled.area.suburbFacts.map(x => <li key={x.label}>{x.label}: {x.value}</li>)}</ul>
             </>}
             {filled.area && filled.area.checklist.length > 0 && <p className="muted"><strong>Papers a seller usually needs in {filled.fields.jurisdiction}:</strong> {filled.area.checklist.join("; ")}. Draft list, not legal advice.</p>}
-            {filled.missing.length > 0 && <p><strong>Still needed:</strong> {filled.missing.join(", ")}.</p>}
+            {stillNeeded(filled.missing).length > 0 && <p><strong>Still needed:</strong> {stillNeeded(filled.missing).join(", ")}.</p>}
             {!photosOff && (pending.photos.length > 0 || pending.plan) && <p className="muted">{pending.photos.length} {pending.photos.length === 1 ? "photo" : "photos"}{pending.plan ? " and a site plan" : ""} will be added when you save the draft.</p>}
           </section>
         )}
@@ -371,7 +382,7 @@ export default function NewListing() {
           </div>
         </section>
       )}
-      <p className="page-back"><a className="button secondary" href="/listings/mine">Back to my listings</a></p>
+      <p className="page-foot"><a className="button secondary" href="/listings/mine">Back to my listings</a></p>
     </main>
   );
 }

@@ -2,7 +2,7 @@
  * The AI runs on our own servers. Nothing here names an outside company: the engine is whatever model the admin
  * installs (an open-source model on our GPU server). Swapping engines never changes the rules around it.
  */
-export interface AiEngineInfo { id: string; kind: "self_hosted" | "rules_only"; version: string }
+export interface AiEngineInfo { id: string; kind: "self_hosted" | "hosted" | "rules_only"; version: string }
 
 /** Task rules from our own code (never from a user) and an output budget. User text goes only in the prompt, fenced with fenceData. */
 export interface GenerateOptions { system?: string; maxTokens?: number }
@@ -25,9 +25,10 @@ export const rulesOnlyEngine: AiEnginePort = {
   generate: async () => { throw new Error("No AI engine is installed yet."); }
 };
 
-/** An engine counts as available only if it is self-hosted, so data never leaves our servers. */
+/** An engine counts as available if it is self-hosted or a hosted API the owner switched on (AI_ENGINE=anthropic). */
 export function isEngineUsable(e: AiEnginePort): boolean {
-  return e.info().kind === "self_hosted";
+  const k = e.info().kind;
+  return k === "self_hosted" || k === "hosted";
 }
 
 /** Shown on every AI-written suggestion. The person must check and change it before anything is published or sent. */
