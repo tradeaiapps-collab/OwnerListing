@@ -3,7 +3,8 @@
 .acct-body { min-width: 0; }
 .acct-body > main { padding: 0; max-width: none; }
 .acct-nav { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }
-.acct-nav .acct-toggle { display: flex; justify-content: space-between; align-items: center; width: 100%; min-height: 44px; padding: var(--space-2) var(--space-4); background: var(--surface); border: 0; border-radius: var(--radius); color: var(--text); font-weight: 600; cursor: pointer; }
+.acct-nav .acct-toggle { display: flex; justify-content: space-between; align-items: center; width: 100%; min-height: 44px; padding: var(--space-2) var(--space-4); background: var(--surface); border: 0; border-radius: var(--radius); color: var(--text); font-weight: 600; cursor: pointer; box-shadow: none; }
+.acct-nav .acct-toggle:hover:not(:disabled) { background: var(--bg); color: var(--text); box-shadow: none; transform: none; }
 .acct-menu { display: none; padding: 0 var(--space-4) var(--space-4); }
 .acct-menu[data-open="true"] { display: grid; gap: var(--space-4); }
 .acct-menu h2 { margin: 0 0 var(--space-1); font-size: 0.75rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
