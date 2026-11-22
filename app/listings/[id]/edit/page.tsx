@@ -232,7 +232,7 @@ export default function EditListing() {
           </section>
         </div>
       )}
-      <p><a className="button secondary" href="/listings/mine">Back to my listings</a></p>
+      <p className="page-foot"><a className="button secondary" href="/listings/mine">Back to my listings</a></p>
     </main>
   );
 }

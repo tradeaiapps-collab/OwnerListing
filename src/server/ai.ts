@@ -1,4 +1,5 @@
 import { createOllamaEngine, readAiConfig, type OllamaConfig, type OllamaEngine } from "../adapters/ollama-engine";
+import { createHostedEngine, readHostedConfig, type HostedConfig, type HostedEngine } from "../adapters/hosted-engine";
 import { rulesOnlyEngine, type AiEnginePort } from "../domain/ai-engine";
 import { aiSwitchOn } from "./ai-switch-db";
 import { getDb } from "./context";
@@ -12,13 +13,21 @@ export function engineForConfig(cfg: OllamaConfig): OllamaEngine {
   return cached.engine;
 }
 
+let cachedHosted: { key: string; engine: HostedEngine } | null = null;
+export function hostedEngineForConfig(cfg: HostedConfig): HostedEngine {
+  const key = JSON.stringify(cfg);
+  if (cachedHosted?.key !== key) cachedHosted = { key, engine: createHostedEngine(cfg) };
+  return cachedHosted.engine;
+}
+
 /**
  * The AI engine for this request. Two keys, both needed: the server config (AI_ENGINE=ollama with a valid local endpoint) and the
  * super-admin switch at /staff/ai (default OFF). Anything else, including a database error, is the rules-only engine (AI off).
  */
 export async function getAiEngine(): Promise<AiEnginePort> {
-  const cfg = readAiConfig(process.env);
-  if (!cfg.ok) return rulesOnlyEngine;
+  const hosted = readHostedConfig(process.env);
+  const cfg = hosted.ok ? undefined : readAiConfig(process.env);
+  if (!hosted.ok && !cfg?.ok) return rulesOnlyEngine;
   if (!(await aiSwitchOn(getDb()))) return rulesOnlyEngine;
-  return engineForConfig(cfg.config);
+  return hosted.ok ? hostedEngineForConfig(hosted.config) : engineForConfig((cfg as { ok: true; config: OllamaConfig }).config);
 }

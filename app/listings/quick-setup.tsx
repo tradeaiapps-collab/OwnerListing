@@ -11,7 +11,7 @@ import { JSON_HEADERS } from "./ui";
 export type QuickFiles = { photos: File[]; plan: File | null };
 type Ready = Extract<QuickSetup, { state: "ready" }>;
 /** What the server sends back: the draft fields plus what Elena saw in the photos and the area facts she used. */
-export type Drafted = Ready & Partial<Pick<QuickDraft, "seen" | "photoState" | "photosRead" | "area">>;
+export type Drafted = Ready & Partial<Pick<QuickDraft, "seen" | "photoState" | "photosRead" | "area" | "questions" | "provenance">>;
 
 const TYPES = ["image/jpeg", "image/png", "image/webp"];
 const MB = PHOTO_LIMITS.maxBytes / 1_000_000;
@@ -27,7 +27,7 @@ async function shrink(f: File): Promise<File> {
     c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
     c.getContext("2d")?.drawImage(bmp, 0, 0, c.width, c.height);
     const blob = await new Promise<Blob | null>(r => c.toBlob(r, "image/jpeg", 0.8));
-    return blob ? new File([blob], "photo.jpg", { type: "image/jpeg" }) : f;
+    return blob ? new File([blob], `${f.name.replace(/\.[^.]*$/, "") || "photo"}.jpg`, { type: "image/jpeg" }) : f;
   } catch { return f; }
 }
 
@@ -101,10 +101,10 @@ export function QuickSetupPanel({ transactionType, onDone, onManual }: { transac
       for (const f of await Promise.all(photos.slice(0, MAX_SEND).map(shrink))) fd.append("photos", f);
       const r = await fetch("/api/listings/assistant/quick-draft", { method: "POST", body: fd });
       const d = await r.json();
-      if (!r.ok) setError(r.status === 401 ? "Sign in to use quick setup." : d.error ?? "Elena can't help right now. You can use manual setup instead.");
+      if (!r.ok) setError(r.status === 401 ? "Sign in to use quick setup." : d.error ?? "Elena couldn't finish this time. Try again, or use Manual setup.");
       else if (d.state !== "ready") setError(d.message ?? "Elena can't help right now.");
       else onDone(d as Drafted, { photos, plan });
-    } catch { setError("Elena can't help right now. You can use manual setup instead."); } finally { setBusy(false); }
+    } catch { setError("Elena couldn't finish this time. Try again, or use Manual setup."); } finally { setBusy(false); }
   }
 
   return (
@@ -165,7 +165,7 @@ export function QuickSetupPanel({ transactionType, onDone, onManual }: { transac
           </label>
           <small className="muted">{notes.length} of {MAX_QUICK_NOTES}</small>
         </div>
-        {error && <p role="alert">{error}</p>}
+        {error && <p role="alert" className="notice"><strong>{error}</strong></p>}
       </form>
 
       <footer className="qs-foot">

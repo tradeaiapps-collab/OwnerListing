@@ -7,9 +7,9 @@
 .jr-bar span { display: block; height: 100%; background: var(--brand); border-radius: inherit; }
 .jr-next { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-3); padding: var(--space-2) var(--space-3); margin-bottom: var(--space-2); border-radius: var(--radius); background: var(--tint); }
 .jr-next > div { display: grid; gap: 2px; max-width: 40rem; }
-.jr-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 0 var(--space-4); grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr)); }
-.jr-step { display: flex; align-items: center; gap: var(--space-2); min-height: 40px; }
-.jr-dot { flex: none; width: 24px; height: 24px; border-radius: 50%; border: 2px solid var(--border); display: inline-flex; align-items: center; justify-content: center; font-size: 0.8125rem; font-weight: 800; }
+.jr-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 0 var(--space-4); grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr)); grid-auto-rows: minmax(52px, auto); align-items: start; }
+.jr-step { display: flex; align-items: flex-start; padding-block: var(--space-1); gap: var(--space-2); min-height: 40px; }
+.jr-dot { flex: none; margin-top: 2px; width: 24px; height: 24px; border-radius: 50%; border: 2px solid var(--border); display: inline-flex; align-items: center; justify-content: center; font-size: 0.8125rem; font-weight: 800; }
 .jr-done .jr-dot { background: var(--ok); border-color: var(--ok); color: var(--bg); }
 .jr-todo .jr-dot { border-color: var(--brand); }
 .jr-unavailable { color: var(--muted); }
