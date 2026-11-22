@@ -2,7 +2,7 @@ import { useEffect, useId, useRef, useState } from "react";
 
 interface Parts { address: string; suburb?: string; state?: string; postcode?: string }
 interface Suggestion { id: string; main: string; secondary: string; parts?: Parts }
-type Status = "idle" | "loading" | "ready" | "error";
+type Status = "idle" | "loading" | "ready" | "error" | "signin";
 
 const MIN_CHARS = 3;
 const DEBOUNCE_MS = 250;
@@ -43,6 +43,7 @@ export function AddressField({ defaultValue = "", invalid = false }: { defaultVa
       setStatus("loading");
       try {
         const res = await fetch(`/api/address/suggest?${new URLSearchParams({ q, session: session.current })}`, { signal: ctrl.signal, headers: { accept: "application/json" } });
+        if (res.status === 401) { setItems([]); setStatus("signin"); return; }
         if (!res.ok) throw new Error(String(res.status));
         const data = (await res.json()) as { provider?: string; suggestions?: Suggestion[] };
         setItems(Array.isArray(data.suggestions) ? data.suggestions : []);
@@ -118,6 +119,7 @@ export function AddressField({ defaultValue = "", invalid = false }: { defaultVa
           </ul>
           {status === "loading" && items.length === 0 && <p className="addr-note" role="status">Searching addresses...</p>}
           {status === "ready" && items.length === 0 && <p className="addr-note" role="status">No matching address. Keep typing, or enter the full address yourself.</p>}
+          {status === "signin" && <p className="addr-note" role="status"><a href="/login?as=owner&next=/listings/new">Sign in</a> to get address suggestions, or type the full address.</p>}
           {status === "error" && <p className="addr-note" role="status">Address suggestions are not available right now. Type the full address.</p>}
           {items.length > 0 && ATTRIBUTION[provider] && <p className="addr-attr">{ATTRIBUTION[provider]}</p>}
         </div>
