@@ -390,6 +390,7 @@ button.secondary:hover:not(:disabled), .button.secondary:hover { background: var
   .form-grid.cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .form-grid .span-all { grid-column: 1 / -1; }
 }
+.page-foot { margin: var(--space-6) 0 0; }
 .form-bar { display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: center; margin-top: var(--space-2); }
 
 /* ---- Feedback ---- */
