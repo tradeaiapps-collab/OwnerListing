@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { appendAuditPg, type Queryable } from "./db";
 import type { GoogleIdentity } from "./auth/google";
 
-export interface SignedInUser { id: string; userType: "owner" | "agent" | "buyer" | "vendor" }
+export interface SignedInUser { id: string; userType: "owner" | "agent" | "buyer" | "vendor"; /** True only when this sign-in created the account. */ created?: boolean }
 
 /**
  * Finds or creates the user for a verified Google identity, keyed on the Google subject id (not email).
@@ -20,7 +20,7 @@ export async function upsertGoogleUser(db: Queryable, who: GoogleIdentity, reque
       `INSERT INTO app_user (email, display_name, user_type, status, google_sub)
        VALUES ($1, $2, $4, 'active', $3)
        ON CONFLICT (google_sub) DO UPDATE SET email = EXCLUDED.email WHERE app_user.user_type IN ('owner', 'agent', 'buyer') AND app_user.deleted_at IS NULL
-       RETURNING id, user_type, status`,
+       RETURNING id, user_type, status, (xmax = 0) AS created`,
       [who.email, who.name, who.sub, requestedType]
     );
   } catch (e) {
@@ -37,7 +37,7 @@ export async function upsertGoogleUser(db: Queryable, who: GoogleIdentity, reque
   if (!row || row["status"] !== "active") return null;
   const type = row["user_type"];
   if ((type !== "owner" && type !== "agent" && type !== "buyer") || typeof row["id"] !== "string") return null;
-  return { id: row["id"], userType: type };
+  return { id: row["id"], userType: type, ...(row["created"] === true ? { created: true } : {}) };
 }
 
 /**

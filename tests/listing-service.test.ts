@@ -45,6 +45,20 @@ describe("parseDraftInput", () => {
   });
 });
 
+describe("language check on public text", () => {
+  const msg = "Description contains inappropriate language. Please revise before posting.";
+  it("rejects swearing in the title or description of a new draft, unless allowFlagged", () => {
+    expect(parseDraftInput({ ...input, description: "What the f**k a view" })).toEqual({ ok: false, code: "invalid", message: msg });
+    expect(parseDraftInput({ ...input, title: "Shit house" })).toEqual({ ok: false, code: "invalid", message: msg });
+    expect(parseDraftInput({ ...input, title: "Shit house", allowFlagged: true }).ok).toBe(true);
+    expect(parseDraftInput({ ...input, description: "Bright home near the park" }).ok).toBe(true);
+  });
+  it("rejects it on an update too", () => {
+    expect(parseDraftPatch({ description: "kys" })).toEqual({ ok: false, code: "invalid", message: msg });
+    expect(parseDraftPatch({ description: "kys", allowFlagged: true }).ok).toBe(true);
+  });
+});
+
 describe("parseDraftPatch", () => {
   it("keeps only known fields and rejects empty or invalid patches", () => {
     expect(parseDraftPatch({ title: "New", ownerUserId: "evil" })).toEqual({ ok: true, value: { title: "New" } });

@@ -1,5 +1,6 @@
 ﻿import { readFileSync } from "node:fs";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { blockMessage, scanContent } from "../src/domain/content-filter";
 import { INVESTMENT_DISCLOSURE } from "../src/config/investment-disclosure";
 import { createInMemoryInvestmentRepository, type InvestmentDeps } from "../src/domain/investment-service";
 import { contactsDisclosed, contractTransition, DEFAULT_POSTING, feeAmount, feeTransition, maskContacts, posterText, termsFrom, validatePostingSettings, type PostingSettings } from "../src/domain/investment-terms";
@@ -360,6 +361,27 @@ describe("contact masking and no cross-party leakage", () => {
     expect(r.body["message"]["notice"]).toMatch(/not allowed/);
     expect(mem.messages.at(-1)!.body).toBe("Email me on [hidden] or [hidden]");
     expect(notices.some(x => x.startsWith(`investment_message:${owner.userId}:`) && !x.includes("jo@example.com"))).toBe(true);
+  });
+
+  it("content filter: abusive messages and first messages are refused unstored, spam is flagged, masked contacts still pass", async () => {
+    const { interestId } = await interested();
+    const flagged: string[] = [];
+    state.deps!.contentGuard = async ({ text }) => {
+      const s = scanContent(text, { ignore: ["contact_details"] });
+      if (s.action === "block") return { ok: false, message: blockMessage(s, "message") };
+      return { ok: true, after: async id => { if (s.action === "flag") flagged.push(id); } };
+    };
+    as(wholesale);
+    const before = mem.messages.length;
+    expect((await threadRoute.POST(req("POST", { body: "you are a fucking idiot" }), ctx(interestId))).status).toBe(400);
+    expect(mem.messages).toHaveLength(before);
+    const spam = await json(await threadRoute.POST(req("POST", { body: "Guaranteed returns, click here now" }), ctx(interestId)));
+    expect(spam.status).toBe(201);
+    expect(flagged).toEqual([mem.messages.at(-1)!.id]);
+    expect((await threadRoute.POST(req("POST", { body: "Email me on jo@example.com" }), ctx(interestId))).status).toBe(201);
+    const p2 = await approved();
+    as(wholesale);
+    expect((await interestRoute.POST(req("POST", { message: "shut up you cunt", amountMinCents: 100, amountMaxCents: 200 }), ctx(p2.id))).status).toBe(400);
   });
 
   it("API responses never carry the other party's id, name or email", async () => {

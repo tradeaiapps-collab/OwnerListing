@@ -5,6 +5,7 @@ import { TERMS_LAST_UPDATED, TERMS_PARTS, TERMS_SUMMARY } from "../../src/domain
 import { JSON_HEADERS } from "../listings/ui";
 import BackLink from "../back-link";
 import "../styles/settings.css";
+import "../styles/legal.css";
 
 type Current = { version: string; textReference: string; includesAiLearningClause: boolean };
 
@@ -39,7 +40,7 @@ export default function Terms() {
   };
 
   return (
-    <main>
+    <main className="legal">
       <BackLink />
       <h1>Terms and privacy</h1>
       <p className="muted">Last updated {TERMS_LAST_UPDATED}</p>
@@ -68,6 +69,8 @@ export default function Terms() {
           </section>
         ))}
       </article>
+      <p className="muted">See also the <a href="/privacy">Privacy policy</a> and <a href="/support">Support</a>.</p>
+      <h2>Accept the terms</h2>
       {state === "loading" && <p className="muted" role="status">Loading…</p>}
       {state === "signedOut" && <p role="alert"><a href="/login?next=/terms">Sign in</a> to accept the terms.</p>}
       {state === "error" && <p role="alert">Could not load the terms.</p>}
@@ -78,7 +81,7 @@ export default function Terms() {
           <form className="terms-accept" onSubmit={accept}>
             <label className="terms-check">
               <input type="checkbox" checked={agree} onChange={e => setAgree(e.target.checked)} />
-              <span>I have read and accept the terms and privacy policy (version {current.version})</span>
+              <span>I have read and accept the terms and the privacy policy (version {current.version})</span>
             </label>
             {error ? <p role="alert">{error}</p> : null}
             <button type="submit" disabled={busy || !agree}>{busy ? "Saving…" : "Accept"}</button>

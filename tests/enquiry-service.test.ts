@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import { blockMessage, scanContent } from "../src/domain/content-filter";
 import type { AuditEvent } from "../src/domain/audit";
 import type { BuyerVerification } from "../src/domain/buyer";
 import { createInMemoryDraftRepository } from "../src/domain/enquiry-drafts";
@@ -265,5 +266,44 @@ describe("anti-discrimination wording on owner messages", () => {
     expect(r).toMatchObject({ ok: false, code: "invalid" });
     expect(!r.ok && r.message).toMatch(/template can't be saved/);
     expect((await updateAutoReply(deps, owner, { templateBody: "Thanks, inspections are on Saturday at 10." })).ok).toBe(true);
+  });
+});
+
+describe("content filter on messages", () => {
+  const calls: string[] = [];
+  beforeEach(() => {
+    calls.length = 0;
+    deps.contentGuard = async ({ text }) => {
+      const s = scanContent(text);
+      if (s.action === "block") return { ok: false, message: blockMessage(s, "message") };
+      return { ok: true, after: async id => { if (s.action === "flag") calls.push(id); } };
+    };
+  });
+  it("refuses a first message with contact details and stores nothing", async () => {
+    const r = await startEnquiry(deps, buyer, "l0", "Call me on 0412 345 678");
+    expect(r).toMatchObject({ ok: false, code: "invalid" });
+    expect(await repo.listByBuyer(buyer.userId).then(x => x.length ? repo.messages(x[0]!.id) : [])).toEqual([]);
+  });
+  it("leaves no empty thread behind when the first message is refused, and creates it when a later try passes", async () => {
+    expect(await startEnquiry(deps, buyer, "l0", "Call me on 0412 345 678")).toMatchObject({ ok: false });
+    expect(await repo.listByBuyer(buyer.userId)).toEqual([]);
+    const ok = await startEnquiry(deps, buyer, "l0", "Is the street quiet?");
+    expect(ok.ok).toBe(true);
+    expect(await repo.listByBuyer(buyer.userId)).toHaveLength(1);
+  });
+  it("refuses an abusive reply from the owner", async () => {
+    const { enquiry } = await start();
+    expect(await reply(deps, owner, enquiry.id, "you idiot")).toMatchObject({ ok: false, code: "invalid" });
+  });
+  it("stores a flagged message and reports its id", async () => {
+    const { enquiry } = await start();
+    const r = await reply(deps, owner, enquiry.id, "Honestly that is crap");
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(calls).toEqual([r.value.id]);
+  });
+  it("passes a clean message and a failing flag store cannot lose it", async () => {
+    deps.contentGuard = async () => ({ ok: true, after: async () => { throw new Error("db down"); } });
+    const { enquiry } = await start();
+    expect((await reply(deps, owner, enquiry.id, "Saturday at 10 works")).ok).toBe(true);
   });
 });

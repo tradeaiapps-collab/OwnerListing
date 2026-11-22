@@ -1,5 +1,12 @@
 import { NextResponse } from "next/server";
 import { runDueAutomations } from "../../../../../src/server/automation-db";
+import { runCertificateExpiryNotices } from "../../../../../src/server/contractor-certificates-db";
+import { runDueRentals } from "../../../../../src/server/elena-rentals-db";
+import { runDueElenaEnquiries } from "../../../../../src/server/elena-enquiries-db";
+import { runDueElenaJobs } from "../../../../../src/server/elena-jobs-db";
+import { runOwnerDigests } from "../../../../../src/server/owner-today-db";
+import { runInvestorDigests } from "../../../../../src/server/investor-digest-db";
+import { runDuePaperwork } from "../../../../../src/server/sale-paperwork-db";
 import { runDueSchedulingMessages } from "../../../../../src/server/elena-scheduling-db";
 import { authorizeCron } from "../../../../../src/server/cron-secret-db";
 import { getDb } from "../../../../../src/server/context";
@@ -16,7 +23,20 @@ async function handlePost(req: Request) {
   const automations = await runDueAutomations(getDb(), now);
   // Elena's scheduling drafts ride on the same tick: due reminders become suggestions, stale drafts expire. Never fails the automation run.
   const scheduling = await runDueSchedulingMessages(getDb(), now).catch(() => ({ expired: 0, suggested: 0 }));
-  return NextResponse.json({ ...automations, scheduling });
+  // Contractor jobs Elena handles for owners who turned it on: new requests, reminders, time follow-ups and delivery chasing.
+  const elenaJobs = await runDueElenaJobs(getDb(), now).catch(() => ({ created: 0, acted: 0, invited: 0 }));
+  // Rentals: repair chasing, viewing reminders and viewing summaries for owners who switched Elena on.
+  const rentals = await runDueRentals(getDb(), now).catch(() => ({ repairs: 0, reminders: 0, summaries: 0 }));
+  // Buyer messages Elena has not looked at yet (a missed request), and the owners' optional daily "what needs you" email.
+  const elenaEnquiries = await runDueElenaEnquiries(getDb(), now).catch(() => ({ handled: 0 }));
+  const ownerDigests = await runOwnerDigests(getDb(), now).catch(() => ({ sent: 0 }));
+  // Sale paperwork reminders for owners who switched them on: owner and buyer are told only about their own open items. Never fails the run.
+  const paperwork = await runDuePaperwork(getDb(), now).catch(() => ({ listings: 0, sent: 0, stopped: 0, done: 0 }));
+  // Contractor licence and insurance expiry emails (30 days, 7 days, expired). Once per expiry step, so every tick is safe. Never fails the run.
+  const certificates = await runCertificateExpiryNotices(getDb(), now).catch(() => ({ checked: 0, sent: 0 }));
+  // Weekly investor update digest for followers of approved projects; a no-op while the investor module is off. Never fails the run.
+  const investorDigests = await runInvestorDigests(getDb(), now).catch(() => ({ sent: 0, skipped: 0 }));
+  return NextResponse.json({ ...automations, scheduling, elenaJobs, rentals, elenaEnquiries, ownerDigests, paperwork, certificates, investorDigests });
 }
 
 export const POST = withApi(handlePost);

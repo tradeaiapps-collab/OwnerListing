@@ -2,7 +2,7 @@ import { useEffect, useId, useRef, useState } from "react";
 
 interface Parts { address: string; suburb?: string; state?: string; postcode?: string }
 interface Suggestion { id: string; main: string; secondary: string; parts?: Parts }
-type Status = "idle" | "loading" | "ready" | "error";
+type Status = "idle" | "loading" | "ready" | "error" | "signin";
 
 const MIN_CHARS = 3;
 const DEBOUNCE_MS = 250;
@@ -21,7 +21,7 @@ function setFormField(form: HTMLFormElement | null, name: string, value: string 
  * Street address with suggestions while typing (combobox pattern). Picking one fills the address and the suburb, postcode
  * and state fields. The owner can always ignore the list and type the address in full; nothing here blocks saving.
  */
-export function AddressField({ defaultValue = "" }: { defaultValue?: string }) {
+export function AddressField({ defaultValue = "", invalid = false }: { defaultValue?: string; invalid?: boolean }) {
   const id = useId();
   const listId = `${id}-list`;
   const inputRef = useRef<HTMLInputElement>(null);
@@ -43,6 +43,7 @@ export function AddressField({ defaultValue = "" }: { defaultValue?: string }) {
       setStatus("loading");
       try {
         const res = await fetch(`/api/address/suggest?${new URLSearchParams({ q, session: session.current })}`, { signal: ctrl.signal, headers: { accept: "application/json" } });
+        if (res.status === 401) { setItems([]); setStatus("signin"); return; }
         if (!res.ok) throw new Error(String(res.status));
         const data = (await res.json()) as { provider?: string; suggestions?: Suggestion[] };
         setItems(Array.isArray(data.suggestions) ? data.suggestions : []);
@@ -99,6 +100,7 @@ export function AddressField({ defaultValue = "" }: { defaultValue?: string }) {
         ref={inputRef} name="address" placeholder="Start typing, e.g. 12 Jacaranda St" maxLength={300} required
         value={value} autoComplete="off" role="combobox" aria-autocomplete="list" aria-expanded={showList} aria-controls={listId}
         aria-activedescendant={activeId}
+        {...(invalid ? { "aria-invalid": true, "aria-describedby": "err-address" } : {})}
         onChange={e => { setValue(e.target.value); setQuery(e.target.value); setOpen(true); }}
         onFocus={() => { if (items.length > 0) setOpen(true); }}
         onBlur={() => setOpen(false)}
@@ -117,6 +119,7 @@ export function AddressField({ defaultValue = "" }: { defaultValue?: string }) {
           </ul>
           {status === "loading" && items.length === 0 && <p className="addr-note" role="status">Searching addresses...</p>}
           {status === "ready" && items.length === 0 && <p className="addr-note" role="status">No matching address. Keep typing, or enter the full address yourself.</p>}
+          {status === "signin" && <p className="addr-note" role="status"><a href="/login?as=owner&next=/listings/new">Sign in</a> to get address suggestions, or type the full address.</p>}
           {status === "error" && <p className="addr-note" role="status">Address suggestions are not available right now. Type the full address.</p>}
           {items.length > 0 && ATTRIBUTION[provider] && <p className="addr-attr">{ATTRIBUTION[provider]}</p>}
         </div>

@@ -106,10 +106,17 @@ export const KINDS = {
   open_inspection_reminder_1h: "appointments",
   open_inspection_cancelled: "appointments",
   booking_conflict: "appointments",
+  job_new: "appointments",
+  job_time_changed: "appointments",
+  job_reminder: "appointments",
   offer_received: "offers",
   offer_accepted: "offers",
   offer_rejected: "offers",
   offer_countered: "offers",
+  offer_buyer_countered: "offers",
+  listing_sold: "listings",
+  listing_back_on_market: "listings",
+  offer_terms_agreed: "offers",
   fall_through_proposed: "offers",
   fall_through_update: "offers",
   offer_fallen_through: "offers",
@@ -129,15 +136,35 @@ export const KINDS = {
   marketing_news: "marketing",
   automation_message: "marketing",
   automation_alert: "messages",
+  job_update: "appointments",
   scheduling_message: "messages",
   scheduling_suggestion: "messages",
-  lead_followup_due: "messages"
+  lead_followup_due: "messages",
+  job_offered: "appointments",
+  job_accepted: "appointments",
+  job_declined: "appointments",
+  job_time_proposed: "appointments",
+  job_time_confirmed: "appointments",
+  job_done: "appointments",
+  job_files_added: "appointments",
+  job_reviewed: "messages",
+  emergency_request: "messages",
+  emergency_accepted: "messages",
+  elena_enquiry: "messages",
+  open_inspection_owner_reminder: "appointments",
+  owner_digest: "messages",
+  investor_digest: "messages",
+  rental_update: "messages",
+  rental_urgent: "messages",
+  // Required account notices: a licence or insurance certificate is about to expire or has expired.
+  cert_expiring: "account",
+  cert_expired: "account"
 } as const satisfies Record<string, Category>;
 export type Kind = keyof typeof KINDS;
 export const isKind = (v: unknown): v is Kind => typeof v === "string" && Object.prototype.hasOwnProperty.call(KINDS, v);
 
 /** Kinds worth a text message when the user has opted in: they are time-critical and short. */
-const SMS_KINDS: ReadonlySet<Kind> = new Set<Kind>(["message_received", "appointment_invited", "appointment_reminder", "consultation_booked", "consultation_cancelled", "offer_received", "offer_accepted", "offer_rejected", "offer_countered", "fall_through_proposed", "offer_fallen_through", "automation_alert"]);
+const SMS_KINDS: ReadonlySet<Kind> = new Set<Kind>(["message_received", "appointment_invited", "appointment_reminder", "job_new", "job_time_changed", "job_reminder", "consultation_booked", "consultation_cancelled", "offer_received", "offer_accepted", "offer_rejected", "offer_countered", "offer_buyer_countered", "offer_terms_agreed", "fall_through_proposed", "offer_fallen_through", "automation_alert", "job_update", "rental_urgent"]);
 
 export interface NotificationParams { [key: string]: string | undefined }
 export interface RenderedNotification { kind: Kind; category: Category; title: string; body: string; link: string | null; smsText: string | null }
@@ -156,6 +183,7 @@ export function renderNotification(kind: Kind, p: NotificationParams = {}): Rend
   const doc = `"${clip(p["document"], 120, "a document")}"`;
   const link = safeLink(p["link"]);
   const when = clip(p["when"], 80, "the booked time");
+  const job = clip(p["job"], 20, "Job");
   const amount = clip(p["amount"], 20, "the deposit");
   const ref = clip(p["reference"], 30, "on file");
   const payout = p["payout"] === "refund" ? "refund" : "release";
@@ -172,6 +200,14 @@ export function renderNotification(kind: Kind, p: NotificationParams = {}): Rend
     case "consultation_booked": return t("New consultation booked", `${name} booked a consultation with you for ${when}.`);
     case "consultation_confirmed": return t("Consultation confirmed", `Your consultation with ${name} is confirmed for ${when}.`);
     case "consultation_cancelled": return t("Consultation cancelled", `${name} cancelled the consultation planned for ${when}.`);
+    case "job_offered": return t(`${job}: new job offer`, `${name} offered you work at ${listing}${p["price"] ? ` (${clip(p["price"], 40, "")})` : ""}. Accept, reject or propose another time. Quote ${job} if you reply by email.`);
+    case "job_accepted": return t(`${job}: job accepted`, `${name} accepted the job at ${listing}.`);
+    case "job_declined": return t(`${job}: job declined`, `${name} declined the job at ${listing}.${p["reason"] ? ` Reason: ${clip(p["reason"], 200, "")}` : ""}`);
+    case "job_time_proposed": return t(`${job}: new time proposed`, `${name} proposed ${when} for the job at ${listing}. Open the job to accept it or choose another time.`);
+    case "job_time_confirmed": return t(`${job}: time confirmed`, `${name} confirmed ${when} for the job at ${listing}.`);
+    case "job_done": return t(`${job}: job marked done`, `${name} marked the job at ${listing} as done. Check the files and confirm it is complete.`);
+    case "job_files_added": return t(`${job}: files added`, `${name} added ${clip(p["count"], 6, "new")} file(s) to ${listing}.`);
+    case "job_reviewed": return t(`${job}: new review`, `${name} left you feedback for the job at ${listing}.`);
     case "review_received": return t("New review", `${name} left you a review.`);
     case "open_inspection_confirmed": return t("Inspection booked", `You are booked to inspect ${listing} on ${when}. Contact: ${clip(p["contact"], 120, "the listing agent")}. Bring photo ID, and message the agent from the listing if your plans change.`);
     case "open_inspection_new": return t("New inspection booked", `${name} booked to inspect ${listing} on ${when}.`);
@@ -180,10 +216,21 @@ export function renderNotification(kind: Kind, p: NotificationParams = {}): Rend
     case "open_inspection_cancelled": return t("Inspection cancelled", `The inspection of ${listing} on ${when} was cancelled. ${clip(p["next"], 200, "Open the listing to book another time.")}`);
     case "booking_received": return t("New booking from a portal", `${name} booked ${listing} through a listing portal. The dates are now blocked on your calendar.`);
     case "booking_conflict": return t("Booking clashes with another", `A booking from ${name} for ${listing} overlaps dates that are already booked. Contact the portal or the guest to sort it out.`);
+    case "job_new": return t("New job request", `${name} asked you to do a ${clip(p["job"], 40, "job")} at ${listing}. Open it to accept or decline.`);
+    case "job_time_changed": return t("Job time changed", `The time for your ${clip(p["job"], 40, "job")} at ${listing} is now ${when}. Open it to confirm.`);
+    case "job_reminder": return t("Job coming up", `Your ${clip(p["job"], 40, "job")} at ${listing} is on ${when}.`);
     case "offer_received": return t("New offer received", `A new offer was made on ${listing}. Review it in your offers.`);
     case "offer_accepted": return t("Offer accepted", `Your offer on ${listing} was accepted by the owner.`);
     case "offer_rejected": return t("Offer not accepted", `Your offer on ${listing} was not accepted.`);
     case "offer_countered": return t("Counter-offer", `There is a counter-offer on ${listing}.`);
+    case "offer_buyer_countered": return t("Buyer counter-offer", `The buyer sent a counter-offer on ${listing}. Review it in your offers: you can accept, counter again or decline.`);
+    case "listing_sold": return p["rent"] === "1"
+      ? t("Property no longer available", `${listing} has been rented and is no longer available.`, false)
+      : t("Property sold", `${listing} has been sold and is no longer available.`, false);
+    case "offer_terms_agreed": return t("Buyer agreed to your terms", `The buyer agreed to the terms you countered with on ${listing}. Nothing is accepted yet: open the offer to accept it, or counter again.`);
+    case "listing_back_on_market": return p["rent"] === "1"
+      ? t("Property available again", `${listing} is available to rent again. The earlier arrangement did not go ahead.`, false)
+      : t("Back on the market", `${listing} is back on the market. The earlier sale did not go ahead, so you may want another look.`, false);
     case "fall_through_proposed": return t("Sale of your property may have fallen through", `The other side says the contract on ${listing} will not go ahead (${clip(p["reason"], 80, "reason given")}). Open it to see the proposed outcome for the deposit and agree or dispute it.`);
     case "fall_through_update": return t(clip(p["title"], 80, "Update on a sale that fell through"), clip(p["text"], 300, `There is an update on the deposit for ${listing}.`), false);
     case "dispute_opened": return t("A dispute was raised on your sale", `A dispute about ${listing} was raised (${clip(p["title"], 80, "see the settlement")}). Elena will suggest a fair middle ground. Open it to add your side.`, false);
@@ -209,6 +256,17 @@ export function renderNotification(kind: Kind, p: NotificationParams = {}): Rend
     case "scheduling_message": return t(clip(p["title"], 80, "A message about your inspection"), clip(p["text"], 1500, "There is an update about your inspection."));
     case "scheduling_suggestion": return t(clip(p["title"], 80, "Elena drafted a message"), clip(p["text"], 400, "Review the draft and send, edit or skip it."));
     case "lead_followup_due": return t("Lead follow-up due", clip(p["text"], 300, `Follow up with ${name} about ${listing}.`), false);
+    case "job_update": return t(clip(p["title"], 80, "Job update"), clip(p["text"], 600, "There is an update on your job."));
+    case "emergency_request": return t(`Urgent request ${clip(p["reference"], 20, "")}`, clip(p["text"], 300, "An owner needs an emergency contractor. Open it to accept or pass."), false);
+    case "emergency_accepted": return t("A contractor accepted your urgent request", clip(p["text"], 300, `${name} accepted your urgent request. Open it for their contact details.`), false);
+    case "elena_enquiry": return t(clip(p["title"], 80, "Elena update"), clip(p["text"], 400, "Elena has an update on a buyer enquiry."));
+    case "open_inspection_owner_reminder": return t("Inspection coming up", `${name} is booked to inspect ${listing} on ${when}.`);
+    case "owner_digest": return t(clip(p["title"], 80, "What needs you today"), clip(p["text"], 1500, "Open your dashboard to see what needs you today."), false);
+    case "investor_digest": return t(clip(p["title"], 90, "Your weekly project update"), clip(p["text"], 1500, "Open your investor projects to see what is new."), false);
+    case "rental_update": return t(clip(p["title"], 80, "Rental update"), clip(p["text"], 700, "There is an update on your rental."));
+    case "rental_urgent": return t(clip(p["title"], 80, "Urgent rental update"), clip(p["text"], 700, "There is an urgent update on your rental."));
+    case "cert_expiring": return t(clip(p["title"], 80, "A certificate is expiring"), clip(p["text"], 500, "Upload your renewed certificate and send the new details for verification."), false);
+    case "cert_expired": return t(clip(p["title"], 80, "A certificate has expired"), clip(p["text"], 500, "Upload your renewed certificate and send the new details for verification."), false);
     case "automation_alert": return t(clip(p["title"], 80, "Automation update"), clip(p["text"], 400, "One of your automations ran."));
   }
 }

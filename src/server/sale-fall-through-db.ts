@@ -7,6 +7,7 @@ import {
 import { appendAuditPg, type Queryable } from "./db";
 import { notifyDeposit } from "./deposit-notify";
 import { notifyFallThrough } from "./fall-through-notify";
+import { notifyListingBackOnMarket } from "./notifier";
 import type { StaffRef } from "./deposit-escrow-db";
 import { holidayDatesPg } from "./public-holidays-db";
 
@@ -218,6 +219,7 @@ export async function respondFallThrough(db: Queryable, userId: string, expected
   });
   if (out.ok && decision === "agree") {
     await notifyFallThrough(db, offerId, { kind: "fallen_through", to: ["buyer", "owner"] });
+    await notifyListingBackOnMarket(db, offerId);
     if (agreed) await notifyDeposit(db, { offerId }, { kind: "resolved", ...(agreed as { refundCents: number; releaseCents: number }) });
   }
   if (out.ok && decision === "dispute") await notifyFallThrough(db, offerId, { kind: "update", to: other(expected), title: "Outcome disputed: deposit frozen", text: "The other side disputed the proposed outcome. The deposit is frozen until staff record an agreement or court order." });
@@ -309,6 +311,7 @@ export async function decideResolution(db: Queryable, staff: StaffRef, holdingId
   await notifyFallThrough(db, out.value.offerId, out.value.status === "agreed"
     ? { kind: "fallen_through", to: ["buyer", "owner"] }
     : { kind: "update", to: "buyer", title: "Dispute settled: the sale goes ahead", text: "Staff recorded that the sale goes ahead. The deposit is no longer frozen." });
+  if (out.value.status === "agreed") await notifyListingBackOnMarket(db, out.value.offerId);
   if (out.value.status === "withdrawn") await notifyFallThrough(db, out.value.offerId, { kind: "update", to: "owner", title: "Dispute settled: the sale goes ahead", text: "Staff recorded that the sale goes ahead. The deposit is no longer frozen." });
   return { ok: true, value: { status: out.value.status } };
 }

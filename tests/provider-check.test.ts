@@ -35,6 +35,13 @@ const FULL: Record<string, string> = {
   APNS_TEAM_ID: "TEAM123456",
   APNS_BUNDLE_ID: "au.com.example.ownerlisting",
   APNS_PRIVATE_KEY: "-----BEGIN PRIVATE KEY-----\\nMIIB\\n-----END PRIVATE KEY-----\\n",
+  MLS_API_KEY: "m".repeat(24),
+  MLS_API_BASE_URL: "https://mls.example.com/v1",
+  MLS_WEBHOOK_SECRET: "w".repeat(40),
+  ZILLOW_API_KEY: "z".repeat(24),
+  ZILLOW_API_BASE_URL: "https://api.example.com/v1",
+  PUSH_STATUS_WEBHOOK_SECRET: "p".repeat(40),
+  PROVIDER_CREDENTIAL_KEY: Buffer.alloc(32, 9).toString("base64"),
   ABN_LOOKUP_GUID: "12345678-90ab-cdef-1234-567890abcdef",
   DOCUSIGN_INTEGRATION_KEY: "11111111-2222-4333-8444-555555555555",
   DOCUSIGN_USER_ID: "66666666-7777-4888-8999-000000000000",
@@ -56,7 +63,7 @@ const by = (env: Record<string, string | undefined>, production = true) =>
 describe("provider readiness check", () => {
   it("reports every provider ready with a full set of real-looking keys", () => {
     const r = checkProviders(FULL, { production: true });
-    expect(r.map(x => x.id)).toEqual(["google", "mfa", "payway", "smtp", "sms", "webpush", "fcm", "apns", "abn", "docusign", "domain", "meta_leads", "address", "maptiles"]);
+    expect(r.map(x => x.id)).toEqual(["google", "mfa", "payway", "smtp", "sms", "webpush", "fcm", "apns", "mls", "zillow", "providercreds", "abn", "docusign", "domain", "meta_leads", "address", "maptiles"]);
     expect(r.filter(x => x.status !== "ready")).toEqual([]);
     expect(r.some(x => x.blocking)).toBe(false);
   });

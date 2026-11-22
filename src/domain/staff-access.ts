@@ -34,6 +34,8 @@ export interface PermissionInfo { key: string; area: PermissionArea; label: stri
  */
 export const PERMISSION_CATALOGUE = [
   { key: "case.manage", area: "cases", label: "Work admin cases", description: "Claim and resolve admin cases. Trust account and licence cases still need a second person.", sensitive: false },
+  { key: "moderation.review", area: "cases", label: "Review the moderation queue", description: "Approve, reject or escalate flagged listings, messages and profiles at /staff/review-queue, always with a reason. Nobody reviews their own content.", sensitive: false },
+  { key: "moderation.resolve_escalated", area: "cases", label: "Decide escalated moderation items", description: "Approve or reject an item another reviewer escalated. Senior reviewers only; every decision is logged.", sensitive: false },
   { key: "wording.review", area: "cases", label: "Review discriminatory wording flags", description: "Clear or uphold listing wording the anti-discrimination filter blocked, with a reason. Nobody reviews their own listing.", sensitive: false },
   { key: "signing.support_view", area: "documents", label: "Read a sent signing document in a dispute", description: "Read a sent or signed document and its audit trail to help settle a dispute. Every view is logged with the reason.", sensitive: true },
   { key: "dispute.read_chat", area: "cases", label: "Read job chat in a dispute", description: "Read the saved job chat for a disputed job. Every view is logged.", sensitive: true },
@@ -108,9 +110,9 @@ const ROLE_PERMISSIONS: Record<StaffRole, readonly StaffPermission[]> = {
   super_admin: ALL,
   compliance: ["report.audit", "report.solicitor", "report.broker", "pii.view_full", "case.manage",
     "trust_account.approve", "licence.verify", "dispute.read_chat", "signing.support_view", "override.request", "identity.review", "investment.review",
-    "wording.review", "sale_event.manage", "disclosure.config_edit", "disclosure.config_approve", "disclosure.verify", "doc_template.edit", "doc_template.publish", "listing.moderate", "listing.bulk", "user.manage", "escrow.manage", "escrow.approve", "holiday.manage", "prequal.review"],
+    "wording.review", "moderation.review", "moderation.resolve_escalated", "sale_event.manage", "disclosure.config_edit", "disclosure.config_approve", "disclosure.verify", "doc_template.edit", "doc_template.publish", "listing.moderate", "listing.bulk", "user.manage", "escrow.manage", "escrow.approve", "holiday.manage", "prequal.review"],
   accountant: ["report.financial", "report.sales", "pii.view_masked", "billing.manage", "commission.manage", "escrow.manage"],
-  support: ["report.buyer", "report.seller", "pii.view_masked", "case.manage", "signing.support_view", "override.request", "listing.moderate", "scheduling_template.manage"],
+  support: ["report.buyer", "report.seller", "pii.view_masked", "case.manage", "signing.support_view", "override.request", "listing.moderate", "moderation.review", "scheduling_template.manage"],
   technical: ["logs.technical", "report.operations", "config.edit"],
   reporting: ["report.sales", "report.suburb", "report.operations"],
   /** Site appearance only (theme.edit). No personal data, no reports, no money. */
