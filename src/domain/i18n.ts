@@ -36,3 +36,11 @@ export function translate(catalogs: Readonly<Record<string, Catalog>>, locale: s
 /** Translations are for understanding only. Legal documents, disclosures and terms stay in English. */
 export const ENGLISH_PREVAILS_NOTICE =
   "This translation is provided for convenience only. If it differs from the English version, the English version applies.";
+
+/**
+ * The catalogue to use for a page, or undefined (plain English). A language is live only when an admin has switched it on
+ * AND its catalogue is on the reviewed list, so a draft translation can never show by accident.
+ */
+export function catalogFor(locale: string, enabled: readonly string[], reviewed: readonly string[], catalogs: Readonly<Record<string, Catalog>>): Catalog | undefined {
+  return enabled.includes(locale) && reviewed.includes(locale) ? catalogs[locale] : undefined;
+}

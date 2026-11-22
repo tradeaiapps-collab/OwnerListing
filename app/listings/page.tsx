@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import { useT } from "../i18n-provider";
 import { AMENITY_LABELS, formatPrice, isAmenity } from "../../src/domain/listing-details";
 import { parseSearchQuery } from "../../src/domain/listing-search";
 import { BLANK_FILTERS, filterParams, filtersFromParams, formFromQuery, type FilterForm } from "./url-params";
@@ -54,6 +55,7 @@ const ADVISOR_KEYS = ["transactionType", "minPriceCents", "maxPriceCents", "prop
 const queryString = (f: FilterForm) => filterParams(f).toString();
 
 export default function Listings() {
+  const t = useT();
   const [form, setForm] = useState<Form>(BLANK);
   const [applied, setApplied] = useState<Form>(BLANK);
   const [sort, setSort] = useState("newest");
@@ -117,7 +119,7 @@ export default function Listings() {
     fetch(`/api/listings?${toParams(applied, sort, page)}`)
       .then(r => r.json())
       .then(d => { setRows(d.listings ?? []); setTotal(d.total ?? 0); setPageSize(d.pageSize ?? 12); })
-      .catch(() => setError("Could not load listings."));
+      .catch(() => setError(t("Could not load listings.")));
   }, [ready, applied, sort, page, view]);
 
   // Investment projects that match the search words (only while the investor module is live; otherwise none come back).
@@ -144,65 +146,65 @@ export default function Listings() {
   return (
     <main>
       <div className="browse-head">
-        <h1>Find a property</h1>
-        <a className="button secondary" href="/listings/new">List your property</a>
+        <h1>{t("Find a property")}</h1>
+        <a className="button secondary" href="/listings/new">{t("List your property")}</a>
       </div>
       {ready && <BuyerAdvisor query={appliedQuery} total={rows === null ? null : total} startOpen={describeFilters(applied).length === 0} onApply={advise} />}
-      <form id="listing-search" className="search-form" aria-label="Search listings" onSubmit={e => { e.preventDefault(); setPage(1); setApplied(form); }}>
-        <input className="wide search-words" type="search" aria-label="Search by street, suburb or feature" placeholder="Search by street, suburb or feature, e.g. saltwater pool" maxLength={100} value={form.q} onChange={set("q")} />
-        <select aria-label="Sale or rent" value={form.transactionType} onChange={e => setForm(f => ({ ...f, transactionType: e.target.value, minPrice: "", maxPrice: "" }))}>
-          <option value="">Sale or rent</option>
-          <option value="sale">Sale</option>
-          <option value="rent">Rent</option>
+      <form id="listing-search" className="search-form" aria-label={t("Search listings")} onSubmit={e => { e.preventDefault(); setPage(1); setApplied(form); }}>
+        <input className="wide search-words" type="search" aria-label={t("Search by street, suburb or feature")} placeholder={t("Search by street, suburb or feature, e.g. saltwater pool")} maxLength={100} value={form.q} onChange={set("q")} />
+        <select aria-label={t("Sale or rent")} value={form.transactionType} onChange={e => setForm(f => ({ ...f, transactionType: e.target.value, minPrice: "", maxPrice: "" }))}>
+          <option value="">{t("Sale or rent")}</option>
+          <option value="sale">{t("Sale")}</option>
+          <option value="rent">{t("Rent")}</option>
         </select>
-        <select aria-label="Property type" value={form.propertyType} onChange={set("propertyType")}>
-          <option value="">Any type</option>
-          {TYPES.map(t => <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>)}
+        <select aria-label={t("Property type")} value={form.propertyType} onChange={set("propertyType")}>
+          <option value="">{t("Any type")}</option>
+          {TYPES.map(ty => <option key={ty} value={ty}>{ty.charAt(0).toUpperCase() + ty.slice(1)}</option>)}
         </select>
-        <input className="wide" aria-label="Suburb or postcode" placeholder="Suburb or postcode" maxLength={80} value={form.location} onChange={set("location")} />
-        <input aria-label={`Minimum price (${priceHint})`} placeholder="Min price" inputMode="decimal" disabled={!priceOk} value={form.minPrice} onChange={set("minPrice")} />
+        <input className="wide" aria-label={t("Suburb or postcode")} placeholder={t("Suburb or postcode")} maxLength={80} value={form.location} onChange={set("location")} />
+        <input aria-label={`Minimum price (${priceHint})`} placeholder={t("Min price")} inputMode="decimal" disabled={!priceOk} value={form.minPrice} onChange={set("minPrice")} />
         <input aria-label={`Maximum price (${priceHint})`} placeholder={priceOk ? `Max price (${priceHint})` : "Pick sale or rent for price"} inputMode="decimal" disabled={!priceOk} value={form.maxPrice} onChange={set("maxPrice")} />
-        {rooms("minBedrooms", "Bedrooms")}
-        {rooms("minBathrooms", "Bathrooms")}
-        {rooms("minParking", "Parking")}
-        <select aria-label="State" value={form.jurisdiction} onChange={set("jurisdiction")}>
-          <option value="">All states</option>
+        {rooms("minBedrooms", t("Bedrooms"))}
+        {rooms("minBathrooms", t("Bathrooms"))}
+        {rooms("minParking", t("Parking"))}
+        <select aria-label={t("State")} value={form.jurisdiction} onChange={set("jurisdiction")}>
+          <option value="">{t("All states")}</option>
           {["NSW", "VIC", "QLD", "WA", "SA", "TAS", "ACT", "NT"].map(j => <option key={j}>{j}</option>)}
         </select>
-        <select aria-label="Use" value={form.useClass} onChange={set("useClass")}>
-          <option value="">Residential or commercial</option>
-          <option value="residential">Residential</option>
-          <option value="commercial">Commercial</option>
+        <select aria-label={t("Use")} value={form.useClass} onChange={set("useClass")}>
+          <option value="">{t("Residential or commercial")}</option>
+          <option value="residential">{t("Residential")}</option>
+          <option value="commercial">{t("Commercial")}</option>
         </select>
         <MoreFilters form={form} setForm={setForm} />
         <div className="actions">
-          <button type="submit">Search</button>
-          <button type="button" className="secondary" onClick={() => { setForm(BLANK); setApplied(BLANK); setFromSaved(false); setPage(1); if (sort === "distance") setSort("newest"); }}>Clear</button>
+          <button type="submit">{t("Search")}</button>
+          <button type="button" className="secondary" onClick={() => { setForm(BLANK); setApplied(BLANK); setFromSaved(false); setPage(1); if (sort === "distance") setSort("newest"); }}>{t("Clear")}</button>
         </div>
       </form>
       {describeFilters(applied).length > 0 && (
-        <div className="active-filters" role="status" aria-label="Applied filters">
-          <span className="muted">{fromSaved ? "Showing your saved search:" : "Filtered by:"}</span>
+        <div className="active-filters" role="status" aria-label={t("Applied filters")}>
+          <span className="muted">{fromSaved ? t("Showing your saved search:") : t("Filtered by:")}</span>
           <ul className="chips">{describeFilters(applied).map(t => <li key={t} className="chip">{t}</li>)}</ul>
-          <a href="/buyer/saved-searches">Saved searches</a>
+          <a href="/buyer/saved-searches">{t("Saved searches")}</a>
         </div>
       )}
       <ElenaSearch query={appliedQuery} total={rows === null ? null : total} onApply={applyParams} onClear={clearParams} />
       <div className="result-bar" id="listing-results">
-        <div className="view-toggle" role="group" aria-label="Show results as">
-          <button type="button" className="secondary" aria-pressed={view === "list"} onClick={() => pick("list")}><span className="vt-icon vt-list" aria-hidden="true" />List</button>
-          <button type="button" className="secondary" aria-pressed={view === "map"} onClick={() => pick("map")}><span className="vt-icon vt-map" aria-hidden="true" />Map</button>
+        <div className="view-toggle" role="group" aria-label={t("Show results as")}>
+          <button type="button" className="secondary" aria-pressed={view === "list"} onClick={() => pick("list")}><span className="vt-icon vt-list" aria-hidden="true" />{t("List")}</button>
+          <button type="button" className="secondary" aria-pressed={view === "map"} onClick={() => pick("map")}><span className="vt-icon vt-map" aria-hidden="true" />{t("Map")}</button>
         </div>
         {view === "list" && (
           <div className="result-bar-end">
-            <span className="muted" role="status">{rows === null && !error ? "Loading..." : `${total} ${total === 1 ? "listing" : "listings"}`}</span>
+            <span className="muted" role="status">{rows === null && !error ? t("Loading...") : `${total} ${total === 1 ? t("listing") : t("listings")}`}</span>
             <SaveSearch query={appliedQuery} />
-            <select aria-label="Sort" value={sort} onChange={e => { setSort(e.target.value); setPage(1); }}>
-              <option value="newest">Newest</option>
-              <option value="price_asc">Price: low to high</option>
-              <option value="price_desc">Price: high to low</option>
-              <option value="bedrooms_desc">Most bedrooms</option>
-              {nearApplied && <option value="distance">Closest first</option>}
+            <select aria-label={t("Sort")} value={sort} onChange={e => { setSort(e.target.value); setPage(1); }}>
+              <option value="newest">{t("Newest")}</option>
+              <option value="price_asc">{t("Price: low to high")}</option>
+              <option value="price_desc">{t("Price: high to low")}</option>
+              <option value="bedrooms_desc">{t("Most bedrooms")}</option>
+              {nearApplied && <option value="distance">{t("Closest first")}</option>}
             </select>
           </div>
         )}
@@ -211,7 +213,7 @@ export default function Listings() {
       {view === "list" && <>
       {error && <p role="alert">{error}</p>}
       {rows === null && !error && <ul className="lcards" aria-hidden="true">{[0, 1, 2].map(i => <li key={i} className="lcard lcard-skel"><div className="lcard-media" /><div className="lcard-body"><p className="lcard-price">&nbsp;</p></div></li>)}</ul>}
-      {rows && rows.length === 0 && <p className="empty">No published listings match. Try fewer filters or a nearby suburb.</p>}
+      {rows && rows.length === 0 && <p className="empty">{t("No published listings match. Try fewer filters or a nearby suburb.")}</p>}
       {rows && rows.length > 0 && (
         <ul className="lcards">
           {rows.map(r => (
@@ -222,10 +224,10 @@ export default function Listings() {
                 <h2 className="lcard-title"><a href={`/listings/${r.id}`}>{r.title}</a></h2>
                 <p className="lcard-addr">{r.address}</p>
                 <ul className="chips" aria-label="Features">
-                  {r.bedrooms !== undefined && <li className="chip chip-bed">{r.bedrooms} bed</li>}
-                  {r.bathrooms !== undefined && <li className="chip chip-bath">{r.bathrooms} bath</li>}
-                  {r.parking !== undefined && <li className="chip chip-car">{r.parking} car</li>}
-                  {r.distanceKm !== undefined && <li className="chip">{r.distanceKm} km away</li>}
+                  {r.bedrooms !== undefined && <li className="chip chip-bed">{r.bedrooms} {t("bed")}</li>}
+                  {r.bathrooms !== undefined && <li className="chip chip-bath">{r.bathrooms} {t("bath")}</li>}
+                  {r.parking !== undefined && <li className="chip chip-car">{r.parking} {t("car")}</li>}
+                  {r.distanceKm !== undefined && <li className="chip">{r.distanceKm} {t("km away")}</li>}
                   {(r.amenities ?? []).filter(isAmenity).slice(0, 3).map(a => <li key={a} className="chip">{AMENITY_LABELS[a]}</li>)}
                 </ul>
                 <p className="lcard-meta">{r.suburb ? `${r.suburb} ${r.postcode ?? ""} · ` : ""}{r.jurisdiction} · {r.propertyType.charAt(0).toUpperCase() + r.propertyType.slice(1)}</p>
@@ -236,10 +238,10 @@ export default function Listings() {
         </ul>
       )}
       {total > pageSize && (
-        <nav className="pager" aria-label="Pages">
-          <button type="button" className="secondary" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>Previous</button>
+        <nav className="pager" aria-label={t("Pages")}>
+          <button type="button" className="secondary" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>{t("Previous")}</button>
           <span>Page {page} of {pages}</span>
-          <button type="button" className="secondary" disabled={page >= pages} onClick={() => setPage(p => p + 1)}>Next</button>
+          <button type="button" className="secondary" disabled={page >= pages} onClick={() => setPage(p => p + 1)}>{t("Next")}</button>
         </nav>
       )}
       </>}

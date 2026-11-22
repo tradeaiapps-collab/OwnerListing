@@ -59,3 +59,18 @@ describe("pagination", () => {
     expect(decodeCursor("not a cursor!!")).toBeNull();
   });
 });
+
+describe("draft catalogues", () => {
+  const cats = { fa: { Browse: "مرور" } };
+  it("shows a catalogue only when enabled AND reviewed", async () => {
+    const { catalogFor } = await import("../src/domain/i18n");
+    expect(catalogFor("fa", ["fa"], [], cats)).toBeUndefined();
+    expect(catalogFor("fa", [], ["fa"], cats)).toBeUndefined();
+    expect(catalogFor("fa", ["fa"], ["fa"], cats)?.["Browse"]).toBe("مرور");
+  });
+  it("ships the Persian draft as not reviewed", async () => {
+    const { REVIEWED_LOCALES, CATALOGS } = await import("../src/i18n");
+    expect(REVIEWED_LOCALES).not.toContain("fa");
+    expect(Object.keys(CATALOGS["fa"] ?? {}).length).toBeGreaterThan(50);
+  });
+});

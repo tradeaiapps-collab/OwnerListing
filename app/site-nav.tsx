@@ -6,6 +6,7 @@ import { roleNav } from "../src/domain/role-nav";
 import type { UserRole } from "../src/domain/roles";
 import ThemeToggle from "./theme-toggle";
 import { NAV_CACHE_KEY, parseNavSnapshot, serializeNavSnapshot } from "../src/domain/nav-cache";
+import { useT } from "./i18n-provider";
 import { NAV_CATALOG, type IconStyle, type NavItem } from "../src/domain/site-theme";
 
 type Who = "loading" | "out" | "staff" | "owner" | "buyer" | "vendor";
@@ -15,6 +16,7 @@ type Who = "loading" | "out" | "staff" | "owner" | "buyer" | "vendor";
  * `items` is the admin's navigation setting (order, labels, hidden items); targets and icons come from the fixed catalogue.
  */
 export default function SiteNav({ items, iconStyle, themeToggle }: { items?: NavItem[]; iconStyle?: IconStyle; themeToggle?: boolean }) {
+  const t = useT();
   const [who, setWho] = useState<Who>("loading");
   const [invest, setInvest] = useState(false);
   const [role, setRole] = useState<UserRole | null>(null);
@@ -99,16 +101,16 @@ export default function SiteNav({ items, iconStyle, themeToggle }: { items?: Nav
       onBlur={e => { if (open && e.relatedTarget && !e.currentTarget.contains(e.relatedTarget as Node)) setOpen(false); }}>
       <button type="button" ref={toggleRef} className="nav-toggle" aria-expanded={open} aria-controls="site-nav-links" onClick={() => setOpen(o => !o)}>
         <span className="nav-toggle-bars" aria-hidden="true" />
-        <span>Menu</span>
+        <span>{t("Menu")}</span>
       </button>
       <div className="site-nav-links" id="site-nav-links">
-      {signedIn ? roleNav(role).filter(it => invest || it.id !== "portfolio").map(it => <a key={it.id} href={it.href}>{it.label}</a>) : pending ? null : list.map(it => {
+      {signedIn ? roleNav(role).filter(it => invest || it.id !== "portfolio").map(it => <a key={it.id} href={it.href}>{t(it.label)}</a>) : pending ? null : list.map(it => {
         const def = NAV_CATALOG.find(n => n.id === it.id);
         if (!def || !it.visible || !shown[it.id]) return null;
         const href = def.href;
-        return <a key={it.id} href={href}><Icon name={def.icon} style={style} />{it.label}</a>;
+        return <a key={it.id} href={href}><Icon name={def.icon} style={style} />{t(it.label)}</a>;
       })}
-      {(who === "owner" || who === "buyer" || who === "vendor" || who === "staff") && <button type="button" className="nav-signout" onClick={signOut}>Sign out</button>}
+      {(who === "owner" || who === "buyer" || who === "vendor" || who === "staff") && <button type="button" className="nav-signout" onClick={signOut}>{t("Sign out")}</button>}
       </div>
       {(who === "owner" || who === "buyer") && <RoleSwitcher />}
       {themeToggle && <ThemeToggle />}
