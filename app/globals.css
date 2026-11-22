@@ -301,20 +301,21 @@ hr { border: 0; height: 1px; background: var(--line); margin: var(--space-6) 0; 
 input, select, textarea, button { font: inherit; color: inherit; }
 input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]), select, textarea {
   width: 100%;
-  padding: var(--space-2) var(--space-3);
+  padding: var(--space-1) var(--space-3);
 }
+@media (max-width: 639px) { input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]), select { min-height: 44px; } }
 input, select, textarea {
   background: var(--elevated);
   border: 1px solid color-mix(in srgb, var(--border) 55%, var(--muted));
   border-radius: var(--radius-sm, 10px);
-  min-height: 46px;
+  min-height: 40px;
   transition: border-color var(--dur-1) var(--ease), box-shadow var(--dur-2) var(--ease), background-color var(--dur-1) var(--ease);
 }
 input:hover:not(:disabled), select:hover:not(:disabled), textarea:hover:not(:disabled) { border-color: var(--muted); }
 input:focus-visible, select:focus-visible, textarea:focus-visible { outline: none; border-color: var(--gold); box-shadow: 0 0 0 4px color-mix(in srgb, var(--gold) 22%, transparent); }
 input::placeholder, textarea::placeholder { color: var(--muted); opacity: 0.85; }
 input:disabled, select:disabled, textarea:disabled { background: var(--surface); color: var(--muted); cursor: not-allowed; }
-textarea { min-height: 112px; resize: vertical; }
+textarea { padding-block: var(--space-2); min-height: 112px; resize: vertical; }
 input[type="checkbox"], input[type="radio"] { width: 1.125rem; height: 1.125rem; min-height: 0; flex: none; }
 label { overflow-wrap: anywhere; }
 
@@ -360,13 +361,13 @@ button.secondary:hover:not(:disabled), .button.secondary:hover { background: var
 .actions { display: flex; flex-wrap: wrap; gap: var(--space-3); margin: var(--space-4) 0; }
 
 /* Grouped form sections (create and edit listing, long forms). */
-.form-section { margin: 0; padding: var(--space-6) var(--space-4); min-width: 0; border: 1px solid var(--line); border-radius: var(--radius); background: var(--elevated); box-shadow: var(--shadow-1); display: grid; gap: var(--space-3); }
+.form-section { margin: 0; padding: var(--space-6) var(--space-4); min-width: 0; border: 1px solid var(--line); border-radius: var(--radius); background: var(--elevated); box-shadow: var(--shadow-1); display: grid; align-content: start; gap: var(--space-3); }
 @media (min-width: 640px) { .form-section { padding: var(--space-6); } }
 .form-section > legend { float: left; width: 100%; padding: 0 0 var(--space-2); margin: 0 0 var(--space-1); font-family: var(--font-display); font-size: 1.25rem; font-weight: 600; color: var(--heading, var(--text)); border-bottom: 1px solid var(--line); }
 .form-section > legend + * { clear: both; }
 .form-section > .form-hint { margin: calc(-1 * var(--space-1)) 0 0; color: var(--muted); font-size: 0.9375rem; }
-.form-grid { display: grid; gap: var(--space-3) var(--space-4); grid-template-columns: 1fr; align-items: start; }
-.field { display: flex; flex-direction: column; gap: 6px; font-size: 0.875rem; font-weight: 600; color: var(--text); letter-spacing: 0.01em; }
+.form-grid { display: grid; gap: var(--space-3) var(--space-4); grid-template-columns: 1fr; align-items: start; align-content: start; }
+.field { display: flex; flex-direction: column; gap: var(--space-1); font-size: 0.875rem; font-weight: 600; color: var(--text); letter-spacing: 0.01em; }
 .field.has-error { color: var(--danger); }
 .field.has-error input, .field.has-error select, .field.has-error textarea { border-color: var(--danger); box-shadow: 0 0 0 1px var(--danger); background: var(--danger-tint); }
 .field.has-error input:focus-visible, .field.has-error textarea:focus-visible { outline: 2px solid var(--danger); outline-offset: 2px; }
