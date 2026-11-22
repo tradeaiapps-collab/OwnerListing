@@ -29,10 +29,16 @@
 .wiz-header h2, .wiz-header p { margin: 0; }
 .wiz-eyebrow { display: flex; justify-content: space-between; gap: var(--space-2); font-size: 0.75rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); }
 .wiz-eb2 { color: var(--muted); letter-spacing: 0.02em; text-transform: none; font-weight: 600; }
-.wiz-seg { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; }
+.wiz-seg { display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; }
+@media (min-width: 480px) { .wiz-seg { gap: 6px; } }
+.wiz-seg-item { display: grid; gap: var(--space-1); min-width: 0; }
+.wiz-seg-item em { font-style: normal; font-size: 0.5625rem; line-height: 1.2; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: -0.02em; }
+.wiz-seg-item.on em { color: var(--text); font-weight: 600; }
+@media (max-width: 479px) { .wiz-n { display: none; } }
+@media (min-width: 480px) { .wiz-seg-item em { font-size: 0.75rem; } }
 .wiz-seg i { height: 6px; border-radius: 999px; background: var(--line); }
-.wiz-seg i.on { background: var(--accent); }
-.wiz-seg i.ok { background: color-mix(in srgb, var(--accent) 55%, var(--text)); }
+.wiz-seg-item.on i { background: var(--accent); }
+.wiz-seg-item.ok i { background: color-mix(in srgb, var(--accent) 55%, var(--text)); }
 .wiz-body { padding: var(--space-6); display: grid; gap: var(--space-4); }
 @media (max-width: 559px) { .wiz-body { padding: var(--space-4); } }
 .wiz-body > div[hidden], .wiz-step[hidden] { display: none; }

@@ -247,7 +247,7 @@ export default function NewListing() {
             <header id="wiz-top" className="wiz-header">
               <div className="wiz-eyebrow"><span aria-live="polite">Step {step + 1} of {STEPS.length}</span><span className="wiz-eb2">{STEPS[step]}</span></div>
               <div className="wiz-seg" role="progressbar" aria-label="Listing progress" aria-valuemin={1} aria-valuemax={STEPS.length} aria-valuenow={step + 1}>
-                {STEPS.map((n, i) => <i key={n} className={i < step ? "ok" : i === step ? "on" : ""} />)}
+                {STEPS.map((n, i) => <span key={n} className={`wiz-seg-item ${i < step ? "ok" : i === step ? "on" : ""}`}><i /><em><span className="wiz-n">{i + 1} </span>{n}</em></span>)}
               </div>
               <h2>{TITLES[step]}</h2>
               <p className="muted">{INTROS[step]}</p>
