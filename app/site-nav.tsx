@@ -108,9 +108,9 @@ export default function SiteNav({ items, iconStyle, themeToggle }: { items?: Nav
         const href = def.href;
         return <a key={it.id} href={href}><Icon name={def.icon} style={style} />{it.label}</a>;
       })}
-      {(who === "owner" || who === "buyer" || who === "vendor" || who === "staff") && <button type="button" className="nav-signout" onClick={signOut}>Sign out</button>}
+      {(who === "vendor" || who === "staff" || ((who === "owner" || who === "buyer") && role === null)) && <button type="button" className="nav-signout" onClick={signOut}>Sign out</button>}
       </div>
-      {(who === "owner" || who === "buyer") && <RoleSwitcher />}
+      {(who === "owner" || who === "buyer") && <RoleSwitcher onSignOut={signOut} />}
       {themeToggle && <ThemeToggle />}
     </nav>
   );

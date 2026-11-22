@@ -20,7 +20,7 @@ export async function switchRole(role: UserRole): Promise<boolean> {
 }
 
 /** Header menu: shows the role being viewed and lists the account's other roles. Hiding it is cosmetic; the server checks every switch. */
-export default function RoleSwitcher() {
+export default function RoleSwitcher({ onSignOut }: { onSignOut?: () => void } = {}) {
   const [info, setInfo] = useState<RoleInfo | null>(null);
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState<UserRole | null>(null);
@@ -56,6 +56,7 @@ export default function RoleSwitcher() {
             </button>
           ))}
           <a className="role-item role-manage" role="menuitem" href="/settings/roles">Manage roles</a>
+          {onSignOut && <button type="button" role="menuitem" className="role-item role-manage" onClick={onSignOut}>Sign out</button>}
           {err && <p className="role-err" role="alert">{err}</p>}
         </div>
       )}
