@@ -3,6 +3,7 @@ import { use, useEffect, useState } from "react";
 import { dollarsToCents } from "../../../src/domain/listing-details";
 import type { PhotoView } from "../../../src/domain/listing-photos";
 import { STAGE_TAG } from "../project-card";
+import { InvestorDiligence } from "../diligence";
 import { InvestorElena } from "../elena-project";
 import { ProjectDocumentsSection } from "../project-documents";
 import { ProjectSlider } from "../project-slider";
@@ -106,6 +107,7 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
             {p.issuerStatement && <p className="inv-section">{p.issuerStatement}</p>}
             <p className="muted">Stated by the issuer, not checked or endorsed by the platform.</p>
           </section>
+          {!mine && <InvestorDiligence projectId={p.id} />}
           {!mine && <InvestorElena projectId={p.id} />}
           {!mine && (
             <section className="panel" id="interest">

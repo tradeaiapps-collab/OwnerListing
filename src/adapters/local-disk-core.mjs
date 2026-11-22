@@ -4,7 +4,7 @@ import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 /** Keys are made by the server: listings/<id>/<id>, id/<hex>/<hex>, investments/<hex>/<hex> or inspections/<id>/<id>. Anything else is refused. */
-const KEY = /^(listings|id|investments|inspections|signing|prequal)\/[A-Za-z0-9_-]{1,64}\/[A-Za-z0-9_-]{1,64}$/;
+const KEY = /^(listings|id|investments|inspections|signing|prequal|cert)\/[A-Za-z0-9_-]{1,64}\/[A-Za-z0-9_-]{1,64}$/;
 const ID_KEY = /^id\//;
 
 /** Absolute file path for a key, or throws. A key can never climb out of the storage folder. */

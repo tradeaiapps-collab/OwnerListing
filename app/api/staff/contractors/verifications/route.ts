@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { todayUtc } from "../../../../../src/domain/contractor-trust";
 import { getDb } from "../../../../../src/server/context";
 import { prescreenVerificationsPg } from "../../../../../src/server/elena-prescreen-db";
+import { certificateFlags } from "../../../../../src/domain/contractor-certificates";
+import { currentCertificatesPg } from "../../../../../src/server/contractor-certificates-db";
 import { listVerificationsPg } from "../../../../../src/server/contractor-trust-db";
 import { staffGate } from "../../../../../src/server/staff-route";
 import { withApi } from "../../../../../src/server/api/with-api";
@@ -14,7 +16,15 @@ async function handleGet(req: Request) {
   const db = getDb();
   const rows = await listVerificationsPg(db, view, todayUtc());
   const screened = await prescreenVerificationsPg(db, rows, todayUtc()).catch(() => new Map());
-  return NextResponse.json({ verifications: rows.map(v => ({ ...v, elena: screened.get(v.userId) ?? null })) }, { headers: { "cache-control": "no-store" } });
+  const certs = await currentCertificatesPg(db, rows.map(v => v.userId));
+  return NextResponse.json({
+    verifications: rows.map(v => {
+      const files = certs.get(v.userId) ?? [];
+      const of = (k: "insurance" | "licence") => files.find(c => c.kind === k);
+      const flags = [...certificateFlags("insurance", v.insuranceExpiry, of("insurance")), ...certificateFlags("licence", v.licenceExpiry, of("licence"))];
+      return { ...v, certificates: files, certificateFlags: flags, elena: screened.get(v.userId) ?? null };
+    })
+  }, { headers: { "cache-control": "no-store" } });
 }
 
 export const GET = withApi(handleGet);

@@ -6,6 +6,7 @@ import { investGate, invFailure, notFound, UUID } from "./investment-route";
 import { getInvestmentDeps } from "./investments-db";
 import { createPgProjectDocStore } from "./project-documents-db";
 import { objectStorageFromEnv } from "../adapters/object-storage";
+import { createOcrPort } from "./ocr";
 
 const MAX_BODY = 16 * 1024;
 
@@ -14,6 +15,20 @@ const text: DocTextPort = {
   async pages(bytes, mime) {
     if (mime !== "application/pdf") return [];
     return (await import("./pdf-pages")).extractPdfPages(bytes);
+  }
+};
+
+/**
+ * Like `text`, but a PDF with no text layer and a plain image are read with the local OCR (when on). Used for the due-diligence summary only, where a
+ * scan Elena cannot read would otherwise be left out. OCR gives one block of text, so a scan counts as one page.
+ */
+const ocr = createOcrPort();
+export const ocrText: DocTextPort = {
+  async pages(bytes, mime) {
+    const pages = mime === "application/pdf" ? await text.pages(bytes, mime) : [];
+    if (pages.some(p => p.trim().length >= 40) || !ocr.configured) return pages;
+    const out = await ocr.recognise(bytes, mime).catch(() => "");
+    return out.trim() ? [out] : pages;
   }
 };
 
