@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ROLE_LABEL, USER_ROLES, type UserRole } from "../src/domain/roles";
 import { JSON_HEADERS } from "./listings/ui";
+import { useT } from "./i18n-provider";
 
 export interface RoleInfo { roles: UserRole[]; currentRole: UserRole | null }
 
@@ -21,6 +22,7 @@ export async function switchRole(role: UserRole): Promise<boolean> {
 
 /** Header menu: shows the role being viewed and lists the account's other roles. Hiding it is cosmetic; the server checks every switch. */
 export default function RoleSwitcher({ onSignOut }: { onSignOut?: () => void } = {}) {
+  const t = useT();
   const [info, setInfo] = useState<RoleInfo | null>(null);
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState<UserRole | null>(null);
@@ -56,7 +58,7 @@ export default function RoleSwitcher({ onSignOut }: { onSignOut?: () => void } =
             </button>
           ))}
           <a className="role-item role-manage" role="menuitem" href="/settings/roles">Manage roles</a>
-          {onSignOut && <button type="button" role="menuitem" className="role-item role-manage" onClick={onSignOut}>Sign out</button>}
+          {onSignOut && <button type="button" role="menuitem" className="role-item role-manage" onClick={onSignOut}>{t("Sign out")}</button>}
           {err && <p className="role-err" role="alert">{err}</p>}
         </div>
       )}
