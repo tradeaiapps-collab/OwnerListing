@@ -7,7 +7,7 @@ const TYPES = ["image/jpeg", "image/png", "image/webp"];
 const MB = PHOTO_LIMITS.maxBytes / 1_000_000;
 
 /** Photos and the plan are held here and sent to the draft when it is saved on the last step. */
-export function PhotosStep({ files, onChange }: { files: QuickFiles; onChange: (f: QuickFiles) => void }) {
+export function PhotosStep({ files, onChange, unavailable = false }: { files: QuickFiles; onChange: (f: QuickFiles) => void; unavailable?: boolean }) {
   const [error, setError] = useState("");
   const photoInput = useRef<HTMLInputElement>(null);
   const planInput = useRef<HTMLInputElement>(null);
@@ -31,11 +31,13 @@ export function PhotosStep({ files, onChange }: { files: QuickFiles; onChange: (
   return (
     <fieldset className="form-section">
       <legend>Photos</legend>
-      <p className="muted">JPEG, PNG or WebP, up to {MB} MB each. Photos are optional now and are added to your draft when you save it on the last step. The first photo is the cover.</p>
+      {unavailable
+        ? <p role="status" className="form-warning">Photo upload is not available yet on this site. You can still save your draft and add photos later.</p>
+        : <p className="muted">JPEG, PNG or WebP, up to {MB} MB each. Photos are optional now and are added to your draft when you save it on the last step. The first photo is the cover.</p>}
       <input ref={photoInput} type="file" accept={TYPES.join(",")} multiple hidden onChange={e => { addPhotos(e.target.files); e.target.value = ""; }} aria-label="Choose photos" />
       <div className="form-bar">
-        <button type="button" className="secondary" onClick={() => photoInput.current?.click()}>Choose photos</button>
-        <button type="button" className="secondary" onClick={() => planInput.current?.click()}>{files.plan ? "Change site plan" : "Add site plan"}</button>
+        <button type="button" className="secondary" disabled={unavailable} onClick={() => photoInput.current?.click()}>Choose photos</button>
+        <button type="button" className="secondary" disabled={unavailable} onClick={() => planInput.current?.click()}>{files.plan ? "Change site plan" : "Add site plan"}</button>
       </div>
       <input ref={planInput} type="file" accept={TYPES.join(",")} hidden onChange={e => { setPlan(e.target.files); e.target.value = ""; }} aria-label="Choose site plan" />
       {error && <p role="alert">{error}</p>}

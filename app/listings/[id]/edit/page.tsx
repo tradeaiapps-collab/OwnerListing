@@ -1,6 +1,8 @@
 "use client";
+import { useBackspaceGuard } from "../../use-backspace-guard";
+import { stepFromHash, stepHash } from "../../../../src/domain/wizard-history";
 import { checkElenaInput } from "../../../../src/domain/text-quality";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { BondPathwayField, ListingFields, type BondState, type FieldStep, type ListingDefaults } from "../../fields";
 import { FIELD_ERROR_STEP, JSON_HEADERS, firstErrorField, focusFirstError, listingFormBody, type FieldErrors } from "../../ui";
@@ -71,6 +73,23 @@ export default function EditListing() {
   const [step, setStep] = useState(0);
   const [reached, setReached] = useState(0);
   const [review, setReview] = useState<[string, string][]>([]);
+  const [dirty, setDirty] = useState(false);
+  const reachedRef = useRef(0);
+  reachedRef.current = reached;
+  useBackspaceGuard();
+  // One history entry per step: Back and Forward move between steps, never further than the owner has reached.
+  useEffect(() => {
+    if (!window.location.hash.startsWith("#step-")) window.history.replaceState({ wizStep: 0 }, "", stepHash(0));
+    const onPop = () => setStep(stepFromHash(window.location.hash, reachedRef.current, LAST));
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
+  useEffect(() => {
+    if (!dirty) return;
+    const warn = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ""; };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [dirty]);
 
   useEffect(() => {
     setListing(null);
@@ -111,7 +130,7 @@ export default function EditListing() {
       if (res.status === 401) { setError("Sign in to edit this draft."); return false; }
       if (!res.ok) { setError(d.error ?? "Could not save the draft."); return false; }
       setListing(d.listing);
-      setSaved(true);
+      setSaved(true); setDirty(false);
       setSavedFlags(Array.isArray(d.wordingFlags) ? d.wordingFlags : []);
       return true;
     } catch {
@@ -146,6 +165,7 @@ export default function EditListing() {
     }
     setError("");
     if (next === LAST) setReview(reviewRows(form));
+    if (next !== step) window.history.pushState({ wizStep: next }, "", stepHash(next));
     setStep(next); setReached(r => Math.max(r, next));
     document.getElementById("wiz-top")?.scrollIntoView({ block: "start" });
   }
@@ -197,7 +217,7 @@ export default function EditListing() {
               <h2>{TITLES[step]}</h2>
               <p className="muted">{INTROS[step]}</p>
             </header>
-            <form id="edit-listing-form" onSubmit={onSubmit} onInput={e => { const n = (e.target as HTMLInputElement).name; if (n && fieldErrors[n] !== undefined) { const { [n]: _gone, ...rest } = fieldErrors; setFieldErrors(rest); if (Object.keys(rest).length === 0) setError(""); } }} noValidate>
+            <form id="edit-listing-form" onSubmit={onSubmit} onInput={e => { setDirty(true); setSaved(false); const n = (e.target as HTMLInputElement).name; if (n && fieldErrors[n] !== undefined) { const { [n]: _gone, ...rest } = fieldErrors; setFieldErrors(rest); if (Object.keys(rest).length === 0) setError(""); } }} noValidate>
               <div className="wiz-body">
                 <ListingFields defaults={listing} step={FIELD_STEPS[step] ?? "none"} errors={fieldErrors} />
                 {step === 3 && <PhotoManager listingId={listing.id} />}
