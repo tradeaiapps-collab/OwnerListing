@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { BondPathwayField, ListingFields, type BondState, type FieldStep, type ListingDefaults } from "../../fields";
-import { JSON_HEADERS, listingFormBody } from "../../ui";
+import { FIELD_ERROR_STEP, JSON_HEADERS, firstErrorField, focusFirstError, listingFormBody, type FieldErrors } from "../../ui";
 import { PhotoManager } from "../../photo-manager";
 import { ElenaPriceSuggestion } from "../../elena-price-suggestion";
 import { WordingFlagList, type WordingFlagView } from "../../wording-hint";
@@ -59,6 +59,7 @@ export default function EditListing() {
   const [listing, setListing] = useState<Loaded | null>(null);
   const [loadError, setLoadError] = useState("");
   const [error, setError] = useState("");
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [saved, setSaved] = useState(false);
   const [busy, setBusy] = useState(false);
   const [bond, setBond] = useState("");
@@ -83,10 +84,21 @@ export default function EditListing() {
       .catch(() => setLoadError("Could not load the listing."));
   }, [id]);
 
+  /** Marks every invalid field, shows the step that holds the first one and focuses it. */
+  function showErrors(form: HTMLFormElement, message: string, errors: FieldErrors) {
+    setError(message);
+    setFieldErrors(errors);
+    const first = firstErrorField(form, errors);
+    const at = first ? FIELD_STEPS.indexOf(FIELD_ERROR_STEP[(first as HTMLInputElement).name] ?? "none") : -1;
+    if (at >= 0 && at !== step) { setStep(at); setReached(r => Math.max(r, at)); setTimeout(() => focusFirstError(form, errors), 0); }
+    else focusFirstError(form, errors);
+  }
+
   /** Saves every field on the form. Returns true when the draft was saved. */
   async function save(form: HTMLFormElement): Promise<boolean> {
     const parsed = listingFormBody(new FormData(form));
-    if ("error" in parsed) { setError(parsed.error); return false; }
+    if ("error" in parsed) { showErrors(form, parsed.error, parsed.errors); return false; }
+    setFieldErrors({});
     setBusy(true);
     setError("");
     setSaved(false);
@@ -182,9 +194,9 @@ export default function EditListing() {
               <h2>{TITLES[step]}</h2>
               <p className="muted">{INTROS[step]}</p>
             </header>
-            <form id="edit-listing-form" onSubmit={onSubmit} noValidate>
+            <form id="edit-listing-form" onSubmit={onSubmit} onInput={e => { const n = (e.target as HTMLInputElement).name; if (n && fieldErrors[n] !== undefined) { const { [n]: _gone, ...rest } = fieldErrors; setFieldErrors(rest); if (Object.keys(rest).length === 0) setError(""); } }} noValidate>
               <div className="wiz-body">
-                <ListingFields defaults={listing} step={FIELD_STEPS[step] ?? "none"} />
+                <ListingFields defaults={listing} step={FIELD_STEPS[step] ?? "none"} errors={fieldErrors} />
                 {step === 3 && <PhotoManager listingId={listing.id} />}
                 {step === 4 && (
                   <>

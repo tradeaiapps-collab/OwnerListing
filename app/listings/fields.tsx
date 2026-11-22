@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { AMENITIES, AMENITY_LABELS, centsToDollarField, priceInputToCents } from "../../src/domain/listing-details";
-import { BOND_PATHWAY_LABELS, centsToInput } from "./ui";
+import { BOND_PATHWAY_LABELS, centsToInput, type FieldErrors } from "./ui";
 import { AddressField } from "./address-field";
 import { WordingHint } from "./wording-hint";
 import { ElenaListingAssistant, ElenaTip } from "./elena-listing-assistant";
@@ -30,7 +30,11 @@ export interface ListingDefaults {
 export type FieldStep = "basics" | "details" | "description" | "location" | "none";
 
 /** With `step` set, only that step's fields are shown; every field stays mounted so the form still submits them all. */
-export function ListingFields({ defaults = {}, photoCount, step }: { defaults?: ListingDefaults; photoCount?: number; step?: FieldStep }) {
+export function ListingFields({ defaults = {}, photoCount, step, errors = {} }: { defaults?: ListingDefaults; photoCount?: number; step?: FieldStep; errors?: FieldErrors }) {
+  /** Marks one field invalid: class on its label, aria on its input, message under it. */
+  const bad = (n: string) => (errors[n] !== undefined ? { "aria-invalid": true as const, "aria-describedby": `err-${n}` } : {});
+  const msg = (n: string) => (errors[n] !== undefined ? <span className="field-error" id={`err-${n}`} role="alert">{errors[n]}</span> : null);
+  const cls = (n: string) => (errors[n] !== undefined ? "field has-error" : "field");
   const show = (s: FieldStep) => step === undefined || step === s;
   const [tx, setTx] = useState(defaults.transactionType ?? "sale");
   const [title, setTitle] = useState(defaults.title ?? "");
@@ -64,9 +68,10 @@ export function ListingFields({ defaults = {}, photoCount, step }: { defaults?: 
   };
   const tips = fieldTips({ transactionType: tx === "rent" ? "rent" : "sale", propertyType: "house" });
   const num = (name: "bedrooms" | "bathrooms" | "parking", label: string, tip: string) => (
-    <label className="field"><span>{label} <ElenaTip text={tip} /></span>
-      <input name={name} type="number" inputMode="numeric" min={0} max={20} step={1} value={counts[name]}
+    <label className={cls(name)}><span>{label} <ElenaTip text={tip} /></span>
+      <input name={name} type="number" inputMode="numeric" min={0} max={20} step={1} value={counts[name]} {...bad(name)}
         onChange={e => { touched.current.add(name); setCounts(c => ({ ...c, [name]: e.target.value })); }} />
+      {msg(name)}
     </label>
   );
   return (
@@ -75,8 +80,9 @@ export function ListingFields({ defaults = {}, photoCount, step }: { defaults?: 
       <div hidden={!show("basics")} className="wiz-step">
         <fieldset className="form-section">
           <legend>The basics</legend>
-          <label className="field"><span>Title <ElenaTip text={tips.title} /></span>
-            <input name="title" placeholder="e.g. Renovated home with pool" maxLength={200} required value={title} onChange={e => setTitle(e.target.value)} />
+          <label className={cls("title")}><span>Title <ElenaTip text={tips.title} /></span>
+            <input name="title" placeholder="e.g. Renovated home with pool" maxLength={200} required value={title} {...bad("title")} onChange={e => setTitle(e.target.value)} />
+            {msg("title")}
           </label>
           <WordingHint text={title} field="title" />
           <div className="form-grid">
@@ -97,8 +103,9 @@ export function ListingFields({ defaults = {}, photoCount, step }: { defaults?: 
                 {["house", "unit", "townhouse", "land", "office", "retail", "industrial", "warehouse", "hospitality", "other"].map(t => <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>)}
               </select>
             </label>
-            <label className="field"><span>{tx === "rent" ? "Rent per week (AUD)" : "Asking price (AUD)"} <ElenaTip text={tips.price} /></span>
-              <input name="price" inputMode="decimal" autoComplete="off" onBlur={e => { const c = priceInputToCents(e.currentTarget.value); if (c !== undefined) e.currentTarget.value = centsToDollarField(c); }} placeholder={tx === "rent" ? "650" : "850000"} defaultValue={defaults.priceCents !== undefined ? centsToInput(defaults.priceCents) : ""} />
+            <label className={cls("price")}><span>{tx === "rent" ? "Rent per week (AUD)" : "Asking price (AUD)"} <ElenaTip text={tips.price} /></span>
+              <input name="price" inputMode="decimal" autoComplete="off" onBlur={e => { const c = priceInputToCents(e.currentTarget.value); if (c !== undefined) e.currentTarget.value = centsToDollarField(c); }} placeholder={tx === "rent" ? "650" : "850000"} defaultValue={defaults.priceCents !== undefined ? centsToInput(defaults.priceCents) : ""} {...bad("price")} />
+              {msg("price")}
             </label>
           </div>
         </fieldset>
@@ -147,15 +154,17 @@ export function ListingFields({ defaults = {}, photoCount, step }: { defaults?: 
       <div hidden={!show("location")} className="wiz-step">
         <fieldset className="form-section">
           <legend>Location</legend>
-          <label className="field"><span>Street address</span>
-            <AddressField defaultValue={defaults.address ?? ""} />
+          <label className={cls("address")}><span>Street address</span>
+            <AddressField defaultValue={defaults.address ?? ""} invalid={errors["address"] !== undefined} />
+            {msg("address")}
           </label>
           <div className="form-grid">
             <label className="field"><span>Suburb <ElenaTip text={tips.suburb} /></span>
               <input name="suburb" maxLength={80} defaultValue={defaults.suburb ?? ""} autoComplete="address-level2" />
             </label>
-            <label className="field">Postcode
-              <input name="postcode" inputMode="numeric" pattern="[0-9]{4}" maxLength={4} defaultValue={defaults.postcode ?? ""} autoComplete="postal-code" />
+            <label className={cls("postcode")}>Postcode
+              <input name="postcode" inputMode="numeric" pattern="[0-9]{4}" maxLength={4} defaultValue={defaults.postcode ?? ""} autoComplete="postal-code" {...bad("postcode")} />
+              {msg("postcode")}
             </label>
             <label className="field">State
               <select name="jurisdiction" defaultValue={defaults.jurisdiction ?? "QLD"}>

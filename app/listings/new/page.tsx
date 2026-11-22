@@ -3,7 +3,7 @@ import { useState } from "react";
 import { BondPathwayField, ListingFields, type BondState, type ListingDefaults } from "../fields";
 import { TemplatePicker } from "../template-picker";
 import type { TemplateView } from "../../../src/domain/listing-template";
-import { JSON_HEADERS, listingFormBody } from "../ui";
+import { FIELD_ERROR_STEP, JSON_HEADERS, firstErrorField, focusFirstError, listingFormBody, type FieldErrors } from "../ui";
 import { priceInputToCents } from "../../../src/domain/listing-details";
 import { PhotoManager } from "../photo-manager";
 import { QuickSetupPanel, type Drafted, type QuickFiles } from "../quick-setup";
@@ -26,6 +26,7 @@ type Upload = { name: string; state: "waiting" | "uploading" | "done" | "error";
 
 export default function NewListing() {
   const [error, setError] = useState("");
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [draftId, setDraftId] = useState("");
   const [busy, setBusy] = useState(false);
   const [signedOut, setSignedOut] = useState(false);
@@ -123,17 +124,32 @@ export default function NewListing() {
     ];
   }
 
+  /** Marks every invalid field, shows the step that holds the first one and focuses it. */
+  function showErrors(form: HTMLFormElement, message: string, errors: FieldErrors) {
+    setError(message);
+    setFieldErrors(errors);
+    const first = firstErrorField(form, errors);
+    const at = first ? FIELD_STEPS.indexOf(FIELD_ERROR_STEP[(first as HTMLInputElement).name] ?? "none") : -1;
+    if (at >= 0 && at !== step) { setStep(at); setReached(r => Math.max(r, at)); setTimeout(() => focusFirstError(form, errors), 0); }
+    else focusFirstError(form, errors);
+  }
+
   /** Moves to a step. Going forward checks the fields on the current step first. */
   function goTo(next: number) {
     const form = document.getElementById("new-listing-form");
     if (!(form instanceof HTMLFormElement)) return;
     if (next > step) {
+      const parsed = listingFormBody(new FormData(form));
+      if ("errors" in parsed) {
+        const here = Object.fromEntries(Object.entries(parsed.errors).filter(([k]) => FIELD_STEPS[step] === FIELD_ERROR_STEP[k]));
+        if (Object.keys(here).length > 0) { showErrors(form, Object.keys(here).length === 1 ? "Fix the highlighted field to continue." : `Fix the ${Object.keys(here).length} highlighted fields to continue.`, here); return; }
+      }
       const fields = Array.from(form.querySelectorAll<HTMLInputElement>(".wiz-step:not([hidden]) :is(input, select, textarea)"));
       const bad = fields.find(el => !el.checkValidity());
       if (bad) { bad.reportValidity(); return; }
-      if (step === 0) { const parsed = listingFormBody(new FormData(form)); if ("error" in parsed) { setError(parsed.error); return; } }
     }
     setError("");
+    setFieldErrors({});
     if (next === LAST) setReview(reviewRows(form));
     setStep(next); setReached(r => Math.max(r, next));
     document.getElementById("wiz-top")?.scrollIntoView({ block: "start" });
@@ -144,7 +160,8 @@ export default function NewListing() {
     if (step < LAST && !force) { goTo(step + 1); return; }
     if (draftId) return;
     const parsed = listingFormBody(new FormData(e.currentTarget));
-    if ("error" in parsed) { setError(parsed.error); return; }
+    if ("error" in parsed) { showErrors(e.currentTarget, parsed.error, parsed.errors); return; }
+    setFieldErrors({});
     const body = parsed.body;
     setBusy(true);
     setError("");
@@ -235,9 +252,9 @@ export default function NewListing() {
               <h2>{TITLES[step]}</h2>
               <p className="muted">{INTROS[step]}</p>
             </header>
-            <form id="new-listing-form" onSubmit={onSubmit} onInput={e => setLive(readPreview(e.currentTarget))} noValidate>
+            <form id="new-listing-form" onSubmit={onSubmit} onInput={e => { setLive(readPreview(e.currentTarget)); const n = (e.target as HTMLInputElement).name; if (n && fieldErrors[n] !== undefined) { const { [n]: _gone, ...rest } = fieldErrors; setFieldErrors(rest); if (Object.keys(rest).length === 0) setError(""); } }} noValidate>
               <div className="wiz-body">
-                <ListingFields key={fieldsKey} defaults={defaults} step={FIELD_STEPS[step] ?? "none"} />
+                <ListingFields key={fieldsKey} defaults={defaults} step={FIELD_STEPS[step] ?? "none"} errors={fieldErrors} />
                 <div hidden={step !== 3}><PhotosStep files={pending} onChange={setPending} /></div>
                 <div hidden={step !== LAST} className="wiz-review">
                   {review.map(([k, v], i) => (
