@@ -44,5 +44,14 @@
 .dev-check-text { display: grid; gap: 2px; min-width: 0; overflow-wrap: normal; }
 .dev-check-text .muted { font-size: 0.875rem; }
 
+.terms-toc { margin: var(--space-4) 0; }
+.terms-toc ol { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: 0 var(--space-4); margin: 0; padding-left: var(--space-6); }
+.terms-toc a { display: inline-block; min-height: 44px; line-height: 44px; }
+.terms-full { max-width: 72ch; }
+.terms-full section { scroll-margin-top: var(--space-6); margin-top: var(--space-6); }
+.terms-full h3 { margin: var(--space-4) 0 var(--space-2); }
+.terms-full p { overflow-wrap: anywhere; line-height: 1.6; }
+.terms-accept { position: sticky; bottom: 0; background: var(--bg, inherit); padding-bottom: var(--space-3); }
+
 .back-link { display: inline-flex; align-items: center; gap: var(--space-2, 0.5rem); min-height: 44px; margin-bottom: var(--space-2, 0.5rem); color: var(--muted); text-decoration: none; font-weight: 600; }
 .back-link:hover, .back-link:focus-visible { color: inherit; text-decoration: underline; }
