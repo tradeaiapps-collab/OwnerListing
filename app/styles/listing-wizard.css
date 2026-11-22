@@ -74,3 +74,6 @@
 .wiz-nav { position: sticky; bottom: 0; z-index: 5; }
 .loc-preview :is(h2, h3) { display: none; }
 .loc-preview .map-canvas { height: 200px !important; min-height: 200px !important; }
+.field-flash { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: var(--radius); animation: field-flash 2.5s ease-out; }
+@keyframes field-flash { from { background: color-mix(in srgb, var(--accent) 18%, transparent); } to { background: transparent; } }
+@media (prefers-reduced-motion: reduce) { .field-flash { animation: none; } }

@@ -47,10 +47,13 @@ export default function NewListing() {
   const [dirty, setDirty] = useState(false);
   const [photosOff, setPhotosOff] = useState(false);
   useBackspaceGuard();
-  // The form is kept in this tab as the owner types, so a refresh, Back or a crash never loses what was entered.
+  // The form is kept in this browser as the owner types, so a refresh, Back, closing the tab or a crash never loses what was entered.
   useEffect(() => {
+    // A refresh after the draft was saved goes to the saved draft, never to a blank form.
+    const saved = /^#draft-([0-9a-f-]{36})$/i.exec(window.location.hash);
+    if (saved) { window.location.replace(`/listings/${saved[1]}/edit`); return; }
     try {
-      const raw = sessionStorage.getItem(FORM_KEY);
+      const raw = localStorage.getItem(FORM_KEY);
       if (!raw) return;
       const v = JSON.parse(raw) as Record<string, string | string[]>;
       const s = (k: string) => (typeof v[k] === "string" ? (v[k] as string) : "");
@@ -230,7 +233,8 @@ export default function NewListing() {
       else if (!res.ok) setError(d.error ?? "Could not save the draft.");
       else {
         setDraftId(d.listing.id);
-        try { sessionStorage.removeItem(FORM_KEY); } catch { /* ignore */ }
+        window.history.replaceState(null, "", `/listings/new#draft-${d.listing.id}`);
+        try { localStorage.removeItem(FORM_KEY); } catch { /* ignore */ }
         void saveLocation(d.listing.id, body);
         setIsRent(d.listing.transactionType === "rent");
         void uploadPending(d.listing.id);
@@ -310,7 +314,7 @@ export default function NewListing() {
               <h2>{TITLES[step]}</h2>
               <p className="muted">{INTROS[step]}</p>
             </header>
-            <form id="new-listing-form" onSubmit={onSubmit} onInput={e => { setDirty(true); try { const fd = new FormData(e.currentTarget), o: Record<string, string | string[]> = {}; for (const k of new Set(Array.from(fd.keys()))) o[k] = k === "amenities" ? fd.getAll(k).map(String) : String(fd.get(k) ?? ""); sessionStorage.setItem(FORM_KEY, JSON.stringify(o)); } catch { /* storage blocked */ } setLive(readPreview(e.currentTarget)); const n = (e.target as HTMLInputElement).name; if (n && fieldErrors[n] !== undefined) { const { [n]: _gone, ...rest } = fieldErrors; setFieldErrors(rest); if (Object.keys(rest).length === 0) setError(""); } }} noValidate>
+            <form id="new-listing-form" onSubmit={onSubmit} onInput={e => { setDirty(true); try { const fd = new FormData(e.currentTarget), o: Record<string, string | string[]> = {}; for (const k of new Set(Array.from(fd.keys()))) o[k] = k === "amenities" ? fd.getAll(k).map(String) : String(fd.get(k) ?? ""); localStorage.setItem(FORM_KEY, JSON.stringify(o)); } catch { /* storage blocked */ } setLive(readPreview(e.currentTarget)); const n = (e.target as HTMLInputElement).name; if (n && fieldErrors[n] !== undefined) { const { [n]: _gone, ...rest } = fieldErrors; setFieldErrors(rest); if (Object.keys(rest).length === 0) setError(""); } }} noValidate>
               <div className="wiz-body">
                 <ListingFields key={fieldsKey} defaults={defaults} step={FIELD_STEPS[step] ?? "none"} errors={fieldErrors} />
                 <div hidden={step !== 3}><PhotosStep files={pending} onChange={setPending} unavailable={photosOff} /></div>

@@ -19,6 +19,11 @@ const TITLES = ["What are you listing?", "Rooms and extras", "Describe the prope
 const INTROS = ["Start with the essentials buyers look at first.", "These power the filters buyers use to find your home.", "Plain, specific wording works best.", "Good photos are the biggest driver of enquiries.", "The map pin is placed from the address; drag it if it is off.", "Check the summary, run Elena's publish check, then save."] as const;
 const FIELD_STEPS: (FieldStep | "none")[] = ["basics", "details", "description", "none", "location", "none"];
 const LAST = STEPS.length - 1;
+/** Which step shows each field a finding can point at (price and title are on Basics, rooms and extras on Details, and so on). */
+const FIELD_TO_STEP: Record<string, number> = {
+  title: 0, price: 0, bedrooms: 1, bathrooms: 1, parking: 1, amenities: 1, description: 2, address: 4, suburb: 4, postcode: 4, bond: 4
+};
+const FOCUS_FIELD_EVENT = "listing-focus-field";
 
 type Loaded = ListingDefaults & { id: string; status: string; latitude?: number; longitude?: number };
 type FieldFlags = { field: string; flags: WordingFlagView[] };
@@ -77,6 +82,34 @@ export default function EditListing() {
   const reachedRef = useRef(0);
   reachedRef.current = reached;
   useBackspaceGuard();
+  /** Opens the step that holds a field, then scrolls to it, focuses it and highlights it briefly. */
+  function focusField(name: string) {
+    const at = FIELD_TO_STEP[name];
+    if (at === undefined) return;
+    setStep(at); setReached(r => Math.max(r, at));
+    window.history.pushState({ wizStep: at }, "", stepHash(at));
+    setTimeout(() => {
+      const el = document.querySelector<HTMLElement>(`#edit-listing-form [name="${name}"], #${name === "bond" ? "bond-pathway" : name}`);
+      if (!el) return;
+      el.scrollIntoView({ block: "center" });
+      el.focus({ preventScroll: true });
+      const box = el.closest("label, .field, fieldset") ?? el;
+      box.classList.add("field-flash");
+      setTimeout(() => box.classList.remove("field-flash"), 2500);
+    }, 50);
+  }
+  const focusRef = useRef(focusField);
+  focusRef.current = focusField;
+  // A link such as /listings/<id>/edit#price opens the right step on the field; Elena's publish check asks for the same while on this page.
+  useEffect(() => {
+    const onEvent = (e: Event) => focusRef.current(String((e as CustomEvent).detail ?? ""));
+    window.addEventListener(FOCUS_FIELD_EVENT, onEvent);
+    return () => window.removeEventListener(FOCUS_FIELD_EVENT, onEvent);
+  }, []);
+  const [pendingField] = useState(() => (typeof window === "undefined" ? "" : window.location.hash.replace(/^#/, "")));
+  useEffect(() => {
+    if (listing && pendingField && !pendingField.startsWith("step-") && FIELD_TO_STEP[pendingField] !== undefined) focusRef.current(pendingField);
+  }, [listing === null]); // eslint-disable-line react-hooks/exhaustive-deps
   // One history entry per step: Back and Forward move between steps, never further than the owner has reached.
   useEffect(() => {
     if (!window.location.hash.startsWith("#step-")) window.history.replaceState({ wizStep: 0 }, "", stepHash(0));
