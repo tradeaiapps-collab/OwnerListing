@@ -35,7 +35,7 @@ const FOOTER_COLUMNS = [
 ];
 
 /** Always shown under the footer, whether or not an admin has replaced the footer links. */
-const LEGAL_LINKS = [{ label: "Privacy", href: "/privacy" }, { label: "Terms", href: "/terms" }, { label: "Support", href: "/support" }];
+const LEGAL_LINKS = [{ label: "Privacy", href: "/privacy" }, { label: "Terms", href: "/terms" }, { label: "Support", href: "/support" }, { label: "Get the app", href: "/get-the-app" }];
 
 const getTheme = getRequestTheme;
 
