@@ -1,0 +1,81 @@
+import { describe, expect, it } from "vitest";
+import { createHostedEngine, readHostedConfig, DEFAULT_HOSTED_MODEL } from "../src/adapters/hosted-engine";
+import { AiUnavailableError } from "../src/adapters/ollama-engine";
+import { isEngineUsable } from "../src/domain/ai-engine";
+
+const cfg = { apiKey: "k", model: "m", timeoutMs: 5000, maxTokens: 100, maxConcurrency: 2 };
+const ok = (text: string) => (async () => new Response(JSON.stringify({ content: [{ type: "text", text }] }), { status: 200 })) as unknown as typeof fetch;
+
+describe("hosted engine", () => {
+  it("is off unless AI_ENGINE=anthropic and a key is set", () => {
+    expect(readHostedConfig({})).toMatchObject({ ok: false, state: "off" });
+    expect(readHostedConfig({ AI_ENGINE: "ollama" })).toMatchObject({ ok: false, state: "off" });
+    expect(readHostedConfig({ AI_ENGINE: "anthropic" })).toMatchObject({ ok: false, state: "invalid" });
+    const r = readHostedConfig({ AI_ENGINE: "anthropic", AI_API_KEY: "x" });
+    expect(r.ok && r.config.model).toBe(DEFAULT_HOSTED_MODEL);
+  });
+  it("generates text, sends key header and the system prompt", async () => {
+    let seen: { headers: Record<string, string>; body: { system: string } } | undefined;
+    const f = (async (_u: string, init: RequestInit) => { seen = { headers: init.headers as Record<string, string>, body: JSON.parse(String(init.body)) }; return new Response(JSON.stringify({ content: [{ type: "text", text: " Nice home. " }] })); }) as unknown as typeof fetch;
+    const e = createHostedEngine(cfg, f);
+    expect(isEngineUsable(e)).toBe(true);
+    expect(await e.generate("hi", { system: "RULE" })).toBe("Nice home.");
+    expect(seen?.headers["x-api-key"]).toBe("k");
+    expect(seen?.body.system).toContain("RULE");
+  });
+  it("maps failures to AiUnavailableError", async () => {
+    const bad = createHostedEngine(cfg, (async () => new Response("no", { status: 500 })) as unknown as typeof fetch);
+    await expect(bad.generate("x")).rejects.toMatchObject({ code: "http_status" });
+    const empty = createHostedEngine(cfg, ok("  "));
+    await expect(empty.generate("x")).rejects.toBeInstanceOf(AiUnavailableError);
+    const net = createHostedEngine(cfg, (async () => { throw new Error("down"); }) as unknown as typeof fetch);
+    expect((await net.status()).reachable).toBe(false);
+  });
+  it("describes a photo and rejects unsupported types", async () => {
+    const e = createHostedEngine(cfg, ok("kitchen\n- stone benchtops"));
+    expect(await e.describePhoto({ name: "a.jpg", mimeType: "image/jpeg", bytes: new Uint8Array([1]) })).toEqual(["kitchen", "stone benchtops"]);
+    await expect(e.describePhoto({ name: "a.gif", mimeType: "image/gif", bytes: new Uint8Array([1]) })).rejects.toMatchObject({ code: "not_supported" });
+  });
+});
+
+import type { QuickFields } from "../src/domain/quick-setup";
+import { ruleDescription, draftQuestions } from "../src/domain/quick-draft";
+describe("rules-only draft", () => {
+  const f = { title: "", description: "", transactionType: "sale" as const, propertyType: "house", suburb: "Indooroopilly", jurisdiction: "QLD", amenities: [] };
+  it("writes a full factual description and asks for missing facts", () => {
+    const d = ruleDescription(f, { suburbFacts: [{ label: "Median price", value: "$1.2m" }], suburbSource: "x", checklist: [] }, []);
+    expect(d.split(/\s+/).length).toBeGreaterThan(20);
+    expect(d).toContain("Indooroopilly");
+    expect(draftQuestions(f, [])).toContain("How many bedrooms does it have?");
+  });
+});
+
+import { observationsFromNames } from "../src/domain/quick-draft";
+describe("offline photo reading from file names", () => {
+  it("picks room words from names and ignores the rest", () => {
+    expect(observationsFromNames(["Kitchen-1.jpg", "IMG_2041.jpg", "front_garden.jpg"])).toEqual(["kitchen", "garden, exterior"]);
+  });
+});
+
+describe("rules writer quality", () => {
+  const base = { title: "", description: "", transactionType: "sale" as const, propertyType: "house", suburb: "Indooroopilly", jurisdiction: "QLD", bedrooms: 4, bathrooms: 2, parking: 1, priceCents: 125000000, amenities: ["pool" as const] };
+  const area = { suburbFacts: [{ label: "Median house price", value: "$1,350,000" }], suburbSource: "REIQ", checklist: [] };
+  it("writes clean, non-repeating, grammatical sentences with no placeholders", () => {
+    for (const f of [base as QuickFields, { ...base, transactionType: "rent" as const, parking: 0 } as QuickFields, { title: "", description: "", transactionType: "sale" as const, propertyType: "house", suburb: "Indooroopilly", jurisdiction: "QLD", amenities: [] as never[] }]) {
+      const d = ruleDescription(f, area, ["kitchen", "pool"], "Renovated in 2022");
+      const sentences = d.split(/(?<=[.!?])\s+/);
+      expect(new Set(sentences.map(x => x.toLowerCase())).size).toBe(sentences.length);
+      for (const x of sentences) { expect(x).toMatch(/^[A-Z0-9]/); expect(x).toMatch(/[.!?]$/); expect(x.length).toBeGreaterThan(8); }
+      expect(d).not.toMatch(/undefined|null|NaN|\s{2}/);
+    }
+  });
+});
+
+import { draftNotes } from "../src/domain/quick-draft";
+describe("draft notes address", () => {
+  it("does not repeat suburb, state or postcode already in the address", () => {
+    const n = draftNotes({ address: "12 Jacaranda Place, Indooroopilly QLD 4068", suburb: "Indooroopilly", state: "QLD", postcode: "4068" }, []);
+    expect(n).toBe("Property at 12 Jacaranda Place, Indooroopilly QLD 4068.");
+    expect(draftNotes({ address: "12 Jacaranda Place", suburb: "Indooroopilly", state: "QLD", postcode: "4068" }, [])).toBe("Property at 12 Jacaranda Place Indooroopilly QLD 4068.");
+  });
+});

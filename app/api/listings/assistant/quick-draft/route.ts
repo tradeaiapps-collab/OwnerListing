@@ -49,7 +49,7 @@ async function handlePost(req: Request) {
   const photos: { name: string; mimeType: string; bytes: Uint8Array }[] = [];
   for (const f of files) {
     if (!IMAGE_TYPES.includes(f.type) || f.size === 0 || f.size > PHOTO_LIMITS.maxBytes) return bad(`${f.name}: use a JPEG, PNG or WebP under ${PHOTO_LIMITS.maxBytes / 1_000_000} MB.`);
-    photos.push({ name: "photo", mimeType: f.type, bytes: new Uint8Array(await f.arrayBuffer()) });
+    photos.push({ name: f.name.replace(/^.*[\\/]/, "").slice(0, 80), mimeType: f.type, bytes: new Uint8Array(await f.arrayBuffer()) });
   }
   const hits = await countHitPg(getDb(), `ai-desc:${gate.actor.userId}`, windowStart(new Date().toISOString(), AI_DESCRIPTION_RATE.windowMs));
   if (!withinLimit(hits, AI_DESCRIPTION_RATE.perUser)) return NextResponse.json({ error: "Too many suggestions. Try again later." }, { status: 429 });
