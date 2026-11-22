@@ -252,6 +252,7 @@ export function ListingGallery({ listingId, title, highlights }: { listingId: st
   const [photos, setPhotos] = useState<PhotoView[] | null>(null);
   const [tourUrl, setTourUrl] = useState<string | null>(null);
   const [videos, setVideos] = useState<Media[]>([]);
+  const [planPdfs, setPlanPdfs] = useState<{ id: string }[]>([]);
   const [tab, setTab] = useState<Tab>("photo");
   const [open, setOpen] = useState<number | null>(null);
   const [panoIdx, setPanoIdx] = useState(0);
@@ -266,9 +267,14 @@ export function ListingGallery({ listingId, title, highlights }: { listingId: st
       .catch(() => setPhotos([]));
     fetch(`/api/listings/${listingId}/documents`)
       .then(async r => (r.ok ? (await r.json()).documents as { id: string; kind: string; visibility: string; status: string }[] : []))
+      .then(all => {
+        // Public floor plans that were uploaded as a PDF. They download only (the file route never renders them in our origin).
+        setPlanPdfs(all.filter(d => d.visibility === "public" && d.status === "active" && d.kind === "floorplan").map(d => ({ id: d.id })));
+        return all;
+      })
       .then(all => setVideos(all.filter(d => d.visibility === "public" && d.status === "active" && (d.kind === "video" || d.kind === "video_360"))
         .map(d => ({ id: d.id, label: d.kind === "video" ? "Video" : "360 video" }))))
-      .catch(() => setVideos([]));
+      .catch(() => { setVideos([]); setPlanPdfs([]); });
   }, [listingId]);
 
   if (photos === null) return <div className="gl-empty gl-loading" aria-hidden="true" />;
@@ -341,6 +347,17 @@ export function ListingGallery({ listingId, title, highlights }: { listingId: st
             <button key={r.key} type="button" className="gl-tab" aria-pressed={activeRoom === r.key} onClick={() => setRoom(r.key)}>{r.label} <span className="gl-tab-n">{r.count}</span></button>
           ))}
         </div>
+      )}
+      {planPdfs.length > 0 && (
+        <ul className="gl-plandocs">
+          {planPdfs.map((d, i) => (
+            <li key={d.id} className="gl-plandoc">
+              <span className="gl-plandoc-icon" aria-hidden="true">PDF</span>
+              <span className="gl-plandoc-text"><strong>Floor plan{planPdfs.length > 1 ? ` ${i + 1}` : ""}</strong><span className="muted">PDF document</span></span>
+              <a className="gl-tab gl-link" href={`/api/documents/${d.id}/file`}>Open<span className="sr-only"> floor plan PDF{planPdfs.length > 1 ? ` ${i + 1}` : ""} (downloads the file)</span></a>
+            </li>
+          ))}
+        </ul>
       )}
       {open !== null && items[open] && <Lightbox items={items} index={open} title={title} onIndex={setOpen} onClose={() => setOpen(null)} />}
     </section>

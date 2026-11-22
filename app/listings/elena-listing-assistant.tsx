@@ -271,7 +271,7 @@ export function ElenaListingAssistant({ photoCount }: { photoCount?: number }) {
         <img src={persona.icon} alt="" width={44} height={44} className="ela-avatar" />
         <span className="ela-head-text"><strong>{persona.name}</strong> <span className="badge">AI assistant</span>
           <span className="muted ela-sub">{open ? "Guidance as you fill in the form. You decide everything; nothing is saved until you save." : "Tap to open her questions, price guidance and photo tips."}</span></span>
-        <span aria-hidden="true">{open ? "−" : "+"}</span>
+        <span aria-hidden="true" className="ela-toggle">{open ? "−" : "+"}</span>
       </button>
       {open && error && <p role="status" className="muted">{error}</p>}
       {open && !plan && !error && <p role="status" className="muted">Elena is looking at your details…</p>}
