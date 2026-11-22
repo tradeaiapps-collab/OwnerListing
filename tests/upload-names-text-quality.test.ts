@@ -8,6 +8,7 @@ describe("file names", () => {
     expect(cleanFilename("C:\\Users\\me\\Front.JPG")).toBe("Front.JPG");
     expect(cleanFilename("a/b/\u0000x.png ")).toBe("x.png");
     expect(cleanFilename(undefined)).toBe("");
+    expect(cleanFilename("evil\u202Egpj.exe\u200B")).toBe("evilgpj.exe");
     expect(sameFilename("Front.JPG", "front.jpg")).toBe(true);
     expect(sameFilename("", "")).toBe(false);
   });

@@ -73,7 +73,7 @@ beforeEach(async () => {
   const store: UploadStore = {
     ...mem.store, async listingHasProperty() { return hasProperty; },
     async bytesUploadedSince() { return usedBytes; },
-    async filenameTaken(_l, name, exceptId) { return added.some(a => a.doc.filename?.toLowerCase() === name.toLowerCase() && a.doc.record.id !== exceptId); },
+    async filenameTaken(_l, name, viewer, exceptId) { return added.some(a => a.doc.filename?.toLowerCase() === name.toLowerCase() && a.doc.record.id !== exceptId && (viewer.isOwner || a.doc.record.uploadedBy === viewer.userId || a.doc.record.visibility === "parties")); },
     async addDocument(doc, supersede) { added.push({ doc, ...(supersede ? { supersede } : {}) }); }
   };
   state.store = store;
@@ -385,5 +385,23 @@ describe("duplicate file names", () => {
     expect((await again.json()).error).toContain("already on this listing");
     const other = await upload(PDF, { name: "Other.pdf" });
     expect(other.status).toBe(201);
+  });
+});
+
+describe("duplicate names and privacy", () => {
+  it("does not tell a contractor that an owner-only file has that name", async () => {
+    expect((await upload(PDF, { name: "Secret.pdf", visibility: "owner_only" })).status).toBe(201);
+    state.actor = inspector;
+    expect((await upload(PDF, { name: "secret.pdf", kind: "pest_report", visibility: "parties" })).status).toBe(201);
+  });
+  it("tells a contractor about a name already shared with the parties", async () => {
+    state.actor = inspector;
+    expect((await upload(PDF, { name: "Report.pdf", kind: "pest_report", visibility: "parties" })).status).toBe(201);
+    expect((await upload(PDF, { name: "report.pdf", kind: "pest_report", visibility: "parties" })).status).toBe(409);
+  });
+  it("refuses when the database guard reports a name taken in a race", async () => {
+    state.store = { ...(state.store as object), async addDocument() { return "name_taken" as const; } };
+    const res = await upload(PDF, { name: "Race.pdf" });
+    expect(res.status).toBe(409);
   });
 });

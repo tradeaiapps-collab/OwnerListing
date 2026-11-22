@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import { AMENITIES, AMENITY_LABELS, centsToDollarField, priceInputToCents } from "../../src/domain/listing-details";
 import { BOND_PATHWAY_LABELS, centsToInput, type FieldErrors } from "./ui";
 import { AddressField } from "./address-field";
+import { AddressPreviewMap } from "./address-preview-map";
 import { WordingHint } from "./wording-hint";
 import { ElenaListingAssistant, ElenaTip } from "./elena-listing-assistant";
 import { extractFeatures, featureMismatches } from "../../src/domain/listing-features-extract";
@@ -45,6 +46,13 @@ export function ListingFields({ defaults = {}, photoCount, step, errors = {} }: 
   const [amenities, setAmenities] = useState<string[]>(defaults.amenities ?? []);
   const hasAddress = !!defaults.address?.trim() && errors["address"] === undefined && errors["postcode"] === undefined;
   const [editAddress, setEditAddress] = useState(false);
+  const fullAddress = (a?: string, s?: string, j?: string, p?: string) => [a, [s, j, p].filter(Boolean).join(" ")].filter(Boolean).join(", ");
+  const [mapAddress, setMapAddress] = useState(fullAddress(defaults.address, defaults.suburb, defaults.jurisdiction, defaults.postcode));
+  const refreshMap = (form: HTMLFormElement | null) => {
+    if (!form) return;
+    const g = (n: string) => String(new FormData(form).get(n) ?? "").trim();
+    setMapAddress(fullAddress(g("address"), g("suburb"), g("jurisdiction"), g("postcode")));
+  };
   const touched = useRef(new Set<string>());
   const [filled, setFilled] = useState("");
   /** Elena reads the description and fills the Features section; anything the owner set by hand is left alone. */
@@ -166,7 +174,7 @@ export function ListingFields({ defaults = {}, photoCount, step, errors = {} }: 
           )}
           <div hidden={hasAddress && !editAddress} className="loc-fields">
             <label className={cls("address")}><span>Street address</span>
-              <AddressField defaultValue={defaults.address ?? ""} invalid={errors["address"] !== undefined} />
+              <AddressField defaultValue={defaults.address ?? ""} invalid={errors["address"] !== undefined} onCommit={refreshMap} />
               {msg("address")}
             </label>
             <div className="form-grid cols-3 loc-grid">
@@ -184,6 +192,7 @@ export function ListingFields({ defaults = {}, photoCount, step, errors = {} }: 
               </label>
             </div>
           </div>
+          {show("location") && <AddressPreviewMap address={mapAddress} />}
         </fieldset>
       </div>
     </>

@@ -25,13 +25,14 @@ export interface NewDocument { record: DocumentRecord; storageKey: string; sha25
 
 /** Insert and supersede only. There is no delete here. */
 export type UploadStore = DocumentStore & {
-  addDocument(d: NewDocument, supersede?: DocumentRecord): Promise<void>;
+  /** "name_taken" when a current file on the listing got this name first (a race with the earlier check); nothing is stored then. */
+  addDocument(d: NewDocument, supersede?: DocumentRecord): Promise<void | "name_taken">;
   /** False when the listing has no property record (property_document.property_id is required). */
   listingHasProperty(listingId: string): Promise<boolean>;
   /** Bytes this user has stored since `sinceIso`. undefined when the store gave nothing usable (treated as over quota). */
   bytesUploadedSince(userId: string, sinceIso: string): Promise<number | undefined>;
-  /** True when a current (not superseded) file on this listing has this name, ignoring case. `exceptId` is the version being replaced. */
-  filenameTaken(listingId: string, filename: string, exceptId?: string): Promise<boolean>;
+  /** True when a current (not superseded) file the viewer may see has this name, ignoring case. Files the viewer cannot see never count, so a name cannot leak. `exceptId` is the version being replaced. */
+  filenameTaken(listingId: string, filename: string, viewer: { userId: string; isOwner: boolean }, exceptId?: string): Promise<boolean>;
 };
 
 const VISIBILITIES: readonly Visibility[] = ["public", "parties", "owner_only"];
@@ -99,7 +100,7 @@ export async function uploadDocument(
   }
 
   const filename = cleanFilename(input.filename);
-  if (filename && (await store.filenameTaken(listingId, filename, input.supersedesId))) {
+  if (filename && (await store.filenameTaken(listingId, filename, { userId: actor.userId, isOwner: actor.userId === ownerUserId }, input.supersedesId))) {
     return { ok: false, code: "conflict", message: duplicateNameMessage(filename) };
   }
 
@@ -122,7 +123,8 @@ export async function uploadDocument(
     ? { ...amended.next, visibility: input.visibility }
     : { id, listingId, ownerUserId, kind: input.kind, uploadedBy: actor.userId, visibility: input.visibility, status: "active" };
   try {
-    await store.addDocument({ record, storageKey, sha256, declaredMime: real, sizeBytes: input.bytes.length, ...(filename ? { filename } : {}) }, amended?.previous);
+    const added = await store.addDocument({ record, storageKey, sha256, declaredMime: real, sizeBytes: input.bytes.length, ...(filename ? { filename } : {}) }, amended?.previous);
+    if (added === "name_taken") return { ok: false, code: "conflict", message: duplicateNameMessage(filename) };
   } catch {
     // The storage port has no delete (and must not gain one for published files), so the written object is left in place.
     // Log the key only so the orphan can be reviewed; it is not referenced by any record and is never served.
