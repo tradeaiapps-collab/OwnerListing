@@ -172,7 +172,7 @@ export function ListingFields({ defaults = {}, photoCount, step, errors = {} }: 
               <button type="button" className="link-button" onClick={() => setEditAddress(true)}>Change address</button>
             </div>
           )}
-          <div hidden={hasAddress && !editAddress} className="loc-fields">
+          <div hidden={hasAddress && !editAddress} className="loc-fields" onBlur={e => refreshMap(e.currentTarget.closest("form"))}>
             <label className={cls("address")}><span>Street address</span>
               <AddressField defaultValue={defaults.address ?? ""} invalid={errors["address"] !== undefined} onCommit={refreshMap} />
               {msg("address")}

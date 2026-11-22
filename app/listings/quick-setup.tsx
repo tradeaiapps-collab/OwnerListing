@@ -1,4 +1,5 @@
 "use client";
+import { AddressPreviewMap } from "./address-preview-map";
 import { checkElenaInput } from "../../src/domain/text-quality";
 
 import { useEffect, useId, useRef, useState } from "react";
@@ -66,6 +67,7 @@ export function QuickSetupPanel({ transactionType, onDone, onManual }: { transac
   const [tx, setTx] = useState<"sale" | "rent" | "">(transactionType ?? "");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [mapAddress, setMapAddress] = useState("");
   const formRef = useRef<HTMLFormElement>(null);
   const photoInput = useRef<HTMLInputElement>(null);
   const planInput = useRef<HTMLInputElement>(null);
@@ -124,15 +126,20 @@ export function QuickSetupPanel({ transactionType, onDone, onManual }: { transac
       </ol>
 
       <form ref={formRef} className="qs-body" onSubmit={e => { e.preventDefault(); void build(); }} noValidate>
-        <div className="stack" hidden={step !== 0}>
+        <div className="stack" hidden={step !== 0} onBlur={e => {
+          const f = e.currentTarget.closest("form"); if (!f) return;
+          const g = (n: string) => String(new FormData(f).get(n) ?? "").trim();
+          setMapAddress([g("address"), [g("suburb"), g("jurisdiction"), g("postcode")].filter(Boolean).join(" ")].filter(Boolean).join(", "));
+        }}>
           <h3>Where is the property?</h3>
-          <label className="field"><span>Street address</span><AddressField /></label>
+          <label className="field"><span>Street address</span><AddressField onCommit={f => { if (!f) return; const g = (n: string) => String(new FormData(f).get(n) ?? "").trim(); setMapAddress([g("address"), [g("suburb"), g("jurisdiction"), g("postcode")].filter(Boolean).join(" ")].filter(Boolean).join(", ")); }} /></label>
           <div className="form-grid">
             <label className="field"><span>Suburb</span><input name="suburb" maxLength={80} autoComplete="off" /></label>
             <label className="field"><span>State</span>
               <select name="jurisdiction" defaultValue=""><option value="">Choose</option>{["NSW", "VIC", "QLD", "WA", "SA", "TAS", "ACT", "NT"].map(x => <option key={x}>{x}</option>)}</select></label>
             <label className="field"><span>Postcode</span><input name="postcode" inputMode="numeric" maxLength={4} autoComplete="off" /></label>
           </div>
+          <AddressPreviewMap address={mapAddress} />
         </div>
 
         <div hidden={step !== 1}>
