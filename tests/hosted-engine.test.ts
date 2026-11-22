@@ -37,3 +37,14 @@ describe("hosted engine", () => {
     await expect(e.describePhoto({ name: "a.gif", mimeType: "image/gif", bytes: new Uint8Array([1]) })).rejects.toMatchObject({ code: "not_supported" });
   });
 });
+
+import { ruleDescription, draftQuestions } from "../src/domain/quick-draft";
+describe("rules-only draft", () => {
+  const f = { title: "", description: "", transactionType: "sale" as const, propertyType: "house", suburb: "Indooroopilly", jurisdiction: "QLD", amenities: [] };
+  it("writes a full factual description and asks for missing facts", () => {
+    const d = ruleDescription(f, { suburbFacts: [{ label: "Median price", value: "$1.2m" }], suburbSource: "x", checklist: [] }, []);
+    expect(d.split(/\s+/).length).toBeGreaterThan(25);
+    expect(d).toContain("Indooroopilly");
+    expect(draftQuestions(f, [])).toContain("How many bedrooms does it have?");
+  });
+});

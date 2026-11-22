@@ -11,7 +11,7 @@ import { JSON_HEADERS } from "./ui";
 export type QuickFiles = { photos: File[]; plan: File | null };
 type Ready = Extract<QuickSetup, { state: "ready" }>;
 /** What the server sends back: the draft fields plus what Elena saw in the photos and the area facts she used. */
-export type Drafted = Ready & Partial<Pick<QuickDraft, "seen" | "photoState" | "photosRead" | "area">>;
+export type Drafted = Ready & Partial<Pick<QuickDraft, "seen" | "photoState" | "photosRead" | "area" | "questions" | "provenance">>;
 
 const TYPES = ["image/jpeg", "image/png", "image/webp"];
 const MB = PHOTO_LIMITS.maxBytes / 1_000_000;
@@ -101,10 +101,10 @@ export function QuickSetupPanel({ transactionType, onDone, onManual }: { transac
       for (const f of await Promise.all(photos.slice(0, MAX_SEND).map(shrink))) fd.append("photos", f);
       const r = await fetch("/api/listings/assistant/quick-draft", { method: "POST", body: fd });
       const d = await r.json();
-      if (!r.ok) setError(r.status === 401 ? "Sign in to use quick setup." : d.error ?? "Elena is offline right now. Please use Manual setup instead.");
+      if (!r.ok) setError(r.status === 401 ? "Sign in to use quick setup." : d.error ?? "Elena couldn't finish this time. Try again, or use Manual setup.");
       else if (d.state !== "ready") setError(d.message ?? "Elena can't help right now.");
       else onDone(d as Drafted, { photos, plan });
-    } catch { setError("Elena is offline right now. Please use Manual setup instead."); } finally { setBusy(false); }
+    } catch { setError("Elena couldn't finish this time. Try again, or use Manual setup."); } finally { setBusy(false); }
   }
 
   return (

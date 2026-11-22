@@ -210,8 +210,10 @@ export default function NewListing() {
       <div id="panel-manual" role="tabpanel" aria-labelledby="tab-manual" hidden={mode !== "manual"}>
         {filled && (
           <section role="status" className="panel qs-result">
-            <h2>{filled.source === "ai" ? "Elena wrote your listing. Check it below." : "Elena is offline, so the description is not written."}</h2>
-            <p className="muted">{filled.source === "ai" ? "Elena wrote the title and description from your notes. " : "Elena is offline right now, so she only filled in the details she could read from your address. Please write the title and description yourself below. "}Check everything below and change what is wrong. Nothing is saved until you press Save draft.</p>
+            <h2>{filled.source === "ai" ? "Elena wrote your listing. Check it below." : "Elena wrote your draft from your details and the area. Check it below."}</h2>
+            <p className="muted">{filled.source === "ai" ? "Elena wrote the title and description from your notes. " : "This draft is built from your address, your details, area data and Elena's own writing rules. Add what she asks below to make it better. "}Check everything below and change what is wrong. Nothing is saved until you press Save draft.</p>
+            {filled.provenance && <p className="muted"><strong>Where this came from:</strong> description {filled.provenance.description === "ai" ? "written by AI" : "built from rules (no AI)"}; photos {filled.provenance.photos === "read" ? "read by the vision model" : filled.provenance.photos === "none" ? "not added" : "not read (needs the vision model on the PC)"}; area facts {filled.provenance.area ? "included" : "not found"}.</p>}
+            {filled.questions && filled.questions.length > 0 && <><p><strong>Elena needs to know:</strong></p><ul className="plain-list">{filled.questions.map(x => <li key={x}>{x}</li>)}</ul></>}
             <ul className="plain-list">{filled.filled.map(x => <li key={x.key}><strong>{x.label}:</strong> {x.value}</li>)}</ul>
             {filled.photoState === "read" && filled.seen && filled.seen.length > 0 && <p><strong>Elena saw in your photos:</strong> {filled.seen.join(", ")}.</p>}
             {filled.photoState === "off" && <p className="muted">Elena can&apos;t look at photos on this server yet (no vision model installed), so she wrote from your address and notes. Your photos are still added when you save.</p>}

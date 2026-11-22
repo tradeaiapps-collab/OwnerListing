@@ -1,8 +1,8 @@
 import type { AiEnginePort } from "./ai-engine";
 import { CONTACT_RE, isEngineUsable } from "./ai-engine";
 import { checkSuggestion } from "./ai-description";
-import { AMENITIES, type Amenity } from "./listing-details";
-import { buildQuickSetup, summarise, type QuickSetup } from "./quick-setup";
+import { AMENITIES, AMENITY_LABELS, formatAud, type Amenity } from "./listing-details";
+import { buildQuickSetup, ruleTitle, summarise, type QuickFields, type QuickSetup } from "./quick-setup";
 import { MAX_QUICK_NOTES } from "./quick-setup-limits";
 import { QLD_DRAFT_VERSIONS } from "../config/disclosures";
 import { STATE_DRAFT_VERSIONS } from "../config/disclosures-states";
@@ -22,7 +22,7 @@ export interface DraftInput {
 export interface SuburbFactLine { label: string; value: string }
 export interface AreaInfo { suburbFacts: SuburbFactLine[]; suburbSource?: string; checklist: string[] }
 export type PhotoState = "none" | "read" | "off" | "failed";
-export type QuickDraft = Extract<QuickSetup, { state: "ready" }> & { seen: string[]; photoState: PhotoState; photosRead: number; area: AreaInfo };
+export type QuickDraft = Extract<QuickSetup, { state: "ready" }> & { seen: string[]; photoState: PhotoState; photosRead: number; area: AreaInfo; /** Questions for the owner about details Elena does not have. */ questions: string[]; /** Where each part of the draft came from, so the owner can see what was read from photos and what is rules and area data. */ provenance: { description: "ai" | "rules"; photos: PhotoState; area: boolean } };
 export type QuickDraftResult = QuickDraft | Extract<QuickSetup, { state: "unavailable" }>;
 
 const FEATURE_WORDS: [RegExp, Amenity][] = [
@@ -61,6 +61,37 @@ export function draftNotes(i: DraftInput, seen: readonly string[]): string {
   return [`Property at ${place}.`, facts && `${facts}.`, i.notes?.trim(), seen.length > 0 ? `Seen in the photos: ${seen.join(", ")}.` : ""].filter(Boolean).join(" ").slice(0, MAX_QUICK_NOTES);
 }
 
+/** Plain sentences built only from facts the owner gave, what was seen in photos and the area facts. Nothing is invented. */
+export function ruleDescription(f: QuickFields, area: AreaInfo, seen: readonly string[], notes?: string): string {
+  const kind = f.propertyType === "unit" ? "unit" : f.propertyType;
+  const where = [f.suburb, f.jurisdiction].filter(Boolean).join(" ");
+  const parts: string[] = [];
+  const lead = f.transactionType === "rent" ? "available to rent" : "for sale";
+  const layout = [f.bedrooms !== undefined ? `${f.bedrooms} bedroom${f.bedrooms === 1 ? "" : "s"}` : "", f.bathrooms !== undefined ? `${f.bathrooms} bathroom${f.bathrooms === 1 ? "" : "s"}` : "", f.parking !== undefined ? `${f.parking} car space${f.parking === 1 ? "" : "s"}` : ""].filter(Boolean);
+  parts.push(`This ${kind}${where ? ` in ${where}` : ""} is ${lead}${layout.length ? `, with ${layout.join(", ")}` : ""}.`);
+  if (f.amenities.length) parts.push(`Features include ${f.amenities.map(a => AMENITY_LABELS[a].toLowerCase()).join(", ")}.`);
+  if (seen.length) parts.push(`The photos show ${seen.slice(0, 8).join(", ")}.`);
+  if (notes?.trim()) parts.push(notes.trim().replace(/\s+/g, " ").slice(0, 600).replace(/([^.!?])$/, "$1."));
+  if (area.suburbFacts.length) parts.push(`About the area${area.suburbSource ? ` (${area.suburbSource})` : ""}: ${area.suburbFacts.slice(0, 4).map(x => `${x.label.toLowerCase()} ${x.value}`).join("; ")}.`);
+  if (f.priceCents !== undefined) parts.push(f.transactionType === "rent" ? `Rent is ${formatAud(f.priceCents)} per week.` : `Asking price ${formatAud(f.priceCents)}.`);
+  parts.push("Contact the owner through this site to arrange an inspection.");
+  return parts.join(" ");
+}
+
+/** What a good ad needs that we do not have yet, phrased as questions. */
+export function draftQuestions(f: QuickFields, seen: readonly string[], notes?: string): string[] {
+  const q: string[] = [];
+  const built = ["house", "unit", "townhouse"].includes(f.propertyType);
+  if (built && f.bedrooms === undefined) q.push("How many bedrooms does it have?");
+  if (built && f.bathrooms === undefined) q.push("How many bathrooms?");
+  if (built && f.parking === undefined) q.push("How many car spaces?");
+  if (f.priceCents === undefined) q.push(f.transactionType === "rent" ? "What is the weekly rent?" : "What is your asking price?");
+  if (f.amenities.length === 0 && seen.length === 0) q.push("What features stand out (pool, air conditioning, solar, garden, study)?");
+  if (!notes?.trim()) q.push("What is its condition, and has anything been renovated or updated recently?");
+  q.push("What is nearby that buyers would care about (transport, schools, shops, parks)?");
+  return q;
+}
+
 /** Never throws. Photos that cannot be read are skipped; with no vision model the draft is written from the address, notes and area facts alone. */
 export async function buildQuickDraft(engine: AiEnginePort, input: DraftInput, photos: readonly { name: string; mimeType: string; bytes: Uint8Array }[], area: AreaInfo): Promise<QuickDraftResult> {
   const perPhoto: string[][] = [];
@@ -85,5 +116,8 @@ export async function buildQuickDraft(engine: AiEnginePort, input: DraftInput, p
   if (input.parking !== undefined) f.parking = input.parking;
   if (input.priceDollars !== undefined) f.priceCents = Math.round(input.priceDollars * 100);
   f.amenities = [...new Set([...f.amenities, ...amenities])];
-  return { ...r, ...summarise(f), fields: f, seen, photoState, photosRead: perPhoto.length, area };
+  const questions = draftQuestions(f, seen, input.notes);
+  // Without the AI the rules writer still writes a full, factual ad and a proper title, so the owner edits instead of starting blank.
+  if (r.source === "rules") { f.description = ruleDescription(f, area, seen, input.notes); f.title = ruleTitle(f); }
+  return { ...r, ...summarise(f), fields: f, seen, photoState, photosRead: perPhoto.length, area, questions, provenance: { description: r.source, photos: photoState, area: area.suburbFacts.length > 0 } };
 }
