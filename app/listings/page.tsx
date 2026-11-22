@@ -149,7 +149,8 @@ export default function Listings() {
         <h1>{t("Find a property")}</h1>
         <a className="button secondary" href="/listings/new">{t("List your property")}</a>
       </div>
-      {ready && <BuyerAdvisor query={appliedQuery} total={rows === null ? null : total} startOpen={describeFilters(applied).length === 0} onApply={advise} />}
+      <ElenaSearch query={appliedQuery} total={rows === null ? null : total} onApply={applyParams} onClear={clearParams} />
+      {ready && <BuyerAdvisor query={appliedQuery} total={rows === null ? null : total} startOpen={false} onApply={advise} />}
       <form id="listing-search" className="search-form" aria-label={t("Search listings")} onSubmit={e => { e.preventDefault(); setPage(1); setApplied(form); }}>
         <input className="wide search-words" type="search" aria-label={t("Search by street, suburb or feature")} placeholder={t("Search by street, suburb or feature, e.g. saltwater pool")} maxLength={100} value={form.q} onChange={set("q")} />
         <select aria-label={t("Sale or rent")} value={form.transactionType} onChange={e => setForm(f => ({ ...f, transactionType: e.target.value, minPrice: "", maxPrice: "" }))}>
@@ -189,7 +190,6 @@ export default function Listings() {
           <a href="/buyer/saved-searches">{t("Saved searches")}</a>
         </div>
       )}
-      <ElenaSearch query={appliedQuery} total={rows === null ? null : total} onApply={applyParams} onClear={clearParams} />
       <div className="result-bar" id="listing-results">
         <div className="view-toggle" role="group" aria-label={t("Show results as")}>
           <button type="button" className="secondary" aria-pressed={view === "list"} onClick={() => pick("list")}><span className="vt-icon vt-list" aria-hidden="true" />{t("List")}</button>

@@ -182,6 +182,7 @@ export default function Verification() {
             : <section aria-live="polite">
                 <h2>{COPY[next].title}</h2>
                 <p>{COPY[next].text}</p>
+                {next === "verify_email" && <p><a className="button" href="/api/auth/google/start?as=buyer&next=/buyer/verification">Sign in with Google</a></p>}
                 {next === "verify_phone" && (available.phone && consentText ? <PhoneForm consentText={consentText} onDone={load} /> : <p role="status">{NOT_YET.verify_phone}</p>)}
                 {next === "verify_id" && (available.idImages && idConsent
                   ? (idReview === "pending" ? <p role="status">{REVIEW_MSG["pending"]}</p> : <>
@@ -193,7 +194,7 @@ export default function Verification() {
         </>
       )}
       <h2>Privacy</h2>
-      <p>ID documents are deleted 7 days after approval and 30 days after rejection (to be confirmed by our lawyers). We never store your document number. ID photos you send us are encrypted, seen only by the staff member reviewing your check, and you cannot download them again from this site. We keep your verified mobile number and the result of your ID check. We send one text message with a code, only after you agree.</p>
+      <p style={{ maxWidth: "none" }}>ID documents are deleted 7 days after approval and 30 days after rejection (to be confirmed by our lawyers). We never store your document number. ID photos you send us are encrypted, seen only by the staff member reviewing your check, and you cannot download them again from this site. We keep your verified mobile number and the result of your ID check. We send one text message with a code, only after you agree.</p>
     </main>
   );
 }
