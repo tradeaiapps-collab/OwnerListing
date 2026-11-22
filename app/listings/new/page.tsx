@@ -294,7 +294,7 @@ export default function NewListing() {
           <ElenaPublishCheck listingId={draftId} />
         </section>
       )}
-      <p><a className="button secondary" href="/listings/mine">Back to my listings</a></p>
+      <p className="page-foot"><a className="button secondary" href="/listings/mine">Back to my listings</a></p>
     </main>
   );
 }

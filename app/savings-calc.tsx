@@ -21,10 +21,9 @@ export default function SavingsCalc() {
         <label className="sc-f">Sale price (AUD)<input inputMode="numeric" value={price} maxLength={11} onChange={e => setPrice(e.target.value)} /></label>
         <label className="sc-f">Agent commission (%)<input inputMode="decimal" value={rate} maxLength={5} onChange={e => setRate(e.target.value)} /></label>
         <label className="sc-f">Agent marketing (AUD)<input inputMode="numeric" value={marketing} maxLength={9} onChange={e => setMarketing(e.target.value)} /></label>
-        <label className="sc-f">Our plan fee (AUD)<input inputMode="numeric" value={plan} maxLength={9} onChange={e => setPlan(e.target.value)} />
-          <small><a href="/plans">Look up plan prices</a></small>
-        </label>
+        <label className="sc-f">Our plan fee (AUD)<input inputMode="numeric" value={plan} maxLength={9} onChange={e => setPlan(e.target.value)} /></label>
       </div>
+      <p className="sc-hint"><a href="/plans">Look up plan prices</a></p>
       <output className="sc-out" aria-live="polite">
         <span>Agent cost in this example <strong>{aud(commission)}</strong></span>
         <span>Difference with your figures <strong>{aud(diff)}</strong></span>
