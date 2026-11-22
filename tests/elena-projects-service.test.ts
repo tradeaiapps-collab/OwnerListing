@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { INVESTMENT_DISCLOSURE } from "../src/config/investment-disclosure";
 import type { AuditEvent } from "../src/domain/audit";
 import {
-  approveUpdate, askElena, clearDocTextCache, createInMemoryElenaStore, draftForOwner, editDraft, listQuestions, listUpdates, replyToQuestion, reviewForOwner, setFollow,
+  approveUpdate, askElena, decideAnswer, setAnswerMode, getAnswerMode, clearDocTextCache, createInMemoryElenaStore, draftForOwner, editDraft, listQuestions, listUpdates, replyToQuestion, reviewForOwner, setFollow,
   type DocTextPort, type ElenaPorts
 } from "../src/domain/elena-projects-service";
 import { createInMemoryInvestmentRepository, createProject, decideProject, type InvestmentDeps } from "../src/domain/investment-service";
@@ -57,6 +57,8 @@ async function approvedProject() {
   if (!r.ok) throw new Error(r.message);
   const p = (await mem.repo.getProject(r.value.project.id))!;
   expect((await decideProject(deps, admin, p.id, "approve", "Checked issuer and risks.", p.version)).ok).toBe(true);
+  // Earlier suites test instant quoting; the approve-first default has its own suite below.
+  await store.setAnswerMode(p.id, "instant", owner.userId, clock);
   return p.id;
 }
 async function addDoc(projectId: string, tag: string, pages: string[], o: Partial<ProjectDocInput> & { confirm?: boolean; terms?: string[] } = {}) {
@@ -269,5 +271,118 @@ describe("security review fixes (service)", () => {
     expect(r.ok && r.value.outcome).toBe("declined");
     expect(JSON.stringify(r)).not.toMatch(/12%/);
     expect(notices).toHaveLength(0);
+  });
+});
+
+describe("owner approves Elena's drafted answers (approve-first)", () => {
+  async function draftedProject() {
+    const id = await approvedProject();
+    await setAnswerMode(deps, store, owner, id, "approve_first");
+    await addDoc(id, "Feasibility study", ["Construction cost is estimated at $4,200,000 including contingency."]);
+    return id;
+  }
+  const pending = async (id: string) => { const r = await ask(id, "What is the construction cost estimate?"); if (!r.ok) throw new Error(r.message); return r.value; };
+  const mine = async (id: string, who: Actor) => { const r = await listQuestions(deps, store, who, id); if (!r.ok) throw new Error(r.message); return r.value; };
+
+  it("defaults to approve-first and shows the investor a holding message, not the draft", async () => {
+    const id = await approvedProject();
+    store.questions.length = 0;
+    await setAnswerMode(deps, store, owner, id, "approve_first");
+    await addDoc(id, "Feasibility study", ["Construction cost is estimated at $4,200,000."]);
+    const a = await pending(id);
+    expect(a.pending).toBe(true);
+    expect(JSON.stringify(a)).not.toMatch(/4,200,000/);
+    const inv = await mine(id, investor);
+    expect(inv.questions[0]).toMatchObject({ state: "pending_owner", sources: [] });
+    expect(JSON.stringify(inv)).not.toMatch(/4,200,000/);
+    expect(inv.questions[0]!.draft).toBeUndefined();
+    expect(notices.some(x => x.to === owner.userId && x.template === "elena_project_draft")).toBe(true);
+  });
+
+  it("a fresh project with no setting is approve-first", async () => {
+    const r = await createProject(deps, owner, fields);
+    if (!r.ok) throw new Error(r.message);
+    expect(await store.answerMode(r.value.project.id)).toBe("approve_first");
+  });
+
+  it("the owner sees Elena's draft; approving releases it to the asker only and notifies them", async () => {
+    const id = await draftedProject();
+    const a = await pending(id);
+    const own = await mine(id, owner);
+    expect(own.questions[0]!.draft?.text).toContain("$4,200,000");
+    expect(own.answerMode).toBe("approve_first");
+    expect((await decideAnswer(deps, store, owner, id, a.id, "approve")).ok).toBe(true);
+    const inv = await mine(id, investor);
+    expect(inv.questions[0]).toMatchObject({ state: "owner_approved" });
+    expect(inv.questions[0]!.answer).toContain("$4,200,000");
+    expect((await mine(id, other)).questions).toHaveLength(0);
+    expect(notices.some(x => x.to === investor.userId && x.template === "elena_project_answer" && !/4,200,000/.test(x.text))).toBe(true);
+    expect(audit.some(e => e.eventType === "investment.elena_answer_reviewed" && e.payload["decision"] === "approved")).toBe(true);
+  });
+
+  it("an edit replaces Elena's wording with the owner's, and the draft never reaches the investor", async () => {
+    const id = await draftedProject();
+    const a = await pending(id);
+    expect((await decideAnswer(deps, store, owner, id, a.id, "edit", "Budget is in the feasibility study; please read it with its risks.")).ok).toBe(true);
+    const inv = await mine(id, investor);
+    expect(inv.questions[0]).toMatchObject({ state: "owner_edited", answer: "Budget is in the feasibility study; please read it with its risks.", sources: [] });
+    expect(JSON.stringify(inv)).not.toMatch(/4,200,000/);
+  });
+
+  it("a discard tells the investor the owner will reply, and the owner can then reply", async () => {
+    const id = await draftedProject();
+    const a = await pending(id);
+    expect((await replyToQuestion(deps, store, owner, id, a.id, "Hello there")).ok).toBe(false);
+    expect((await decideAnswer(deps, store, owner, id, a.id, "discard")).ok).toBe(true);
+    const inv = await mine(id, investor);
+    expect(inv.questions[0]).toMatchObject({ state: "owner_discarded", sources: [] });
+    expect(inv.questions[0]!.answer).toMatch(/owner will answer/i);
+    expect((await replyToQuestion(deps, store, owner, id, a.id, "Hello there")).ok).toBe(true);
+  });
+
+  it("allows one decision only", async () => {
+    const id = await draftedProject();
+    const a = await pending(id);
+    expect((await decideAnswer(deps, store, owner, id, a.id, "approve")).ok).toBe(true);
+    const again = await decideAnswer(deps, store, owner, id, a.id, "discard");
+    expect(!again.ok && again.code).toBe("conflict");
+  });
+
+  it("refuses edits with return promises, contact details or an address, and bad decisions", async () => {
+    const id = await draftedProject();
+    const a = await pending(id);
+    for (const body of ["You are guaranteed a strong result.", "Call me on 0412 345 678 for the cost.", "It is at 12 Smith Street Bulimba.", "Projected returns of 12% per annum."])
+      expect((await decideAnswer(deps, store, owner, id, a.id, "edit", body)).ok).toBe(false);
+    expect((await decideAnswer(deps, store, owner, id, a.id, "maybe")).ok).toBe(false);
+    expect((await mine(id, investor)).questions[0]!.state).toBe("pending_owner");
+  });
+
+  it("only the owner decides; investors, other owners and wrong projects get not found", async () => {
+    const id = await draftedProject();
+    const a = await pending(id);
+    for (const who of [investor, other, stranger]) { const r = await decideAnswer(deps, store, who, id, a.id, "approve"); expect(!r.ok && r.code).toBe("not_found"); }
+    expect((await setAnswerMode(deps, store, investor, id, "instant")).ok).toBe(false);
+    expect((await getAnswerMode(deps, store, stranger, id)).ok).toBe(false);
+    expect((await setAnswerMode(deps, store, owner, id, "whatever")).ok).toBe(false);
+  });
+
+  it("declines and escalations never wait for approval, and Elena commits to nothing", async () => {
+    const id = await draftedProject();
+    const adv = await ask(id, "Will I make a profit?");
+    expect(adv.ok && adv.value.outcome).toBe("declined");
+    expect(adv.ok && adv.value.pending).toBeUndefined();
+    const esc = await ask(id, "Who is the town planner on the project?");
+    expect(esc.ok && esc.value.outcome).toBe("escalated");
+    expect(esc.ok && esc.value.pending).toBeUndefined();
+    const r = await decideAnswer(deps, store, owner, id, adv.ok ? adv.value.id : "", "approve");
+    expect(!r.ok && r.code).toBe("conflict");
+  });
+
+  it("instant mode keeps the earlier behaviour", async () => {
+    const id = await draftedProject();
+    await setAnswerMode(deps, store, owner, id, "instant");
+    const a = await pending(id);
+    expect(a.pending).toBeUndefined();
+    expect(a.text).toContain("$4,200,000");
   });
 });

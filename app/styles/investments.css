@@ -246,7 +246,7 @@ body.doc-viewer-open { overflow: hidden; }
 .elena-a { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 .elena-src { margin: 0; padding: var(--space-2) var(--space-3); border-left: 3px solid var(--gold); background: var(--surface); border-radius: 0 var(--radius) var(--radius) 0; font-size: 0.9375rem; overflow-wrap: anywhere; }
 .elena-src cite { display: block; color: var(--muted); font-style: normal; font-size: 0.875rem; margin-top: var(--space-1); }
-.elena-tag { display: inline-block; padding: 0 var(--space-2); border: 1px solid currentColor; border-radius: 999px; font-size: 0.8125rem; width: fit-content; }
+.elena-tag { display: inline-block; padding: 1px var(--space-2); line-height: 1.4; border: 1px solid currentColor; border-radius: 999px; font-size: 0.8125rem; width: fit-content; }
 .elena-tag.answered { color: var(--brand); }
 .elena-tag.escalated { color: var(--warn); }
 .elena-tag.declined { color: var(--muted); }
@@ -262,6 +262,10 @@ body.doc-viewer-open { overflow: hidden; }
 .elena-edit input, .elena-edit textarea { font: inherit; width: 100%; box-sizing: border-box; padding: var(--space-2) var(--space-3); min-height: 44px; }
 .elena-edit textarea { min-height: 180px; }
 @media (max-width: 479px) { .elena-actions > * { flex: 1 1 100%; } .elena-form .elena-row > button { width: 100%; } }
+.elena-mode { display: grid; gap: var(--space-2); margin: 0 0 var(--space-3); padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-md, 8px); min-width: 0; }
+.elena-mode legend { padding: 0 var(--space-2); font-weight: 600; }
+.elena-mode label { display: flex; gap: var(--space-2); align-items: flex-start; min-height: 44px; overflow-wrap: anywhere; }
+.elena-mode input { flex: none; margin-top: 0.3rem; }
 
 /* Elena due-diligence summary. Tokens only. */
 .dd-report { display: grid; gap: var(--space-3); min-width: 0; }

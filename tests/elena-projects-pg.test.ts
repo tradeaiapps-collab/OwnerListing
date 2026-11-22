@@ -38,6 +38,21 @@ describe.skipIf(!DATABASE_URL)("Elena investor project tables on Postgres", () =
     expect(c).toMatch(/approved_by IS NOT NULL/);
     expect(typeof createPgElenaProjectStore(db).followers).toBe("function");
   });
+
+  it("answer approval: one insert-only decision per question, a mode setting with a closed list, and a needs_approval flag defaulting to false", async () => {
+    const t1 = (await db.query("SELECT table_name FROM information_schema.tables WHERE table_name IN ('elena_project_answer_review','elena_project_answer_setting')")).rows;
+    expect(t1).toHaveLength(2);
+    expect((await db.query("SELECT 1 FROM pg_trigger WHERE tgname = 'elena_project_answer_review_append_only'")).rows).toHaveLength(1);
+    const col = (await db.query("SELECT column_default, is_nullable FROM information_schema.columns WHERE table_name = 'elena_project_question' AND column_name = 'needs_approval'")).rows[0];
+    expect(String(col?.["column_default"])).toBe("false");
+    expect(col?.["is_nullable"]).toBe("NO");
+    const pk = (await db.query("SELECT pg_get_constraintdef(oid) AS d FROM pg_constraint WHERE conrelid = 'elena_project_answer_review'::regclass AND contype = 'p'")).rows[0];
+    expect(String(pk?.["d"])).toMatch(/question_id/);
+    const modes = (await db.query("SELECT pg_get_constraintdef(oid) AS d FROM pg_constraint WHERE conrelid = 'elena_project_answer_setting'::regclass AND contype = 'c'")).rows.map(r => String(r["d"])).join(" ");
+    expect(modes).toMatch(/approve_first/);
+    expect(typeof createPgElenaProjectStore(db).addReview).toBe("function");
+  });
+
   it("lists the projects an investor follows, newest follow first, only theirs", async () => {
     const store = createPgElenaProjectStore(db);
     const investor = await addUser(db, "buyer"), other = await addUser(db, "buyer");
