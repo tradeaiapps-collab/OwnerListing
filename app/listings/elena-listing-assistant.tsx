@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
 import type { AssistantPlan, AssistantQuestion, FeedbackEvent, RewriteMode, Rewrite } from "../../src/domain/listing-assistant";
-import { dollarsToCents, formatAud } from "../../src/domain/listing-details";
+import { priceInputToCents, formatAud } from "../../src/domain/listing-details";
 import { useSearchPersona } from "./persona-context";
 import { useElenaContext } from "../elena-context";
 import { roomsFromText, sectionHint, sectionOfField } from "../../src/domain/elena-context";
@@ -30,7 +30,7 @@ const words = (t: string) => (t.trim() === "" ? 0 : t.trim().split(/\s+/).length
 function factsFrom(form: HTMLFormElement, photoCount: number | undefined) {
   const fd = new FormData(form), s = (k: string) => String(fd.get(k) ?? "").trim();
   const n = (k: string) => (/^\d+$/.test(s(k)) ? Number(s(k)) : undefined);
-  const cents = s("price") === "" ? undefined : dollarsToCents(s("price"));
+  const cents = s("price") === "" ? undefined : priceInputToCents(s("price"));
   const facts: Record<string, unknown> = {
     transactionType: s("transactionType") === "rent" ? "rent" : "sale", propertyType: s("propertyType") || "house",
     title: s("title"), description: s("description"), suburb: s("suburb"), postcode: /^\d{4}$/.test(s("postcode")) ? s("postcode") : "",

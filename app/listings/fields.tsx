@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { AMENITIES, AMENITY_LABELS } from "../../src/domain/listing-details";
+import { AMENITIES, AMENITY_LABELS, centsToDollarField, priceInputToCents } from "../../src/domain/listing-details";
 import { BOND_PATHWAY_LABELS, centsToInput } from "./ui";
 import { AddressField } from "./address-field";
 import { WordingHint } from "./wording-hint";
@@ -98,7 +98,7 @@ export function ListingFields({ defaults = {}, photoCount, step }: { defaults?: 
               </select>
             </label>
             <label className="field"><span>{tx === "rent" ? "Rent per week (AUD)" : "Asking price (AUD)"} <ElenaTip text={tips.price} /></span>
-              <input name="price" inputMode="decimal" placeholder={tx === "rent" ? "650" : "850000"} defaultValue={defaults.priceCents !== undefined ? centsToInput(defaults.priceCents) : ""} />
+              <input name="price" inputMode="decimal" autoComplete="off" onBlur={e => { const c = priceInputToCents(e.currentTarget.value); if (c !== undefined) e.currentTarget.value = centsToDollarField(c); }} placeholder={tx === "rent" ? "650" : "850000"} defaultValue={defaults.priceCents !== undefined ? centsToInput(defaults.priceCents) : ""} />
             </label>
           </div>
         </fieldset>

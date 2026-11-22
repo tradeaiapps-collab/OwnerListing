@@ -4,7 +4,7 @@ import { BondPathwayField, ListingFields, type BondState, type ListingDefaults }
 import { TemplatePicker } from "../template-picker";
 import type { TemplateView } from "../../../src/domain/listing-template";
 import { JSON_HEADERS, listingFormBody } from "../ui";
-import { dollarsToCents } from "../../../src/domain/listing-details";
+import { priceInputToCents } from "../../../src/domain/listing-details";
 import { PhotoManager } from "../photo-manager";
 import { QuickSetupPanel, type Drafted, type QuickFiles } from "../quick-setup";
 import { ElenaPublishCheck } from "../elena-publish-check";
@@ -50,7 +50,7 @@ export default function NewListing() {
     const fd = form instanceof HTMLFormElement ? new FormData(form) : new FormData();
     const s = (k: string) => String(fd.get(k) ?? "");
     const n = (k: string) => (s(k).trim() === "" ? {} : { [k]: Number(s(k)) });
-    const cents = dollarsToCents(s("price"));
+    const cents = priceInputToCents(s("price"));
     const f = r.fields;
     setDefaults({
       address: s("address"), suburb: s("suburb"), postcode: s("postcode"), jurisdiction: s("jurisdiction"), useClass: s("useClass"),
@@ -88,7 +88,7 @@ export default function NewListing() {
   /** Template fields go over the form; what was already typed (title, address, suburb, postcode, price) is kept. */
   function applyTemplate(t: TemplateView, form: HTMLFormElement) {
     const fd = new FormData(form), s = (k: string) => String(fd.get(k) ?? "");
-    const cents = dollarsToCents(s("price"));
+    const cents = priceInputToCents(s("price"));
     const kept: ListingDefaults = {
       title: s("title"), address: s("address"), suburb: s("suburb"), postcode: s("postcode"), jurisdiction: s("jurisdiction"), transactionType: s("transactionType"),
       useClass: s("useClass"), propertyType: s("propertyType"), description: s("description"), amenities: fd.getAll("amenities").map(String),
@@ -103,7 +103,7 @@ export default function NewListing() {
   function readPreview(form: HTMLFormElement) {
     const fd = new FormData(form), g = (k: string) => String(fd.get(k) ?? "").trim();
     const rent = g("transactionType") === "rent";
-    const cents = dollarsToCents(g("price"));
+    const cents = priceInputToCents(g("price"));
     const price = cents === undefined || g("price") === "" ? "Price not set" : `$${(cents / 100).toLocaleString("en-AU")}${rent ? " pw" : ""}`;
     const rooms = ["bedrooms", "bathrooms", "parking"].map((k, i) => (g(k) === "" ? "" : `${g(k)} ${["bed", "bath", "car"][i]}`)).filter(Boolean).join(" · ");
     const addr = [g("address"), [g("suburb"), g("jurisdiction"), g("postcode")].filter(Boolean).join(" ")].filter(Boolean).join(", ");
