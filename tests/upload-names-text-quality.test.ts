@@ -38,3 +38,23 @@ describe("checkRealText", () => {
     expect(r.findings.some(f => f.id === "description-gibberish" && f.severity === "block")).toBe(true);
   });
 });
+
+import { checkElenaInput } from "../src/domain/text-quality";
+import { PROFANITY_MESSAGE } from "../src/domain/profanity-filter";
+
+describe("checkElenaInput (notes box and Elena chat)", () => {
+  it("allows blank text, real notes and short real questions", () => {
+    expect(checkElenaInput("")).toBeNull();
+    expect(checkElenaInput("Renovated in 2022, walk to the train station, quiet street.")).toBeNull();
+    expect(checkElenaInput("What are rates?")).toBeNull();
+    expect(checkElenaInput("stamp duty")).toBeNull();
+  });
+  it("blocks profanity with the standard message", () => {
+    expect(checkElenaInput("this house is a piece of shit")).toBe(PROFANITY_MESSAGE);
+    expect(checkElenaInput("wtf")).toBe(PROFANITY_MESSAGE);
+  });
+  it("blocks gibberish with the standard message", () => {
+    expect(checkElenaInput("asdfghjkl")).toBe(GIBBERISH_MESSAGE);
+    expect(checkElenaInput("kkkkkkk lllllll")).toBe(GIBBERISH_MESSAGE);
+  });
+});

@@ -1,3 +1,5 @@
+import { PROFANITY_MESSAGE, findProfanity } from "./profanity-filter";
+
 /**
  * Rule-based check that free text is a real description (no AI). Pure and client-safe.
  * Catches keyboard mash, repeated characters, words with no vowels, one word repeated and text that is too short to describe anything.
@@ -48,4 +50,15 @@ export function checkRealText(text: string | null | undefined, minWords = 2): st
   if (rest && segmentLooksFake(rest, minWords)) return GIBBERISH_MESSAGE;
   for (const m of t.matchAll(LABELLED)) if (m[2]!.trim() && segmentLooksFake(m[2]!, minWords)) return `${GIBBERISH_MESSAGE} Check the "${m[1]}" part.`;
   return null;
+}
+
+/**
+ * Owner and visitor text that Elena reads (the notes box, her chat): swearing and abuse first, then gibberish.
+ * Null when fine. Blank text passes (notes are optional). One-word questions are allowed; mash is not.
+ */
+export function checkElenaInput(text: string | null | undefined): string | null {
+  const t = (text ?? "").trim();
+  if (!t) return null;
+  if (findProfanity(t).length > 0) return PROFANITY_MESSAGE;
+  return checkRealText(t, 0);
 }

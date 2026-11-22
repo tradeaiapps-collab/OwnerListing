@@ -1,4 +1,6 @@
 "use client";
+import { checkElenaInput } from "../src/domain/text-quality";
+
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { personaLabel, personaPose, type Persona } from "../src/domain/assistant-persona";
 import { cleanTranscript, micErrorMessage } from "../src/domain/guide-voice";
@@ -140,6 +142,8 @@ export default function GuideAssistant({ greeting, persona }: {
     if (busy) return;
     const said = "label" in q ? q.label : q.text.trim();
     if (!said) return;
+    const badInput = "label" in q || "intent" in q ? null : checkElenaInput(said);
+    if (badInput) { setMsgs(m => [...m, { id: seq.current++, from: "you", text: said }, { id: seq.current++, from: "guide", text: badInput }]); return; }
     setBusy(true);
     setMsgs(m => [...m, { id: seq.current++, from: "you", text: said }]);
     if (!("intent" in q) && isWhereQuestion(said)) { setMsgs(m => [...m, { id: seq.current++, from: "guide", text: whereAnswer(here) }]); setBusy(false); return; }

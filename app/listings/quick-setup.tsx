@@ -1,4 +1,6 @@
 "use client";
+import { checkElenaInput } from "../../src/domain/text-quality";
+
 import { useEffect, useId, useRef, useState } from "react";
 import { PHOTO_LIMITS } from "../../src/domain/listing-photos";
 import { MAX_QUICK_NOTES } from "../../src/domain/quick-setup-limits";
@@ -91,6 +93,8 @@ export function QuickSetupPanel({ transactionType, onDone, onManual }: { transac
 
   async function build() {
     if (!addressOk()) { setStep(0); setError("Enter the property's address first. Elena starts from it."); return; }
+    const badNotes = checkElenaInput(notes);
+    if (badNotes) { setError(badNotes); return; }
     setBusy(true); setError("");
     try {
       const fd = new FormData();

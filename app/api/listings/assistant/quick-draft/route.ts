@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { checkElenaInput } from "../../../../../src/domain/text-quality";
+
 import { isJurisdiction } from "../../../../../src/domain/jurisdiction";
 import { PHOTO_LIMITS } from "../../../../../src/domain/listing-photos";
 import { buildQuickDraft, MAX_DRAFT_PHOTOS, stateChecklist, type AreaInfo, type DraftInput } from "../../../../../src/domain/quick-draft";
@@ -54,6 +56,8 @@ async function handlePost(req: Request) {
   const hits = await countHitPg(getDb(), `ai-desc:${gate.actor.userId}`, windowStart(new Date().toISOString(), AI_DESCRIPTION_RATE.windowMs));
   if (!withinLimit(hits, AI_DESCRIPTION_RATE.perUser)) return NextResponse.json({ error: "Too many suggestions. Try again later." }, { status: 429 });
 
+  const badNotes = checkElenaInput(text(form, "notes", MAX_QUICK_NOTES));
+  if (badNotes) return NextResponse.json({ error: badNotes }, { status: 400 });
   const suburb = text(form, "suburb", 80), postcode = text(form, "postcode", 4);
   const input: DraftInput = {
     address, ...(suburb ? { suburb } : {}), ...(state ? { state } : {}), ...(postcode ? { postcode } : {}),
