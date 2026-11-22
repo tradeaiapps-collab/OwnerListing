@@ -1,6 +1,7 @@
 import {
   addressParts, auPoint, isPlaceId, MAX_SUGGESTIONS, type AddressLookupPort, type AddressParts, type AddressSuggestion, type GeoPoint
 } from "../domain/address-suggest";
+import { DEFAULT_BRAND_NAME } from "../config/brand";
 
 type FetchInit = { method?: "GET" | "POST"; redirect: "error"; signal: AbortSignal; headers: Record<string, string>; body?: string };
 type FetchLike = (url: string, init: FetchInit) => Promise<{ ok: boolean; text(): Promise<string> }>;
@@ -13,7 +14,7 @@ const MAX_BODY = 256 * 1024;
 const AU_BBOX = "112.9,-43.7,153.7,-10.6";
 /** Results lean towards South East Queensland, the beta region. */
 /** The public Photon service asks clients to identify themselves; a bare server default agent can be refused. */
-const PHOTON_HEADERS = { accept: "application/json", "user-agent": "OwnerListing/1.0 (address suggestions)" };
+const PHOTON_HEADERS = { accept: "application/json", "user-agent": `${DEFAULT_BRAND_NAME}/1.0 (address suggestions)` };
 const BIAS = { lat: "-27.47", lon: "153.03" };
 
 const obj = (v: unknown): Record<string, unknown> | undefined =>
