@@ -167,7 +167,7 @@ export function ListingFields({ defaults = {}, photoCount, step, errors = {} }: 
           <legend>Location</legend>
           {hasAddress && !editAddress && (
             <div className="loc-confirm">
-              <p><strong>Confirm on map</strong></p>
+              <p><strong>Location</strong> <span className="muted">(placed automatically; adjust only if the pin is wrong)</span></p>
               <p className="muted">{[defaults.address, [defaults.suburb, defaults.jurisdiction, defaults.postcode].filter(Boolean).join(" ")].filter(Boolean).join(", ")}</p>
               <button type="button" className="link-button" onClick={() => setEditAddress(true)}>Change address</button>
             </div>

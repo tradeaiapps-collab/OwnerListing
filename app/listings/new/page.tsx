@@ -18,7 +18,7 @@ import type { FieldStep } from "../fields";
 const STEPS = ["Basics", "Details", "Description", "Photos", "Location", "Publish"] as const;
 const SUBS = ["Title, price and type", "Rooms and extras", "Tell the story", "Show it off", "Address and map", "Review and save"] as const;
 const TITLES = ["What are you listing?", "Rooms and extras", "Describe the property", "Add photos", "Where is it?", "Review your listing"] as const;
-const INTROS = ["Start with the essentials buyers look at first.", "These power the filters buyers use to find your home.", "Plain, specific wording works best.", "Good photos are the biggest driver of enquiries.", "The map pin is placed from your address.", "Check the details, then save your draft."] as const;
+const INTROS = ["Start with the essentials buyers look at first.", "These power the filters buyers use to find your home.", "Plain, specific wording works best.", "Good photos are the biggest driver of enquiries.", "The map pin is placed from your address when you save. Nothing to confirm.", "Check the details, then save your draft."] as const;
 const FIELD_STEPS: (FieldStep | "none")[] = ["basics", "details", "description", "none", "location", "none"];
 const LAST = STEPS.length - 1;
 
@@ -174,6 +174,17 @@ export default function NewListing() {
     document.getElementById("wiz-top")?.scrollIntoView({ block: "start" });
   }
 
+  /** Places the map pin from the address as soon as the draft exists, so the owner never has to confirm it. Best effort; the pin can be adjusted on the edit page. */
+  async function saveLocation(id: string, b: Record<string, unknown>) {
+    const q = [b["address"], [b["suburb"], b["jurisdiction"], b["postcode"]].filter(Boolean).join(" ")].filter(Boolean).join(", ");
+    try {
+      const g = await fetch(`/api/address/geocode?${new URLSearchParams({ q })}`, { headers: { accept: "application/json" } });
+      const p = await g.json().catch(() => ({}));
+      if (!g.ok || typeof p.lat !== "number" || typeof p.lng !== "number") return;
+      await fetch(`/api/listings/${id}`, { method: "PATCH", headers: JSON_HEADERS, body: JSON.stringify({ latitude: Math.round(p.lat * 1e6) / 1e6, longitude: Math.round(p.lng * 1e6) / 1e6 }) });
+    } catch { /* no pin yet: the edit page places it again */ }
+  }
+
   async function onSubmit(e: React.FormEvent<HTMLFormElement>, force = false) {
     e.preventDefault();
     if (step < LAST && !force) { goTo(step + 1); return; }
@@ -193,6 +204,7 @@ export default function NewListing() {
       else if (!res.ok) setError(d.error ?? "Could not save the draft.");
       else {
         setDraftId(d.listing.id);
+        void saveLocation(d.listing.id, body);
         setIsRent(d.listing.transactionType === "rent");
         void uploadPending(d.listing.id);
       }
