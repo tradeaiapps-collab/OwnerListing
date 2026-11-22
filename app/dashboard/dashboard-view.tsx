@@ -14,12 +14,14 @@ interface Journey { steps: JourneyStep[]; next: JourneyStep | null; progress: { 
 export default function Dashboard() {
   const [role, setRole] = useState<DashboardRole | null | "loading">("loading");
   const [journey, setJourney] = useState<Journey | null>(null);
+  const [toSign, setToSign] = useState<{ id: string; title: string }[]>([]);
 
   useEffect(() => {
     const get = (url: string) => fetch(url).then(r => (r.ok ? r.json() : null)).catch(() => null);
     Promise.all([get("/api/auth/me"), get("/api/staff/me")]).then(([me, staff]) => {
       const r = dashboardRole(Boolean(staff?.staff), me?.user?.userType, me?.user?.currentRole);
       setRole(r);
+      if (r === "owner" || r === "buyer") void get("/api/signature-requests").then(d => setToSign(Array.isArray(d?.requests) ? d.requests : []));
       if (r === "owner" || r === "agent" || r === "buyer" || r === "investor") void get("/api/journey").then(j => setJourney(j && Array.isArray(j.steps) && j.steps.length > 0 ? j : null));
     });
   }, []);
@@ -44,6 +46,12 @@ export default function Dashboard() {
       {crumbs}
       <h1 className="dash-title">Dashboard</h1>
       <p className="muted dash-sub">Your tasks as {{ owner: "an owner", agent: "an agent", buyer: "a buyer", investor: "an investor", staff: "staff" }[role]}.</p>
+      {toSign.length > 0 && (
+        <section className="notice" aria-labelledby="sign-title">
+          <strong id="sign-title">{toSign.length === 1 ? "A document is waiting for your signature" : `${toSign.length} documents are waiting for your signature`}</strong>
+          <ul>{toSign.map(d => <li key={d.id}><a href={`/sign/${d.id}`}>{d.title}</a></li>)}</ul>
+        </section>
+      )}
       {(role === "owner" || role === "agent") && <OwnerToday />}
       {journey && (
         <section className="jr" aria-labelledby="jr-title">

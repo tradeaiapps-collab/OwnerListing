@@ -1,0 +1,75 @@
+/* Inspections, documents and signing (app/listings/[id]/inspections, /transaction, app/sign). Theme variables and the space scale only. */
+.tx-layout { display: grid; gap: var(--space-4) var(--space-6); grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 960px) {
+  .tx-layout { grid-template-columns: minmax(0, 1fr) 340px; align-items: start; }
+  .tx-aside { position: sticky; top: 88px; }
+}
+.tx-main > section + section { margin-top: var(--space-6); }
+.tx-form { display: grid; gap: var(--space-3); }
+.tx-form label { display: grid; gap: var(--space-1); font-weight: 600; }
+.tx-form .tx-row { display: grid; gap: var(--space-3); grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 640px) { .tx-form .tx-row { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.tx-form textarea { min-height: 5.5rem; resize: vertical; }
+.tx-hint { font-weight: 400; color: var(--muted); font-size: 0.875rem; }
+.tx-meta { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-4); color: var(--muted); font-size: 0.9375rem; }
+.tx-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: var(--space-2) var(--space-4); }
+.tx-head h3 { margin: 0; font-size: 1.0625rem; }
+.tx-sev { font-weight: 700; font-size: 0.8125rem; text-transform: uppercase; letter-spacing: 0.04em; }
+.tx-sev.urgent { color: var(--danger); }
+.tx-sev.major { color: var(--warn); }
+.tx-sev.minor, .tx-sev.info { color: var(--muted); }
+.tx-table th, .tx-table td { vertical-align: top; text-align: left; }
+.tx-table th:first-child, .tx-table td:first-child { width: 7rem; white-space: nowrap; }
+.tx-table th:nth-child(2), .tx-table td:nth-child(2) { width: 9rem; }
+.tx-find { display: grid; gap: var(--space-2); padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-sm, 10px); background: var(--bg); }
+.tx-find + .tx-find { margin-top: var(--space-2); }
+.tx-doc-body { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; line-height: 1.55; padding: var(--space-4); border: 1px solid var(--border); border-radius: var(--radius-sm, 10px); background: var(--bg); max-height: 28rem; overflow: auto; }
+.tx-timeline { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-2); }
+.tx-timeline li { display: grid; gap: var(--space-1); padding: var(--space-2) var(--space-3); border-left: 3px solid var(--gold); background: var(--bg); border-radius: 0 var(--radius-sm, 10px) var(--radius-sm, 10px) 0; }
+.tx-timeline time { color: var(--muted); font-size: 0.875rem; }
+.tx-req { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-2); }
+.tx-req li { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 0 var(--space-3); align-items: start; }
+.tx-req .tx-dot { width: 1.5rem; height: 1.5rem; border-radius: 50%; border: 2px solid var(--border); display: grid; place-items: center; font-size: 0.8125rem; font-weight: 700; margin-top: 2px; }
+.tx-req .done .tx-dot { border-color: var(--ok); background: var(--ok-tint); color: var(--ok); }
+.tx-req .tx-why { grid-column: 2; color: var(--muted); font-size: 0.875rem; }
+.tx-stats { display: grid; gap: var(--space-2); grid-template-columns: repeat(2, minmax(0, 1fr)); margin: 0 0 var(--space-3); }
+.tx-stats div { padding: var(--space-2) var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-sm, 10px); background: var(--bg); }
+.tx-stats dt { font-size: 0.8125rem; color: var(--muted); }
+.tx-stats dd { margin: 0; font-size: 1.25rem; font-weight: 700; color: var(--heading, var(--text)); }
+.tx-signers { display: flex; flex-wrap: wrap; gap: var(--space-2); list-style: none; margin: 0; padding: 0; }
+.tx-consent { display: flex; gap: var(--space-3); align-items: flex-start; padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-sm, 10px); background: var(--bg); font-weight: 400; }
+.tx-consent input { margin-top: 4px; flex: none; }
+.tx-ok { color: var(--ok); font-weight: 600; }
+.tx-err { color: var(--danger); font-weight: 600; }
+.tx-hash { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.8125rem; overflow-wrap: anywhere; color: var(--muted); }
+.badge-confirmed, .badge-completed, .badge-signed { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 45%, var(--bg)); background: var(--ok-tint); }
+.badge-cancelled, .badge-declined, .badge-expired { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 45%, var(--bg)); background: var(--danger-tint); }
+.badge-requested, .badge-awaiting_signature, .badge-draft, .badge-pending { color: var(--link, var(--brand-strong)); border-color: color-mix(in srgb, var(--gold) 45%, var(--bg)); background: var(--gold-tint); }
+
+/* Assistant panel */
+.tx-elena { display: grid; gap: var(--space-3); }
+.tx-elena-head { display: flex; align-items: center; gap: var(--space-3); }
+.tx-elena-head img { width: 56px; height: 56px; border-radius: 50%; object-fit: cover; object-position: top; border: 2px solid var(--gold); flex: none; background: var(--bg); }
+.tx-elena-head h2 { margin: 0; font-size: 1.0625rem; }
+.tx-elena-head p { margin: 0; color: var(--muted); font-size: 0.875rem; }
+.tx-chips { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.tx-chips button { min-height: 44px; font-size: 0.875rem; }
+.tx-answer { margin: 0; padding: var(--space-3); border-left: 3px solid var(--gold); background: var(--bg); border-radius: 0 var(--radius-sm, 10px) var(--radius-sm, 10px) 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.tx-answer .tx-desk { display: block; font-size: 0.8125rem; font-weight: 700; color: var(--muted); margin-bottom: var(--space-1); text-transform: uppercase; letter-spacing: 0.04em; }
+.tx-ask { display: flex; gap: var(--space-2); }
+.tx-ask input { flex: 1; min-width: 0; }
+.tx-main, .tx-aside { min-width: 0; }
+.tx-main .card-list { grid-template-columns: minmax(0, 1fr); }
+.tx-main .tx-form, .tx-main .tx-form > * { min-width: 0; }
+.tx-main input, .tx-main select, .tx-main textarea { max-width: 100%; }
+/* Findings table becomes stacked rows on narrow screens so no column is squeezed. */
+@media (max-width: 639px) {
+  .tx-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  .tx-table, .tx-table tbody, .tx-table tr, .tx-table td { display: block; width: 100%; }
+  .tx-table tr { padding: var(--space-3); border-bottom: 1px solid var(--line); }
+  .tx-table tr:last-child { border-bottom: 0; }
+  .tx-table td, .tx-table td:first-child, .tx-table td:nth-child(2) { width: 100%; white-space: normal; padding: var(--space-1) 0; border: 0; }
+  .tx-table td::before { content: attr(data-label); display: block; font-size: 0.8125rem; color: var(--muted); font-weight: 600; }
+}
+.tx-form .tx-consent { font-weight: 400; }
+@media (max-width: 639px) { .tx-table { min-width: 0 !important; } .tx-table td { overflow-wrap: anywhere; } }

@@ -74,6 +74,8 @@ export const AI_DESCRIPTION_RATE = { windowMs: 60 * 60 * 1000, perUser: 10 } as 
 export const LISTING_ASSISTANT_RATE = { windowMs: 60 * 60 * 1000, perUser: 120 } as const;
 export const AI_PHOTO_CAPTION_RATE = { windowMs: 60 * 60 * 1000, perUser: 20 } as const;
 
+/** Questions to the transaction assistant per signed-in user, and the optional AI summary of inspection findings (uses the shared model server). */
+export const TXN_ASSISTANT_RATE = { windowMs: 10 * 60 * 1000, perUser: 40, aiSummaryPerUser: 5 } as const;
 /**
  * Security review 2026-10 (medium). Per-user limits next to the per-IP ones, so changing IP does not reset a counter.
  * tokenIssue: OAuth token endpoint, per client id and IP together. signerLookup: generating a signing document checks signer

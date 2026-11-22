@@ -73,3 +73,10 @@ See `docs/COUNSEL_ESIGN_BRIEF.md`.
 30. Which documents need a witness, deed execution or notary, and is remote witnessing allowed in each state? Is a witness role on a template enough, or must it be excluded?
 31. Retention and deletion of signed documents and audit trails: how long must we keep them, and may we refuse account deletion for them? What must we tell the user, and what does DocuSign's retention and data residency mean for our privacy notice?
 32. Signer verification: is account login plus email enough, or must we add phone code or ID check per document type? What wording is needed for consent, decline, expiry and non-signing?
+
+## 13. Transaction templates, second e-signing path and assistant
+40. The transaction pages add a second built-in signing path (separate from the one in section 12); please confirm both are acceptable or which should stay. It is built in (typed full name, consent wording, document SHA-256, time, hashed IP, evidence hash; src/domain/e-sign.ts). Is that enough under the Electronic Transactions Acts for the four templates (inspection access consent, seller disclosure summary, purchase heads of terms, deposit and trust notice)? Which documents, if any, must NOT be signed this way (for example a land contract of sale or a lease over a set term) in QLD first, then WA, NSW, VIC? DocuSign or a similar provider can replace the built-in method if counsel prefers; nothing else changes.
+41. Review the template wording in src/domain/document-templates.ts. They avoid any statutory period or amount on purpose (cooling-off, disclosure forms) and say the heads of terms are "subject to contract". Confirm that is safe, and what a solicitor-supplied contract of sale must still be uploaded separately.
+42. Retention of signed documents, signing evidence (kept permanently now, insert-only). Retention period, and handling of a deletion request from an account holder who signed.
+43. The assistant explains terms from a fixed glossary. Confirm the wording of the glossary (src/domain/transaction-assistant.ts) is general information and not advice.
+
