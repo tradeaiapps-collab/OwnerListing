@@ -365,7 +365,7 @@ button.secondary:hover:not(:disabled), .button.secondary:hover { background: var
 .form-section > legend { float: left; width: 100%; padding: 0 0 var(--space-2); margin: 0 0 var(--space-1); font-family: var(--font-display); font-size: 1.25rem; font-weight: 600; color: var(--heading, var(--text)); border-bottom: 1px solid var(--line); }
 .form-section > legend + * { clear: both; }
 .form-section > .form-hint { margin: calc(-1 * var(--space-1)) 0 0; color: var(--muted); font-size: 0.9375rem; }
-.form-grid { display: grid; gap: var(--space-3) var(--space-4); grid-template-columns: 1fr; }
+.form-grid { display: grid; gap: var(--space-3) var(--space-4); grid-template-columns: 1fr; align-items: start; }
 .field { display: flex; flex-direction: column; gap: 6px; font-size: 0.875rem; font-weight: 600; color: var(--text); letter-spacing: 0.01em; }
 .field.has-error { color: var(--danger); }
 .field.has-error input, .field.has-error select, .field.has-error textarea { border-color: var(--danger); box-shadow: 0 0 0 1px var(--danger); background: var(--danger-tint); }
