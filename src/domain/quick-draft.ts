@@ -79,8 +79,9 @@ export function ruleDescription(f: QuickFields, area: AreaInfo, seen: readonly s
 }
 
 /** What a good ad needs that we do not have yet, phrased as questions. */
-export function draftQuestions(f: QuickFields, seen: readonly string[], notes?: string): string[] {
+export function draftQuestions(f: QuickFields, seen: readonly string[], notes?: string, photos: PhotoState = "none"): string[] {
   const q: string[] = [];
+  if (photos !== "read") q.push("Elena reads photos only with the vision model. Without it, tick the features your photos show in the form below (pool, garden, air conditioning, solar, study), and add them in the notes.");
   const built = ["house", "unit", "townhouse"].includes(f.propertyType);
   if (built && f.bedrooms === undefined) q.push("How many bedrooms does it have?");
   if (built && f.bathrooms === undefined) q.push("How many bathrooms?");
@@ -116,7 +117,7 @@ export async function buildQuickDraft(engine: AiEnginePort, input: DraftInput, p
   if (input.parking !== undefined) f.parking = input.parking;
   if (input.priceDollars !== undefined) f.priceCents = Math.round(input.priceDollars * 100);
   f.amenities = [...new Set([...f.amenities, ...amenities])];
-  const questions = draftQuestions(f, seen, input.notes);
+  const questions = draftQuestions(f, seen, input.notes, photoState);
   // Without the AI the rules writer still writes a full, factual ad and a proper title, so the owner edits instead of starting blank.
   if (r.source === "rules") { f.description = ruleDescription(f, area, seen, input.notes); f.title = ruleTitle(f); }
   return { ...r, ...summarise(f), fields: f, seen, photoState, photosRead: perPhoto.length, area, questions, provenance: { description: r.source, photos: photoState, area: area.suburbFacts.length > 0 } };
