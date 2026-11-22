@@ -59,16 +59,18 @@ export function sectionHint(section: string, empty: { price: boolean; descriptio
   switch (section) {
     case "basics": return { text: "A clear title and the exact street address help buyers find it. Start typing the street and I suggest the address." };
     case "type": return { text: "Choose sale or rent first. It changes my price guidance and the questions I ask." };
-    case "location": return { text: "Buyers search by suburb, and I use it to find recent nearby results." };
+    case "location": return { text: "Buyers search by suburb. Once it is filled in, I show nearby sale results if we hold any for it." };
     case "price": return empty.price
-      ? { text: "Not sure what to ask? I can show a range from recent nearby results.", action: { id: "pricing", label: "Show price guidance" } }
+      ? { text: "Not sure what to ask? I show a range from recent nearby results when we hold some for your suburb.", action: { id: "pricing", label: "Show price guidance" } }
       : { text: "I compare your price with recent nearby results. You decide the number.", action: { id: "pricing", label: "Check my price" } };
     case "description": return empty.description
       ? { text: "Tell me about the property in your own words and I will fill in the details.", action: { id: "tell", label: "Tell Elena" } }
       : { text: "I can tidy the wording or make it shorter. You keep control of every change.", action: { id: "rewrite", label: "Make it better" } };
     case "features": return empty.rooms
       ? { text: "Bedrooms, bathrooms and parking are the first filters buyers use. Tell me and I fill them in.", action: { id: "tell", label: "Tell Elena" } }
-      : { text: "Tick only what is true. I suggest extras I find in your description." };
+      : empty.description
+        ? { text: "Tick only what is true. Write a description first and I'll suggest extras." }
+        : { text: "Tick only what is true. I suggest extras I find in your description." };
     case "photos": return { text: "About 10 bright, landscape photos work best. I have a shot list.", action: { id: "shots", label: "Open shot list" } };
     default: return undefined;
   }

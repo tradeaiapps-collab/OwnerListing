@@ -69,3 +69,7 @@ Pays approved team commissions to members' bank accounts. Keys: `PAYOUTS_ENABLED
 - Off by default; every payout route answers "not switched on yet" until set. `sk_live_` keys are refused unless `PAYOUTS_ALLOW_LIVE=1` (needs pen test and counsel sign-off).
 - Members onboard on Stripe's hosted page (`POST /api/me/payout-account`): Stripe does the identity check (KYC) and holds bank details, so no card or bank numbers reach this server (PCI scope stays with Stripe). A payout needs `kyc_status = verified`.
 - Funds come from the platform's Stripe balance; how an agency funds it (top-up) is a decision for john and counsel, as is whether this counts as the platform holding money.
+
+## Elena on the cloud site (hosted AI)
+Ollama only runs on the owner's PC. For Vercel set: `AI_ENGINE=anthropic`, `AI_API_KEY` (Anthropic API key, secret), optional `AI_MODEL` (default `claude-haiku-5-5`), `AI_MAX_TOKENS`. Then a super admin switches AI on at /staff/ai and presses Test connection.
+Photos in "Let Elena write it" go in the request itself (not stored), so no upload storage is needed; listing text and photos are sent to the API provider. `AI_ENGINE=ollama` still works unchanged for the PC.
