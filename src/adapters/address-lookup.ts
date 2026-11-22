@@ -24,7 +24,7 @@ async function getJson(fetchFn: FetchLike, url: string, init: Omit<FetchInit, "r
   let body: string;
   try {
     const res = await fetchFn(url, { ...init, redirect: "error", signal: AbortSignal.timeout(TIMEOUT_MS) });
-    if (!res.ok) { console.warn(`[address-lookup] provider replied HTTP ${res.status}`); throw new Error("not ok"); }
+    if (!res.ok) { console.warn("[address-lookup] provider replied with an error status"); throw new Error("not ok"); }
     body = await res.text();
   } catch {
     console.warn("[address-lookup] provider request failed");
