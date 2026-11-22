@@ -9,6 +9,7 @@ import { PhotoManager } from "../photo-manager";
 import { QuickSetupPanel, type Drafted, type QuickFiles } from "../quick-setup";
 import { ElenaPublishCheck } from "../elena-publish-check";
 import { PhotosStep } from "./photos-step";
+import { shrinkImage } from "../shrink-image";
 import { ContractorSection } from "../contractor-section";
 import { ElenaEnquiriesPanel } from "../elena-enquiries-panel";
 import { ElenaJobsPanel } from "../elena-jobs-panel";
@@ -22,6 +23,22 @@ const FIELD_STEPS: (FieldStep | "none")[] = ["basics", "details", "description",
 const LAST = STEPS.length - 1;
 
 type Ready = Drafted;
+/** One line for the files added and one line per distinct problem, never one error line per file. */
+function UploadSummary({ uploads }: { uploads: Upload[] }) {
+  const done = uploads.filter(u => u.state === "done").length;
+  const active = uploads.some(u => u.state === "waiting" || u.state === "uploading");
+  const groups = new Map<string, string[]>();
+  for (const u of uploads) if (u.state === "error" && u.message) groups.set(u.message, [...(groups.get(u.message) ?? []), u.name]);
+  const failed = uploads.filter(u => u.state === "error").length;
+  return (
+    <div role="status" aria-label="Uploads">
+      {active && <p>Uploading photos ({done} of {uploads.length})...</p>}
+      {!active && done > 0 && <p>{done} {done === 1 ? "photo" : "photos"} added.</p>}
+      {!active && failed > 0 && [...groups].map(([msg, names]) => <p key={msg} role="alert">{msg}{names.length > 1 || failed > names.length ? ` (${failed} not added)` : ` (${names[0]})`}</p>)}
+    </div>
+  );
+}
+
 type Upload = { name: string; state: "waiting" | "uploading" | "done" | "error"; message?: string };
 
 export default function NewListing() {
@@ -74,14 +91,21 @@ export default function NewListing() {
     setPending({ photos: [], plan: null });
     setUploads(items.map(i => ({ name: i.file.name, state: "waiting" })));
     const set = (i: number, u: Partial<Upload>) => setUploads(prev => prev.map((x, j) => (j === i ? { ...x, ...u } : x)));
+    let stopped = "";
     for (let i = 0; i < items.length; i++) {
+      // Storage off or request too big affects every file the same way: say so once and stop, instead of one error per file.
+      if (stopped) { set(i, { state: "error", message: "" }); continue; }
       set(i, { state: "uploading" });
       const fd = new FormData();
-      fd.set("file", items[i]!.file); fd.set("kind", items[i]!.kind);
+      fd.set("file", await shrinkImage(items[i]!.file)); fd.set("kind", items[i]!.kind);
       try {
         const r = await fetch(`/api/listings/${id}/photos`, { method: "POST", body: fd });
         if (r.ok) set(i, { state: "done" });
-        else set(i, { state: "error", message: r.status === 503 ? "Photo upload is not available yet." : (await r.json().catch(() => ({}))).error ?? "Upload failed." });
+        else {
+          const msg = r.status === 503 ? "Photo upload is not available yet." : r.status === 413 ? "That photo is too large to upload." : (await r.json().catch(() => ({}))).error ?? "Upload failed.";
+          set(i, { state: "error", message: msg });
+          if (r.status === 503) stopped = msg;
+        }
       } catch { set(i, { state: "error", message: "Network error." }); }
     }
   }
@@ -280,9 +304,7 @@ export default function NewListing() {
         <section role="status" className="panel">
           <h2>Draft saved</h2>
           <p><a href={`/listings/${draftId}/edit`}>Edit this draft</a></p>
-          {uploads.length > 0 && (
-            <ul className="plain-list" role="status" aria-label="Uploads">{uploads.map((u, i) => <li key={i}>{u.name}: {u.state === "waiting" ? "waiting" : u.state === "uploading" ? "uploading..." : u.state === "done" ? "added" : u.message}</li>)}</ul>
-          )}
+          {uploads.length > 0 && <UploadSummary uploads={uploads} />}
           {!uploading && <PhotoManager key={uploads.length} listingId={draftId} />}
           {isRent && (
             <BondPathwayField value={bond} state={bondState} onChange={saveBond} />

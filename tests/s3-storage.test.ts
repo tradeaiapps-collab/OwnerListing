@@ -87,13 +87,22 @@ describe("S3 object storage", () => {
     finally { (process.env as Record<string, string | undefined>).NODE_ENV = prev; }
   });
 
+  it("supports a path prefix endpoint and no encryption header (Supabase Storage)", async () => {
+    const seen: { url: string; headers: Record<string, string> }[] = [];
+    const fetchImpl = (async (url: string, init: { headers: Record<string, string> }) => { seen.push({ url, headers: init.headers }); return new Response("", { status: 200 }); }) as unknown as typeof fetch;
+    const s = createS3Storage({ ...base, endpoint: "https://abc.storage.supabase.co/storage/v1/s3", sse: "none", conditionalPut: false, fetchImpl, now: fixed });
+    await s.put("listings/a/b", new Uint8Array([1]), "image/jpeg");
+    expect(seen[0]!.url).toBe("https://abc.storage.supabase.co/storage/v1/s3/ol-prod/listings/a/b");
+    expect(Object.keys(seen[0]!.headers).some(h => h.toLowerCase().includes("server-side-encryption"))).toBe(false);
+    expect(Object.keys(seen[0]!.headers)).not.toContain("if-none-match");
+  });
+
   it("is configured from env only when complete and valid; anything else fails closed", () => {
     const ok = { STORAGE_DRIVER: "s3", S3_BUCKET: "b", S3_REGION: "r", S3_ACCESS_KEY_ID: "k", S3_SECRET_ACCESS_KEY: "s", NODE_ENV: "production" };
     expect(objectStorageFromEnv(ok).configured).toBe(true);
     expect(objectStorageFromEnv({ ...ok, S3_SSE: "aws:kms" }).configured).toBe(true);
     expect(objectStorageFromEnv({ ...ok, S3_ENDPOINT: "https://s3.wasabisys.com" }).configured).toBe(true);
     for (const miss of ["S3_BUCKET", "S3_REGION", "S3_ACCESS_KEY_ID", "S3_SECRET_ACCESS_KEY"]) expect(objectStorageFromEnv({ ...ok, [miss]: "" }).configured).toBe(false);
-    expect(objectStorageFromEnv({ ...ok, S3_SSE: "none" }).configured).toBe(false);
     expect(objectStorageFromEnv({ ...ok, S3_ENDPOINT: "http://x.local" }).configured).toBe(false);
     expect(objectStorageFromEnv({ ...ok, S3_ENDPOINT: "not a url" }).configured).toBe(false);
   });

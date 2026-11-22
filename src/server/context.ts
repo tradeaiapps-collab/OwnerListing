@@ -1,4 +1,5 @@
 import type { PageRenderer } from "../domain/project-document-masking";
+import { imageSanitiserFromEnv, type ImageSanitiserPort } from "../adapters/image-sanitiser";
 import { imageVariantsFromEnv, type ImageVariantPort } from "../adapters/image-variants";
 import { malwareScannerFromEnv } from "../adapters/malware-scan";
 import { objectStorageFromEnv } from "../adapters/object-storage";
@@ -114,8 +115,10 @@ export function getMaskPorts() {
 }
 
 let variants: Promise<ImageVariantPort> | undefined;
+let sanitiser: Promise<ImageSanitiserPort> | undefined;
 /** Upload ports plus the optional resizer for listing photos (smaller copies only when the image library is installed). */
 export async function getPhotoPorts() {
   variants ??= imageVariantsFromEnv(process.env);
-  return { ...getUploadPorts(), variants: await variants };
+  sanitiser ??= imageSanitiserFromEnv(process.env);
+  return { ...getUploadPorts(), variants: await variants, sanitiser: await sanitiser };
 }
