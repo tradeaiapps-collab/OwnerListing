@@ -7,6 +7,8 @@ on:
         description: "Website origin the app opens, e.g. http://192.168.1.20:3005 (PC on same Wi-Fi) or https://your-site"
         required: true
         type: string
+permissions:
+  contents: write
 jobs:
   apk:
     runs-on: ubuntu-latest
@@ -35,3 +37,13 @@ jobs:
           name: ownerlisting-debug-apk
           path: capacitor/android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
+      - name: Publish release with one-tap APK link
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp capacitor/android/app/build/outputs/apk/debug/app-debug.apk ownerlisting.apk
+          gh release delete android-latest --yes --cleanup-tag || true
+          gh release create android-latest ownerlisting.apk --prerelease \
+            --title "Android debug APK" \
+            --notes "Debug-signed sideload build. Opens ${OWNERLISTING_APP_URL}. Built from ${GITHUB_SHA}."
+          echo "Direct link: https://github.com/${GITHUB_REPOSITORY}/releases/download/android-latest/ownerlisting.apk" >> "$GITHUB_STEP_SUMMARY"

@@ -8,7 +8,7 @@ Builds the Capacitor shell in `capacitor/`: a thin app that opens the OwnerListi
 - Later, when a hosted site exists: its `https://` origin.
 
 ## Build on GitHub (no installs)
-Actions, "Android debug APK", Run workflow, enter the URL. Download artifact `ownerlisting-debug-apk` (zip containing `app-debug.apk`).
+Actions, "Android debug APK", Run workflow, enter the URL. The run also publishes release `android-latest`; open `https://github.com/tradeaiapps-collab/ownerlisting/releases/download/android-latest/ownerlisting.apk` on the phone (signed in to GitHub, as the repo is private) to download the APK. The artifact `ownerlisting-debug-apk` has the same file.
 
 ## Build on the PC (easiest)
 Prerequisites: Node 22, and Android Studio (open it once so it installs the SDK and a JDK).
