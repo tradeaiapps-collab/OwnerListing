@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import { PHOTO_LIMITS } from "../../../src/domain/listing-photos";
 import { skippedNote, splitDuplicates } from "../../../src/domain/file-dedupe";
+import { PLAN_MIMES, PLAN_PDF_MAX_BYTES, planProblem } from "../../../src/domain/plan-file";
 import { Thumb, problem, type QuickFiles } from "../quick-setup";
 
 const TYPES = ["image/jpeg", "image/png", "image/webp"];
@@ -18,15 +19,16 @@ async function digestOf(f: File): Promise<string> {
 }
 const identify = async (f: File) => ({ file: f, name: f.name, size: f.size, digest: await digestOf(f) });
 
-/** Preview of the site plan: a thumbnail for an image, an icon for a PDF or anything else. */
+/** Preview of the site plan: a thumbnail for an image; for a PDF a card with a PDF mark and a link that opens the local file in a new tab. */
 function PlanPreview({ file, onRemove }: { file: File; onRemove: () => void }) {
   const [url, setUrl] = useState("");
   const isImage = file.type.startsWith("image/");
-  useEffect(() => { if (!isImage) return; const u = URL.createObjectURL(file); setUrl(u); return () => URL.revokeObjectURL(u); }, [file, isImage]);
+  useEffect(() => { const u = URL.createObjectURL(file); setUrl(u); return () => URL.revokeObjectURL(u); }, [file, isImage]);
   return (
     <div className="qs-plan" role="status">
       <div className="qs-plan-pic">{isImage ? (url && <img src={url} alt={`Site plan: ${file.name}`} />) : <span aria-hidden="true">PDF</span>}</div>
-      <div className="qs-plan-info"><strong>Site plan</strong><span className="muted">{file.name}</span></div>
+      <div className="qs-plan-info"><strong>{isImage ? "Site plan" : "Site plan (PDF)"}</strong><span className="muted">{file.name}</span>
+        {!isImage && url && <a href={url} target="_blank" rel="noopener noreferrer">Open PDF<span className="sr-only"> (opens a new tab)</span></a>}</div>
       <button type="button" className="secondary" onClick={onRemove}>Remove</button>
     </div>
   );
@@ -50,10 +52,10 @@ export function PhotosStep({ files, onChange }: { files: QuickFiles; onChange: (
     onChange({ ...files, photos: [...files.photos, ...fresh.slice(0, Math.max(0, room)).map(x => x.file)] });
     setError(errs.join(" "));
   }
-  function setPlan(list: FileList | null) {
+  async function setPlan(list: FileList | null) {
     const f = list?.[0];
     if (!f) return;
-    const p = problem(f);
+    const p = planProblem(f, new Uint8Array(await f.slice(0, 12).arrayBuffer()));
     if (p) { setError(p); return; }
     setError(""); onChange({ ...files, plan: f });
   }
@@ -61,13 +63,13 @@ export function PhotosStep({ files, onChange }: { files: QuickFiles; onChange: (
   return (
     <fieldset className="form-section">
       <legend>Photos</legend>
-      <p className="muted">JPEG, PNG or WebP, up to {MB} MB each. Photos are optional now and are added to your draft when you save it on the last step. The first photo is the cover.</p>
+      <p className="muted">JPEG, PNG or WebP, up to {MB} MB each. The site or floor plan can also be a PDF, up to {PLAN_PDF_MAX_BYTES / 1_000_000} MB. Photos are optional now and are added to your draft when you save it on the last step. The first photo is the cover.</p>
       <input ref={photoInput} type="file" accept={TYPES.join(",")} multiple hidden onChange={e => { void addPhotos(e.target.files); e.target.value = ""; }} aria-label="Choose photos" />
       <div className="form-bar">
         <button type="button" className="secondary" onClick={() => photoInput.current?.click()}>Choose photos</button>
         <button type="button" className="secondary" onClick={() => planInput.current?.click()}>{files.plan ? "Change site plan" : "Add site plan"}</button>
       </div>
-      <input ref={planInput} type="file" accept={TYPES.join(",")} hidden onChange={e => { setPlan(e.target.files); e.target.value = ""; }} aria-label="Choose site plan" />
+      <input ref={planInput} type="file" accept={PLAN_MIMES.join(",")} hidden onChange={e => { void setPlan(e.target.files); e.target.value = ""; }} aria-label="Choose site plan" />
       {error && <p role="alert">{error}</p>}
       {files.photos.length > 0
         ? <>

@@ -78,10 +78,13 @@ export default function NewListing() {
       set(i, { state: "uploading" });
       const fd = new FormData();
       fd.set("file", items[i]!.file); fd.set("kind", items[i]!.kind);
+      // A PDF plan cannot go through the image pipeline: it is stored as a public floor plan document (scanned, served as a download only).
+      const pdf = items[i]!.file.type === "application/pdf";
+      if (pdf) fd.set("visibility", "public");
       try {
-        const r = await fetch(`/api/listings/${id}/photos`, { method: "POST", body: fd });
+        const r = await fetch(`/api/listings/${id}/${pdf ? "documents" : "photos"}`, { method: "POST", body: fd });
         if (r.ok) set(i, { state: "done" });
-        else set(i, { state: "error", message: r.status === 503 ? "Photo upload is not available yet." : (await r.json().catch(() => ({}))).error ?? "Upload failed." });
+        else set(i, { state: "error", message: r.status === 503 ? "File upload is not available yet." : (await r.json().catch(() => ({}))).error ?? "Upload failed." });
       } catch { set(i, { state: "error", message: "Network error." }); }
     }
   }
