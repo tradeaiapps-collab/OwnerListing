@@ -340,7 +340,7 @@ export default function NewListing() {
           </div>
         </section>
       )}
-      <p><a className="button secondary" href="/listings/mine">Back to my listings</a></p>
+      <p className="page-back"><a className="button secondary" href="/listings/mine">Back to my listings</a></p>
     </main>
   );
 }

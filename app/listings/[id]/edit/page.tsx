@@ -1,4 +1,5 @@
 "use client";
+import { checkElenaInput } from "../../../../src/domain/text-quality";
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { BondPathwayField, ListingFields, type BondState, type FieldStep, type ListingDefaults } from "../../fields";
@@ -28,6 +29,8 @@ function SuggestDescription({ id }: { id: string }) {
   const [result, setResult] = useState<Suggestion | null>(null);
   const [error, setError] = useState("");
   async function ask() {
+    const bad = checkElenaInput(notes);
+    if (bad) { setError(bad); setResult(null); return; }
     setBusy(true); setError(""); setResult(null);
     try {
       const res = await fetch(`/api/listings/${id}/description-suggestion`, { method: "POST", headers: JSON_HEADERS, body: JSON.stringify({ notes }) });
@@ -38,7 +41,7 @@ function SuggestDescription({ id }: { id: string }) {
   return (
     <section className="panel">
       <h3>Suggest description</h3>
-      <label>Notes for the AI (optional, for example what you love about the home)
+      <label>Notes for Elena (optional, for example what you love about the home)
         <textarea value={notes} maxLength={1000} rows={3} onChange={e => setNotes(e.target.value)} />
       </label>
       <button type="button" className="secondary" disabled={busy} onClick={ask}>{busy ? "Working..." : "Suggest description"}</button>
@@ -219,20 +222,23 @@ export default function EditListing() {
                   </div>
                 )}
               </div>
-              {saved && <p role="status">Changes saved.</p>}
+              {saved && <p role="status">{step === LAST ? "Changes saved. Next: review and publish." : "Changes saved."}</p>}
               {saved && savedFlags.map(f => <WordingFlagList key={f.field} field={f.field} flags={f.flags} />)}
               {error && <p role="alert">{error}</p>}
               <div className="wiz-nav">
                 <button type="button" className="secondary" disabled={busy || step === 0} onClick={() => void goTo(step - 1)}>Previous</button>
                 {step < LAST
                   ? <button type="submit" disabled={busy}>{busy ? "Saving..." : `Next: ${STEPS[step + 1]}`}</button>
-                  : <button type="submit" disabled={busy}>{busy ? "Saving..." : "Save changes"}</button>}
+                  : <>
+                    <button type="submit" className={saved ? "secondary" : ""} disabled={busy}>{busy ? "Saving..." : "Save changes"}</button>
+                    {saved && <a className="button" href={`/listings/${listing.id}/approve`}>Review and publish</a>}
+                  </>}
               </div>
             </form>
           </section>
         </div>
       )}
-      <p><a className="button secondary" href="/listings/mine">Back to my listings</a></p>
+      <p className="page-back"><a className="button secondary" href="/listings/mine">Back to my listings</a></p>
     </main>
   );
 }
