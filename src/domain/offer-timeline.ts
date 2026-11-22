@@ -28,6 +28,7 @@ export function describeEvent(e: Pick<TimelineEvent, "type" | "actor" | "round">
     case "rejected": return `${who(e.actor)} rejected the offer`;
     case "withdrawn": return e.actor === "system" ? "The offer was cancelled because an account on the other side was closed" : `${who(e.actor)} withdrew the offer`;
     case "expired": return `The counter-offer${round} lapsed without a reply, so the offer expired`;
+    case "fallen_through": return "The sale fell through; the deposit is being dealt with";
     default: return `Status changed`;
   }
 }

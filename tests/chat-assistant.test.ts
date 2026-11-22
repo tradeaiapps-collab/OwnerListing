@@ -267,3 +267,22 @@ describe("service and route", () => {
     expect(chatAnswer(facts(), "buyer", "banana").topic).toBe("unknown");
   });
 });
+
+describe("market answers in the offer chat", () => {
+  const market = { area: "Paddington", medianCents: 125_000_000, sampleSize: 24, change12mPercent: 6.5, velocity: "heating" as const, medianDaysOnMarket: 32 };
+  it("routes market questions to the market topic", () => {
+    for (const q of ["How is the market here?", "What are the recent sales nearby?", "Is the area growing, what's the demand?"]) expect(matchChatTopic(q)).toBe("market");
+  });
+  it("gives suburb figures, says they are not a valuation, and never uses the listing's own price guidance", () => {
+    const a = chatAnswer({ ...facts(), market }, "buyer", "How is the market?");
+    expect(a.topic).toBe("market");
+    expect(a.text).toContain("Paddington");
+    expect(a.text).toContain("up 6.5%");
+    expect(a.text).toMatch(/32 days/);
+    expect(a.text).toMatch(/not a valuation/);
+  });
+  it("says so when there is no data, and valuation questions stay advice-only", () => {
+    expect(chatAnswer(facts(), "buyer", "What's the market doing?").text).toMatch(/enough recent sales data/);
+    expect(chatAnswer({ ...facts(), market }, "buyer", "What's your valuation?").topic).toBe("advice");
+  });
+});

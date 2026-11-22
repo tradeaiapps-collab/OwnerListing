@@ -70,11 +70,39 @@ export function HairlineBar() {
     window.addEventListener("scroll", sync, { passive: true });
     return () => { ro.disconnect(); window.removeEventListener("scroll", sync); header.removeAttribute("data-solid"); root.style.removeProperty("--hl-top"); };
   }, []);
+  // Which Buy / Sell / Rent area the visitor is reading: the last section (marked data-mode) that has scrolled past the bar.
+  const [spy, setSpy] = useState<{ mode: string; crumb: string } | null>(null);
+  useEffect(() => {
+    const secs = Array.from(document.querySelectorAll<HTMLElement>("[data-mode]"));
+    const update = () => {
+      const header = document.querySelector<HTMLElement>(".site-header");
+      const line = (header?.offsetHeight ?? 72) + 44 + 24;
+      let cur: HTMLElement | null = null;
+      for (const el of secs) { const r = el.getBoundingClientRect(); if (r.top <= line && r.bottom > line) cur = el; }
+      const next = cur ? { mode: cur.dataset.mode ?? "", crumb: cur.dataset.crumb ?? "" } : null;
+      setSpy(p => (p?.mode === next?.mode && p?.crumb === next?.crumb ? p : next));
+    };
+    update();
+    window.addEventListener("scroll", update, { passive: true });
+    window.addEventListener("resize", update);
+    return () => { window.removeEventListener("scroll", update); window.removeEventListener("resize", update); };
+  }, []);
+  const modes = [["buy", "Buy", "/listings?type=sale"], ["sell", "Sell", "/listings/new"], ["rent", "Rent", "/listings?type=rent"]] as const;
+  const mode = modes.find(m => m[0] === spy?.mode);
   return (
-    <nav className="hl-modes" aria-label="Buy, sell or rent">
-      <a href="/listings?type=sale">Buy</a>
-      <a href="/listings/new">Sell</a>
-      <a href="/listings?type=rent">Rent</a>
-    </nav>
+    <>
+      <nav className="hl-modes" aria-label="Buy, sell or rent">
+        {modes.map(([id, label, href]) => <a key={id} href={href} {...(spy?.mode === id ? { "aria-current": "true" as const } : {})}>{label}</a>)}
+      </nav>
+      {mode && spy && (
+        <nav className="hl-crumbs" aria-label="Breadcrumb">
+          <ol>
+            <li><a href="/">Home</a></li>
+            <li><a href={mode[2]}>{mode[1]}</a></li>
+            <li><span aria-current="location">{spy.crumb}</span></li>
+          </ol>
+        </nav>
+      )}
+    </>
   );
 }

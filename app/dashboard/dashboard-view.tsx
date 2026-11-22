@@ -2,20 +2,16 @@
 import { useEffect, useState } from "react";
 import { dashboardLinks, dashboardRole, type DashboardRole } from "../../src/domain/dashboard";
 import type { JourneyStep } from "../../src/domain/journey";
-import type { PoseImage } from "../../src/domain/assistant-persona";
-import ElenaWalker from "../elena-walker";
 import Breadcrumbs from "../breadcrumbs";
+import { OwnerToday } from "./owner-today";
 import "../styles/settings.css";
 import "../styles/journey.css";
 import "../styles/assistant.css";
 
 interface Journey { steps: JourneyStep[]; next: JourneyStep | null; progress: { done: number; total: number } }
 
-/** The live assistant, when the public guide is on (null on the admin site and when staff turned the guide off). */
-export interface DashboardAssistant { name: string; pose: PoseImage; video: boolean; brand: string }
-
 /** Next-step checklist plus task links for the signed-in type. Links only guide; every page and API still enforces access on the server. */
-export default function Dashboard({ assistant }: { assistant: DashboardAssistant | null }) {
+export default function Dashboard() {
   const [role, setRole] = useState<DashboardRole | null | "loading">("loading");
   const [journey, setJourney] = useState<Journey | null>(null);
   const [toSign, setToSign] = useState<{ id: string; title: string }[]>([]);
@@ -23,10 +19,10 @@ export default function Dashboard({ assistant }: { assistant: DashboardAssistant
   useEffect(() => {
     const get = (url: string) => fetch(url).then(r => (r.ok ? r.json() : null)).catch(() => null);
     Promise.all([get("/api/auth/me"), get("/api/staff/me")]).then(([me, staff]) => {
-      const r = dashboardRole(Boolean(staff?.staff), me?.user?.userType);
+      const r = dashboardRole(Boolean(staff?.staff), me?.user?.userType, me?.user?.currentRole);
       setRole(r);
       if (r === "owner" || r === "buyer") void get("/api/signature-requests").then(d => setToSign(Array.isArray(d?.requests) ? d.requests : []));
-      if (r === "owner" || r === "agent" || r === "buyer") void get("/api/journey").then(j => setJourney(j && Array.isArray(j.steps) && j.steps.length > 0 ? j : null));
+      if (r === "owner" || r === "agent" || r === "buyer" || r === "investor") void get("/api/journey").then(j => setJourney(j && Array.isArray(j.steps) && j.steps.length > 0 ? j : null));
     });
   }, []);
 
@@ -48,17 +44,15 @@ export default function Dashboard({ assistant }: { assistant: DashboardAssistant
   return (
     <main>
       {crumbs}
-      <div className="ew-anchor">
-        {assistant && role !== "staff" && <ElenaWalker name={assistant.name} still={assistant.pose.src} video={assistant.video} brand={assistant.brand} />}
-        <h1>Dashboard</h1>
-      </div>
-      <p className="muted">Your tasks as {{ owner: "an owner", agent: "an agent", buyer: "a buyer", staff: "staff" }[role]}.</p>
+      <h1 className="dash-title">Dashboard</h1>
+      <p className="muted dash-sub">Your tasks as {{ owner: "an owner", agent: "an agent", buyer: "a buyer", investor: "an investor", staff: "staff" }[role]}.</p>
       {toSign.length > 0 && (
         <section className="notice" aria-labelledby="sign-title">
           <strong id="sign-title">{toSign.length === 1 ? "A document is waiting for your signature" : `${toSign.length} documents are waiting for your signature`}</strong>
           <ul>{toSign.map(d => <li key={d.id}><a href={`/sign/${d.id}`}>{d.title}</a></li>)}</ul>
         </section>
       )}
+      {(role === "owner" || role === "agent") && <OwnerToday />}
       {journey && (
         <section className="jr" aria-labelledby="jr-title">
           <div className="jr-head">

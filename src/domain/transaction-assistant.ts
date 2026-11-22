@@ -1,6 +1,38 @@
 import { CONTACT_RE, fenceData, BASE_SYSTEM_PROMPT, isEngineUsable, type AiEnginePort } from "./ai-engine";
 import type { DocumentKind } from "./documents";
-import { summariseFindings, type Finding, type InspectionKind, type InspectionStatus } from "./inspection";
+
+/** What the assistant needs to know about inspections. The inspections themselves live in src/domain/inspection.ts; these are mapped from them in src/server/transaction-db.ts. */
+export type InspectionKind = "building" | "pest" | "other";
+export type InspectionStatus = "requested" | "confirmed" | "completed" | "cancelled";
+export type Severity = "info" | "minor" | "major" | "urgent";
+export interface Finding { severity: Severity; area: string; summary: string; recommendation?: string | undefined }
+
+export interface FindingsSummary {
+  total: number;
+  bySeverity: Record<Severity, number>;
+  headline: string;
+  priorities: Finding[];
+  nextSteps: string[];
+}
+
+/** A deterministic summary of what was found. It reports; it never says whether to buy, price or negotiate. */
+export function summariseFindings(findings: readonly Finding[]): FindingsSummary {
+  const bySeverity: Record<Severity, number> = { info: 0, minor: 0, major: 0, urgent: 0 };
+  for (const f of findings) bySeverity[f.severity]++;
+  const priorities = findings.filter(f => f.severity === "urgent" || f.severity === "major")
+    .sort((a, b) => (a.severity === b.severity ? 0 : a.severity === "urgent" ? -1 : 1));
+  const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
+  const headline = findings.length === 0
+    ? "No findings were recorded."
+    : `${plural(findings.length, "finding")}: ${bySeverity.urgent} urgent, ${bySeverity.major} major, ${bySeverity.minor} minor, ${bySeverity.info} for information.`;
+  const nextSteps: string[] = [];
+  if (bySeverity.urgent > 0) nextSteps.push("Urgent items are safety or serious defects. Ask a licensed tradesperson or your solicitor how to deal with them before anything is signed.");
+  if (bySeverity.major > 0) nextSteps.push("Get a quote for each major item and keep the quotes with the inspection report.");
+  if (bySeverity.minor > 0) nextSteps.push("Minor items are usually maintenance. List them so both sides know what is already known.");
+  if (findings.length > 0) nextSteps.push("Share the report with the other party through the documents page, so it is on record.");
+  return { total: findings.length, bySeverity, headline, priorities, nextSteps };
+}
+
 
 /**
  * The assistant (Elena by default) for the transaction pages: inspections, documents and signing. Rule based and deterministic.

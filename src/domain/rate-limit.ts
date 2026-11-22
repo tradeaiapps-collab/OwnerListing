@@ -58,7 +58,8 @@ export const INVESTMENT_RATE = {
   newInterest: { windowMs: 24 * 60 * 60 * 1000, perUser: 10 },
   message: { windowMs: 60 * 60 * 1000, perUser: 30 },
   toggle: { windowMs: 60 * 60 * 1000, perUser: 10 },
-  contractUpload: { windowMs: 24 * 60 * 60 * 1000, perUser: 5 }
+  contractUpload: { windowMs: 24 * 60 * 60 * 1000, perUser: 5 },
+  elenaMatch: { windowMs: 60 * 60 * 1000, perUser: 60 }
 } as const;
 
 /** Guide assistant questions (public, signed in or not), per client IP hash. Counted before anything else; fails closed. */
@@ -70,7 +71,16 @@ export const SEARCH_ASSIST_RATE = { windowMs: 10 * 60 * 1000, perIp: 60 } as con
 /** AI: the staff "Test connection" button, and the owner's "Suggest description" button (each call uses the shared model server). */
 export const AI_TEST_RATE = { windowMs: 60 * 60 * 1000, perStaff: 10, allStaff: 30 } as const;
 export const AI_DESCRIPTION_RATE = { windowMs: 60 * 60 * 1000, perUser: 10 } as const;
+export const LISTING_ASSISTANT_RATE = { windowMs: 60 * 60 * 1000, perUser: 120 } as const;
 export const AI_PHOTO_CAPTION_RATE = { windowMs: 60 * 60 * 1000, perUser: 20 } as const;
 
 /** Questions to the transaction assistant per signed-in user, and the optional AI summary of inspection findings (uses the shared model server). */
 export const TXN_ASSISTANT_RATE = { windowMs: 10 * 60 * 1000, perUser: 40, aiSummaryPerUser: 5 } as const;
+/**
+ * Security review 2026-10 (medium). Per-user limits next to the per-IP ones, so changing IP does not reset a counter.
+ * tokenIssue: OAuth token endpoint, per client id and IP together. signerLookup: generating a signing document checks signer
+ * addresses, so it is limited per IP (and per user) to stop address guessing. signAttempt: signing tries per user.
+ */
+export const TOKEN_ISSUE_RATE = { windowMs: 60 * 1000, perClientAndIp: 10, perIp: 30, perClient: 30 } as const;
+export const SIGNER_LOOKUP_RATE = { windowMs: 60 * 60 * 1000, perIp: 5, perUser: 20 } as const;
+export const SIGN_ATTEMPT_RATE = { windowMs: 15 * 60 * 1000, perUser: 10 } as const;

@@ -34,11 +34,12 @@ async function handlePost(req: Request, { params }: Ctx) {
     ...(l.suburb !== undefined ? { suburb: l.suburb } : {}), ...(l.bedrooms !== undefined ? { bedrooms: l.bedrooms } : {}),
     ...(l.bathrooms !== undefined ? { bathrooms: l.bathrooms } : {}), ...(l.parking !== undefined ? { parking: l.parking } : {})
   }, notes ?? "");
+  if (result.state === "unavailable") console.warn(`[ai-description] listing ${id}: unavailable (${result.reason})`);
   const deps = getDeps();
   await deps.appendAudit({
     id: deps.newId(), occurredAt: deps.now(), actorType: "user", actorId: handler.actor.userId,
     aggregateType: "listing", aggregateId: id, eventType: "listing.ai_description_requested",
-    correlationId: deps.newId(), payload: { aiState: result.state }
+    correlationId: deps.newId(), payload: { aiState: result.state, ...(result.state === "unavailable" ? { reason: result.reason } : {}) }
   });
   return NextResponse.json(result, { headers: { "cache-control": "no-store" } });
 }

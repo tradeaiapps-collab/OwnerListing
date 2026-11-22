@@ -8,6 +8,10 @@ export interface SessionPayload {
   exp: number;
   /** When this session last passed a second-factor check (seconds since epoch). Absent until it has. */
   mfa?: number;
+  /** Role being viewed when it differs from `ut` (only "investor", which runs as buyer). Checked against app_user.roles on every request. */
+  cr?: "investor";
+  /** Phone app only: the mobile_session id behind a bearer token. Never set on a cookie. */
+  sid?: string;
 }
 
 const b64 = (buf: Buffer) => buf.toString("base64url");
@@ -35,7 +39,7 @@ export function verifySession(token: string | undefined, secret: string, nowSeco
     if (typeof p.uid !== "string" || (p.ut !== "owner" && p.ut !== "agent" && p.ut !== "buyer" && p.ut !== "vendor") || typeof p.exp !== "number") return null;
     if (p.exp <= nowSeconds) return null;
     if (p.mfa !== undefined && typeof p.mfa !== "number") return null;
-    return { uid: p.uid, ut: p.ut, exp: p.exp, ...(p.mfa !== undefined ? { mfa: p.mfa } : {}) };
+    return { uid: p.uid, ut: p.ut, exp: p.exp, ...(p.mfa !== undefined ? { mfa: p.mfa } : {}), ...(p.cr === "investor" && p.ut === "buyer" ? { cr: "investor" as const } : {}) };
   } catch {
     return null;
   }

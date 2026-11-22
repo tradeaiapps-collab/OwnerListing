@@ -16,3 +16,4 @@ Australian property marketplace. Owners list their own homes; AI assists but nev
 
 ## Details
 PROJECT_STATUS.md (decisions), docs/ (reference; search, don't read whole), db/ (schema).
+Phone app: mobile/ (Expo); its README covers sign-in tokens, push and setup.

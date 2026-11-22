@@ -1,0 +1,16 @@
+/* Public legal pages (privacy, terms, support). Tokens only; reading column is capped by main p/li in globals.css. */
+.legal-draft { background: var(--surface); border: 1px solid var(--gold); border-radius: var(--radius); padding: var(--space-3) var(--space-4); }
+.legal-toc { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: var(--space-3) var(--space-4); margin: var(--space-4) 0; }
+.legal-toc ol { margin: 0; padding-left: var(--space-6); columns: 1; }
+@media (min-width: 768px) { .legal-toc ol { columns: 2; column-gap: var(--space-8); } }
+.legal-toc li { break-inside: avoid; }
+.legal-toc a { display: inline-flex; align-items: center; min-height: 44px; }
+.legal-section { scroll-margin-top: var(--space-12); }
+.legal-section h2 { margin-top: var(--space-6); }
+.legal-section ul { padding-left: var(--space-6); margin: 0 0 var(--space-3); }
+.legal-contact { margin-top: var(--space-8); }
+.support-list { display: grid; gap: var(--space-3); margin: var(--space-4) 0; }
+.support-list details { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 0 var(--space-4); }
+.support-list summary { cursor: pointer; font-weight: 600; min-height: 44px; display: flex; align-items: center; padding: var(--space-2) 0; }
+.support-list details[open] summary { border-bottom: 1px solid var(--border); margin-bottom: var(--space-3); }
+.support-list details p { max-width: none; }

@@ -1,0 +1,53 @@
+/* Market insights page. Mobile first; colours from the site tokens so light and dark follow the theme. */
+.mk { max-width: var(--container); }
+.mk-form { display: grid; grid-template-columns: 1fr; gap: var(--space-3); }
+.mk-form label { display: grid; gap: var(--space-1); font-weight: 600; font-size: 0.9rem; }
+.mk-actions { display: flex; align-items: end; }
+.mk-actions button { width: 100%; }
+@media (min-width: 560px) { .mk-form { grid-template-columns: repeat(2, 1fr); } }
+@media (min-width: 900px) { .mk-form { grid-template-columns: repeat(4, 1fr); } }
+
+.mk-grid-wrap { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-4); }
+.mk-grid-wrap > * { min-width: 0; margin-bottom: 0; }
+@media (min-width: 900px) { .mk-grid-wrap { grid-template-columns: repeat(2, minmax(0, 1fr)); } .mk-wide { grid-column: 1 / -1; } }
+
+.mk-big { font-family: var(--font-display); font-size: 2rem; margin: 0 0 var(--space-3); color: var(--heading); font-variant-numeric: lining-nums tabular-nums; }
+.mk-range-bar { position: relative; height: 10px; border-radius: 999px; background: linear-gradient(90deg, var(--gold-tint), color-mix(in srgb, var(--gold) 55%, var(--bg)), var(--gold-tint)); border: 1px solid var(--line); }
+.mk-range-mid { position: absolute; top: -5px; width: 4px; height: 18px; margin-left: -2px; border-radius: 2px; background: var(--brand); }
+.mk-range-ends { display: flex; justify-content: space-between; gap: var(--space-2); margin: var(--space-2) 0 var(--space-3); font-size: 0.9rem; font-variant-numeric: tabular-nums; }
+.mk-steps { margin: var(--space-2) 0 0; padding-left: 1.25rem; }
+.mk-steps li { margin-bottom: var(--space-1); }
+
+.mk-tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); margin: 0; }
+.mk-tiles > div { padding: var(--space-3); border: 1px solid var(--line); border-radius: calc(var(--radius) - 4px); background: var(--tint); min-width: 0; }
+.mk-tiles dt { font-size: 0.8rem; color: var(--muted); }
+.mk-tiles dd { margin: var(--space-1) 0 0; font-weight: 700; color: var(--heading); font-variant-numeric: lining-nums tabular-nums; overflow-wrap: anywhere; }
+.mk-cap { text-transform: capitalize; }
+
+.mk-chart { margin: 0; }
+.mk-chart figcaption { display: flex; justify-content: space-between; align-items: baseline; gap: var(--space-3); flex-wrap: wrap; margin-bottom: var(--space-2); font-weight: 600; }
+.mk-chart svg { width: 100%; height: auto; display: block; }
+.mk-grid { stroke: var(--line); stroke-width: 1; }
+.mk-axis { fill: var(--muted); font-size: 11px; }
+.mk-line { fill: none; stroke: var(--gold); stroke-width: 2.5; stroke-linejoin: round; stroke-linecap: round; }
+.mk-dot { fill: var(--gold); stroke: var(--bg); stroke-width: 2; }
+.mk .num { text-align: right; font-variant-numeric: lining-nums tabular-nums; white-space: nowrap; }
+
+.mk-turns { list-style: none; margin: 0 0 var(--space-3); padding: 0; display: grid; gap: var(--space-3); }
+.mk-q { margin: 0 0 var(--space-1); text-align: right; color: var(--muted); font-size: 0.9rem; }
+.mk-a { display: flex; gap: var(--space-3); align-items: flex-start; margin: 0; padding: var(--space-3); border: 1px solid var(--line); border-radius: calc(var(--radius) - 4px); background: var(--tint); }
+.mk-a img { border-radius: 50%; flex: none; }
+.mk-a > span { min-width: 0; }
+.mk-para { display: block; margin-top: var(--space-2); white-space: pre-line; }
+.mk-chips { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-bottom: var(--space-3); }
+.mk-askform { display: flex; gap: var(--space-2); }
+.mk-askform input { flex: 1; min-width: 0; }
+.mk-note { font-size: 0.85rem; }
+
+.mk-sub { display: block; font-size: 0.8rem; color: var(--muted); font-weight: 400; overflow-wrap: anywhere; }
+.mk-unit { font-size: 1rem; color: var(--muted); font-family: inherit; }
+.mk-label { font-size: 1rem; font-family: inherit; color: var(--muted); }
+.mk-bars { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-3); }
+.mk-bar-head { display: flex; justify-content: space-between; gap: var(--space-2); font-weight: 600; font-size: 0.9rem; font-variant-numeric: tabular-nums; }
+.mk-bar { height: 8px; margin: var(--space-1) 0; border-radius: 999px; background: var(--tint); border: 1px solid var(--line); overflow: hidden; }
+.mk-bar > span { display: block; height: 100%; background: var(--gold); border-radius: 999px; }

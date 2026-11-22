@@ -5,6 +5,7 @@ import { getDb, getDeps } from "../../../../../src/server/context";
 import { csrfGuard } from "../../../../../src/server/csrf";
 import { failure } from "../../../../../src/server/http";
 import { buyerCounterPg, countersForOfferPg } from "../../../../../src/server/offer-counter-db";
+import { notifyOwnerOfBuyerCounter } from "../../../../../src/server/notifier";
 import { eligibleBuyerPg } from "../../../../../src/server/offer-flow-db";
 import { requireCurrentTerms } from "../../../../../src/server/terms-guard";
 import { withApi } from "../../../../../src/server/api/with-api";
@@ -48,6 +49,7 @@ async function handlePost(req: Request, { params }: Ctx) {
     aggregateType: "formal_offer", aggregateId: offerId, eventType: "offer.buyer_countered",
     correlationId: deps.newId(), payload: { listingId: offer.listingId, counterId: saved.id, round: saved.round }
   });
+  await notifyOwnerOfBuyerCounter(db, offerId);
   return NextResponse.json({ offer: { id: offerId, status: "buyer_countered" }, counter: { id: saved.id, round: saved.round } }, { status: 201 });
 }
 

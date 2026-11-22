@@ -14,6 +14,7 @@
 @media (max-width: 599px) {
   .ew-slot, .ew { width: 132px; height: 132px; }
   body.ew-active .ga-panel { inset: auto 0 0 0; width: 100%; height: 58dvh; border-radius: calc(var(--radius) + 4px) calc(var(--radius) + 4px) 0 0; border: 1px solid var(--border); }
+  body.ew-active .ga-panel.is-expanded { inset: 0; height: 100dvh; border-radius: 0; border: 0; }
 }
 @media (prefers-reduced-motion: no-preference) {
   /* Transparent walk loop runs silently on page load; subtle shifts keep Elena present without demanding attention. */

@@ -1,8 +1,12 @@
 "use client";
 import { useEffect, useState } from "react";
 import { ENGLISH_PREVAILS_NOTICE } from "../../src/domain/i18n";
+import { TERMS } from "../../src/domain/legal-pages";
+import { LegalBody } from "../legal-page";
 import { JSON_HEADERS } from "../listings/ui";
+import BackLink from "../back-link";
 import "../styles/settings.css";
+import "../styles/legal.css";
 
 type Current = { version: string; textReference: string; includesAiLearningClause: boolean };
 
@@ -37,18 +41,11 @@ export default function Terms() {
   };
 
   return (
-    <main>
-      <h1>Terms and privacy</h1>
-      <section className="terms-box" aria-label="Summary">
-        <p><strong>Draft, pending review by Australian counsel.</strong> This summary is not the final legal text.</p>
-        <ul>
-          <li>The platform holds no money. Deposits go to the solicitor&apos;s trust account.</li>
-          <li>AI helps with replies and reports, but only you decide on offers. AI never accepts an offer.</li>
-          <li>Chat messages and published files are kept permanently and cannot be deleted.</li>
-          <li>We collect personal information only as needed and handle it under the Privacy Act.</li>
-        </ul>
-        <p className="muted">{ENGLISH_PREVAILS_NOTICE}</p>
-      </section>
+    <main className="legal">
+      <BackLink />
+      <LegalBody doc={TERMS} />
+      <p className="muted">{ENGLISH_PREVAILS_NOTICE} See also the <a href="/privacy">Privacy policy</a> and <a href="/support">Support</a>.</p>
+      <h2>Accept the terms</h2>
       {state === "loading" && <p className="muted" role="status">Loading…</p>}
       {state === "signedOut" && <p role="alert"><a href="/login?next=/terms">Sign in</a> to accept the terms.</p>}
       {state === "error" && <p role="alert">Could not load the terms.</p>}
@@ -59,7 +56,7 @@ export default function Terms() {
           <form className="terms-accept" onSubmit={accept}>
             <label className="terms-check">
               <input type="checkbox" checked={agree} onChange={e => setAgree(e.target.checked)} />
-              <span>I have read and accept the terms and privacy policy (version {current.version})</span>
+              <span>I have read and accept the terms and the privacy policy (version {current.version})</span>
             </label>
             {error ? <p role="alert">{error}</p> : null}
             <button type="submit" disabled={busy || !agree}>{busy ? "Saving…" : "Accept"}</button>

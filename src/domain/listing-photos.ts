@@ -1,5 +1,8 @@
 import type { JobAssignment } from "./job-chat";
 import type { PhotoMime } from "./image-meta";
+import { classifyTour, type TourKind } from "./virtual-tour";
+import { PROFANITY_MESSAGE, findProfanity, hasProfanity } from "./profanity-filter";
+export { PROFANITY_MESSAGE, findProfanity };
 
 /**
  * Listing photo gallery rules (pure). Two records:
@@ -9,13 +12,15 @@ import type { PhotoMime } from "./image-meta";
  * Before a listing has ever been published the owner may drop a photo from the gallery (it is then never served again).
  * After that, a photo can only be hidden, reordered or replaced; its file and every earlier layout stay on record.
  */
-export type PhotoKind = "photo" | "floorplan";
-export const PHOTO_KINDS: readonly PhotoKind[] = ["photo", "floorplan"];
+export type PhotoKind = "photo" | "floorplan" | "photo360";
+export const PHOTO_KINDS: readonly PhotoKind[] = ["photo", "floorplan", "photo360"];
 export const PHOTO_MIMES: readonly PhotoMime[] = ["image/jpeg", "image/png", "image/webp"];
 
 export const PHOTO_LIMITS = {
   maxPhotos: 40,
   maxFloorplans: 10,
+  /** Equirectangular 360 photos (one per room or outdoor area). */
+  max360: 20,
   /** Hidden entries count here too, so a published listing cannot grow without bound. */
   maxEntries: 120,
   maxBytes: 10_000_000,
@@ -80,7 +85,8 @@ const MEDIA_ROLES: readonly JobAssignment["kind"][] = ["photographer", "agent"];
 /** Owner, or an approved photographer/agent on this listing, may add photos. */
 export function canUploadPhotos(userId: string, ownerUserId: string, listingId: string, assignments: readonly JobAssignment[]): boolean {
   if (userId === ownerUserId) return true;
-  return assignments.some(a => a.listingId === listingId && a.contractorUserId === userId && a.status === "approved" && MEDIA_ROLES.includes(a.kind));
+  return assignments.some(a => a.listingId === listingId && a.contractorUserId === userId && a.status === "approved" && MEDIA_ROLES.includes(a.kind) &&
+    !(a.kind === "photographer" && a.usageRightsConfirmed === false));
 }
 
 /** Draft photos: the owner and an approved or completed photographer/agent on the listing (staff are checked separately). */
@@ -153,6 +159,7 @@ export function roomFor(layout: Layout, photos: ReadonlyMap<string, PhotoRecord>
   if (replacing) return null;
   if (kind === "photo" && countKind(layout.entries, photos, "photo") >= PHOTO_LIMITS.maxPhotos) return `A listing can show up to ${PHOTO_LIMITS.maxPhotos} photos.`;
   if (kind === "floorplan" && countKind(layout.entries, photos, "floorplan") >= PHOTO_LIMITS.maxFloorplans) return `A listing can show up to ${PHOTO_LIMITS.maxFloorplans} floor plans.`;
+  if (kind === "photo360" && countKind(layout.entries, photos, "photo360") >= PHOTO_LIMITS.max360) return `A listing can show up to ${PHOTO_LIMITS.max360} 360 photos.`;
   return null;
 }
 
@@ -184,6 +191,7 @@ export function checkLayoutChange(
   current: Layout, photos: ReadonlyMap<string, PhotoRecord>, body: unknown, ctx: { everPublished: boolean }
 ): LayoutCheck {
   if (typeof body !== "object" || body === null) return { ok: false, message: "Invalid gallery." };
+  const allowFlagged = (body as Record<string, unknown>)["allowFlagged"] === true;
   const raw = (body as Record<string, unknown>)["entries"];
   if (!Array.isArray(raw) || raw.length > PHOTO_LIMITS.maxEntries) return { ok: false, message: "Invalid gallery." };
   const inCurrent = new Set(current.entries.map(e => e.photoId));
@@ -204,6 +212,7 @@ export function checkLayoutChange(
     if (cat !== undefined && cat !== null && cat !== "" && !isPhotoCategory(cat)) return { ok: false, message: "Unknown room or category." };
     const features = cleanFeatures(o["features"]);
     if (features === null) return { ok: false, message: `Features must be up to ${FEATURE_LIMITS.maxPerPhoto} short tags of ${FEATURE_LIMITS.maxChars} characters or fewer.` };
+    if (!allowFlagged && hasProfanity(caption, alt, ...features)) return { ok: false, message: PROFANITY_MESSAGE };
     entries.push({
       photoId: id, caption, alt, hidden: o["hidden"] === true,
       ...(isPhotoCategory(cat) ? { category: cat } : {}), ...(features.length ? { features } : {})
@@ -254,18 +263,21 @@ export function viewsFor(layout: Layout, photos: ReadonlyMap<string, PhotoRecord
 }
 
 /** Cover photo and count for a browse card: the first visible photo (floor plans are never the cover). */
-export function coverOf(layout: Layout, photos: ReadonlyMap<string, PhotoRecord>): { cover: PhotoView | null; photoCount: number } {
-  const visible = viewsFor(layout, photos, false).filter(v => v.kind === "photo");
-  return { cover: visible[0] ?? null, photoCount: visible.length };
+export function coverOf(layout: Layout, photos: ReadonlyMap<string, PhotoRecord>): { cover: PhotoView | null; photoCount: number; tour?: TourKind } {
+  const all = viewsFor(layout, photos, false);
+  const visible = all.filter(v => v.kind === "photo");
+  const tour = classifyTour(layout.tourUrl)?.kind ?? (all.some(v => v.kind === "photo360") ? "360" : undefined);
+  return { cover: visible[0] ?? null, photoCount: visible.length, ...(tour ? { tour } : {}) };
 }
 
-export interface CardPhoto { photoCount: number; cover?: { id: string; width: number; height: number; srcSet: string; alt: string } }
+export interface CardPhoto { photoCount: number; tour?: TourKind; cover?: { id: string; width: number; height: number; srcSet: string; alt: string } }
 
 /** Fields a browse card needs: cover image (with srcset) and the visible photo count. */
-export function cardPhoto(c: { cover: PhotoView | null; photoCount: number } | undefined, base = PHOTO_BASE): CardPhoto {
-  if (!c?.cover) return { photoCount: c?.photoCount ?? 0 };
+export function cardPhoto(c: { cover: PhotoView | null; photoCount: number; tour?: TourKind } | undefined, base = PHOTO_BASE): CardPhoto {
+  const tour = c?.tour ? { tour: c.tour } : {};
+  if (!c?.cover) return { photoCount: c?.photoCount ?? 0, ...tour };
   const v = c.cover;
-  return { photoCount: c.photoCount, cover: { id: v.id, width: v.width, height: v.height, srcSet: srcSetFor(v, base), alt: v.alt || v.caption } };
+  return { photoCount: c.photoCount, ...tour, cover: { id: v.id, width: v.width, height: v.height, srcSet: srcSetFor(v, base), alt: v.alt || v.caption } };
 }
 
 /** Where listing photos are served. Investor project photos use their own routes (see project-photos.ts). */

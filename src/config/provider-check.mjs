@@ -1,4 +1,4 @@
-// Plain JavaScript readiness check for the outside-provider keys (Google sign-in, MFA key, PayWay, SMTP, SMS, ABN Lookup, address suggestions, map tiles).
+// Plain JavaScript readiness check for the outside-provider keys (Google sign-in, MFA key, PayWay, SMTP, SMS, ABN Lookup, Domain API, address suggestions, map tiles).
 // Shared by scripts/check-providers.mjs (plain Node, cannot import TypeScript) and instrumentation.ts. Types: provider-check.d.mts.
 // Mirrors the rules the real readers apply (src/server/auth/config.ts, src/domain/mfa.ts, src/domain/messaging-settings.ts,
 // src/adapters/*); tests/provider-check.test.ts keeps the two in step. Reports key NAMES only, never values.
@@ -13,6 +13,27 @@ const SMS_SENDER = /^(?:\+[1-9]\d{7,14}|(?=.*[A-Za-z])[A-Za-z0-9 ]{1,11}|MG[0-9a
 const EMAIL = /^[^\s\x00-\x1f\x7f<>"',;()\\@]{1,64}@[A-Za-z0-9](?:[A-Za-z0-9.-]{0,251}[A-Za-z0-9])?\.[A-Za-z]{2,}$/;
 const HOST = /^[A-Za-z0-9](?:[A-Za-z0-9.-]{0,251}[A-Za-z0-9])?$/;
 const SMTP_PORTS = ["25", "465", "587", "2525"];
+
+const API_BASE = /^https:\/\/[A-Za-z0-9](?:[A-Za-z0-9.-]{0,251}[A-Za-z0-9])?(?::\d{2,5})?(?:\/[A-Za-z0-9._~\/-]*)?$/;
+const HEADER_NAME = /^[A-Za-z0-9-]{1,60}$/;
+/** Shared rules for the providers reached over a plain HTTPS API (MLS, Zillow): key, base URL, optional header/path/rate/webhook secret. */
+function httpApiProblems(get, P) {
+  const p = [];
+  const key = get(`${P}_API_KEY`);
+  if (key && !(/^[\x21-\x7e]+$/.test(key) && key.length >= 16 && key.length <= 512)) p.push(`${P}_API_KEY must be 16 to 512 characters with no spaces.`);
+  const base = get(`${P}_API_BASE_URL`);
+  if (base && !API_BASE.test(base)) p.push(`${P}_API_BASE_URL must be an https URL with no query, like https://api.example.com/v1.`);
+  const header = get(`${P}_API_KEY_HEADER`);
+  if (header && !HEADER_NAME.test(header)) p.push(`${P}_API_KEY_HEADER must be a header name like X-Api-Key (unset = Authorization: Bearer).`);
+  const path = get(`${P}_HEALTH_PATH`);
+  if (path && !/^\/[A-Za-z0-9._~\/-]*$/.test(path)) p.push(`${P}_HEALTH_PATH must start with / (default /).`);
+  const rate = get(`${P}_RATE_PER_SECOND`);
+  if (rate && !(Number(rate) > 0 && Number(rate) <= 100)) p.push(`${P}_RATE_PER_SECOND must be a number from 0.1 to 100 (default 5).`);
+  const hook = get(`${P}_WEBHOOK_SECRET`);
+  if (hook && hook.length < 32) p.push(`${P}_WEBHOOK_SECRET must be at least 32 characters.`);
+  return p;
+}
+const pushHookProblem = get => (get("PUSH_STATUS_WEBHOOK_SECRET") && get("PUSH_STATUS_WEBHOOK_SECRET").length < 32 ? ["PUSH_STATUS_WEBHOOK_SECRET must be at least 32 characters."] : []);
 
 /**
  * One entry per provider. required: production cannot run without it. Others are switched off safely when unset.
@@ -83,11 +104,119 @@ const PROVIDERS = [
     }
   },
   {
+    id: "webpush", label: "Browser push (Web Push, VAPID)", required: false,
+    unlocks: "Push notifications to Chrome, Edge, Firefox and Safari (including Home Screen apps).",
+    whenOff: "Browsers cannot subscribe and no browser push is sent; in-app, email and SMS are unaffected.",
+    keys: ["VAPID_PUBLIC_KEY", "VAPID_PRIVATE_KEY", "VAPID_SUBJECT"],
+    check(get) {
+      const p = [];
+      if (get("VAPID_PUBLIC_KEY") && !/^[A-Za-z0-9_-]{87}$/.test(get("VAPID_PUBLIC_KEY"))) p.push("VAPID_PUBLIC_KEY must be the 87-character base64url public key (npx web-push generate-vapid-keys).");
+      if (get("VAPID_PRIVATE_KEY") && !/^[A-Za-z0-9_-]{43}$/.test(get("VAPID_PRIVATE_KEY"))) p.push("VAPID_PRIVATE_KEY must be the 43-character base64url private key from the same pair.");
+      if (get("VAPID_SUBJECT") && !/^(mailto:[^\s@]+@[^\s@]+|https:\/\/[^\s]+)$/.test(get("VAPID_SUBJECT"))) p.push("VAPID_SUBJECT must be mailto:you@example.com.au or an https URL.");
+      return p;
+    }
+  },
+  {
+    id: "fcm", label: "Android push (Firebase Cloud Messaging)", required: false,
+    unlocks: "Push notifications to the Android app.",
+    whenOff: "Android devices are not pushed to; the app still shows the in-app inbox.",
+    keys: ["FCM_PROJECT_ID", "FCM_CLIENT_EMAIL", "FCM_PRIVATE_KEY"], optionalKeys: ["PUSH_STATUS_WEBHOOK_SECRET"],
+    check(get) {
+      const p = pushHookProblem(get);
+      if (get("FCM_PROJECT_ID") && !/^[a-z][a-z0-9-]{4,29}$/.test(get("FCM_PROJECT_ID"))) p.push("FCM_PROJECT_ID is the Firebase project id (lower case letters, digits and dashes).");
+      if (get("FCM_CLIENT_EMAIL") && !/^[^\s@]+@[^\s@]+\.iam\.gserviceaccount\.com$/.test(get("FCM_CLIENT_EMAIL"))) p.push("FCM_CLIENT_EMAIL must be the service account email ending .iam.gserviceaccount.com.");
+      if (get("FCM_PRIVATE_KEY") && !get("FCM_PRIVATE_KEY").replace(/\\n/g, "\n").trim().startsWith("-----BEGIN")) p.push("FCM_PRIVATE_KEY must be the service account private key (-----BEGIN PRIVATE KEY-----).");
+      return p;
+    }
+  },
+  {
+    id: "apns", label: "iPhone push (Apple APNs)", required: false,
+    unlocks: "Push notifications to the iPhone app.",
+    whenOff: "iPhones are not pushed to; the app still shows the in-app inbox.",
+    keys: ["APNS_KEY_ID", "APNS_TEAM_ID", "APNS_BUNDLE_ID", "APNS_PRIVATE_KEY"], optionalKeys: ["APNS_PRODUCTION", "PUSH_STATUS_WEBHOOK_SECRET"],
+    check(get) {
+      const p = pushHookProblem(get);
+      if (get("APNS_KEY_ID") && !/^[A-Z0-9]{10}$/.test(get("APNS_KEY_ID"))) p.push("APNS_KEY_ID is the 10-character key id from Apple Developer.");
+      if (get("APNS_TEAM_ID") && !/^[A-Z0-9]{10}$/.test(get("APNS_TEAM_ID"))) p.push("APNS_TEAM_ID is the 10-character Apple team id.");
+      if (get("APNS_BUNDLE_ID") && !/^[A-Za-z0-9.-]+$/.test(get("APNS_BUNDLE_ID"))) p.push("APNS_BUNDLE_ID is the app's bundle id, like au.com.example.ownerlisting.");
+      if (get("APNS_PRIVATE_KEY") && !get("APNS_PRIVATE_KEY").replace(/\\n/g, "\n").trim().startsWith("-----BEGIN")) p.push("APNS_PRIVATE_KEY must be the .p8 key contents (-----BEGIN PRIVATE KEY-----).");
+      if (get("APNS_PRODUCTION") && !["0", "1"].includes(get("APNS_PRODUCTION"))) p.push("APNS_PRODUCTION is 1 for the live APNs service, or 0/unset for the sandbox.");
+      return p;
+    }
+  },
+  {
+    id: "mls", label: "MLS property data", required: false,
+    unlocks: "Syncing listed property data from the MLS feed, and the MLS update webhook (/api/webhooks/mls).",
+    whenOff: "No MLS data is fetched; the webhook answers 503. Owner-entered listings are unaffected.",
+    keys: ["MLS_API_KEY", "MLS_API_BASE_URL"],
+    optionalKeys: ["MLS_WEBHOOK_SECRET", "MLS_API_KEY_HEADER", "MLS_HEALTH_PATH", "MLS_RATE_PER_SECOND"],
+    check: get => httpApiProblems(get, "MLS")
+  },
+  {
+    id: "zillow", label: "Zillow property data", required: false,
+    unlocks: "Property details and estimates from Zillow.",
+    whenOff: "No Zillow data is fetched; price guidance keeps using the configured comparables source only.",
+    keys: ["ZILLOW_API_KEY", "ZILLOW_API_BASE_URL"],
+    optionalKeys: ["ZILLOW_API_KEY_HEADER", "ZILLOW_HEALTH_PATH", "ZILLOW_RATE_PER_SECOND"],
+    check: get => httpApiProblems(get, "ZILLOW")
+  },
+  {
+    id: "providercreds", label: "Provider credential encryption", required: false,
+    unlocks: "Storing a per-agent or per-team provider connection (provider_credentials) with its secret encrypted.",
+    whenOff: "No per-agent or per-team provider connection can be saved; platform-wide keys above still work.",
+    keys: ["PROVIDER_CREDENTIAL_KEY"],
+    check: get => (get("PROVIDER_CREDENTIAL_KEY") && !MFA_KEY.test(get("PROVIDER_CREDENTIAL_KEY")) ? ["PROVIDER_CREDENTIAL_KEY must be 32 random bytes in base64 (openssl rand -base64 32)."] : [])
+  },
+  {
     id: "abn", label: "ABN Lookup (ABR)", required: false,
     unlocks: "Confirming agent and business ABNs with the Australian Business Register.",
     whenOff: "ABNs are only checksum-checked and recorded as \"not confirmed\"; staff review them.",
     keys: ["ABN_LOOKUP_GUID"],
     check: get => (get("ABN_LOOKUP_GUID") && !ABN_GUID.test(get("ABN_LOOKUP_GUID")) ? ["ABN_LOOKUP_GUID must be the GUID the ABR emailed (8-4-4-4-12 hex)."] : [])
+  },
+  {
+    id: "docusign", label: "DocuSign e-signing", required: false, alsoIn: "docs/DOCUSIGN.md",
+    unlocks: "Signing contracts, disclosures and inspection reports through DocuSign, with signed PDFs kept in document history.",
+    whenOff: "Documents are signed with the built-in click-to-sign (SIGNING_PROVIDER unset). With SIGNING_PROVIDER=docusign and keys missing, new documents are refused.",
+    keys: ["DOCUSIGN_INTEGRATION_KEY", "DOCUSIGN_USER_ID", "DOCUSIGN_ACCOUNT_ID", "DOCUSIGN_PRIVATE_KEY", "DOCUSIGN_CONNECT_HMAC_KEY"], optionalKeys: ["DOCUSIGN_BASE_PATH", "DOCUSIGN_OAUTH_HOST", "SIGNING_PROVIDER"],
+    check(get) {
+      const p = [];
+      const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      for (const k of ["DOCUSIGN_INTEGRATION_KEY", "DOCUSIGN_USER_ID", "DOCUSIGN_ACCOUNT_ID"]) if (get(k) && !uuid.test(get(k))) p.push(`${k} must be a GUID (8-4-4-4-12 hex).`);
+      if (get("DOCUSIGN_PRIVATE_KEY") && !/-----BEGIN (?:RSA )?PRIVATE KEY-----/.test(get("DOCUSIGN_PRIVATE_KEY"))) p.push("DOCUSIGN_PRIVATE_KEY must be the RSA private key in PEM form (use \\n for line breaks).");
+      if (get("DOCUSIGN_CONNECT_HMAC_KEY") && get("DOCUSIGN_CONNECT_HMAC_KEY").length < 16) p.push("DOCUSIGN_CONNECT_HMAC_KEY should be the Connect HMAC key from DocuSign (at least 16 characters).");
+      if (get("DOCUSIGN_BASE_PATH") && !/^https:\/\/(?:[a-z0-9-]+\.)+docusign\.(?:net|com)\/restapi\/?$/i.test(get("DOCUSIGN_BASE_PATH"))) p.push("DOCUSIGN_BASE_PATH must be your DocuSign account's https .../restapi address (demo: https://demo.docusign.net/restapi).");
+      if (get("DOCUSIGN_OAUTH_HOST") && !/^(?:[a-z0-9-]+\.)+docusign\.(?:net|com)$/i.test(get("DOCUSIGN_OAUTH_HOST"))) p.push("DOCUSIGN_OAUTH_HOST must be a DocuSign host (demo: account-d.docusign.com, live: account.docusign.com).");
+      if (get("SIGNING_PROVIDER") && !["builtin", "docusign"].includes(get("SIGNING_PROVIDER").toLowerCase())) p.push("SIGNING_PROVIDER must be builtin or docusign.");
+      if (get("APP_URL") && get("DOCUSIGN_INTEGRATION_KEY") && !/^https:\/\//.test(get("APP_URL"))) p.push("APP_URL must be https so DocuSign can call the webhook.");
+      return p;
+    }
+  },
+  {
+    // Mirrors domainConfig in src/adapters/feed-providers.ts: both keys or the Domain feed connector stays off.
+    id: "domain", label: "Domain API (property feeds)", required: false,
+    unlocks: "Domain listings and sold results imported into property data and, where the licence allows, comparables.",
+    whenOff: "Domain feed connections fail their runs with \"not set up\"; agency CRM (REAXML) feeds still work.",
+    keys: ["DOMAIN_CLIENT_ID", "DOMAIN_CLIENT_SECRET"],
+    check(get) {
+      const p = [];
+      for (const k of ["DOMAIN_CLIENT_ID", "DOMAIN_CLIENT_SECRET"]) if (get(k) && /\s/.test(get(k))) p.push(`${k} must not contain spaces.`);
+      return p;
+    }
+  },
+  {
+    // Mirrors metaConfig in src/adapters/ad-lead-providers.ts: all three or the Meta lead webhook stays off (503).
+    id: "meta_leads", label: "Facebook / Instagram Lead Ads", required: false,
+    unlocks: "Leads from Facebook and Instagram lead ads arriving in the staff lead inbox at /staff/ad-leads.",
+    whenOff: "The Meta lead webhook answers 503; Google lead forms (keyed per source in /staff/ad-leads) still work.",
+    keys: ["META_APP_SECRET", "META_WEBHOOK_VERIFY_TOKEN", "META_PAGE_ACCESS_TOKEN"],
+    check(get) {
+      const p = [];
+      for (const k of ["META_APP_SECRET", "META_WEBHOOK_VERIFY_TOKEN", "META_PAGE_ACCESS_TOKEN"]) if (get(k) && /\s/.test(get(k))) p.push(`${k} must not contain spaces.`);
+      const set = ["META_APP_SECRET", "META_WEBHOOK_VERIFY_TOKEN", "META_PAGE_ACCESS_TOKEN"].filter(k => get(k));
+      if (set.length > 0 && set.length < 3) p.push("Set META_APP_SECRET, META_WEBHOOK_VERIFY_TOKEN and META_PAGE_ACCESS_TOKEN together; with only some set the Meta webhook stays off.");
+      return p;
+    }
   },
   {
     id: "address", label: "Address suggestions (Google Places)", required: false,

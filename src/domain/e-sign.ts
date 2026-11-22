@@ -1,5 +1,16 @@
 import { createHash, createHmac } from "node:crypto";
-import { plainText } from "./inspection";
+
+/** Control characters, angle brackets and braces never belong in these short notes. */
+const PLAIN = /^[^\u0000-\u0008\u000b-\u001f\u007f<>{}`]*$/;
+
+export const plainText = (v: unknown, max: number, required: boolean): string | null | undefined => {
+  if (v === undefined || v === null || v === "") return required ? undefined : null;
+  if (typeof v !== "string") return undefined;
+  const t = v.trim();
+  if (!t) return required ? undefined : null;
+  return t.length <= max && PLAIN.test(t) ? t : undefined;
+};
+
 
 /**
  * Built-in electronic signing. A signer who is signed in reads the document, ticks the consent and types their full name.
@@ -9,6 +20,7 @@ import { plainText } from "./inspection";
  * contract): the templates say so, and counsel sign-off is tracked in docs/COUNSEL_QUESTIONS.md. A DocuSign-style provider can
  * replace this later because the request and signer tables only record the outcome.
  */
+export const LIMITS = { reason: 300 } as const;
 export const ESIGN_CONSENT_VERSION = "2026-11-v1";
 export const ESIGN_CONSENT_TEXT =
   "I agree to sign this document electronically. I understand that typing my full name below is my signature, that I have read the whole document, " +

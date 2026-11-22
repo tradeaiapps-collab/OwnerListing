@@ -1,5 +1,6 @@
 import { hasVerifiedLicence, type AgentLicence } from "./licence";
 import type { Actor, Failure, Result } from "./listing-service";
+import { DEFAULT_SCORING, bandFor, blend, fitPercent, followUpUrgency, parseOverride, type FitFacts, type ScoringConfig } from "./lead-scoring";
 
 /**
  * Agent workspace: performance, lead scoring, pipeline stages and a client log, all for listings the agent is appointed to.
@@ -19,13 +20,19 @@ export interface LeadFact {
   enquiryId: string; listingId: string; listingTitle: string; buyerId: string; buyerName: string; enquiredAt: string;
   buyerMessages: number; agentMessages: number; lastBuyerAt?: string; firstAgentAt?: string;
   offerStatus?: string; offerPriceCents?: number; stage?: Stage; followUpAt?: string; notes: number;
+  /** The listing's property type, for filtering team reports. */
+  propertyType?: string;
+  /** Listing facts and the buyer's saved searches, for the property-fit part of the score. */
+  fit?: FitFacts;
+  /** The agent's own score for this lead, with the reason they gave. */
+  override?: { score: number; reason: string; at: string };
 }
-export interface Lead extends LeadFact { score: number; band: "hot" | "warm" | "cold"; reasons: string[]; nextAction: string; stage: Stage; overdue: boolean }
+export interface Lead extends LeadFact { score: number; band: "hot" | "warm" | "cold"; reasons: string[]; nextAction: string; stage: Stage; overdue: boolean; autoScore?: number; fitPercent?: number; overridden?: boolean }
 
 const ageDays = (iso: string | undefined, now: Date) => (iso ? (now.getTime() - Date.parse(iso)) / DAY : Infinity);
 
 /** 0-100 from offer activity, buyer engagement and recency. Reasons are what the agent sees. */
-export function scoreLead(f: LeadFact, now: Date): Lead {
+export function scoreLead(f: LeadFact, now: Date, cfg?: ScoringConfig): Lead {
   let score = 0;
   const reasons: string[] = [];
   const add = (n: number, why: string) => { score += n; reasons.push(why); };
@@ -39,7 +46,20 @@ export function scoreLead(f: LeadFact, now: Date): Lead {
   const waiting = f.buyerMessages > 0 && f.agentMessages === 0;
   if (waiting && idle > 1) add(10, "Waiting for a first reply");
   score = Math.max(0, Math.min(100, score));
-  const band = score >= 70 ? "hot" : score >= 40 ? "warm" : "cold";
+  let autoScore: number | undefined, fitPct: number | undefined;
+  if (cfg) {
+    // Blend engagement with property fit and follow-up timing using the staff-set weights.
+    const fit = fitPercent(f.fit);
+    const today0 = now.toISOString().slice(0, 10);
+    const stage0: Stage = f.stage ?? "new";
+    const fu = followUpUrgency(stage0, f.followUpAt, idle, today0);
+    if (fit) { fitPct = fit.percent; reasons.push(`${fit.percent}% match to saved searches`); }
+    if (fu.reason) reasons.push(fu.reason);
+    score = blend({ engagement: score, fit: fit?.percent, followUp: fu.value }, cfg);
+    autoScore = score;
+    if (f.override) { score = f.override.score; reasons.push(`Agent override: ${f.override.reason}`); }
+  }
+  const band = bandFor(score, cfg ?? DEFAULT_SCORING);
   const stage: Stage = f.stage ?? (f.offerStatus === "accepted" ? "won" : f.offerStatus && OPEN.includes(f.offerStatus) ? "offer" : f.agentMessages > 0 ? "contacted" : "new");
   const today = now.toISOString().slice(0, 10);
   const overdue = !!f.followUpAt && f.followUpAt < today && stage !== "won" && stage !== "lost";
@@ -50,11 +70,11 @@ export function scoreLead(f: LeadFact, now: Date): Lead {
     : overdue ? "Follow-up is overdue; contact the buyer."
     : idle > 14 ? "Check in; this lead has gone quiet."
     : "Keep the conversation moving and offer a viewing.";
-  return { ...f, score, band, reasons, nextAction, stage, overdue };
+  return { ...f, score, band, reasons, nextAction, stage, overdue, ...(autoScore !== undefined ? { autoScore } : {}), ...(fitPct !== undefined ? { fitPercent: fitPct } : {}), ...(cfg && f.override ? { overridden: true } : {}) };
 }
 
-export const rankLeads = (facts: readonly LeadFact[], now: Date): Lead[] =>
-  facts.map(f => scoreLead(f, now)).sort((a, b) => b.score - a.score || (a.enquiredAt < b.enquiredAt ? 1 : -1));
+export const rankLeads = (facts: readonly LeadFact[], now: Date, cfg?: ScoringConfig): Lead[] =>
+  facts.map(f => scoreLead(f, now, cfg)).sort((a, b) => b.score - a.score || (a.enquiredAt < b.enquiredAt ? 1 : -1));
 
 export interface OfferFacts { listings: number; open: number; openCents: number; accepted: number; acceptedCents: number; rejected: number }
 export interface PeerFacts { agents: number; acceptanceRate?: number; medianResponseMinutes?: number }
@@ -155,11 +175,18 @@ export interface WorkspaceDeps {
   addNote(agentId: string, buyerId: string, kind: NoteKind, body: string, at: string): Promise<void>;
   setStage(agentId: string, enquiryId: string, stage: Stage, followUpAt: string | null): Promise<void>;
   personaName(): Promise<string>;
+  /** Staff-set scoring rules. When absent, the original engagement-only score is used. */
+  scoring?(agentId?: string): Promise<ScoringConfig>;
+  /** Learning hooks (optional): the scores shown to an agent, and what the agent then did with a lead. Must never throw. */
+  noteLeads?(agentId: string, leads: readonly Lead[]): Promise<void>;
+  noteLeadAction?(agentId: string, enquiryId: string, action: "overridden" | "worked" | "dropped"): Promise<void>;
+  setOverride?(agentId: string, enquiryId: string, score: number, reason: string, at: string): Promise<void>;
+  clearOverride?(agentId: string, enquiryId: string): Promise<void>;
 }
 export interface Workspace { performance: Performance; forecast: Forecast; leads: Lead[] }
 
 const deny = (code: Failure["code"], message: string): Failure => ({ ok: false, code, message });
-async function gate(d: WorkspaceDeps, a: Actor): Promise<Failure | undefined> {
+export async function gate(d: Pick<WorkspaceDeps, "licences" | "today">, a: Actor): Promise<Failure | undefined> {
   if (a.userType !== "agent") return deny("forbidden", "Only agents can use the agent workspace.");
   const ls = await d.licences(), today = d.today();
   if (!ls.some(l => hasVerifiedLicence(ls, a.userId, l.jurisdiction, today))) return deny("forbidden", "A verified licence is required to use the agent workspace.");
@@ -168,8 +195,9 @@ async function gate(d: WorkspaceDeps, a: Actor): Promise<Failure | undefined> {
 
 export async function getWorkspace(d: WorkspaceDeps, a: Actor): Promise<Result<Workspace>> {
   const f = await gate(d, a); if (f) return f;
-  const [facts, offers, peers, rate] = await Promise.all([d.leads(a.userId), d.offers(a.userId), d.peers(a.userId), d.platformRate()]);
-  const leads = rankLeads(facts, d.now());
+  const [facts, offers, peers, rate, cfg] = await Promise.all([d.leads(a.userId), d.offers(a.userId), d.peers(a.userId), d.platformRate(), d.scoring?.(a.userId)]);
+  const leads = rankLeads(facts, d.now(), cfg);
+  await d.noteLeads?.(a.userId, leads);
   const performance = buildPerformance(leads, offers, peers);
   return { ok: true, value: { performance, forecast: forecast(performance, rate), leads } };
 }
@@ -178,7 +206,7 @@ const find = (leads: readonly Lead[], buyerId: string) => leads.find(l => l.buye
 
 export async function clientDetail(d: WorkspaceDeps, a: Actor, buyerId: string): Promise<Result<{ lead: Lead; notes: NoteFact[]; summary: string }>> {
   const f = await gate(d, a); if (f) return f;
-  const lead = find(rankLeads(await d.leads(a.userId), d.now()), buyerId);
+  const lead = find(rankLeads(await d.leads(a.userId), d.now(), await d.scoring?.(a.userId)), buyerId);
   if (!lead) return deny("not_found", "That client is not on one of your listings.");
   const notes = await d.notes(a.userId, buyerId);
   return { ok: true, value: { lead, notes, summary: clientSummary(lead, notes) } };
@@ -209,6 +237,26 @@ export async function updateLead(d: WorkspaceDeps, a: Actor, enquiryId: string, 
   if (fu !== null && (typeof fu !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(fu) || Number.isNaN(Date.parse(fu)))) return deny("invalid", "Follow-up must be a date (YYYY-MM-DD) or empty.");
   if (!(await d.leads(a.userId)).some(l => l.enquiryId === enquiryId)) return deny("not_found", "That enquiry is not on one of your listings.");
   await d.setStage(a.userId, enquiryId, o["stage"] as Stage, fu as string | null);
+  if (o["stage"] !== "new") await d.noteLeadAction?.(a.userId, enquiryId, o["stage"] === "lost" ? "dropped" : "worked");
+  return { ok: true, value: true };
+}
+
+/** An agent sets their own score (0-100) for one lead, with a reason. It replaces the automatic score until cleared. */
+export async function overrideLeadScore(d: WorkspaceDeps, a: Actor, enquiryId: string, body: unknown): Promise<Result<true>> {
+  const f = await gate(d, a); if (f) return f;
+  const p = parseOverride(body); if (!p.ok) return p;
+  if (!d.setOverride) return deny("invalid", "Score overrides are not available.");
+  if (!(await d.leads(a.userId)).some(l => l.enquiryId === enquiryId)) return deny("not_found", "That enquiry is not on one of your listings.");
+  await d.setOverride(a.userId, enquiryId, p.value.score, p.value.reason, d.now().toISOString());
+  await d.noteLeadAction?.(a.userId, enquiryId, "overridden");
+  return { ok: true, value: true };
+}
+
+export async function clearLeadOverride(d: WorkspaceDeps, a: Actor, enquiryId: string): Promise<Result<true>> {
+  const f = await gate(d, a); if (f) return f;
+  if (!d.clearOverride) return deny("invalid", "Score overrides are not available.");
+  if (!(await d.leads(a.userId)).some(l => l.enquiryId === enquiryId)) return deny("not_found", "That enquiry is not on one of your listings.");
+  await d.clearOverride(a.userId, enquiryId);
   return { ok: true, value: true };
 }
 

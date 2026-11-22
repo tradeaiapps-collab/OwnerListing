@@ -26,8 +26,6 @@ vi.mock("../src/server/context", async () => {
 });
 vi.mock("../src/server/ai", () => ({ getAiEngine: async () => state.engine }));
 
-import * as inspections from "../app/api/listings/[id]/inspections/route";
-import * as inspection from "../app/api/inspections/[id]/route";
 import * as templates from "../app/api/listings/[id]/document-templates/route";
 import * as docList from "../app/api/listings/[id]/generated-documents/route";
 import * as doc from "../app/api/generated-documents/[id]/route";
@@ -36,7 +34,6 @@ import * as sigRequests from "../app/api/generated-documents/[id]/signature-requ
 import * as sigRequest from "../app/api/signature-requests/[id]/route";
 import * as uploadedHistory from "../app/api/documents/[id]/history/route";
 import * as assistant from "../app/api/listings/[id]/transaction-assistant/route";
-import * as reminders from "../app/api/internal/inspections/reminders/route";
 import { CONSENT_VERSION_FOR_TESTS } from "./helpers/consent";
 void createPgListingRepository; void appendAuditPg; void randomUUID;
 
@@ -49,7 +46,7 @@ const post = (body: unknown) => send("POST", body);
 const json = async (r: Response) => (await r.json()) as Record<string, any>;
 const inDays = (d: number, h = 1) => new Date(Date.now() + d * 86_400_000 + h * 3_600_000).toISOString();
 
-describe.skipIf(!DATABASE_URL)("inspections, documents and signing over HTTP on Postgres", () => {
+describe.skipIf(!DATABASE_URL)("documents, signing and the assistant over HTTP on Postgres", () => {
   let t: TestDb;
   let owner: Actor, buyer: Actor, buyer2: Actor, inspector: Actor, stranger: Actor, stranger2: Actor;
   let listingId: string;
@@ -69,109 +66,28 @@ describe.skipIf(!DATABASE_URL)("inspections, documents and signing over HTTP on 
   afterAll(async () => { await t?.close(); });
   beforeEach(() => as(owner));
 
-  const book = (o: Record<string, unknown> = {}) =>
-    inspections.POST(post({ kind: "building", scheduledStart: inDays(3), durationMinutes: 60, inspectorUserId: inspector.userId, buyerUserId: buyer.userId, ...o }), ctx(listingId));
-
   describe("access", () => {
     it("401 signed out, 404 for strangers, on every route", async () => {
       as(null);
-      expect((await inspections.GET(get(), ctx(listingId))).status).toBe(401);
+      expect((await templates.GET(get(), ctx(listingId))).status).toBe(401);
       expect((await assistant.GET(get(), ctx(listingId))).status).toBe(401);
       for (const s of [stranger, stranger2]) {
         as(s);
-        expect((await inspections.GET(get(), ctx(listingId))).status).toBe(404);
-        expect((await inspections.POST(post({}), ctx(listingId))).status).toBe(404);
         expect((await templates.GET(get(), ctx(listingId))).status).toBe(404);
         expect((await docList.GET(get(), ctx(listingId))).status).toBe(404);
         expect((await assistant.POST(post({ question: "hi" }), ctx(listingId))).status).toBe(404);
       }
       as(owner);
-      expect((await inspections.GET(get(), ctx("not-a-uuid"))).status).toBe(404);
+      expect((await templates.GET(get(), ctx("not-a-uuid"))).status).toBe(404);
     });
     it("refuses a cross-site POST", async () => {
-      expect((await inspections.POST(send("POST", {}, "http://evil.test"), ctx(listingId))).status).toBe(403);
+      expect((await templates.POST(send("POST", {}, "http://evil.test"), ctx(listingId))).status).toBe(403);
     });
     it("keeps buyers and inspectors out of the owner's tools", async () => {
       for (const a of [buyer, inspector]) {
         as(a);
-        expect((await inspections.POST(post({}), ctx(listingId))).status).toBe(404);
         expect((await templates.POST(post({}), ctx(listingId))).status).toBe(404);
       }
-    });
-  });
-
-  describe("inspections", () => {
-    it("books, blocks double booking, validates, and shows each person only their own", async () => {
-      const r = await book();
-      expect(r.status).toBe(201);
-      const created = (await json(r)).inspection;
-      expect(created.status).toBe("requested");
-      expect((await book()).status).toBe(409);
-      expect((await book({ scheduledStart: new Date(Date.parse(created.scheduledStart) + 30 * 60_000).toISOString() })).status).toBe(409);
-      expect((await book({ scheduledStart: new Date(Date.parse(created.scheduledStart) + 60 * 60_000).toISOString() })).status).toBe(201);
-      expect((await book({ inspectorUserId: stranger.userId })).status).toBe(400);
-      expect((await book({ inspectorUserId: undefined })).status).toBe(400);
-      expect((await book({ buyerUserId: stranger.userId, scheduledStart: inDays(9) })).status).toBe(400);
-      expect((await book({ scheduledStart: new Date(Date.now() - 1000).toISOString() })).status).toBe(400);
-      const all = (await json(await inspections.GET(get(), ctx(listingId)))).inspections;
-      expect(all.length).toBeGreaterThanOrEqual(2);
-      as(buyer);
-      expect((await json(await inspections.GET(get(), ctx(listingId)))).inspections.length).toBe(all.length);
-      as(buyer2);
-      expect((await json(await inspections.GET(get(), ctx(listingId)))).inspections).toEqual([]);
-      as(inspector);
-      expect((await json(await inspections.GET(get(), ctx(listingId)))).parties).toEqual([]);
-    });
-
-    it("runs request -> confirm -> complete with findings, in the right hands, and queues the emails", async () => {
-      const id = (await json(await book({ scheduledStart: inDays(20) }))).inspection.id as string;
-      const notices = async () => (await t.db.query("SELECT kind, user_id FROM inspection_notice WHERE inspection_id = $1", [id])).rows;
-      const kinds = (await notices()).map(n => n["kind"]);
-      expect(kinds.filter(k => k === "confirmation")).toHaveLength(3);
-      expect(kinds.filter(k => k === "reminder")).toHaveLength(3);
-
-      as(owner);
-      expect((await inspection.PATCH(send("PATCH", { action: "confirm" }), ctx(id))).status).toBe(409); // inspector must confirm
-      as(buyer2);
-      expect((await inspection.PATCH(send("PATCH", { action: "cancel" }), ctx(id))).status).toBe(404);
-      as(inspector);
-      expect((await inspection.PATCH(send("PATCH", { action: "complete" }), ctx(id))).status).toBe(409);
-      expect((await inspection.PATCH(send("PATCH", { action: "confirm" }), ctx(id))).status).toBe(200);
-      expect((await inspection.PATCH(send("PATCH", { action: "confirm" }), ctx(id))).status).toBe(409);
-      expect((await inspection.PATCH(send("PATCH", { action: "complete" }), ctx(id))).status).toBe(409); // not started yet
-
-      await t.db.query("UPDATE inspection SET scheduled_start = now() - interval '1 hour' WHERE id = $1", [id]);
-      const bad = await inspection.PATCH(send("PATCH", { action: "complete", findings: [{ severity: "nope", area: "Roof", summary: "x" }] }), ctx(id));
-      expect(bad.status).toBe(400);
-      const done = await inspection.PATCH(send("PATCH", { action: "complete", findings: [
-        { severity: "urgent", area: "Wiring", summary: "Exposed live wires in the roof space", recommendation: "Electrician" },
-        { severity: "minor", area: "Door", summary: "Back door sticks" }] }), ctx(id));
-      expect(done.status).toBe(200);
-
-      as(buyer);
-      const mine = (await json(await inspections.GET(get(), ctx(listingId)))).inspections.find((i: any) => i.id === id);
-      expect(mine.status).toBe("completed");
-      expect(mine.findings).toHaveLength(2);
-      expect(mine.summary.bySeverity.urgent).toBe(1);
-      await expect(t.db.query("UPDATE inspection_finding SET summary = 'changed' WHERE inspection_id = $1", [id])).rejects.toThrow(/append-only/);
-      await expect(t.db.query("DELETE FROM inspection_finding WHERE inspection_id = $1", [id])).rejects.toThrow(/append-only/);
-    });
-
-    it("cancels, silences the reminder and queues a cancellation for everyone", async () => {
-      const id = (await json(await book({ scheduledStart: inDays(25) }))).inspection.id as string;
-      as(buyer);
-      expect((await inspection.PATCH(send("PATCH", { action: "cancel", reason: "<b>no</b>" }), ctx(id))).status).toBe(400);
-      expect((await inspection.PATCH(send("PATCH", { action: "cancel", reason: "Can't make it" }), ctx(id))).status).toBe(200);
-      expect((await inspection.PATCH(send("PATCH", { action: "cancel" }), ctx(id))).status).toBe(409);
-      const rows = (await t.db.query("SELECT kind, sent_at FROM inspection_notice WHERE inspection_id = $1", [id])).rows;
-      expect(rows.filter(r => r["kind"] === "cancellation")).toHaveLength(3);
-      expect(rows.filter(r => r["kind"] === "reminder").every(r => r["sent_at"] !== null)).toBe(true);
-    });
-
-    it("books a walkthrough with no inspector as already confirmed", async () => {
-      const r = await book({ kind: "walkthrough", inspectorUserId: undefined, buyerUserId: undefined, scheduledStart: inDays(30) });
-      expect(r.status).toBe(201);
-      expect((await json(r)).inspection.status).toBe("confirmed");
     });
   });
 
@@ -348,6 +264,15 @@ describe.skipIf(!DATABASE_URL)("inspections, documents and signing over HTTP on 
   });
 
   describe("the assistant", () => {
+    beforeAll(async () => {
+      // Inspections come from the inspections module; seed one finished report in its tables and share it with one buyer.
+      const insp = String((await t.db.query(
+        `INSERT INTO inspection (listing_id, requested_by, inspector_user_id, inspection_type, scheduled_at, status, completed_at)
+         VALUES ($1,$2,$3,'building', now() - interval '2 days', 'completed', now() - interval '1 day') RETURNING id`, [listingId, owner.userId, inspector.userId])).rows[0]!["id"]);
+      for (const [sev, area, title] of [["critical", "Wiring", "Exposed live wires in the roof space"], ["minor", "Door", "Back door sticks"]] as const)
+        await t.db.query("INSERT INTO inspection_finding (inspection_id, area, title, severity, followup_status, created_by) VALUES ($1,$2,$3,$4,'open',$5)", [insp, area, title, sev, inspector.userId]);
+      await t.db.query("INSERT INTO inspection_share (inspection_id, shared_with_user_id, shared_by) VALUES ($1,$2,$3)", [insp, buyer.userId, owner.userId]);
+    });
     it("gives the owner an overview and answers from the right desk", async () => {
       const o = await json(await assistant.GET(get(), ctx(listingId)));
       expect(o.persona.name).toBe("Elena");
@@ -363,7 +288,7 @@ describe.skipIf(!DATABASE_URL)("inspections, documents and signing over HTTP on 
       expect((await assistant.POST(post({ question: "" }), ctx(listingId))).status).toBe(400);
       expect((await assistant.POST(post({ question: "x".repeat(301) }), ctx(listingId))).status).toBe(400);
     });
-    it("shows a buyer only their own inspection and no owner-only document status", async () => {
+    it("shows a buyer only an inspection shared with them and no owner-only document status", async () => {
       as(buyer2);
       expect((await json(await assistant.GET(get(), ctx(listingId)))).findings.total).toBe(0);
       as(buyer);
@@ -376,45 +301,6 @@ describe.skipIf(!DATABASE_URL)("inspections, documents and signing over HTTP on 
       state.engine = { ...rulesOnlyEngine, info: () => ({ id: "t", kind: "self_hosted", version: "1" }), generate: async () => "You should not buy it. Call 0412 345 678." };
       expect((await json(await assistant.POST(post({ aiSummary: true }), ctx(listingId)))).ai.state).toBe("unavailable");
       state.engine = rulesOnlyEngine;
-    });
-  });
-
-  describe("reminder worker", () => {
-    it("fails closed without a secret, rejects a wrong one, and leaves notices unsent while email is off", async () => {
-      const call = (secret?: string) => reminders.POST(new Request("http://test/x", { method: "POST", headers: secret ? { "x-cron-secret": secret } : {} }));
-      delete process.env["INSPECTION_CRON_SECRET"];
-      expect((await call("whatever")).status).toBe(503);
-      process.env["INSPECTION_CRON_SECRET"] = "s".repeat(40);
-      expect((await call()).status).toBe(401);
-      expect((await call("w".repeat(40))).status).toBe(401);
-      const before = Number((await t.db.query("SELECT count(*) AS n FROM inspection_notice WHERE sent_at IS NULL")).rows[0]!["n"]);
-      const r = await call("s".repeat(40));
-      expect(r.status).toBe(200);
-      expect((await json(r)).counts.sent).toBe(0);
-      expect(Number((await t.db.query("SELECT count(*) AS n FROM inspection_notice WHERE sent_at IS NULL")).rows[0]!["n"])).toBe(before);
-      expect(state.email.sent).toEqual([]);
-    });
-
-    it("sends each due email once, marks it sent only when accepted, and never emails before it is due", async () => {
-      const call = () => reminders.POST(new Request("http://test/x", { method: "POST", headers: { "x-cron-secret": "s".repeat(40) } }));
-      state.email.configured = true;
-      state.email.result = "failed";
-      const failed = await json(await call());
-      expect(failed.counts.sent).toBe(0);
-      expect(failed.counts.failed).toBeGreaterThan(0);
-      const unsent = Number((await t.db.query("SELECT count(*) AS n FROM inspection_notice WHERE sent_at IS NULL AND due_at <= now()")).rows[0]!["n"]);
-      expect(unsent).toBeGreaterThan(0);
-      state.email.sent.length = 0;
-      state.email.result = "sent";
-      const ok = await json(await call());
-      expect(ok.counts.sent).toBe(unsent);
-      expect(state.email.sent.length).toBe(unsent);
-      expect(state.email.sent.some(m => /is booked/.test(m.subject))).toBe(true);
-      expect(state.email.sent.every(m => /@example\.test$/.test(m.to))).toBe(true);
-      expect(Number((await t.db.query("SELECT count(*) AS n FROM inspection_notice WHERE sent_at IS NULL AND due_at <= now()")).rows[0]!["n"])).toBe(0);
-      expect((await json(await call())).counts.sent).toBe(0); // reminders for later are not due yet
-      state.email.configured = false;
-      delete process.env["INSPECTION_CRON_SECRET"];
     });
   });
 });

@@ -1,10 +1,12 @@
 import { createHmac } from "node:crypto";
 import { readBrand } from "../config/brand";
 import { alertDeliveryFromEnv } from "../adapters/alert-delivery";
-import { emailFromConfig, type EmailPort, type HostResolver, type TransportFactory } from "../adapters/email";
+import { createDevFileEmail, devFileEmailWanted } from "../adapters/email-dev";
+import { emailFromConfig, type EmailAttachment, type EmailMessage, type EmailPort, type HostResolver, type TransportFactory } from "../adapters/email";
 import { failed, type SendResult } from "../adapters/messaging";
-import { SmsSendError, smsFromConfig, verificationCodeText, type SmsTextPort } from "../adapters/sms";
+import { SmsSendError, smsFromConfig, type SmsSendOptions, verificationCodeText, type SmsTextPort } from "../adapters/sms";
 import type { AlertDeliveryPort, AlertMessage } from "../domain/alerts";
+import { htmlFromText } from "../domain/account-emails";
 import type { Queryable } from "./db";
 import { loadResolved } from "./messaging-settings-db";
 
@@ -33,12 +35,24 @@ export async function recordOutbox(db: Queryable, env: Env, channel: "email" | "
   }
 }
 
+export interface OutboxEntry { channel: "email" | "sms"; template: string; status: "sent" | "failed" | "not_configured"; errorCode: string | null; at: string }
+
+/** The newest email and SMS log rows for the staff page. Template, status and error code only: the log holds no address or body. */
+export async function recentOutbox(db: Queryable, limit = 50): Promise<OutboxEntry[]> {
+  const r = await db.query(
+    "SELECT channel, template, status, error_code, created_at FROM messaging_outbox ORDER BY created_at DESC, id DESC LIMIT $1", [limit]);
+  return r.rows.map(row => ({
+    channel: row["channel"] as OutboxEntry["channel"], template: String(row["template"]), status: row["status"] as OutboxEntry["status"],
+    errorCode: typeof row["error_code"] === "string" ? row["error_code"] : null, at: new Date(row["created_at"] as string).toISOString()
+  }));
+}
+
 /** The SMS port for the settings in force now (environment over database), with every attempt recorded in the outbox. */
 export async function getSmsPort(db: Queryable, env: Env, template: string, deps: MessagingDeps = {}): Promise<SmsTextPort> {
   const cfg = (await loadResolved(db, env)).sms;
   const inner = smsFromConfig(cfg, deps.fetch ? { fetch: deps.fetch } : {});
-  async function sendText(to: string, text: string): Promise<SendResult> {
-    const r = await inner.sendText(to, text);
+  async function sendText(to: string, text: string, opts?: SmsSendOptions): Promise<SendResult> {
+    const r = await inner.sendText(to, text, opts);
     await recordOutbox(db, env, "sms", template, to, r);
     return r;
   }
@@ -53,14 +67,17 @@ export async function getSmsPort(db: Queryable, env: Env, template: string, deps
   };
 }
 
-/** The email port for the settings in force now, with every attempt recorded in the outbox. */
+/**
+ * The email port for the settings in force now, with every attempt recorded in the outbox (the email log). A message without HTML
+ * gets the branded layout around its text. In development, EMAIL_DELIVERY=dev_file writes emails to .dev-mail/ instead of sending.
+ */
 export async function getEmailPort(db: Queryable, env: Env, template: string, deps: MessagingDeps = {}): Promise<EmailPort> {
-  const cfg = (await loadResolved(db, env)).email;
-  const inner = emailFromConfig(cfg, { ...(deps.createTransport ? { createTransport: deps.createTransport } : {}), ...(deps.resolve ? { resolve: deps.resolve } : {}) });
+  const inner = devFileEmailWanted(env) ? createDevFileEmail() : emailFromConfig((await loadResolved(db, env)).email,
+    { ...(deps.createTransport ? { createTransport: deps.createTransport } : {}), ...(deps.resolve ? { resolve: deps.resolve } : {}) });
   return {
     configured: inner.configured,
-    async send(msg) {
-      const r = await inner.send(msg);
+    async send(msg: EmailMessage) {
+      const r = await inner.send(msg.html !== undefined ? msg : { ...msg, html: htmlFromText(readBrand().name, msg.subject, msg.text) });
       await recordOutbox(db, env, "email", template, msg.to, r);
       return r;
     }
@@ -68,7 +85,7 @@ export async function getEmailPort(db: Queryable, env: Env, template: string, de
 }
 
 /** Sends one plain notice email on the settings in force now. True only if it went out; never throws (a notice never blocks the action). */
-export async function sendNotice(db: Queryable, template: string, to: string, msg: { subject: string; text: string }, env: Env = process.env): Promise<boolean> {
+export async function sendNotice(db: Queryable, template: string, to: string, msg: { subject: string; text: string; html?: string; attachments?: readonly EmailAttachment[] }, env: Env = process.env): Promise<boolean> {
   try {
     const port = await getEmailPort(db, env, template);
     return port.configured && (await port.send({ to, ...msg })).status === "sent";

@@ -17,6 +17,8 @@ export interface OllamaConfig {
   /** Base URL after validation (localhost rewritten to 127.0.0.1), no trailing slash. */
   endpoint: string;
   model: string;
+  /** Optional self-hosted vision model (AI_VISION_MODEL, e.g. llama3.2-vision). Without it Elena cannot look at photos. */
+  visionModel?: string;
   timeoutMs: number;
   maxTokens: number;
   maxConcurrency: number;
@@ -27,6 +29,9 @@ export const DEFAULT_MODEL = "llama3.1:8b";
 const MODEL_RE = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,99}$/;
 /** Hard cap on any reply body. A non-streaming chat reply for 2048 tokens is far below this. */
 export const MAX_RESPONSE_BYTES = 256 * 1024;
+/** Largest photo sent to the vision model (the browser shrinks photos first). */
+const MAX_VISION_BYTES = 3_000_000;
+const VISION_PROMPT = "This is a photo from a property listing. List only what you can clearly see, one short phrase per line, no sentences, at most 8 lines. Start the first line with the room or area (for example: bedroom, bathroom, kitchen, living room, garage, backyard, exterior, pool). Then fixtures and finishes you can see (for example: timber floors, stone benchtops, air conditioning, solar panels). Do not guess sizes, counts you cannot see, prices or condition you cannot see.";
 /** Characters of model text allowed per requested token (generous; longer text means the cap was ignored). */
 const CHARS_PER_TOKEN = 8;
 
@@ -91,10 +96,12 @@ export function readAiConfig(env: Record<string, string | undefined>): AiConfigR
   if (!ep.ok) return { ok: false, state: "invalid", problem: ep.problem };
   const model = env["AI_MODEL"]?.trim() || DEFAULT_MODEL;
   if (!MODEL_RE.test(model)) return { ok: false, state: "invalid", problem: "AI_MODEL is not a valid model name (see `ollama list`)." };
+  const vision = env["AI_VISION_MODEL"]?.trim();
+  if (vision && !MODEL_RE.test(vision)) return { ok: false, state: "invalid", problem: "AI_VISION_MODEL is not a valid model name (see `ollama list`)." };
   return {
     ok: true,
     config: {
-      endpoint: ep.endpoint, model,
+      endpoint: ep.endpoint, model, ...(vision ? { visionModel: vision } : {}),
       timeoutMs: intIn(env["AI_TIMEOUT_MS"], 30_000, 1_000, 120_000),
       maxTokens: intIn(env["AI_MAX_TOKENS"], 512, 16, 2048),
       maxConcurrency: intIn(env["AI_MAX_CONCURRENCY"], 2, 1, 8)
@@ -161,7 +168,21 @@ export function createOllamaEngine(cfg: OllamaConfig, fetchImpl: FetchFn = fetch
   return {
     info: () => ({ id: `ollama:${cfg.model}`, kind: "self_hosted", version: "1" }),
     readDocument: async () => { throw new AiUnavailableError("not_supported"); },
-    describePhoto: async () => { throw new AiUnavailableError("not_supported"); },
+    /** Looks at one photo with the self-hosted vision model and returns short plain observations, one per line. Needs AI_VISION_MODEL. */
+    async describePhoto(file) {
+      if (!cfg.visionModel || !/^image\/(jpeg|png|webp)$/.test(file.mimeType) || file.bytes.byteLength > MAX_VISION_BYTES) throw new AiUnavailableError("not_supported");
+      const body = await call("/api/chat", {
+        method: "POST",
+        body: {
+          model: cfg.visionModel, stream: false,
+          messages: [{ role: "user", content: VISION_PROMPT, images: [Buffer.from(file.bytes).toString("base64")] }],
+          options: { num_predict: 200, temperature: 0.1 }
+        }
+      });
+      const content = (body as { message?: { content?: unknown } } | null)?.message?.content;
+      if (typeof content !== "string") throw new AiUnavailableError("bad_response");
+      return content.replace(/<think>[\s\S]*?(?:<\/think>|$)/gi, "").split("\n").map(l => l.replace(/^[\s*•-]+/, "").trim()).filter(l => l.length > 0 && l.length <= 120).slice(0, 12);
+    },
 
     async generate(prompt: string, opts: GenerateOptions = {}): Promise<string> {
       const maxTokens = Math.min(cfg.maxTokens, Math.max(16, Math.floor(opts.maxTokens ?? cfg.maxTokens)));

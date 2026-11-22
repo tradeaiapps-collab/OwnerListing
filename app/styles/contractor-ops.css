@@ -1,0 +1,26 @@
+/* Contractor operations (job visit page and contractor calendar). Theme tokens only; mobile first. */
+.co { display: grid; gap: var(--space-4); min-width: 0; }
+.co > * { min-width: 0; }
+.co h1, .co h2, .co h3 { margin: 0; }
+.co-section { display: grid; gap: var(--space-3); padding: var(--space-4); border: 1px solid var(--line); border-radius: var(--radius); background: var(--bg); }
+.co-section h2 { font-size: 1.0625rem; }
+.co-section p { margin: 0; max-width: none; overflow-wrap: anywhere; }
+.co-row { display: grid; gap: var(--space-3); grid-template-columns: 1fr; }
+.co-check { display: flex; align-items: center; gap: var(--space-2); min-height: 44px; font-weight: 400; }
+.co .stack .co-check, .co .co-check { display: flex; }
+.co-check input { width: auto; min-height: 0; }
+.co-badge { display: inline-block; padding: 2px 10px; border-radius: 999px; border: 1px solid var(--line); background: var(--tint); font-size: 0.8125rem; font-weight: 600; white-space: nowrap; }
+.co-badge.ok { border-color: var(--ok); color: var(--ok); }
+.co-badge.warn { border-color: var(--warn); color: var(--warn); }
+.co-warn { padding: var(--space-3) var(--space-4); border: 1px solid var(--warn); border-radius: var(--radius); color: var(--warn); background: color-mix(in srgb, var(--warn) 8%, transparent); }
+.co-error { color: var(--danger); font-weight: 600; }
+.co-ok { color: var(--ok); font-weight: 600; }
+.co-secret { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; padding: var(--space-2) var(--space-3); border: 1px dashed var(--line); border-radius: var(--radius); background: var(--tint); overflow-wrap: anywhere; }
+.co-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-3); }
+.co-item { display: grid; gap: var(--space-1); padding: var(--space-3) var(--space-4); border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
+.co-item.clash { border-color: var(--warn); }
+.co-item-head { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; justify-content: space-between; }
+.co-item p { margin: 0; overflow-wrap: anywhere; }
+.co-state { padding: var(--space-6) var(--space-4); text-align: center; border: 1px dashed var(--line); border-radius: var(--radius); color: var(--muted); }
+.co .actions { margin: 0; }
+@media (min-width: 768px) { .co-row { grid-template-columns: 1fr 1fr; } }

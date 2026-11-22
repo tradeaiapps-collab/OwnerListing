@@ -91,7 +91,9 @@ Required means the site does not work without it. Fail-closed-optional means lea
 | `OFFER_LINK_TOKEN_KEY` | `openssl rand -base64 32` | leave empty | Fail-closed-optional. Empty: offer links are refused. |
 | `ALERT_UNSUBSCRIBE_KEY` | `openssl rand -base64 48` | empty | Fail-closed-optional. Empty: no alerts sent. |
 | `ALERT_CRON_SECRET` | `openssl rand -base64 48` | empty | Fail-closed-optional. Empty: `/api/internal/alerts/run` answers 503. |
+| `ALERT_CRON_SECRET` (digest) | same value | empty | Daily digest worker: call `POST /api/internal/notifications/digest` with header `x-cron-secret` every hour, on the hour. Needs email delivery configured; the digest link in each email needs `ALERT_UNSUBSCRIBE_KEY`. |
 | `ALERT_DELIVERY` | leave empty | empty | Fail-closed-optional. No email/SMS provider is wired yet; nothing sends. |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM` | see "Email with Resend" below | empty | Fail-closed-optional. Empty: no email is sent (sign-up and password-reset links, alerts, offers, staff invites). Set them on the public project; the admin project needs them too if staff invites should send. |
 | `SMS_CODE_SECRET` | `openssl rand -base64 48` | empty | Fail-closed-optional. Empty: mobile verification "not available yet". |
 | `ID_CHECK_WEBHOOK_SECRET` | empty | empty | Fail-closed-optional. Empty: webhook rejects everything. |
 | `PAYWAY_MERCHANT_ID`, `PAYWAY_API_KEY`, `PAYWAY_WEBHOOK_SECRET` | empty | empty | Fail-closed-optional. Empty: checkout "not available yet", so nothing can be marked paid and nothing publishes. Never set live keys here. |
@@ -99,6 +101,28 @@ Required means the site does not work without it. Fail-closed-optional means lea
 | `INVESTMENT_MODULE_ENABLED` | `false` | `false` | Master key of the investor projects module (also needs the admin switch). Keep `false` until counsel signs off. |
 
 Use a different value for every secret, and different values in the two projects. Never paste a secret into chat, email or the repository.
+
+### Email with Resend (SMTP)
+
+The app already sends through any SMTP relay (`src/adapters/email.ts`: TLS required, timeouts, every send logged on `/staff/messaging`). Resend offers a standard SMTP endpoint, so no code change is needed.
+
+1. Create a free account at resend.com (3,000 emails/month, 100/day on the free plan).
+2. Domains, Add domain: your domain (for example `ownerlisting.com.au`), region Sydney if offered. Add the DNS records Resend shows (SPF, DKIM, and a DMARC record is recommended) at your registrar, then wait for "Verified". Until the domain is verified, Resend only sends to your own address.
+3. API Keys, Create API key, permission "Sending access", limited to that domain. Copy it once.
+4. In Vercel, Settings, Environment Variables (Production), on the public project (and the admin project):
+
+| Variable | Value |
+|---|---|
+| `SMTP_HOST` | `smtp.resend.com` |
+| `SMTP_PORT` | `465` |
+| `SMTP_USER` | `resend` |
+| `SMTP_PASSWORD` | the Resend API key (`re_...`), mark as Sensitive |
+| `SMTP_FROM` | an address on the verified domain, e.g. `no-reply@ownerlisting.com.au` |
+
+5. Redeploy (variables apply to new deployments only).
+6. Check: `npm run check:providers -- --production` should list Email (SMTP) as ready. Then sign up with an email-and-password account and request a password reset, confirm both arrive (check spam on first send), and look at the delivery log on `/staff/messaging`.
+
+Do not use `EMAIL_DELIVERY=dev_file` in production. SendGrid or Amazon SES work the same way with their own SMTP host and credentials.
 
 ### Check it
 

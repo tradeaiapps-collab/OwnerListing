@@ -5,7 +5,8 @@ import { isAllowed } from "../src/config/app-mode";
 import { proxy } from "../proxy";
 
 const ROWS: { current: Record<string, unknown>[] } = { current: [] };
-vi.mock("../src/server/context", () => ({ getDb: () => ({ query: async () => ({ rows: ROWS.current }) }), getActor: () => null, getDeps: () => null, getStaff: async () => null }));
+const SQL: string[] = [];
+vi.mock("../src/server/context", () => ({ getDb: () => ({ query: async (sql: string) => { SQL.push(sql); return { rows: ROWS.current }; } }), getActor: () => null, getDeps: () => null, getStaff: async () => null }));
 
 import { POST } from "../app/api/dev/login/route";
 
@@ -81,7 +82,7 @@ describe("POST /api/dev/login", () => {
     delete process.env["VERCEL"];
     ROWS.current = [{ id: "11111111-1111-1111-1111-111111111111", user_type: "owner", role: null }];
   });
-  afterEach(() => { for (const k of KEYS) { if (saved[k] === undefined) delete process.env[k]; else process.env[k] = saved[k]; } });
+  afterEach(() => { vi.unstubAllEnvs(); for (const k of KEYS) { if (saved[k] === undefined) delete process.env[k]; else process.env[k] = saved[k]; } });
   const call = (headers: Record<string, string> = {}, body: unknown = { userId: "11111111-1111-1111-1111-111111111111" }, url = "http://localhost:3005/api/dev/login") =>
     POST(new Request(url, { method: "POST", headers: { host: new URL(url).host, origin: new URL(url).origin, "content-type": "application/json", ...headers }, body: JSON.stringify(body) }));
 
@@ -91,9 +92,32 @@ describe("POST /api/dev/login", () => {
     expect(res.headers.get("set-cookie")).toContain("ol_session=");
     expect((await res.json()).redirect).toBe("/dashboard");
   });
+  it("gives a dev agent a verified licence in every state, and a dev buyer full verification; owners get neither", async () => {
+    SQL.length = 0;
+    ROWS.current = [{ id: "11111111-1111-1111-1111-111111111111", user_type: "agent", roles: ["agent"], active_role: "agent", role: null }];
+    expect((await call()).status).toBe(200);
+    expect(SQL.filter(q => q.includes("INSERT INTO agent_licence"))).toHaveLength(8);
+    SQL.length = 0;
+    ROWS.current = [{ id: "11111111-1111-1111-1111-111111111111", user_type: "buyer", roles: ["buyer"], active_role: "buyer", role: null }];
+    expect((await call()).status).toBe(200);
+    expect(SQL.filter(q => q.includes("INSERT INTO buyer_verification"))).toHaveLength(1);
+    SQL.length = 0;
+    ROWS.current = [{ id: "11111111-1111-1111-1111-111111111111", user_type: "owner", role: null }];
+    expect((await call()).status).toBe(200);
+    expect(SQL.some(q => q.includes("agent_licence") || q.includes("buyer_verification"))).toBe(false);
+  });
+  it("signs a demo investor in as an investor (buyer account holding the investor role)", async () => {
+    ROWS.current = [{ id: "11111111-1111-1111-1111-111111111111", user_type: "buyer", roles: ["buyer", "investor"], active_role: "investor", role: null }];
+    const res = await call();
+    expect(res.status).toBe(200);
+    const cookie = res.headers.get("set-cookie") ?? "";
+    const token = decodeURIComponent(/ol_session=([^;]+)/.exec(cookie)?.[1] ?? "");
+    expect(JSON.parse(Buffer.from(token.split(".")[0] ?? "", "base64url").toString())).toMatchObject({ ut: "buyer", cr: "investor" });
+    expect((await res.json()).redirect).toBe("/dashboard");
+  });
   it("404 in production, without DEV_LOGIN, on Vercel, and for a non-local host", async () => {
-    process.env["NODE_ENV"] = "production"; expect((await call()).status).toBe(404);
-    process.env["NODE_ENV"] = "development";
+    vi.stubEnv("NODE_ENV", "production"); expect((await call()).status).toBe(404);
+    vi.stubEnv("NODE_ENV", "development");
     delete process.env["DEV_LOGIN"]; expect((await call()).status).toBe(404);
     process.env["DEV_LOGIN"] = "1";
     process.env["VERCEL"] = "1"; expect((await call()).status).toBe(404);
@@ -126,7 +150,7 @@ describe("POST /api/dev/login", () => {
 describe("seed-demo database guard", () => {
   const run = async (env: Record<string, string>) => {
     const { spawnSync } = await import("node:child_process");
-    const r = spawnSync(process.execPath, ["scripts/seed-demo.mjs"], { env: { PATH: process.env["PATH"] ?? "", ...env }, encoding: "utf8", timeout: 20000 });
+    const r = spawnSync(process.execPath, ["scripts/seed-demo.mjs"], { env: ({ PATH: process.env["PATH"] ?? "", ...env } as unknown as NodeJS.ProcessEnv), encoding: "utf8", timeout: 20000 });
     return { code: r.status, err: r.stderr };
   };
   it.each([

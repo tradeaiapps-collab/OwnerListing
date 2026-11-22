@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server";
-import { ESIGN_CONSENT_VERSION, ipHash, parseSignature } from "../../../../src/domain/e-sign";
-import { LIMITS, plainText } from "../../../../src/domain/inspection";
+import { ESIGN_CONSENT_VERSION, LIMITS, ipHash, parseSignature, plainText } from "../../../../src/domain/e-sign";
+import { SIGN_ATTEMPT_RATE } from "../../../../src/domain/rate-limit";
 import { clientIp } from "../../../../src/server/client-ip";
 import { getActor, getDb, getDeps } from "../../../../src/server/context";
 import { csrfGuard } from "../../../../src/server/csrf";
 import { failure, unauthenticated } from "../../../../src/server/http";
 import { cancelRequest, expireIfDue, recordDecline, recordSignature, requestById, signersFor } from "../../../../src/server/transaction-db";
 import { audit, notifyUser, readJson, UUID_RE } from "../../../../src/server/transaction-http";
+import { withinRates } from "../../../../src/server/rate-guard";
 import { withApi } from "../../../../src/server/api/with-api";
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -65,6 +66,9 @@ async function handlePost(req: Request, { params }: Ctx) {
     return NextResponse.json({ status: "declined" });
   }
   if (action !== "sign") return NextResponse.json({ error: "Choose sign, decline or cancel." }, { status: 400 });
+  if (!(await withinRates(db, "sign-attempt-user", [actor.userId], { windowMs: SIGN_ATTEMPT_RATE.windowMs, limit: SIGN_ATTEMPT_RATE.perUser }))) {
+    return NextResponse.json({ error: "Too many signing attempts. Try again in a few minutes." }, { status: 429, headers: { "retry-after": "900" } });
+  }
   const sig = parseSignature(body);
   if (!sig.ok) return NextResponse.json({ error: sig.message }, { status: 400 });
   const r = await recordSignature(db, id, actor.userId, sig.typedName, ipHash(clientIp(req), process.env["SESSION_SECRET"]), ESIGN_CONSENT_VERSION, deps.now());

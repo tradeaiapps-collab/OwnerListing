@@ -1,4 +1,5 @@
 import net from "node:net";
+import { writeFileSync } from "node:fs";
 import { mkdtemp, readdir, stat } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -14,7 +15,8 @@ describe("local disk storage", () => {
     const s = createLocalDiskStorage(root);
     await s.put(KEY, new Uint8Array([1, 2, 3]), "image/png");
     expect([...(await s.get(KEY))]).toEqual([1, 2, 3]);
-    expect((await stat(path.join(root, KEY))).mode & 0o777).toBe(0o600);
+    // Windows (NTFS) has no POSIX permission bits: stat reports 0o666 whatever mode was asked for, so the check only means something elsewhere.
+    if (process.platform !== "win32") expect((await stat(path.join(root, KEY))).mode & 0o777).toBe(0o600);
   });
   it("never overwrites an existing object", async () => {
     const s = createLocalDiskStorage(await mkdtemp(path.join(os.tmpdir(), "ol-store-")));
@@ -134,5 +136,50 @@ describe("clamd scanner", () => {
       expect(malwareScannerFromEnv(env).configured).toBe(false);
     }
     expect(malwareScannerFromEnv({ CLAMD_HOST: "h", CLAMD_PORT: "3310" }).configured).toBe(true);
+  });
+});
+
+describe("clamd scanner over mutual TLS and production guard", () => {
+  it("fails closed on a partial TLS set and on plain TCP to a remote host in production", () => {
+    const base = { CLAMD_HOST: "clam.example.com", CLAMD_PORT: "3443" };
+    expect(malwareScannerFromEnv({ ...base, CLAMD_TLS_CA_B64: "x" }).configured).toBe(false);
+    expect(malwareScannerFromEnv({ ...base, NODE_ENV: "production" }).configured).toBe(false);
+    expect(malwareScannerFromEnv({ CLAMD_HOST: "127.0.0.1", CLAMD_PORT: "3310", NODE_ENV: "production" }).configured).toBe(true);
+    const b = Buffer.from("pem").toString("base64");
+    expect(malwareScannerFromEnv({ ...base, NODE_ENV: "production", CLAMD_TLS_CA_B64: b, CLAMD_TLS_CERT_B64: b, CLAMD_TLS_KEY_B64: b }).configured).toBe(true);
+  });
+
+  it("scans through TLS only when the client certificate is signed by the private CA", async () => {
+    const { execSync } = await import("node:child_process");
+    const tlsMod = await import("node:tls");
+    const { readFileSync } = await import("node:fs");
+    const d = await mkdtemp(path.join(os.tmpdir(), "ol-tls-"));
+    const sh = (c: string) => execSync(c, { cwd: d, stdio: "pipe" });
+    try { sh("openssl version"); } catch { return; } // no openssl on this machine: covered in CI images that have it
+    sh("openssl req -x509 -newkey rsa:2048 -nodes -keyout ca.key -out ca.crt -days 2 -subj /CN=ca");
+    sh("openssl req -x509 -newkey rsa:2048 -nodes -keyout bad.key -out bad.crt -days 2 -subj /CN=other");
+    const leaf = (n: string, ext: string) => {
+      sh(`openssl req -newkey rsa:2048 -nodes -keyout ${n}.key -out ${n}.csr -subj /CN=${n}`);
+      writeFileSync(path.join(d, `${n}.ext`), ext);
+      sh(`openssl x509 -req -in ${n}.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out ${n}.crt -days 2 -extfile ${n}.ext`);
+    };
+    leaf("server", "subjectAltName=IP:127.0.0.1\n");
+    leaf("client", "extendedKeyUsage=clientAuth\n");
+    const r = (f: string) => readFileSync(path.join(d, f), "utf8");
+    const server = tlsMod.createServer({ key: r("server.key"), cert: r("server.crt"), ca: r("ca.crt"), requestCert: true, rejectUnauthorized: true }, sock => {
+      sock.on("error", () => {});
+      let buf: Buffer = Buffer.alloc(0);
+      sock.on("data", x => { buf = Buffer.concat([buf, x]); if (buf.subarray(-4).equals(Buffer.alloc(4))) { sock.write("stream: OK\0"); sock.end(); } });
+    });
+    await new Promise<void>(res => server.listen(0, "127.0.0.1", res));
+    const port = (server.address() as net.AddressInfo).port;
+    try {
+      const good = createClamdScanner({ host: "127.0.0.1", port, tls: { ca: r("ca.crt"), cert: r("client.crt"), key: r("client.key") } });
+      expect(await good.scan(new Uint8Array([1, 2, 3]))).toBe("clean");
+      const wrongClient = createClamdScanner({ host: "127.0.0.1", port, tls: { ca: r("ca.crt"), cert: r("bad.crt"), key: r("bad.key") } });
+      await expect(wrongClient.scan(new Uint8Array([1]))).rejects.toThrow();
+      const wrongCa = createClamdScanner({ host: "127.0.0.1", port, tls: { ca: r("bad.crt"), cert: r("client.crt"), key: r("client.key") } });
+      await expect(wrongCa.scan(new Uint8Array([1]))).rejects.toThrow();
+    } finally { server.close(); }
   });
 });

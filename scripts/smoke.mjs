@@ -175,6 +175,7 @@ for (const p of ["/staff", "/staff/reports", "/staff/trust-accounts", "/staff/ca
 // 12. Provider-off routes fail closed by design
 await step("checkout not available (PayWay off)", O, "POST", `/api/listings/${lid}/checkout`, {}, [400, 403, 404, 409, 501, 503]);
 await step("payway webhook rejects unsigned post", null, "POST", "/api/webhooks/payway", { x: 1 }, [400, 401, 403, 503]); // 503 = disabled while PAYWAY_WEBHOOK_SECRET is unset
+await step("docusign webhook rejects unsigned post", null, "POST", "/api/webhooks/docusign", { x: 1 }, [401, 503]);
 
 await db.end();
 console.table(steps);

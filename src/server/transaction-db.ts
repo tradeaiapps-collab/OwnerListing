@@ -1,7 +1,6 @@
 import { evidenceHash, requestStatusAfter, type RequestStatus, type SignerStatus } from "../domain/e-sign";
 import type { DocumentKind } from "../domain/documents";
-import { overlaps, reminderDueAt, type Finding, type InspectionKind, type InspectionRecord, type InspectionStatus, type Severity } from "../domain/inspection";
-import type { Stage, TxnFacts, Viewer } from "../domain/transaction-assistant";
+import type { Finding, InspectionKind, InspectionStatus, Severity, Stage, TxnFacts, Viewer } from "../domain/transaction-assistant";
 import { stageOf } from "../domain/transaction-assistant";
 import type { Queryable } from "./db";
 
@@ -18,11 +17,10 @@ export async function isListingInspector(db: Queryable, listingId: string, userI
   return r.rows.length > 0;
 }
 
-/** A buyer who has enquired on the listing, was named on an inspection, or was asked to sign something on it. */
+/** A buyer who has enquired on the listing, or was asked to sign something on it. */
 export async function isListingParty(db: Queryable, listingId: string, userId: string): Promise<boolean> {
   const r = await db.query(
     `SELECT 1 FROM enquiry WHERE listing_id = $1 AND buyer_user_id = $2
-     UNION ALL SELECT 1 FROM inspection WHERE listing_id = $1 AND buyer_user_id = $2
      UNION ALL SELECT 1 FROM signature_signer s JOIN signature_request q ON q.id = s.request_id WHERE q.listing_id = $1 AND s.user_id = $2
      LIMIT 1`, [listingId, userId]);
   return r.rows.length > 0;
@@ -30,7 +28,7 @@ export async function isListingParty(db: Queryable, listingId: string, userId: s
 
 export interface PartyRow { userId: string; name: string; role: "buyer" | "inspector" }
 
-/** People the owner can pick for an inspection or a signature: buyers who enquired and inspectors assigned to the listing. Names only. */
+/** People the owner can pick for a signature: buyers who enquired and inspectors assigned to the listing. Names only. */
 export async function listingParties(db: Queryable, listingId: string): Promise<PartyRow[]> {
   const r = await db.query(
     `SELECT u.id, u.display_name, 'buyer' AS role FROM enquiry e JOIN app_user u ON u.id = e.buyer_user_id WHERE e.listing_id = $1
@@ -41,120 +39,35 @@ export async function listingParties(db: Queryable, listingId: string): Promise<
   return r.rows.map(x => ({ userId: String(x["id"]), name: String(x["display_name"]), role: x["role"] as PartyRow["role"] }));
 }
 
-// ---------------------------------------------------------------- inspections
+// ---------------------------------------------------------------- inspections (read only, from the inspections module)
 
-const toInspection = (r: Record<string, unknown>): InspectionRecord => ({
-  id: String(r["id"]), listingId: String(r["listing_id"]), kind: r["kind"] as InspectionKind, requestedBy: String(r["requested_by"]),
-  inspectorUserId: opt(r["inspector_user_id"]), buyerUserId: opt(r["buyer_user_id"]),
-  scheduledStart: iso(r["scheduled_start"]), durationMinutes: Number(r["duration_minutes"]), status: r["status"] as InspectionStatus,
-  accessNotes: opt(r["access_notes"]), cancelReason: opt(r["cancel_reason"]), completedAt: r["completed_at"] ? iso(r["completed_at"]) : undefined
-});
-const INSPECTION_COLS = "id, listing_id, kind, requested_by, inspector_user_id, buyer_user_id, scheduled_start, duration_minutes, status, access_notes, cancel_reason, completed_at";
+const KIND_MAP: Record<string, InspectionKind> = { building: "building", pre_purchase: "building", pre_sale: "building", pest: "pest", other: "other" };
+const STATUS_MAP: Record<string, InspectionStatus> = { invited: "requested", accepted: "confirmed", completed: "completed", declined: "cancelled", cancelled: "cancelled" };
+const SEVERITY_MAP: Record<string, Severity> = { info: "info", minor: "minor", moderate: "major", major: "major", critical: "urgent" };
 
-export type CreateInspectionResult = { ok: true; inspection: InspectionRecord } | { ok: false; code: "invalid" | "conflict"; message: string };
+export interface InspectionFact { id: string; kind: InspectionKind; status: InspectionStatus }
 
 /**
- * Books an inspection. The inspector must be assigned to this listing, and may not be booked twice at the same time
- * (their bookings are serialised with an advisory lock). Queues the confirmation email for everyone involved and a 24-hour reminder.
+ * Inspections on the listing as the assistant sees them: the owner and agent see all; anyone else sees only inspections they carry out
+ * or that were shared with them. Read only: booking and findings are handled by the inspections module.
  */
-export async function createInspection(
-  db: Queryable, id: string, listingId: string, requestedBy: string,
-  input: { kind: InspectionKind; scheduledStart: string; durationMinutes: number; inspectorUserId?: string | undefined; buyerUserId?: string | undefined; accessNotes?: string | undefined },
-  ownerUserId: string, nowIso: string
-): Promise<CreateInspectionResult> {
-  if (input.kind !== "walkthrough" && input.kind !== "other" && !input.inspectorUserId) return { ok: false, code: "invalid", message: "Choose the inspector for this inspection." };
-  if (input.inspectorUserId && !(await isListingInspector(db, listingId, input.inspectorUserId))) {
-    return { ok: false, code: "invalid", message: "That inspector is not assigned to this listing. Assign them first." };
-  }
-  if (input.buyerUserId && !(await isListingParty(db, listingId, input.buyerUserId))) {
-    return { ok: false, code: "invalid", message: "That buyer has not enquired about this listing." };
-  }
-  return inTx(db, async q => {
-    if (input.inspectorUserId) {
-      await q.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`inspector:${input.inspectorUserId}`]);
-      const busy = await q.query(
-        "SELECT scheduled_start, duration_minutes FROM inspection WHERE inspector_user_id = $1 AND status IN ('requested','confirmed') AND scheduled_start < $3::timestamptz AND scheduled_start + make_interval(mins => duration_minutes) > $2::timestamptz",
-        [input.inspectorUserId, input.scheduledStart, new Date(Date.parse(input.scheduledStart) + input.durationMinutes * 60_000).toISOString()]);
-      if (busy.rows.some(b => overlaps(input.scheduledStart, input.durationMinutes, iso(b["scheduled_start"]), Number(b["duration_minutes"])))) {
-        return { ok: false as const, code: "conflict" as const, message: "The inspector is already booked at that time." };
-      }
-    }
-    // A walkthrough without an inspector needs no one else to agree, so it starts confirmed.
-    const status: InspectionStatus = input.inspectorUserId ? "requested" : "confirmed";
-    const res = await q.query(
-      `INSERT INTO inspection (id, listing_id, kind, requested_by, inspector_user_id, buyer_user_id, scheduled_start, duration_minutes, status, access_notes)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING ${INSPECTION_COLS}`,
-      [id, listingId, input.kind, requestedBy, input.inspectorUserId ?? null, input.buyerUserId ?? null, input.scheduledStart, input.durationMinutes, status, input.accessNotes ?? null]);
-    const people = new Set([ownerUserId, requestedBy, input.inspectorUserId, input.buyerUserId].filter((x): x is string => !!x));
-    const reminder = reminderDueAt(input.scheduledStart, nowIso);
-    for (const u of people) {
-      await q.query("INSERT INTO inspection_notice (inspection_id, user_id, kind, due_at) VALUES ($1,$2,'confirmation',$3) ON CONFLICT DO NOTHING", [id, u, nowIso]);
-      if (reminder) await q.query("INSERT INTO inspection_notice (inspection_id, user_id, kind, due_at) VALUES ($1,$2,'reminder',$3) ON CONFLICT DO NOTHING", [id, u, reminder]);
-    }
-    return { ok: true as const, inspection: toInspection(res.rows[0]!) };
-  });
-}
-
-export async function inspectionById(db: Queryable, id: string): Promise<InspectionRecord | undefined> {
-  const r = await db.query(`SELECT ${INSPECTION_COLS} FROM inspection WHERE id = $1`, [id]);
-  return r.rows[0] ? toInspection(r.rows[0]) : undefined;
-}
-
-/** Everything on the listing for the owner and agent; only their own for an inspector or a buyer. */
-export async function inspectionsForListing(db: Queryable, listingId: string, who: { all: true } | { userId: string }): Promise<InspectionRecord[]> {
+export async function inspectionsForListing(db: Queryable, listingId: string, who: { all: true } | { userId: string }): Promise<InspectionFact[]> {
   const r = "all" in who
-    ? await db.query(`SELECT ${INSPECTION_COLS} FROM inspection WHERE listing_id = $1 ORDER BY scheduled_start, id`, [listingId])
-    : await db.query(`SELECT ${INSPECTION_COLS} FROM inspection WHERE listing_id = $1 AND (inspector_user_id = $2 OR buyer_user_id = $2) ORDER BY scheduled_start, id`, [listingId, who.userId]);
-  return r.rows.map(toInspection);
+    ? await db.query("SELECT id, inspection_type, status FROM inspection WHERE listing_id = $1 ORDER BY scheduled_at, id", [listingId])
+    : await db.query(
+      `SELECT i.id, i.inspection_type, i.status FROM inspection i WHERE i.listing_id = $1 AND (i.inspector_user_id = $2 OR EXISTS (
+         SELECT 1 FROM inspection_share s WHERE s.inspection_id = i.id AND s.shared_with_user_id = $2 AND s.revoked_at IS NULL))
+       ORDER BY i.scheduled_at, i.id`, [listingId, who.userId]);
+  return r.rows.map(x => ({ id: String(x["id"]), kind: KIND_MAP[String(x["inspection_type"])] ?? "other", status: STATUS_MAP[String(x["status"])] ?? "requested" }));
 }
 
 export async function findingsForInspections(db: Queryable, ids: readonly string[]): Promise<(Finding & { inspectionId: string })[]> {
   if (ids.length === 0) return [];
-  const r = await db.query("SELECT inspection_id, severity, area, summary, recommendation FROM inspection_finding WHERE inspection_id = ANY($1::uuid[]) ORDER BY created_at, id", [ids]);
-  return r.rows.map(x => ({ inspectionId: String(x["inspection_id"]), severity: x["severity"] as Severity, area: String(x["area"]), summary: String(x["summary"]), recommendation: opt(x["recommendation"]) }));
-}
-
-/** Moves the inspection from one status to another only if it is still in `from` (so two people cannot both act). */
-export async function moveInspection(
-  db: Queryable, id: string, from: InspectionStatus, to: InspectionStatus, by: string, nowIso: string,
-  extra: { reason?: string | undefined; findings?: readonly Finding[] } = {}
-): Promise<InspectionRecord | undefined> {
-  return inTx(db, async q => {
-    const r = await q.query(
-      `UPDATE inspection SET status = $3, cancel_reason = COALESCE($4, cancel_reason), completed_at = CASE WHEN $3 = 'completed' THEN $5::timestamptz ELSE completed_at END
-       WHERE id = $1 AND status = $2 RETURNING ${INSPECTION_COLS}`, [id, from, to, extra.reason ?? null, nowIso]);
-    const row = r.rows[0];
-    if (!row) return undefined;
-    for (const f of extra.findings ?? []) {
-      await q.query("INSERT INTO inspection_finding (inspection_id, severity, area, summary, recommendation, created_by) VALUES ($1,$2,$3,$4,$5,$6)",
-        [id, f.severity, f.area, f.summary, f.recommendation ?? null, by]);
-    }
-    if (to === "cancelled") {
-      // The reminder no longer applies; tell everyone it is off.
-      await q.query("UPDATE inspection_notice SET sent_at = $2 WHERE inspection_id = $1 AND kind = 'reminder' AND sent_at IS NULL", [id, nowIso]);
-      await q.query(
-        `INSERT INTO inspection_notice (inspection_id, user_id, kind, due_at)
-         SELECT $1, u, 'cancellation', $2 FROM (SELECT requested_by AS u FROM inspection WHERE id = $1 UNION SELECT inspector_user_id FROM inspection WHERE id = $1
-           UNION SELECT buyer_user_id FROM inspection WHERE id = $1 UNION SELECT l.owner_user_id FROM inspection i JOIN property_listing l ON l.id = i.listing_id WHERE i.id = $1) p WHERE u IS NOT NULL
-         ON CONFLICT DO NOTHING`, [id, nowIso]);
-    }
-    return toInspection(row);
-  });
-}
-
-export interface DueNotice { id: string; kind: "confirmation" | "reminder" | "cancellation"; email: string; name: string; inspectionKind: InspectionKind; scheduledStart: string; address: string; status: InspectionStatus }
-
-export async function dueNotices(db: Queryable, nowIso: string, limit = 50): Promise<DueNotice[]> {
-  const r = await db.query(
-    `SELECT n.id, n.kind, u.email, u.display_name, i.kind AS ikind, i.scheduled_start, i.status, l.address_text AS address
-     FROM inspection_notice n JOIN inspection i ON i.id = n.inspection_id JOIN property_listing l ON l.id = i.listing_id JOIN app_user u ON u.id = n.user_id
-     WHERE n.sent_at IS NULL AND n.due_at <= $1::timestamptz AND u.email IS NOT NULL AND u.status = 'active' ORDER BY n.due_at LIMIT $2`, [nowIso, limit]);
-  return r.rows.map(x => ({ id: String(x["id"]), kind: x["kind"] as DueNotice["kind"], email: String(x["email"]), name: String(x["display_name"]),
-    inspectionKind: x["ikind"] as InspectionKind, scheduledStart: iso(x["scheduled_start"]), address: String(x["address"]), status: x["status"] as InspectionStatus }));
-}
-
-export async function markNoticeSent(db: Queryable, id: string, nowIso: string): Promise<void> {
-  await db.query("UPDATE inspection_notice SET sent_at = $2 WHERE id = $1 AND sent_at IS NULL", [id, nowIso]);
+  const r = await db.query("SELECT inspection_id, severity, area, title, detail FROM inspection_finding WHERE inspection_id = ANY($1::uuid[]) ORDER BY created_at, id", [ids]);
+  return r.rows.map(x => ({
+    inspectionId: String(x["inspection_id"]), severity: SEVERITY_MAP[String(x["severity"])] ?? "info", area: String(x["area"]), summary: String(x["title"]),
+    ...(x["detail"] ? { recommendation: String(x["detail"]).slice(0, 500) } : {})
+  }));
 }
 
 // ---------------------------------------------------------------- generated documents

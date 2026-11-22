@@ -2,9 +2,8 @@ import { NextResponse } from "next/server";
 import { personaById } from "../../../../../src/domain/assistant-persona";
 import { TXN_ASSISTANT_RATE, windowStart, withinLimit } from "../../../../../src/domain/rate-limit";
 import { hashToken } from "../../../../../src/domain/offer-intake";
-import { summariseFindings } from "../../../../../src/domain/inspection";
 import {
-  DESK_LABELS, MAX_QUESTION, STAGE_LABELS, answerQuestion, insights, requestFindingsSummary, requirements
+  DESK_LABELS, summariseFindings, MAX_QUESTION, STAGE_LABELS, answerQuestion, insights, requestFindingsSummary, requirements
 } from "../../../../../src/domain/transaction-assistant";
 import { getAiEngine } from "../../../../../src/server/ai";
 import { getLivePersona } from "../../../../../src/server/assistant-persona-db";

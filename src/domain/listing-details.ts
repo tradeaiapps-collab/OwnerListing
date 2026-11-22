@@ -49,6 +49,21 @@ export function dollarsToCents(input: string): number | undefined {
   return Number.isSafeInteger(cents) ? cents : undefined;
 }
 
+/** Like dollarsToCents, plus the shorthand people type for big prices: "850k", "1.2m", "10m". */
+export function priceInputToCents(input: string): number | undefined {
+  const t = input.trim();
+  const m = /^(\$?\s*(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?)\s*([km])$/i.exec(t);
+  if (!m) return dollarsToCents(t);
+  const [whole, frac = ""] = m[1]!.replace(/[$,\s]/g, "").split(".");
+  const digits = m[2]!.toLowerCase() === "m" ? 6 : 3;
+  if (frac.length > digits) return undefined;
+  const cents = (Number(whole) * 10 ** digits + Number(frac.padEnd(digits, "0"))) * 100;
+  return Number.isSafeInteger(cents) ? cents : undefined;
+}
+
+/** Cents as a typed-in dollar amount with the cents always shown: 85000000 -> "850000.00". */
+export const centsToDollarField = (cents: number) => (cents / 100).toFixed(2);
+
 export function formatAud(cents: number): string {
   return new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD", minimumFractionDigits: cents % 100 === 0 ? 0 : 2 }).format(cents / 100);
 }
@@ -64,8 +79,8 @@ const isInt = (v: unknown, min: number, max: number): v is number => typeof v ==
 export function priceError(priceCents: unknown, tx: "sale" | "rent"): string | undefined {
   if (!isInt(priceCents, 1, maxPriceCents(tx))) {
     return tx === "rent"
-      ? "Weekly rent must be a whole number of cents between $0.01 and $100,000."
-      : "Asking price must be a whole number of cents between $0.01 and $1,000,000,000.";
+      ? "Weekly rent must be a dollar amount between $1 and $100,000. Cents are optional."
+      : "Asking price must be a dollar amount between $1 and $1,000,000,000. Cents are optional.";
   }
   return undefined;
 }

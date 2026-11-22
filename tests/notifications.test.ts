@@ -34,10 +34,14 @@ describe("preferences", () => {
       { preferences: { offers: { inApp: true, email: true } } },
       { preferences: { offers: { inApp: true, email: true, sms: false, push: true } } },
       { preferences: { account: { inApp: true, email: false, sms: false } } },
-      { preferences: { listings: { inApp: true, email: true, sms: true } } },
-      { preferences: { marketing: { inApp: true, email: true, sms: true } } }]) {
+      { preferences: { listings: { inApp: true, email: true, sms: true } } }]) {
       expect(parsePreferencesInput(bad).ok).toBe(false);
     }
+  });
+  it("lets a person opt in to marketing texts for campaigns, but no notification kind is ever texted as marketing", () => {
+    expect(parsePreferencesInput({ preferences: { marketing: { inApp: false, email: false, sms: true } } }).ok).toBe(true);
+    const prefs = { ...defaultPreferences(), marketing: { inApp: true, email: true, sms: true } };
+    expect(planChannels("marketing_news", prefs, true).sms).toBe(false);
   });
   it("lists only flipped channels as consent changes", () => {
     const a = defaultPreferences();
@@ -68,6 +72,30 @@ describe("channel planning", () => {
   });
   it("every kind maps to a category", () => {
     for (const k of Object.keys(KINDS) as Kind[]) expect(CATEGORIES).toContain(renderNotification(k).category);
+  });
+});
+
+describe("sold and buyer-counter notices", () => {
+  it("words the owner's counter notice without any price and keeps it on the offers category", () => {
+    const n = renderNotification("offer_buyer_countered", { listing: "12 Reef St", link: "/listings/x/offers/y" });
+    expect(n.category).toBe("offers");
+    expect(n.title).toBe("Buyer counter-offer");
+    expect(n.body).toContain("12 Reef St");
+    expect(n.body).not.toMatch(/\$/);
+    expect(n.link).toBe("/listings/x/offers/y");
+    expect(n.smsText).toContain("Buyer counter-offer");
+  });
+  it("says sold or rented, goes by email on the listings setting and never by text", () => {
+    expect(renderNotification("listing_sold", { listing: "12 Reef St", rent: "0" }).body).toBe("12 Reef St has been sold and is no longer available.");
+    expect(renderNotification("listing_sold", { listing: "12 Reef St", rent: "1" }).title).toBe("Property no longer available");
+    const n = renderNotification("listing_sold", { listing: "12 Reef St", link: "/browse" });
+    expect(n.category).toBe("listings");
+    expect(n.smsText).toBeNull();
+    const p = { ...defaultPreferences(), listings: { inApp: true, email: true, sms: true } };
+    expect(planChannels("listing_sold", p, true).sms).toBe(false);
+    expect(planChannels("listing_sold", p, true).email).toBe(true);
+    const off = { ...defaultPreferences(), listings: { inApp: false, email: false, sms: false } };
+    expect(planChannels("listing_sold", off, true)).toEqual({ inApp: false, email: false, sms: false });
   });
 });
 
@@ -161,5 +189,28 @@ describe("Elena", () => {
     expect(describeSuggestions([]).text).toMatch(/look right/);
     expect(describeSuggestions(s).text).toContain("Messages:");
     expect(CATEGORY_INFO.marketing.defaults.email).toBe(false);
+  });
+});
+
+describe("terms-agreed and back-on-market notices", () => {
+  it("tells the owner the buyer agreed, without a price, and says nothing is accepted yet", () => {
+    const n = renderNotification("offer_terms_agreed", { listing: "12 Reef St", link: "/listings/x/offers/y" });
+    expect(n.category).toBe("offers");
+    expect(n.title).toBe("Buyer agreed to your terms");
+    expect(n.body).toContain("12 Reef St");
+    expect(n.body).toContain("Nothing is accepted yet");
+    expect(n.body).not.toMatch(/\$/);
+    expect(n.link).toBe("/listings/x/offers/y");
+  });
+  it("says back on the market or available again, by email on the listings setting and never by text", () => {
+    expect(renderNotification("listing_back_on_market", { listing: "12 Reef St", rent: "0" }).title).toBe("Back on the market");
+    expect(renderNotification("listing_back_on_market", { listing: "12 Reef St", rent: "1" }).title).toBe("Property available again");
+    const n = renderNotification("listing_back_on_market", { listing: "12 Reef St", link: "/listings/x" });
+    expect(n.category).toBe("listings");
+    expect(n.smsText).toBeNull();
+    const p = { ...defaultPreferences(), listings: { inApp: true, email: true, sms: true } };
+    expect(planChannels("listing_back_on_market", p, true)).toMatchObject({ email: true, sms: false });
+    const off = { ...defaultPreferences(), listings: { inApp: false, email: false, sms: false } };
+    expect(planChannels("listing_back_on_market", off, true)).toEqual({ inApp: false, email: false, sms: false });
   });
 });
