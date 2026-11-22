@@ -171,6 +171,10 @@ export default function GuideAssistant({ greeting, persona }: {
     setBusy(false);
   }
 
+  // The Browse page has Elena built in, so the floating button would be a second copy covering the chat buttons.
+  const [onBrowse, setOnBrowse] = useState(false);
+  useEffect(() => setOnBrowse(window.location.pathname === "/listings"), []);
+
   const askRef = useRef(ask);
   askRef.current = ask;
 
@@ -185,7 +189,7 @@ export default function GuideAssistant({ greeting, persona }: {
           </div>
         </div>
       )}
-      <button ref={launcher} type="button" className="ga-launcher" aria-haspopup="dialog" aria-expanded={open} onClick={() => (open ? close() : setOpen(true))}>
+      <button ref={launcher} type="button" className="ga-launcher" hidden={onBrowse && !open} aria-haspopup="dialog" aria-expanded={open} onClick={() => (open ? close() : setOpen(true))}>
         <img className="ga-avatar" src={persona.icon} alt="" width={40} height={40} />
         <span>{open ? "Close help" : `Ask ${persona.name}`}</span>
       </button>

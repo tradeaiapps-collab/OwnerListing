@@ -12,6 +12,7 @@ const PROJECTS: RoleNavItem = { id: "projects", label: "Projects", href: "/inves
 
 export const ROLE_NAV: Record<UserRole, readonly RoleNavItem[]> = {
   owner: [
+    { id: "browse", label: "Browse", href: "/listings" },
     { id: "mine", label: "My listings", href: "/listings/mine" },
     { id: "offers", label: "Offers", href: "/listings/mine" },
     PROJECTS,
