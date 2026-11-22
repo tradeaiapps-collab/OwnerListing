@@ -68,9 +68,9 @@ describe("draft catalogues", () => {
     expect(catalogFor("fa", [], ["fa"], cats)).toBeUndefined();
     expect(catalogFor("fa", ["fa"], ["fa"], cats)?.["Browse"]).toBe("مرور");
   });
-  it("ships the Persian draft as not reviewed", async () => {
+  it("lists Persian as reviewed (approved by john)", async () => {
     const { REVIEWED_LOCALES, CATALOGS } = await import("../src/i18n");
-    expect(REVIEWED_LOCALES).not.toContain("fa");
+    expect(REVIEWED_LOCALES).toContain("fa");
     expect(Object.keys(CATALOGS["fa"] ?? {}).length).toBeGreaterThan(50);
   });
 });

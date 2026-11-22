@@ -1,7 +1,7 @@
 import type { Catalog } from "../domain/i18n";
 
 /**
- * DRAFT Persian (Farsi). Keys are the English text. Not live until a native speaker has reviewed it and "fa" is added to REVIEWED_LOCALES.
+ * Persian (Farsi), approved by john. Keys are the English text. Live only when an admin also enables "fa".
  * Legal documents, disclosures and terms stay in English.
  */
 export const FA: Catalog = {

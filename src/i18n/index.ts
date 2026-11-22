@@ -3,5 +3,5 @@ import { FA } from "./fa";
 
 export const CATALOGS: Readonly<Record<string, Catalog>> = { fa: FA };
 
-/** Languages whose catalogue a native speaker has approved. Empty on purpose: add "fa" only after john's review. */
-export const REVIEWED_LOCALES: readonly string[] = [];
+/** Languages whose catalogue a native speaker has approved. Persian approved by john on 22 Nov 2026. */
+export const REVIEWED_LOCALES: readonly string[] = ["fa"];
