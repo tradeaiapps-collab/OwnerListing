@@ -60,6 +60,7 @@ export const STAFF_SECTIONS: readonly StaffSection[] = [
   { href: "/staff/ad-leads/rules", label: "Lead routing rules", permissions: ["ad_leads.manage"] },
   { href: "/staff/automation", label: "Automation", permissions: ["automation.manage"] },
   { href: "/staff/valuation-settings", label: "Property valuations", permissions: ["valuation.manage"] },
+  { href: "/staff/languages", label: "Site languages", permissions: ["config.edit"] },
   { href: "/staff/listing-optimization-settings", label: "Listing optimization", permissions: ["listing_optimization.manage"] },
   { href: "/staff/cron-secrets", label: "Scheduler secrets", permissions: ["config.edit"] },
   { href: "/staff/applicant-retention", label: "Applicant data retention", permissions: ["config.edit"] },

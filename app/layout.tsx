@@ -83,7 +83,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   // Local review only: PREVIEW_LOCALE=fa shows a draft catalogue on a dev machine. Ignored in production.
   const preview = process.env["NODE_ENV"] !== "production" ? process.env["PREVIEW_LOCALE"] : undefined;
   const locale = !admin && (preview ?? savedLocale) && LOCALES.some(l => l.code === (preview ?? savedLocale)) ? (preview ?? savedLocale as string) : DEFAULT_LOCALE;
-  const enabledLocales = admin ? [] : preview ? [preview] : await getEnabledLocalesPg(getDb()).catch(() => [] as string[]);
+  const enabledLocales = admin ? [] : preview ? [preview] : await (async () => getEnabledLocalesPg(getDb()))().catch(() => [] as string[]);
   const catalog = catalogFor(locale, enabledLocales, preview ? [preview] : REVIEWED_LOCALES, CATALOGS);
   return (
     <html lang={locale} dir={isRtl(locale) ? "rtl" : "ltr"} data-theme-mode={fixedLight ? "light" : undefined} suppressHydrationWarning>
