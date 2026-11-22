@@ -16,7 +16,11 @@ import "./styles/pwa.css";
 import PwaRegister from "./pwa-register";
 import { appOriginFor, readAppMode } from "../src/config/app-mode";
 import { LOCALE_COOKIE } from "../src/domain/account-settings";
-import { DEFAULT_LOCALE, LOCALES, isRtl } from "../src/domain/i18n";
+import { DEFAULT_LOCALE, LOCALES, catalogFor, isRtl } from "../src/domain/i18n";
+import { CATALOGS, REVIEWED_LOCALES } from "../src/i18n";
+import { I18nProvider } from "./i18n-provider";
+import { getDb } from "../src/server/context";
+import { getEnabledLocalesPg } from "../src/server/terms-db";
 import { personaById } from "../src/domain/assistant-persona";
 import { GUIDE_DISCLAIMER } from "../src/domain/guide-assistant";
 import { assetUrl, buildThemeCss, fontStylesheetUrl } from "../src/domain/site-theme";
@@ -76,7 +80,11 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
 
   // The saved language (set on /settings) drives <html lang> and text direction. Page text stays English until a language is enabled.
   const savedLocale = (await cookies()).get(LOCALE_COOKIE)?.value;
-  const locale = !admin && savedLocale && LOCALES.some(l => l.code === savedLocale) ? savedLocale : DEFAULT_LOCALE;
+  // Local review only: PREVIEW_LOCALE=fa shows a draft catalogue on a dev machine. Ignored in production.
+  const preview = process.env["NODE_ENV"] !== "production" ? process.env["PREVIEW_LOCALE"] : undefined;
+  const locale = !admin && (preview ?? savedLocale) && LOCALES.some(l => l.code === (preview ?? savedLocale)) ? (preview ?? savedLocale as string) : DEFAULT_LOCALE;
+  const enabledLocales = admin ? [] : preview ? [preview] : await getEnabledLocalesPg(getDb()).catch(() => [] as string[]);
+  const catalog = catalogFor(locale, enabledLocales, preview ? [preview] : REVIEWED_LOCALES, CATALOGS);
   return (
     <html lang={locale} dir={isRtl(locale) ? "rtl" : "ltr"} data-theme-mode={fixedLight ? "light" : undefined} suppressHydrationWarning>
       <head>
@@ -86,6 +94,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
         <style id="site-theme" dangerouslySetInnerHTML={{ __html: buildThemeCss(settings, { followDevice: admin }) }} />
       </head>
       <body className={admin ? "admin-app" : undefined}>
+        <I18nProvider {...(catalog ? { catalog } : {})}>
         <a className="skip-link" href="#main-content">Skip to content</a>
         {admin ? (
           <AdminShell brand={brand.name} logo={logo} siteHref={appOriginFor("public")}>{children}</AdminShell>
@@ -133,6 +142,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
         <ElenaContextTracker />
         {guide?.enabled && <GuideAssistant greeting={guide.greeting} chips={guide.chips} disclaimer={GUIDE_DISCLAIMER} persona={{ name: persona.name, icon: persona.icon, portrait: persona.portrait, poses: persona.poses }} />}
         {bridgeOrigin && <ThemePreviewBridge allowedOrigin={bridgeOrigin} />}
+        </I18nProvider>
       </body>
     </html>
   );

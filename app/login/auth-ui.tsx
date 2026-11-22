@@ -1,6 +1,7 @@
 "use client";
 import type { ReactNode } from "react";
 import { JSON_HEADERS } from "../listings/ui";
+import { useT } from "../i18n-provider";
 
 export interface Providers { google: boolean; email: boolean; dev?: boolean }
 
@@ -42,4 +43,7 @@ export function GoogleButton({ href, label }: { href: string; label: string }) {
   return <a className="button secondary auth-google" href={href}><GoogleMark />{label}</a>;
 }
 
-export const OrDivider = () => <p className="auth-or" role="separator" aria-label="or"><span>or</span></p>;
+export function OrDivider() {
+  const t = useT();
+  return <p className="auth-or" role="separator" aria-label={t("or")}><span>{t("or")}</span></p>;
+}
