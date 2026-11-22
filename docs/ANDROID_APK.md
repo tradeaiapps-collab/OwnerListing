@@ -10,8 +10,11 @@ Builds the Capacitor shell in `capacitor/`: a thin app that opens the OwnerListi
 ## Build on GitHub (no installs)
 Actions, "Android debug APK", Run workflow, enter the URL. Download artifact `ownerlisting-debug-apk` (zip containing `app-debug.apk`).
 
-## Build on the PC
-Needs Node 22, JDK 17 or 21, Android Studio (installs the SDK).
+## Build on the PC (easiest)
+Prerequisites: Node 22, and Android Studio (open it once so it installs the SDK and a JDK).
+Double-click `capacitor\build-android-apk.bat`, type the address, wait. `ownerlisting.apk` appears on your Desktop.
+
+### Manual steps (same thing)
 ```
 cd capacitor
 npm install
