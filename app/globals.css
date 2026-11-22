@@ -126,11 +126,11 @@ body > .page { flex: 1 0 auto; width: 100%; }
   max-width: var(--container);
   margin: 0 auto;
   padding: var(--space-2) var(--space-4);
-  min-height: var(--header-h, 72px);
+  min-height: var(--header-h, 56px);
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: var(--space-1) var(--space-4);
+  gap: 0 var(--space-4);
 }
 .brand {
   display: inline-flex;
@@ -161,8 +161,8 @@ body > .page { flex: 1 0 auto; width: 100%; }
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
-  min-height: 44px;
-  min-width: 44px;
+  min-height: 40px;
+  min-width: 40px;
   padding: var(--space-1) var(--space-3);
   border-radius: 999px;
   color: var(--header-text, var(--text));
@@ -181,17 +181,18 @@ body > .page { flex: 1 0 auto; width: 100%; }
 .site-nav a:hover, .site-nav .nav-signout:hover { color: var(--header-text, var(--text)); }
 .site-nav a[href="/api/auth/google/start"], .site-nav a[href="/dev-login"] { background: var(--brand); color: var(--brand-text); font-weight: 600; padding-inline: var(--space-4) calc(var(--space-4) + 2px); box-shadow: var(--shadow-1); }
 .site-nav a[href="/api/auth/google/start"]:hover, .site-nav a[href="/dev-login"]:hover { background: var(--brand-strong); color: var(--brand-text); }
-.site-nav .nav-signout { background: none; border: 1px solid var(--border); cursor: pointer; box-shadow: none; min-height: 44px; }
+.site-nav .nav-signout { background: none; border: 1px solid color-mix(in srgb, var(--border) 60%, transparent); cursor: pointer; box-shadow: none; min-height: 36px; }
 .site-nav .nav-signout:hover:not(:disabled) { background: var(--tint); border-color: var(--gold); color: var(--header-text, var(--text)); }
 .site-nav .nav-role { display: inline-flex; align-items: center; min-height: 44px; padding: 0 var(--space-3); font-size: 0.875rem; font-weight: 600; color: var(--header-text, var(--text)); }
 .site-nav .icon { flex: none; opacity: 0.7; }
 .site-nav-links { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1); }
 .site-nav .nav-toggle { display: none; }
-.theme-toggle { flex: none; align-self: center; display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; padding: 0; border: 1px solid var(--border); border-radius: 999px; background: none; color: var(--header-text, var(--text)); cursor: pointer; box-shadow: none; transition: background-color var(--dur-1) var(--ease); }
+.theme-toggle { flex: none; align-self: center; display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; padding: 0; border: 1px solid color-mix(in srgb, var(--border) 60%, transparent); border-radius: 999px; background: none; color: var(--header-text, var(--text)); cursor: pointer; box-shadow: none; transition: background-color var(--dur-1) var(--ease); }
 .theme-toggle:hover { background: var(--tint-2); }
 .site-nav .theme-toggle { margin-inline-start: var(--space-1); }
 @media (max-width: 719px) {
   .site-nav { flex: 1 0 100%; gap: 0 var(--space-1); }
+  .site-nav a, .site-nav .nav-signout, button.role-switch-btn { min-height: 44px; }
   .site-nav a, .site-nav .nav-signout { padding-inline: var(--space-2); font-size: 0.875rem; }
   .site-nav a[href="/api/auth/google/start"] { padding-inline: var(--space-3); }
 }
@@ -507,7 +508,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 
 /* Role switcher (header) and role management cards. Tokens only; colours come from existing theme variables. */
 .role-switch { position: relative; flex: none; align-self: center; margin-inline-start: var(--space-1); }
-button.role-switch-btn { display: inline-flex; align-items: center; gap: var(--space-2); min-height: 44px; max-width: 100%; padding: 0 var(--space-3); border: 1px solid var(--border); border-radius: 999px; background: transparent; color: var(--header-text, var(--text)); font: inherit; cursor: pointer; box-shadow: none; }
+button.role-switch-btn { display: inline-flex; align-items: center; gap: var(--space-2); min-height: 36px; max-width: 100%; padding: 0 var(--space-3); border: 1px solid color-mix(in srgb, var(--border) 60%, transparent); border-radius: 999px; background: transparent; color: var(--header-text, var(--text)); font: inherit; cursor: pointer; box-shadow: none; }
 button.role-switch-btn:hover:not(:disabled), button.role-switch-btn[aria-expanded="true"] { background: var(--tint-2); color: var(--header-text, var(--text)); }
 .role-switch-hint { color: inherit; opacity: 0.75; font-size: 0.85em; }
 .role-dot { width: 10px; height: 10px; flex: none; border-radius: 50%; background: var(--accent, currentColor); }
