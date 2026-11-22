@@ -194,6 +194,9 @@ body > .page { flex: 1 0 auto; width: 100%; }
   .site-nav { flex: 1 0 100%; gap: 0 var(--space-1); }
   .site-nav a, .site-nav .nav-signout { padding-inline: var(--space-2); font-size: 0.875rem; }
   .site-nav a[href="/api/auth/google/start"] { padding-inline: var(--space-3); }
+}
+/* With JavaScript the links collapse behind a Menu button on phones and tablets, so the header never wraps onto several lines. */
+@media (max-width: 1099px) {
   /* With JavaScript the links collapse behind a Menu button; without it they stay visible as before. */
   .site-nav.has-menu[data-js] { flex: 0 0 auto; }
   .site-nav.has-menu[data-js] .nav-toggle {
