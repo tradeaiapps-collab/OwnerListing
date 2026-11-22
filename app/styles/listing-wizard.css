@@ -39,7 +39,7 @@
 .wiz-seg i { height: 6px; border-radius: 999px; background: var(--line); }
 .wiz-seg-item.on i { background: var(--accent); }
 .wiz-seg-item.ok i { background: color-mix(in srgb, var(--accent) 55%, var(--text)); }
-.wiz-body { padding: var(--space-6); display: grid; gap: var(--space-4); }
+.wiz-body { padding: var(--space-6); display: grid; align-content: start; gap: var(--space-4); }
 @media (max-width: 559px) { .wiz-body { padding: var(--space-4); } }
 .wiz-body > div[hidden], .wiz-step[hidden] { display: none; }
 .wiz-body .form-section { border: 0; box-shadow: none; background: none; padding: 0; }

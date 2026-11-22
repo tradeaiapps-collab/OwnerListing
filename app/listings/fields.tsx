@@ -158,7 +158,7 @@ export function ListingFields({ defaults = {}, photoCount, step, errors = {} }: 
             <AddressField defaultValue={defaults.address ?? ""} invalid={errors["address"] !== undefined} />
             {msg("address")}
           </label>
-          <div className="form-grid">
+          <div className="form-grid cols-3">
             <label className="field"><span>Suburb <ElenaTip text={tips.suburb} /></span>
               <input name="suburb" maxLength={80} defaultValue={defaults.suburb ?? ""} autoComplete="address-level2" />
             </label>
