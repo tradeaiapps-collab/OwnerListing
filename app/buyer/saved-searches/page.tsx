@@ -112,7 +112,7 @@ export default function SavedSearches() {
   }
 
   return (
-    <main className="narrow">
+    <main className="ss-page">
       <h1>Saved searches</h1>
       {signedOut && <p role="alert"><a href="/login?as=buyer&next=/buyer/saved-searches">Sign in</a> to save a search.</p>}
       <p className="muted">Save what you are looking for and we can tell you when a matching property is listed.</p>
@@ -141,7 +141,7 @@ export default function SavedSearches() {
             <label className="field">Property type
               <select name="propertyType">
                 <option value="">Any property type</option>
-                {PROPERTY_TYPES.map(t => <option key={t}>{t}</option>)}
+                {PROPERTY_TYPES.map(t => <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>)}
               </select>
             </label>
             <label className="field span-all">Suburbs
@@ -156,18 +156,23 @@ export default function SavedSearches() {
             <label className="field">Minimum bedrooms
               <input name="minBedrooms" inputMode="numeric" placeholder="1 or more (studios count as 1)" />
             </label>
-            <label className="field">Minimum bathrooms
-              <input name="minBathrooms" inputMode="numeric" placeholder="Optional, e.g. 1" />
-            </label>
-            <label className="field">Minimum parking
-              <input name="minParking" inputMode="numeric" placeholder="Optional, e.g. 1" />
-            </label>
-            <fieldset className="field span-all mf-group">
-              <legend>Must have</legend>
-              <div className="amenity-checks">
-                {AMENITIES.map(a => <label key={a} className="check"><input type="checkbox" name="amenities" value={a} /><span>{AMENITY_LABELS[a]}</span></label>)}
+            <details className="field span-all ss-more">
+              <summary>More filters</summary>
+              <div className="form-grid">
+                <label className="field">Minimum bathrooms
+                  <input name="minBathrooms" inputMode="numeric" placeholder="Optional, e.g. 1" />
+                </label>
+                <label className="field">Minimum parking
+                  <input name="minParking" inputMode="numeric" placeholder="Optional, e.g. 1" />
+                </label>
+                <fieldset className="field span-all mf-group">
+                  <legend>Must have</legend>
+                  <div className="amenity-checks">
+                    {AMENITIES.map(a => <label key={a} className="check"><input type="checkbox" name="amenities" value={a} /><span>{AMENITY_LABELS[a]}</span></label>)}
+                  </div>
+                </fieldset>
               </div>
-            </fieldset>
+            </details>
           </div>
         </fieldset>
         <div className="form-bar"><button type="submit" disabled={busy}>Save search</button></div>
@@ -175,6 +180,21 @@ export default function SavedSearches() {
       {error && <p role="alert">{error}</p>}
       {hints.map(h => <p key={h} className="muted">{h}</p>)}
 
+      <section>
+        <h2>Alerts</h2>
+        <p className="muted">We only send alerts for new matching listings if you choose a channel below. You can turn a channel off at any time.</p>
+        {(["email", "sms"] as const).map(channel => (
+          <label key={channel} className="check">
+            <input
+              type="checkbox"
+              checked={consented(prefs, channel)}
+              disabled={busy || signedOut}
+              onChange={e => setConsent(channel, e.target.checked)}
+            />
+            <span>{channel === "email" ? "Email me when a matching property is listed" : "Text me when a matching property is listed"}</span>
+          </label>
+        ))}
+      </section>
       <section>
         <h2>Your searches</h2>
         {searches.length === 0 ? <p className="empty">No saved searches yet.</p> : (
@@ -201,21 +221,6 @@ export default function SavedSearches() {
         {deleteError && <p role="alert">{deleteError}</p>}
       </section>
 
-      <section>
-        <h2>Alerts</h2>
-        <p className="muted">We only send alerts for new matching listings if you choose a channel below. You can turn a channel off at any time.</p>
-        {(["email", "sms"] as const).map(channel => (
-          <label key={channel} className="check">
-            <input
-              type="checkbox"
-              checked={consented(prefs, channel)}
-              disabled={busy || signedOut}
-              onChange={e => setConsent(channel, e.target.checked)}
-            />
-            <span>{channel === "email" ? "Email me when a matching property is listed" : "Text me when a matching property is listed"}</span>
-          </label>
-        ))}
-      </section>
       <p className="ss-cta"><a className="button" href="/listings">Browse all listings →</a></p>
     </main>
   );

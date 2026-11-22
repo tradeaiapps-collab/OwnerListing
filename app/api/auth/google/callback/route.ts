@@ -62,6 +62,12 @@ async function handleGet(req: Request) {
     const vetted = vetGoogleName(who);
     const user = await upsertGoogleUser(getDb(), vetted.identity, role === "buyer" || role === "agent" ? role : "owner");
     if (!user) return failed();
+    // Google only releases the identity when it vouches for the email (email_verified), so that counts as the email step of buyer verification.
+    await getDb().query(
+      `INSERT INTO buyer_verification (user_id, email_verified_at) VALUES ($1::uuid, now())
+       ON CONFLICT (user_id) DO UPDATE SET email_verified_at = COALESCE(buyer_verification.email_verified_at, now())`,
+      [user.id]
+    );
     if (vetted.replaced && user.created) {
       await guardContent(createPgContentFlagStore(getDb()), { source: "profile", subjectType: "google_display_name", userId: user.id, fields: { display_name: who.name } });
     }

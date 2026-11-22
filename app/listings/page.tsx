@@ -147,6 +147,7 @@ export default function Listings() {
         <h1>Find a property</h1>
         <a className="button secondary" href="/listings/new">List your property</a>
       </div>
+      <ElenaSearch query={appliedQuery} total={rows === null ? null : total} onApply={applyParams} onClear={clearParams} />
       {ready && <BuyerAdvisor query={appliedQuery} total={rows === null ? null : total} startOpen={false} onApply={advise} />}
       <form id="listing-search" className="search-form" aria-label="Search listings" onSubmit={e => { e.preventDefault(); setPage(1); setApplied(form); }}>
         <input className="wide search-words" type="search" aria-label="Search by street, suburb or feature" placeholder="Search by street, suburb or feature, e.g. saltwater pool" maxLength={100} value={form.q} onChange={set("q")} />
@@ -187,7 +188,6 @@ export default function Listings() {
           <a href="/buyer/saved-searches">Saved searches</a>
         </div>
       )}
-      <ElenaSearch query={appliedQuery} total={rows === null ? null : total} onApply={applyParams} onClear={clearParams} />
       <div className="result-bar" id="listing-results">
         <div className="view-toggle" role="group" aria-label="Show results as">
           <button type="button" className="secondary" aria-pressed={view === "list"} onClick={() => pick("list")}><span className="vt-icon vt-list" aria-hidden="true" />List</button>
