@@ -226,7 +226,7 @@ export function PhotoManager({ listingId, projectId }: { listingId?: string; pro
     <section className="gl-mgr" aria-labelledby="gl-mgr-h">
       <h2 id="gl-mgr-h">{isProject ? "Gallery" : "Photos and floor plans"}</h2>
       <p className="muted">
-        {isProject ? `${counts.photo} of ${PROJECT_PHOTO_MAX} photos.` : `${counts.photo} of ${PHOTO_LIMITS.maxPhotos} photos, ${counts.floorplan} of ${PHOTO_LIMITS.maxFloorplans} floor plans, ${rows.filter(r => !r.hidden && r.kind === "photo360").length} of ${PHOTO_LIMITS.max360} 360 photos.`} JPEG, PNG or WebP, up to {MB} MB each.
+        {isProject ? `${counts.photo} of ${PROJECT_PHOTO_MAX} photos.` : `${counts.photo} of ${PHOTO_LIMITS.maxPhotos} photos, ${counts.floorplan} of ${PHOTO_LIMITS.maxFloorplans} floor plans, ${rows.filter(r => !r.hidden && r.kind === "photo360").length} of ${PHOTO_LIMITS.max360} 360 photos.`} JPEG, PNG or WebP, up to {MB} MB each. Animated WebP is saved as a single still frame.
         Location and camera details are removed from every image. The first photo is the cover.
       </p>
       {isProject && <p className="muted">Photos are shown only to investors who can see the full project. They are kept on record: you can hide, reorder or replace them, but not delete them. Any change except hiding sends an approved project back to staff review.</p>}

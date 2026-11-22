@@ -103,6 +103,10 @@ describe("S3 object storage", () => {
     expect(objectStorageFromEnv({ ...ok, S3_SSE: "aws:kms" }).configured).toBe(true);
     expect(objectStorageFromEnv({ ...ok, S3_ENDPOINT: "https://s3.wasabisys.com" }).configured).toBe(true);
     for (const miss of ["S3_BUCKET", "S3_REGION", "S3_ACCESS_KEY_ID", "S3_SECRET_ACCESS_KEY"]) expect(objectStorageFromEnv({ ...ok, [miss]: "" }).configured).toBe(false);
+    expect(objectStorageFromEnv({ ...ok, S3_SSE: "none" }).configured).toBe(false);
+    expect(objectStorageFromEnv({ ...ok, S3_SSE: "none", S3_ENDPOINT: "https://s3.ap-southeast-2.amazonaws.com" }).configured).toBe(false);
+    expect(objectStorageFromEnv({ ...ok, S3_SSE: "none", S3_ENDPOINT: "https://abc.storage.supabase.co/storage/v1/s3" }).configured).toBe(true);
+    expect(objectStorageFromEnv({ ...ok, S3_ENDPOINT: "https://x.co/a?b=1" }).configured).toBe(false);
     expect(objectStorageFromEnv({ ...ok, S3_ENDPOINT: "http://x.local" }).configured).toBe(false);
     expect(objectStorageFromEnv({ ...ok, S3_ENDPOINT: "not a url" }).configured).toBe(false);
   });

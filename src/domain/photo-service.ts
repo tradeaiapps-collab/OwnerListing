@@ -94,7 +94,7 @@ export async function precheckPhotoUpload(
 }
 
 /**
- * Order: role, providers, type from the bytes, re-encode (sanitiser), metadata strip, size and pixel checks, room, malware scan (fail closed),
+ * Order: role, providers, type from the bytes, metadata strip, size and pixel checks, re-encode (sanitiser) and recheck, room, malware scan (fail closed),
  * resized copies (optional), store bytes under random keys, then the photo row and new layout in one locked write.
  * The user's filename is discarded. A replacement keeps the earlier photo on record, hidden.
  */
@@ -111,15 +111,21 @@ export async function uploadPhoto(
   if (input.bytes.length > PHOTO_LIMITS.maxBytes) return fail("invalid", "Each photo must be 10 MB or smaller.");
   const real = sniffMime(input.bytes);
   if (real !== input.declaredMime) return fail("invalid", "The file's contents do not match its type.");
-  // Re-encode first when the sanitiser is on: only decoded pixels go on to the checks and into storage.
-  let source = input.bytes;
-  if (ports.sanitiser?.available) {
-    try { source = await ports.sanitiser.sanitise(input.bytes, real as PhotoMime); } catch { return fail("invalid", "This image could not be read. Try saving it again as a JPEG or PNG."); }
-  }
-  const stripped = stripImageMetadata(source, real as PhotoMime);
+  // Cheap header checks on the original first (type, size, pixel count), so a huge image never reaches the decoder.
+  let stripped = stripImageMetadata(input.bytes, real as PhotoMime);
   if (!stripped.ok) return fail("invalid", stripped.reason);
-  const problem = checkImage(stripped.info, stripped.bytes.length);
+  let problem = checkImage(stripped.info, stripped.bytes.length);
   if (problem) return fail("invalid", problem);
+  // Then re-encode when the sanitiser is on: only decoded pixels go into storage. The result is checked again.
+  if (ports.sanitiser?.available) {
+    let clean: Uint8Array;
+    try { clean = await ports.sanitiser.sanitise(stripped.bytes, real as PhotoMime); } catch { return fail("invalid", "This image could not be read. Try saving it again as a JPEG or PNG."); }
+    const again = stripImageMetadata(clean, real as PhotoMime);
+    if (!again.ok) return fail("invalid", again.reason);
+    stripped = again;
+    problem = checkImage(stripped.info, stripped.bytes.length);
+    if (problem) return fail("invalid", problem);
+  }
   if (kind === "photo360" && !looks360(stripped.info.width, stripped.info.height)) return fail("invalid", "A 360 photo must be a full panorama twice as wide as it is tall (2:1).");
 
   const [layout, existing] = await Promise.all([store.currentLayout(listingId), store.photosForListing(listingId)]);
