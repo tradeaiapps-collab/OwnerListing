@@ -327,4 +327,8 @@ a.home-link:hover::after { transform: translateX(4px); }
   .hl-modes { gap: var(--space-12); }
 }
 
-.home-invest-note { max-width: 70ch; margin-top: var(--space-6); font-size: 0.875rem; }
+.home-invest { display: grid; gap: var(--space-4); align-items: center; }
+.home-invest > a { justify-self: start; }
+@media (min-width: 768px) { .home-invest { grid-template-columns: minmax(0, 1fr) auto; gap: var(--space-12); } }
+.home-invest-warning { padding: var(--space-6) 0; border-top: 1px solid var(--line); background: var(--bg); font-size: 0.875rem; }
+.home-invest-warning p { margin: 0; max-width: none; }
