@@ -17,8 +17,13 @@ type RecCtor = new () => Rec;
 const recognitionCtor = (): RecCtor | undefined => {
   if (typeof window === "undefined") return undefined;
   const w = window as unknown as { SpeechRecognition?: RecCtor; webkitSpeechRecognition?: RecCtor };
+  // Opera exposes the API but never returns results, so it is treated as unsupported (typing still works).
+  if (/\bOPR\/|\bOpera\b/.test(navigator.userAgent)) return undefined;
   return w.SpeechRecognition ?? w.webkitSpeechRecognition;
 };
+const NO_VOICE = "Voice typing isn't supported in this browser. Use Chrome or Edge, or type your question.";
+const NO_RESULT = "I didn't hear anything. Check the microphone is allowed, use Chrome or Edge, or type instead.";
+const NO_RESULT_MS = 8000;
 
 interface Msg { id: number; from: "guide" | "you"; text: string; links?: GuideLink[] }
 
@@ -67,7 +72,7 @@ export default function GuideAssistant({ greeting, persona }: {
   const [micOn, setMicOn] = useState(false);
   const [micNote, setMicNote] = useState("");
   const rec = useRef<Rec | null>(null);
-  useEffect(() => { setCanTalk(!!recognitionCtor()); return () => rec.current?.stop(); }, []);
+  useEffect(() => { setCanTalk(!!recognitionCtor()); if (!recognitionCtor() && typeof window !== "undefined" && "webkitSpeechRecognition" in window) setMicNote(NO_VOICE); return () => rec.current?.stop(); }, []);
   const toggleMic = () => {
     if (rec.current) { rec.current.stop(); return; }
     const Ctor = recognitionCtor();
@@ -76,10 +81,14 @@ export default function GuideAssistant({ greeting, persona }: {
     const r = new Ctor();
     r.lang = navigator.language || "en-AU"; r.interimResults = true; r.continuous = false;
     let heard = "", failed = false;
-    r.onresult = e => { heard = cleanTranscript(Array.from(e.results).map(x => x[0]?.transcript ?? ""), GUIDE_LIMITS.message); setText(heard); };
-    r.onerror = e => { failed = true; setMicNote(micErrorMessage(e.error ?? "")); };
+    // Some browsers say "listening" but never return anything: stop after a while and say so, instead of staying silent.
+    const watchdog = setTimeout(() => { if (!heard) { failed = true; setMicNote(NO_RESULT); r.stop(); } }, NO_RESULT_MS);
+    r.onresult = e => { clearTimeout(watchdog); heard = cleanTranscript(Array.from(e.results).map(x => x[0]?.transcript ?? ""), GUIDE_LIMITS.message); setText(heard); };
+    r.onerror = e => { clearTimeout(watchdog); failed = true; setMicNote(micErrorMessage(e.error ?? "")); };
     r.onend = () => {
+      clearTimeout(watchdog);
       rec.current = null; setMicOn(false);
+      if (!heard && !failed) setMicNote(NO_RESULT);
       if (heard && !failed) { setText(""); void askRef.current({ text: heard }); }
     };
     setMicNote(""); rec.current = r; setMicOn(true);
