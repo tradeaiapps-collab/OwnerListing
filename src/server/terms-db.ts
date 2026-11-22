@@ -53,3 +53,20 @@ export async function getEnabledLocalesPg(db: Queryable): Promise<string[]> {
   const r = await db.query("SELECT code FROM enabled_locale WHERE enabled = true", []);
   return r.rows.map(row => String(row["code"]));
 }
+
+export interface LocaleStatus { code: string; enabled: boolean; reviewedAt: string | null }
+
+/** The switch state of every language that has a row. A language with no row is off. */
+export async function listLocaleStatusPg(db: Queryable): Promise<LocaleStatus[]> {
+  const r = await db.query("SELECT code, enabled, reviewed_at FROM enabled_locale", []);
+  return r.rows.map(row => ({ code: String(row["code"]), enabled: row["enabled"] === true, reviewedAt: row["reviewed_at"] ? new Date(String(row["reviewed_at"])).toISOString() : null }));
+}
+
+/** Switches a language on or off. Switching on records who did it and when. */
+export async function setLocaleEnabledPg(db: Queryable, code: string, enabled: boolean, staffId: string): Promise<void> {
+  await db.query(
+    `INSERT INTO enabled_locale (code, enabled, reviewed_by, reviewed_at) VALUES ($1, $2, $3::uuid, now())
+     ON CONFLICT (code) DO UPDATE SET enabled = EXCLUDED.enabled, reviewed_by = EXCLUDED.reviewed_by, reviewed_at = now()`,
+    [code, enabled, staffId]
+  );
+}
