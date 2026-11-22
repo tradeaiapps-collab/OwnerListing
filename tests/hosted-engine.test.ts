@@ -38,6 +38,7 @@ describe("hosted engine", () => {
   });
 });
 
+import type { QuickFields } from "../src/domain/quick-setup";
 import { ruleDescription, draftQuestions } from "../src/domain/quick-draft";
 describe("rules-only draft", () => {
   const f = { title: "", description: "", transactionType: "sale" as const, propertyType: "house", suburb: "Indooroopilly", jurisdiction: "QLD", amenities: [] };
@@ -60,7 +61,7 @@ describe("rules writer quality", () => {
   const base = { title: "", description: "", transactionType: "sale" as const, propertyType: "house", suburb: "Indooroopilly", jurisdiction: "QLD", bedrooms: 4, bathrooms: 2, parking: 1, priceCents: 125000000, amenities: ["pool" as const] };
   const area = { suburbFacts: [{ label: "Median house price", value: "$1,350,000" }], suburbSource: "REIQ", checklist: [] };
   it("writes clean, non-repeating, grammatical sentences with no placeholders", () => {
-    for (const f of [base, { ...base, transactionType: "rent" as const, parking: 0 }, { ...base, bedrooms: undefined, bathrooms: undefined, parking: undefined, amenities: [] }]) {
+    for (const f of [base as QuickFields, { ...base, transactionType: "rent" as const, parking: 0 } as QuickFields, { title: "", description: "", transactionType: "sale" as const, propertyType: "house", suburb: "Indooroopilly", jurisdiction: "QLD", amenities: [] as never[] }]) {
       const d = ruleDescription(f, area, ["kitchen", "pool"], "Renovated in 2022");
       const sentences = d.split(/(?<=[.!?])\s+/);
       expect(new Set(sentences.map(x => x.toLowerCase())).size).toBe(sentences.length);
