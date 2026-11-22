@@ -5,7 +5,9 @@ import { ElenaBulkBar, ElenaPanel, type ElenaRec } from "../elena-panel";
 import "../../styles/staff.css";
 
 interface State { status: string; badge: boolean; insuranceExpired: boolean; licenceExpired: boolean; insuranceExpiringInDays: number | null; licenceExpiringInDays: number | null }
+interface Cert { id: string; kind: "insurance" | "licence"; expiry: string; uploadedAt: string }
 interface Verification {
+  certificates?: Cert[]; certificateFlags?: string[];
   userId: string; name: string; businessName: string; abn: string; licenceNumber: string | null; licenceAuthority: string | null; licenceExpiry: string | null;
   insurer: string; policyNumber: string; insuranceExpiry: string; status: string; reviewNote: string | null; submittedAt: string; state: State; elena?: ElenaRec | null;
 }
@@ -78,6 +80,10 @@ export default function StaffContractors() {
               <p>Insurance: {v.insurer}, policy {v.policyNumber}, expires {v.insuranceExpiry}
                 {v.state.insuranceExpired ? " (EXPIRED)" : v.state.insuranceExpiringInDays !== null && v.state.insuranceExpiringInDays <= 30 ? ` (in ${v.state.insuranceExpiringInDays} days)` : ""}</p>
               <p>{v.licenceNumber ? `Licence: ${v.licenceNumber}, issued by ${v.licenceAuthority}, expires ${v.licenceExpiry}${v.state.licenceExpired ? " (EXPIRED)" : ""}` : "No licence given."}</p>
+              <p>Certificate files: {(v.certificates ?? []).length === 0 ? "none uploaded" : (v.certificates ?? []).map((c, i) => (
+                <span key={c.id}>{i > 0 ? " · " : ""}<a href={`/api/staff/contractors/certificates/${c.id}/file`}>{c.kind === "insurance" ? "Insurance" : "Licence"} (expires {c.expiry})</a></span>
+              ))}</p>
+              {(v.certificateFlags ?? []).map(f => <p key={f} role="alert">{f}</p>)}
               {v.reviewNote && <p className="muted">Last note: {v.reviewNote}</p>}
               {v.status === "pending" && <ElenaPanel rec={v.elena} onUseDraft={d => setNotes({ ...notes, [v.userId]: d })} />}
               {v.status === "pending" && (<>

@@ -1,5 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { areaOnly, canSeeFullAddress, summariseRatings, USAGE_RIGHTS_VERSION, verificationState, type VerificationInput, type VerificationState } from "../domain/contractor-trust";
+import { effectiveDates } from "../domain/contractor-certificates";
+import { certDates, currentCertificatesPg } from "./contractor-certificates-db";
 import { appendAuditPg, type Queryable } from "./db";
 
 /**
@@ -57,7 +59,8 @@ export async function listVerificationsPg(db: Queryable, view: "pending" | "all"
     `SELECT v.user_id, v.business_name, v.abn, v.licence_number, v.licence_authority, v.licence_expiry, v.insurer, v.policy_number, v.insurance_expiry, v.status, v.review_note, v.reviewed_at, v.submitted_at, u.display_name
      FROM contractor_verification v JOIN app_user u ON u.id = v.user_id
      WHERE ($1::text = 'all' OR v.status = 'pending') ORDER BY (v.status = 'pending') DESC, v.insurance_expiry, v.submitted_at LIMIT 200`, [view]);
-  return rows.map(r => { const v = toVerification(r); return { ...v, name: text(r["display_name"]), state: verificationState(v, today) }; });
+  const certs = await currentCertificatesPg(db, rows.map(r => text(r["user_id"])));
+  return rows.map(r => { const v = toVerification(r); return { ...v, name: text(r["display_name"]), state: verificationState(effectiveDates(v, certDates(certs.get(v.userId))), today) }; });
 }
 
 /** Staff decision on pending details only; staff cannot decide on themselves. */
@@ -257,11 +260,12 @@ export interface PublicTrust {
 export async function publicTrustPg(db: Queryable, contractorId: string, today: string): Promise<PublicTrust | undefined> {
   const u = (await db.query("SELECT display_name FROM app_user WHERE id = $1::uuid AND user_type IN ('vendor', 'agent') AND status NOT IN ('suspended', 'closed')", [contractorId])).rows[0];
   if (!u) return undefined;
-  const [v, standing, ratings, reviews] = await Promise.all([
-    getVerificationPg(db, contractorId), getStandingPg(db, contractorId),
+  const [v0, certs, standing, ratings, reviews] = await Promise.all([
+    getVerificationPg(db, contractorId), currentCertificatesPg(db, [contractorId]), getStandingPg(db, contractorId),
     db.query("SELECT rating FROM contractor_review WHERE contractor_user_id = $1::uuid AND status = 'visible'", [contractorId]),
     db.query(`${REVIEW_SELECT} WHERE r.contractor_user_id = $1::uuid AND ${VISIBLE} ORDER BY r.created_at DESC LIMIT 50`, [contractorId])
   ]);
+  const v = v0 ? effectiveDates(v0, certDates(certs.get(contractorId))) : undefined;
   return {
     contractorId, displayName: text(u["display_name"]), badge: !standing.suspended && verificationState(v, today).badge, suspended: standing.suspended,
     rating: summariseRatings(ratings.rows.map(r => Number(r["rating"]))), reviews: reviews.rows.map(toReview)
