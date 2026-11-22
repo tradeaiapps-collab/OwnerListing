@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import { ShareLink } from "../../components/share-link";
 
 interface Row { id: string; title: string; address: string; status: string; transactionType: string }
 
@@ -34,6 +35,7 @@ export default function MyListings() {
               <div><span className={`badge${r.status === "published" ? " badge-accepted" : ""}`}>{STATUS_LABELS[r.status] ?? r.status}</span><span className="badge">{r.transactionType === "sale" ? "For sale" : "For rent"}</span></div>
               {r.status === "draft" && <div><a href={`/listings/${r.id}/edit`}>Edit this draft</a> · <a href={`/listings/${r.id}/photos`}>Photos</a> · <a href={`/listings/${r.id}/checkout`}>Pay and publish</a> · <a href={`/listings/${r.id}/agent`}>Agent</a> · <a href={`/listings/${r.id}/signing`}>Documents</a></div>}
               {r.status !== "draft" && <div><a href={`/listings/${r.id}/photos`}>Photos</a> · <a href={`/listings/${r.id}/offers`}>Offers</a> · <a href={`/listings/${r.id}/mandate`}>Negotiation mandate</a> · <a href={`/listings/${r.id}/agent`}>Agent</a> · <a href={`/listings/${r.id}/signing`}>Documents</a> · <a href={`/listings/${r.id}/syndication`}>Other portals</a></div>}
+              {r.status === "published" && <ShareLink listingId={r.id} published title={r.title} />}
               <div><a href={`/listings/${r.id}/returns`}>Returns calculator</a></div>
             </li>
           ))}
