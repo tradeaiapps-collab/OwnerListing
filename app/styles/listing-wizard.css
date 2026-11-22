@@ -71,3 +71,4 @@
 @media (max-width: 639px) { .loc-grid { grid-template-columns: 1fr; } }
 .loc-preview { max-width: 40rem; } .loc-preview .map-canvas { height: 220px; min-height: 220px; }
 .page-back { margin-top: var(--space-6); }
+.wiz-nav { position: sticky; bottom: 0; z-index: 5; }
