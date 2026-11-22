@@ -16,6 +16,8 @@ export interface DocumentRecord {
   uploadedBy: string;
   visibility: Visibility;
   status: DocumentStatus;
+  /** Optional display title shown to buyers. */
+  title?: string;
   /** Set on an amended file: the earlier version it replaced. Earlier versions are kept. */
   supersedesId?: string;
 }
@@ -55,7 +57,8 @@ const CONTRACTOR_KINDS: Record<JobAssignment["kind"], readonly DocumentKind[]> =
   inspector: ["building_inspection", "pest_report"],
   solicitor: ["contract", "title_search"],
   agent: ["photo", "photo_360", "video", "video_360", "floorplan"],
-  other: []
+  pest_control: ["pest_report", "photo"],
+  other: ["photo", "other"]
 };
 
 export function canUploadDocument(

@@ -1,10 +1,15 @@
-// Demo data for the LOCAL TEST KIT (docs/LOCAL_TEST.md). Idempotent: does nothing if the demo accounts already exist.
+// Demo data for the LOCAL TEST KIT (docs/LOCAL_TEST.md). Idempotent: does nothing if the demo accounts already exist, except
+// filling in later additions (real photos, descriptions, the demo investor project) on a database seeded by an older version.
 // Refuses to run unless NODE_ENV is not "production" AND DATABASE_URL points at localhost / 127.0.0.1. Usage: npm run seed:demo
 import { createHash, randomBytes, randomUUID } from "node:crypto";
+import { readFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
 import { readFileSync } from "node:fs";
 import { deflateSync } from "node:zlib";
 import pg from "pg";
 import { localDevStorageDir, putLocalObject } from "../src/adapters/local-disk-core.mjs";
+import { seedAdminExamples } from "./seed-admin-demo.mjs";
+import { seedProjectDocuments } from "./demo-project-docs.mjs";
 
 // ---- Demo photos (local test kit) --------------------------------------------------------------------------------
 // Small generated PNG pictures (no camera, so no metadata) written through the same local-disk storage code the app
@@ -76,31 +81,216 @@ const floorplanImage = () => readFileSync(new URL("floorplan.png", MEDIA_DIR));
 
 const CAPTIONS = ["Street view", "Living room", "Kitchen and dining", "Main bedroom", "Backyard"];
 
+// Real photos (scripts/demo-photos, Unsplash License, fetched by scripts/fetch-demo-photos.mjs). Used when the files are there;
+// otherwise the generated pictures above. Camera metadata is stripped here, as the upload pipeline would.
+const PHOTO_DIR = fileURLToPath(new URL("./demo-photos/", import.meta.url));
+const manifest = await readFile(PHOTO_DIR + "manifest.json", "utf8").then(JSON.parse, () => ({ listings: [], project: { photos: [] } }));
+
+/** Removes APP1-APP15 and comment segments; returns the stripped bytes and the frame size, or null if this is not a baseline/progressive JPEG. */
+function stripJpeg(buf) {
+  if (buf[0] !== 0xff || buf[1] !== 0xd8) return null;
+  const keep = [buf.subarray(0, 2)];
+  let i = 2, width = 0, height = 0;
+  while (i + 4 <= buf.length) {
+    if (buf[i] !== 0xff) return null;
+    const marker = buf[i + 1];
+    if (marker === 0xda) { keep.push(buf.subarray(i)); break; } // start of scan: the rest is image data
+    const len = buf.readUInt16BE(i + 2);
+    if ((marker >= 0xc0 && marker <= 0xcf) && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc) { height = buf.readUInt16BE(i + 5); width = buf.readUInt16BE(i + 7); }
+    if (!((marker >= 0xe1 && marker <= 0xef) || marker === 0xfe)) keep.push(buf.subarray(i, i + 2 + len));
+    i += 2 + len;
+  }
+  return width && height ? { bytes: Buffer.concat(keep), width, height } : null;
+}
+/** The real photos available for a manifest entry list, in order; files that are missing or unreadable are skipped. */
+async function realPhotos(entries) {
+  const out = [];
+  for (const e of entries ?? []) {
+    const j = stripJpeg(await readFile(PHOTO_DIR + e.file).catch(() => Buffer.alloc(0)));
+    if (j) out.push({ ...j, contentType: "image/jpeg", kind: "photo", caption: e.caption, alt: e.alt ?? "" });
+  }
+  return out;
+}
+const pngPic = (bytes, kind, caption) => ({ bytes, width: W, height: H, contentType: "image/png", kind, caption, alt: "" });
+
+async function storePhotos(client, dir, table, parentCol, parentId, uploader, pictures) {
+  const entries = [];
+  for (const pic of pictures) {
+    const id = randomUUID(), key = `${table === "listing_photo" ? "listings" : "investments"}/${parentId}/${randomUUID()}`;
+    await putLocalObject(dir, key, pic.bytes);
+    const kindCol = table === "listing_photo" ? ", kind" : "", kindVal = table === "listing_photo" ? ", $10" : "";
+    await client.query(
+      `INSERT INTO ${table} (id, ${parentCol}, uploaded_by, content_type, width, height, size_bytes, sha256, storage_key${kindCol})
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9${kindVal})`,
+      [id, parentId, uploader, pic.contentType, pic.width, pic.height, pic.bytes.length, createHash("sha256").update(pic.bytes).digest("hex"), key, ...(kindCol ? [pic.kind] : [])]);
+    entries.push({ photoId: id, caption: pic.caption, alt: pic.alt, hidden: false });
+  }
+  return entries;
+}
+
 async function seedPhotos(client) {
   const dir = localDevStorageDir(process.env);
   if (!dir) { console.log("Demo photos skipped: LOCAL_STORAGE_DIR is not set (run local-setup again to add it)."); return; }
+  // Demo listings with no gallery, or with only generated pictures (an older seed): those get the real photos when present.
   const rows = (await client.query(
-    `SELECT l.id, l.owner_user_id FROM property_listing l JOIN app_user u ON u.id = l.owner_user_id
-     WHERE u.email LIKE '%@demo.invalid' AND NOT EXISTS (SELECT 1 FROM listing_photo_layout p WHERE p.listing_id = l.id)
-     ORDER BY l.created_at, l.id`)).rows;
-  let made = 0;
+    `SELECT l.id, l.owner_user_id, l.address_text, cur.version, cur.entries,
+            EXISTS (SELECT 1 FROM listing_photo p WHERE p.listing_id = l.id AND p.content_type <> 'image/png') AS has_real
+       FROM property_listing l JOIN app_user u ON u.id = l.owner_user_id
+       LEFT JOIN LATERAL (SELECT version, entries FROM listing_photo_layout p WHERE p.listing_id = l.id ORDER BY version DESC LIMIT 1) cur ON true
+      WHERE u.email LIKE '%@demo.invalid' ORDER BY l.created_at, l.id`)).rows;
+  let made = 0, listings = 0;
   for (const [i, l] of rows.entries()) {
-    const entries = [];
-    const pictures = [exterior(i), interior(i, 0), interior(i, 1), interior(i, 2), exterior(i + 1)].map((bytes, k) => ({ bytes, kind: "photo", caption: CAPTIONS[k] }));
-    pictures.push({ bytes: floorplanImage(), kind: "floorplan", caption: "Floor plan" });
-    for (const pic of pictures) {
-      const id = randomUUID(), key = `listings/${l.id}/${randomUUID()}`;
-      await putLocalObject(dir, key, pic.bytes);
-      await client.query(
-        `INSERT INTO listing_photo (id, listing_id, kind, uploaded_by, content_type, width, height, size_bytes, sha256, storage_key)
-         VALUES ($1, $2, $3, $4, 'image/png', $5, $6, $7, $8, $9)`,
-        [id, l.id, pic.kind, l.owner_user_id, W, H, pic.bytes.length, createHash("sha256").update(pic.bytes).digest("hex"), key]);
-      entries.push({ photoId: id, caption: pic.caption, alt: "", hidden: false });
-      made++;
+    if (l.has_real) continue;
+    const real = await realPhotos(manifest.listings.find(m => m.address === l.address_text)?.photos);
+    if (l.version && !real.length) continue;
+    let entries;
+    if (l.version) {
+      // Keep the current floor plan entries; the generated photos stay stored (files are never deleted) but leave the gallery.
+      const plans = (await client.query(`SELECT id FROM listing_photo WHERE listing_id = $1 AND kind = 'floorplan'`, [l.id])).rows.map(r => r.id);
+      entries = [...await storePhotos(client, dir, "listing_photo", "listing_id", l.id, l.owner_user_id, real), ...l.entries.filter(e => plans.includes(e.photoId))];
+    } else {
+      const pictures = real.length ? real : [exterior(i), interior(i, 0), interior(i, 1), interior(i, 2), exterior(i + 1)].map((bytes, k) => pngPic(bytes, "photo", CAPTIONS[k]));
+      entries = await storePhotos(client, dir, "listing_photo", "listing_id", l.id, l.owner_user_id, [...pictures, pngPic(floorplanImage(), "floorplan", "Floor plan")]);
     }
-    await client.query(`INSERT INTO listing_photo_layout (listing_id, version, entries, changed_by) VALUES ($1, 1, $2::jsonb, $3)`, [l.id, JSON.stringify(entries), l.owner_user_id]);
+    await client.query(`INSERT INTO listing_photo_layout (listing_id, version, entries, changed_by) VALUES ($1, $2, $3::jsonb, $4)`, [l.id, (l.version ?? 0) + 1, JSON.stringify(entries), l.owner_user_id]);
+    made += entries.length; listings++;
   }
-  console.log(rows.length ? `Demo photos added: ${made} images on ${rows.length} listings.` : "Demo photos already present.");
+  console.log(listings ? `Demo photos added: ${made} gallery images on ${listings} listings.` : "Demo photos already present.");
+  if (!(await realPhotos(manifest.listings[0]?.photos)).length) console.log("  (Generated pictures only: run node scripts/fetch-demo-photos.mjs for real photos, then seed again.)");
+}
+
+// ---- Demo listing descriptions ------------------------------------------------------------------------------------
+// Property facts only (the wording filter's rule: describe the property, never the people). Fills empty descriptions only.
+const DESCRIPTIONS = {
+  "12 Jacaranda St, Paddington QLD 4064": "Renovated timber home on a 607 m2 elevated block with district views. Four bedrooms upstairs, two bathrooms, an open-plan kitchen with stone island and butler's pantry, and a deep veranda that opens to a north-facing backyard with an in-ground saltwater pool. Ducted air conditioning, 6.6 kW solar, double lock-up garage. Short drive to Given Terrace cafes and the city.",
+  "8/21 Moray St, New Farm QLD 4005": "Light-filled two-bedroom apartment on the third floor of a boutique block. Open living and dining flows to a covered balcony with river glimpses. Stone kitchen with gas cooking, built-in wardrobes in both bedrooms, internal laundry, one secure car space. Close to New Farm Park, the CityCat and James Street. Available now on a 12-month lease.",
+  "45 Beach Rd, Bondi NSW 2026": "Restored Federation weatherboard cottage on a 380 m2 block, 600 m from Bondi Beach. High ceilings, timber floors and original fireplaces throughout. Three bedrooms, two bathrooms, a light kitchen opening to a private rear garden with a timber deck, and off-street parking for one car. Easy access to buses and Bondi Junction.",
+  "3/17 Darley Rd, Randwick NSW 2031": "Modern three-bedroom townhouse in a group of five. Open-plan living with timber floors opens to a private paved courtyard. Gas kitchen with dishwasher, main bedroom with ensuite and balcony, second bathroom, internal laundry and a double garage. Close to Randwick Junction, the light rail and Centennial Park.",
+  "28 Station St, Fitzroy North VIC 3068": "Victorian-era brick home on a tree-lined street. Three bedrooms with high ceilings and ornate cornices, an original fireplace in the front living room, and a rear kitchen with skylight and stone benches opening to a north-facing courtyard garden. Renovated bathroom with freestanding bath. Walk to Edinburgh Gardens, trams and Rushall station.",
+  "6/102 Chapel St, Windsor VIC 3181": "Sunny two-bedroom unit on the first floor of a solid brick block. Galley kitchen with gas cooktop, renovated bathroom with walk-in shower, built-in wardrobes and split-system heating and cooling. One car space and shared laundry. Trams at the door, Windsor station and Prahran Market close by.",
+  "9/4 Park Ave, Chermside QLD 4032": "Low-maintenance three-bedroom townhouse in a well-kept complex of twelve. Open living and dining opens to a fenced courtyard, white kitchen with breakfast bar, main bedroom with ensuite and walk-in robe, ceiling fans and air conditioning throughout, double garage. Across the road from parkland; Westfield Chermside and the busway are minutes away.",
+  "14/50 Kent St, Sydney NSW 2000": "Compact studio on level 9 with city views. Living and sleeping area with built-in desk and storage, kitchenette with stainless appliances, modern bathroom, building pool and gym. Walk to Wynyard, Barangaroo and the CBD. Furnished option available."
+};
+async function seedDescriptions(client) {
+  let n = 0;
+  for (const [address, text] of Object.entries(DESCRIPTIONS)) {
+    n += (await client.query(`UPDATE property_listing SET description = $2 WHERE address_text = $1 AND description IS NULL`, [address, text])).rowCount ?? 0;
+  }
+  if (n) console.log(`Demo descriptions added: ${n} listings.`);
+}
+
+// ---- Demo investor project ----------------------------------------------------------------------------------------
+// One approved project by a project owner (an owner account), with photos, and the fully verified buyer as a wholesale
+// investor who registered non-binding interest and messaged the owner. Added once; skipped if the project owner exists.
+const DISCLOSURE_VERSION = "2026-10-25-draft-1"; // src/config/investment-disclosure.ts (a newer version just asks James to re-acknowledge)
+async function seedProject(client) {
+  const q = async (text, params) => (await client.query(text, params)).rows;
+  if ((await q(`SELECT 1 FROM app_user WHERE email = $1`, [`olivia.projects${D}`])).length) return;
+  const [{ id: boss } = {}] = await q(`SELECT u.id FROM app_user u JOIN staff_invite i ON i.email = lower(u.email::text) WHERE i.role = 'super_admin' AND u.email LIKE '%@demo.invalid' LIMIT 1`);
+  const [{ id: james } = {}] = await q(`SELECT id FROM app_user WHERE email = $1`, [`james.buyer${D}`]);
+  if (!boss || !james) { console.log("Demo project skipped: the demo staff or buyer accounts are missing."); return; }
+  await client.query("BEGIN");
+  try {
+    const [{ id: owner }] = await q(`INSERT INTO app_user (email, display_name, user_type, status) VALUES ($1, 'Olivia Hart (project owner)', 'owner', 'active') RETURNING id`, [`olivia.projects${D}`]);
+    await q(`INSERT INTO terms_acceptance (user_id, version) VALUES ($1, '2026-10-24')`, [owner]);
+    const [{ id: project }] = await q(
+      `INSERT INTO investment_project (owner_user_id, title, location, jurisdiction, project_type, summary, stage, funding_target_cents, minimum_ticket_cents,
+         timeline, risks, structure_description, visible_to, issuer_name, issuer_licence_basis, issuer_statement, issuer_authorised_confirmed, status,
+         posting_model, commission_type, commission_bps, commission_fixed_cents, upfront_fee_cents, upfront_fee_status, model2_disclosure)
+       VALUES ($1, $2, 'Bulimba QLD 4171', 'QLD', 'residential_development', $3, 'approved', 240000000, 5000000, $4, $5, $6, 'wholesale_only',
+         'Riverside Terraces Pty Ltd (demo)', $7, $8, true, 'approved', 'commission_on_contract', 'percent', 400, 0, 0, 'not_required', 'off') RETURNING id`,
+      [owner, manifest.project.title,
+       "Twelve three-bedroom townhouses on a 2,150 m2 riverside site, 400 m from Oxford Street. Development approval granted by Brisbane City Council (demo). The raise funds the equity portion of construction alongside a senior bank loan. DEMO DATA for local testing: not a real offer.",
+       "DA approved Sep 2026. Construction start Feb 2027 (14 months). Practical completion and sales settlement mid 2028. Distributions after settlement.",
+       "Construction cost overruns and builder insolvency; delays to approvals or weather; sale prices below forecast; interest rate rises on the senior loan; investors rank behind the bank and can lose all of their capital. Units are illiquid until the project completes.",
+       "Units in the Riverside Terraces Unit Trust (demo). The trustee holds the land and contracts the builder. Investors sign the subscription deed off-platform with the issuer.",
+       "Wholesale investors only (s708 Corporations Act). Issuer relies on its own AFS licence (demo number 000000).",
+       "Riverside Terraces Pty Ltd is the issuer. OwnerListing does not hold money, give advice or recommend this project."]);
+    await q(`INSERT INTO investment_project_status_history (project_id, from_status, to_status, actor_type, actor_id, reason, project_version, at)
+             VALUES ($1, NULL, 'pending_review', 'owner', $2, NULL, 1, now() - interval '3 days'), ($1, 'pending_review', 'approved', 'staff', $3, 'Demo data: approved for local testing.', 1, now() - interval '2 days')`,
+      [project, owner, boss]);
+    await q(`INSERT INTO investor_declaration (user_id, category, ack_not_advice, ack_not_offer, ack_no_funds_held, ack_off_platform, disclosure_version)
+             SELECT $1, 'wholesale', true, true, true, true, $2 WHERE NOT EXISTS (SELECT 1 FROM investor_declaration WHERE user_id = $1)`, [james, DISCLOSURE_VERSION]);
+    const [{ id: interest }] = await q(`INSERT INTO investment_interest (project_id, investor_user_id, amount_min_cents, amount_max_cents, created_at)
+             VALUES ($1, $2, 5000000, 10000000, now() - interval '1 day') RETURNING id`, [project, james]);
+    for (const [sender, body, min] of [
+      [james, "Hi Olivia, I've registered interest in Riverside Terraces. Could you send the information memorandum and the builder's fixed-price contract summary?", 600],
+      [owner, "Hi James, thanks for your interest. I'll send the IM by email today. The builder contract is fixed price with a 5% contingency.", 420],
+      [james, "Thanks. What pre-sales do you need before construction starts?", 60]]) {
+      await q(`INSERT INTO investment_message (interest_id, sender_user_id, body, sent_at) VALUES ($1, $2, $3, now() - ($4 || ' minutes')::interval)`, [interest, sender, body, String(min)]);
+    }
+    const dir = localDevStorageDir(process.env);
+    let photos = 0;
+    if (dir) {
+      const real = await realPhotos(manifest.project.photos);
+      const pictures = real.length ? real : [exterior(5), exterior(6), floorplan(), interior(7, 0)].map((b, k) => pngPic(b, "photo", ["Architect's impression", "Site", "Plans", "Display home interior"][k]));
+      const entries = await storePhotos(client, dir, "investment_project_photo", "project_id", project, owner, pictures);
+      await q(`INSERT INTO investment_project_photo_layout (project_id, version, entries, changed_by) VALUES ($1, 1, $2::jsonb, $3)`, [project, JSON.stringify(entries), owner]);
+      photos = entries.length;
+    }
+    await client.query("COMMIT");
+    console.log(`Demo investor project added: "${manifest.project.title}" by Olivia Hart, ${photos} photos, James registered interest with 3 messages.`);
+  } catch (e) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    throw e;
+  }
+}
+
+// ---- Demo contractors (public pages, prices, gallery, finished jobs with feedback) ----------------------------------------------
+// Four contractor accounts (photographer, building inspector, pest control, cleaner) so /contractors, a contractor page, /contractor/jobs
+// and the stats have something to show. They are contractor (vendor) accounts, so /dev-login signs in as a real contractor. Photo links point at a public placeholder service. Idempotent: skipped once Priya exists.
+async function seedContractors(client) {
+  const D = "@demo.invalid";
+  // Databases seeded before contractor sign-up have these four as agent accounts: move them to the contractor type.
+  await client.query(`UPDATE app_user SET user_type = 'vendor', roles = '{}', active_role = NULL WHERE user_type = 'agent' AND email = ANY($1::text[])`,
+    [["priya.photos", "tom.inspect", "greta.pest", "sam.clean"].map(k => `${k}${D}`)]);
+  if ((await client.query(`SELECT 1 FROM app_user WHERE email = $1`, [`priya.photos${D}`])).rowCount) return;
+  await client.query("BEGIN");
+  const q = async (text, params) => (await client.query(text, params)).rows;
+  const owner = (await q(`SELECT id FROM app_user WHERE email = $1`, [`sarah.owner${D}`]))[0]?.id;
+  const listings = owner ? (await q(`SELECT id FROM property_listing WHERE owner_user_id = $1 ORDER BY created_at LIMIT 6`, [owner])).map(r => r.id) : [];
+  const people = [
+    { key: "priya.photos", name: "Priya Nair", business: "Priya Nair Property Photography", kind: "photographer", headline: "Bright, true-to-life photos, floor plans and twilight shots", licence: null,
+      about: "I have photographed homes across Brisbane for eight years. I shoot with a full-frame camera and deliver edited photos within 24 hours. Drone and twilight shots on request. Please have the house tidy and the lights on.",
+      suburbs: ["Paddington", "Red Hill", "Bardon", "Milton"], postcodes: ["4064", "4059", "4065"],
+      services: [["Standard photos (20 images)", 18000, "fixed", "Interior and exterior, edited and delivered in 24 hours."], ["Photos and floor plan", 26000, "fixed", "20 photos plus a measured floor plan."], ["Twilight shoot", 22000, "from", "Two exterior twilight images."]],
+      jobs: [["completed", 5, "Great photos, on time and easy to deal with."], ["completed", 5, "Made the house look wonderful."], ["completed", 4, "Very good. Arrived a little late but the pictures were lovely."], ["completed", 5, ""], ["cancelled", 0, ""], ["proposed", 0, ""]] },
+    { key: "tom.inspect", name: "Tom Ellis", business: "Ellis Building Inspections", kind: "inspector", headline: "Pre-sale building and pest inspections, report in 48 hours", licence: ["QLD", "1234567", true],
+      about: "Licensed builder with 15 years in residential construction. I give plain-English reports with photos so buyers and owners can act on them.",
+      suburbs: ["Paddington", "Toowong", "Indooroopilly"], postcodes: ["4064", "4066", "4068"],
+      services: [["Pre-sale building inspection", 52000, "fixed", "Structure, roof, wet areas, electrical and plumbing visible issues."], ["Combined building and pest", 69000, "fixed", "Both reports from one visit."]],
+      jobs: [["completed", 5, "Thorough report, explained everything."], ["completed", 4, ""], ["proposed", 0, ""]] },
+    { key: "greta.pest", name: "Greta Bauer", business: "GreenShield Pest Control", kind: "pest_control", headline: "Termite inspections and treatment, same-week bookings", licence: ["QLD", "PC-88421", false],
+      about: "Family-run pest control. We inspect, report and treat termites, rodents and cockroaches with low-odour products.",
+      suburbs: ["Paddington", "Bardon", "Ashgrove"], postcodes: ["4064", "4065", "4060"],
+      services: [["Termite inspection and report", 19500, "fixed", ""], ["General pest treatment", 24000, "from", "Interior and exterior."]],
+      jobs: [["completed", 5, "Quick and tidy."], ["proposed", 0, ""]] },
+    { key: "sam.clean", name: "Sam Roe", business: "Roe Pre-sale Cleaning", kind: "other", label: "Cleaner", headline: "Make the house sparkle before photos and inspections", licence: null,
+      about: "End-of-lease and pre-sale cleaning. Windows, carpets and kitchens a speciality.",
+      suburbs: ["Paddington", "Milton", "Toowong"], postcodes: ["4064", "4064"],
+      services: [["Pre-sale clean (3 bedroom)", 38000, "fixed", ""], ["Window cleaning", 9000, "per_hour", ""]], jobs: [] }
+  ];
+  for (const p of people) {
+    const uid = (await q(`INSERT INTO app_user (email, display_name, user_type, status, roles, active_role) VALUES ($1, $2, 'vendor', 'active', '{}', NULL) RETURNING id`, [`${p.key}${D}`, `${p.name} (contractor)`]))[0].id;
+    await q(`INSERT INTO contractor_profile (user_id, kind, accepting_new, service_postcodes, service_suburbs) VALUES ($1, $2, true, $3, $4)`, [uid, p.kind, [...new Set(p.postcodes)], p.suburbs]);
+    await q(`INSERT INTO contractor_page (user_id, business_name, headline, about, trade_label, licence_number, licence_state, licence_verified_at, is_public)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, true)`, [uid, p.business, p.headline, p.about, p.label ?? null, p.licence?.[1] ?? null, p.licence?.[0] ?? null, p.licence?.[2] ? new Date() : null]);
+    let order = 0;
+    for (const [name, cents, type, desc] of p.services) await q(`INSERT INTO contractor_service (user_id, kind, name, description, price_cents, price_type, sort_order) VALUES ($1, $2, $3, nullif($4, ''), $5, $6, $7)`, [uid, p.kind, name, desc, cents, type, order++]);
+    for (let i = 0; i < 4; i++) await q(`INSERT INTO contractor_media (user_id, media_type, url, caption, sort_order) VALUES ($1, 'photo', $2, $3, $4)`, [uid, `https://picsum.photos/seed/${p.key}${i}/600/450`, ["Living room", "Kitchen", "Front elevation", "Main bedroom"][i], i]);
+    for (const [i, [status, rating, body]] of p.jobs.entries()) {
+      const lid = listings[i % Math.max(listings.length, 1)];
+      if (!owner || !lid) break;
+      const ago = `${3 + i * 6} days`;
+      const [job] = await q(`INSERT INTO job_assignment (listing_id, owner_user_id, contractor_user_id, kind, status, approved_at, responded_at, completed_at, created_at, service_name, price_cents, contractor_done_at)
+        VALUES ($1, $2, $3, $4, $5, CASE WHEN $5 IN ('completed') THEN now() - $6::interval END, CASE WHEN $5 <> 'proposed' THEN now() - $6::interval + interval '3 hours' END,
+                CASE WHEN $5 = 'completed' THEN now() - $6::interval + interval '2 days' END, now() - $6::interval, $7, $8, CASE WHEN $5 = 'completed' THEN now() - $6::interval + interval '1 day' END) RETURNING id`,
+        [lid, owner, uid, p.kind, status, ago, p.services[0][0], p.services[0][1]]);
+      if (status === "completed") await q(`INSERT INTO contractor_review (assignment_id, contractor_user_id, owner_user_id, rating, body) VALUES ($1, $2, $3, $4, nullif($5, ''))`, [job.id, uid, owner, rating, body]);
+    }
+  }
+  await client.query("COMMIT");
+  console.log("Demo contractors: 4 public pages (photographer, inspector, pest control, cleaner) with prices, galleries, finished jobs and feedback.");
 }
 
 // ---- Demo map locations (search map) ------------------------------------------------------------------------------
@@ -191,6 +381,61 @@ async function seedFiles(client) {
     }
   }
   if (linked || made) console.log(`Demo files: ${linked} listings given a property record, ${made} example files added${dir ? "" : " (no bytes: LOCAL_STORAGE_DIR is not set)"}.`);
+}
+
+// ---- Demo disclosures and public documents (property page: Disclosures and Documents sections) ---------------------------------
+// Each demo listing gets the disclosures and public documents that fit its state and kind (sale or rent), so buyers see realistic
+// trust signals. Illustrative demo data only: the keys and titles are not a statement of what a state requires (that comes from
+// compliance configuration, which counsel signs off). Idempotent: disclosures are unique per listing and key, documents per listing and title.
+const DEMO_DISCLOSURES = {
+  "12 Jacaranda St, Paddington QLD 4064": ["qld_seller_disclosure_statement", "qld_pool_safety_sale", "qld_flood_search", "qld_smoke_alarm_compliance_sale", "building_pest_report"],
+  "8/21 Moray St, New Farm QLD 4005": ["qld_smoke_alarm_compliance_rental", "qld_minimum_housing_standards", "energy_rating"],
+  "45 Beach Rd, Bondi NSW 2026": ["nsw_contract_of_sale", "nsw_zoning_certificate", "nsw_sewer_service_diagram", "nsw_flood_bushfire", "building_pest_report"],
+  "3/17 Darley Rd, Randwick NSW 2031": ["nsw_smoke_alarm_rental", "energy_rating"],
+  "28 Station St, Fitzroy North VIC 3068": ["vic_section_32", "vic_building_permits", "vic_heritage_overlay", "vic_land_tax_certificate", "building_pest_report"],
+  "6/102 Chapel St, Windsor VIC 3181": ["vic_rental_minimum_standards", "smoke_alarm_compliance", "energy_rating"],
+  "9/4 Park Ave, Chermside QLD 4032": ["qld_seller_disclosure_statement", "qld_body_corporate_certificate", "qld_smoke_alarm_compliance_sale", "title_search"],
+  "14/50 Kent St, Sydney NSW 2000": ["nsw_smoke_alarm_rental", "nsw_strata_certificate", "energy_rating"]
+};
+// [kind, title, extra lines on the PDF]
+const DEMO_PUBLIC_DOCS = {
+  "12 Jacaranda St, Paddington QLD 4064": [["other", "Form 2 seller disclosure summary", ["Zoning: Low-medium density residential", "Pool: certificate current", "Demo document"]], ["title_search", "Title search, Lot 7 on RP 21345", ["Freehold, one registered mortgage to be discharged on settlement"]], ["other", "Brisbane flood awareness report", ["Flood risk: low for river flooding, medium for creek flooding"]], ["building_inspection", "Building inspection summary", ["Overall condition: good"]]],
+  "8/21 Moray St, New Farm QLD 4005": [["other", "Smoke alarm compliance certificate", ["Interconnected photoelectric alarms in every bedroom and hallway"]], ["other", "Energy rating summary", ["Ceiling fans in all rooms, split system in living area"]], ["other", "Entry condition report (sample)", ["Provided at lease signing, 7 days to return"]]],
+  "45 Beach Rd, Bondi NSW 2026": [["other", "Planning certificate (section 10.7)", ["Zoning: R2 Low density residential", "Heritage conservation area: yes", "Bush fire prone: no"]], ["other", "Sydney Water sewer service diagram", ["Connected to the sewer main at the rear boundary"]], ["other", "Survey report, 2019", ["Boundaries pegged, no encroachments noted"]], ["pest_report", "Timber pest inspection summary", ["No active termite activity found"]]],
+  "3/17 Darley Rd, Randwick NSW 2031": [["other", "Smoke alarm compliance certificate", ["Hardwired alarms checked this year"]], ["other", "Energy rating summary", ["Dishwasher and split systems rated 4 star or higher"]], ["other", "Condition report (sample)", ["Provided at lease signing"]]],
+  "28 Station St, Fitzroy North VIC 3068": [["other", "Vendor's statement summary (section 32)", ["Title, rates, services and planning overlays attached", "Demo document"]], ["other", "Building permit history", ["Rear extension 2016, final certificate issued"]], ["other", "Heritage overlay summary", ["HO316 applies: external changes need a planning permit"]], ["title_search", "Certificate of title", ["Volume 10432, Folio 118"]]],
+  "6/102 Chapel St, Windsor VIC 3181": [["other", "Rental minimum standards declaration", ["Locks, heating, vents, mould and electrical safety checked"]], ["other", "Gas and electrical safety check", ["Completed within the last two years"]], ["other", "Energy rating summary", ["Efficient reverse-cycle heating installed"]]],
+  "9/4 Park Ave, Chermside QLD 4032": [["other", "Body corporate information certificate", ["Levies up to date, no special levies planned"]], ["other", "Survey plan (BUP 4471)", ["Community titles scheme, four lots"]], ["title_search", "Title search summary", ["Freehold lot in a community titles scheme"]], ["other", "Smoke alarm compliance certificate", ["Interconnected alarms tested"]]],
+  "14/50 Kent St, Sydney NSW 2000": [["other", "Strata information summary", ["Levies and by-laws, short stay not permitted"]], ["other", "Smoke alarm compliance certificate", ["Building fire safety statement current"]], ["other", "Energy rating summary", ["Efficient appliances, double glazed windows"]]]
+};
+async function seedDisclosuresAndPublicDocs(client) {
+  const staff = (await client.query(`SELECT id FROM app_user WHERE email = $1`, [`staff.super_admin${D}`])).rows[0]?.id
+    ?? (await client.query(`SELECT id FROM app_user WHERE email LIKE '%@demo.invalid' ORDER BY created_at LIMIT 1`)).rows[0]?.id;
+  const dir = localDevStorageDir(process.env);
+  let disclosures = 0, docs = 0;
+  for (const [address, keys] of Object.entries(DEMO_DISCLOSURES)) {
+    const l = (await client.query(`SELECT id, jurisdiction, owner_user_id, property_id FROM property_listing WHERE address_text = $1`, [address])).rows[0];
+    if (!l) continue;
+    for (const [i, key] of keys.entries()) {
+      disclosures += (await client.query(
+        `INSERT INTO listing_disclosure (listing_id, jurisdiction, disclosure_key, satisfied, evidence_reference, verified_by, verified_at, state)
+         VALUES ($1, $2, $3, true, 'demo-evidence', $4, now() - ($5::int * interval '1 day'), 'verified') ON CONFLICT (listing_id, disclosure_key) DO NOTHING`,
+        [l.id, l.jurisdiction.trim(), key, staff, i + 2])).rowCount ?? 0;
+    }
+    if (!l.property_id) continue;
+    for (const [kind, title, lines] of DEMO_PUBLIC_DOCS[address] ?? []) {
+      if ((await client.query(`SELECT 1 FROM property_document WHERE listing_id = $1 AND title = $2`, [l.id, title])).rowCount) continue;
+      const bytes = makePdf(title, [address, ...lines, "Demo document, not a real record"]);
+      const key = `listings/${l.id}/${randomUUID()}`;
+      if (dir) await putLocalObject(dir, key, bytes);
+      await client.query(
+        `INSERT INTO property_document (property_id, listing_id, kind, title, storage_key, sha256, uploaded_by, source, declared_mime, size_bytes, visibility, status, uploaded_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, 'owner_supplied', 'application/pdf', $8, 'public', 'active', now() - ($9::int * interval '1 day'))`,
+        [l.property_id, l.id, kind, title, key, createHash("sha256").update(bytes).digest("hex"), l.owner_user_id, bytes.length, 3 + docs % 20]);
+      docs++;
+    }
+  }
+  if (disclosures || docs) console.log(`Demo disclosures: ${disclosures} added. Public documents: ${docs} added${dir ? "" : " (no bytes: LOCAL_STORAGE_DIR is not set)"}.`);
 }
 
 // ---- Demo agent leads (/agent/leads) ------------------------------------------------------------------------------------
@@ -314,6 +559,284 @@ async function seedMedia(client) {
   if (plans || videos) console.log(`Demo media: ${plans} floor plans and ${videos} videos added.`);
 }
 
+// ---- Example listings for one demo owner (My listings) --------------------------------------------------------------------------
+// Marcus Bell (marcus.owner) owns 36 fully populated sale listings across NSW, VIC and QLD (1-bed units to 5+ bed estates). Each has an owner-written description, map pin, a property
+// record, state-specific documents with verified disclosures, a trust account check, and open inspection times. Photos, floor plan and tour video are
+// added by seedPhotos and seedMedia (this owner is a demo account). Council and water rates and the finance example are written into the description:
+// the listing has no separate fields for them. Idempotent: a listing is skipped when this owner already has that address.
+const EXAMPLE_OWNER = "marcus.owner";
+const loan = (price, rate = 0.062) => { const p = price * 0.8, r = rate / 12, n = 360; return Math.round(p * r / (1 - (1 + r) ** -n)); };
+const money = n => `$${n.toLocaleString("en-AU")}`;
+const EXAMPLES = [
+  { state: "NSW", suburb: "Bondi Beach", postcode: "2026", type: "unit", address: "12/88 Campbell Parade, Bondi Beach NSW 2026", lat: -33.8915, lng: 151.2767, beds: 2, baths: 1, cars: 1,
+    title: "Bright two-bedroom apartment steps from Bondi Beach", price: 1450000, amenities: ["balcony", "air_conditioning", "lift", "security"],
+    intro: "A light-filled apartment on the third floor, two minutes' walk to the sand. North-facing balcony, polished timber floors, a renovated kitchen with stone benchtops and a secure car space in the basement.",
+    rates: { council: 412, water: 168, strata: 1180 }, docs: "nsw", times: [[6, 600, 660], [3, 1050, 1110]] },
+  { state: "NSW", suburb: "Manly", postcode: "2095", type: "house", address: "21 Raglan Street, Manly NSW 2095", lat: -33.7969, lng: 151.2840, beds: 4, baths: 3, cars: 2,
+    title: "Family home with a pool and a short walk to Manly Wharf", price: 2980000, amenities: ["pool", "garden", "solar", "garage", "air_conditioning", "ensuite"],
+    intro: "A generous four-bedroom home on a quiet street. Open-plan living flows to a north-facing garden and heated pool, the main bedroom has an ensuite and walk-in robe, and the double garage has internal access. Solar panels keep power bills low.",
+    rates: { council: 548, water: 196, strata: 0 }, docs: "nsw", times: [[6, 570, 630], [0, 600, 660]] },
+  { state: "NSW", suburb: "Parramatta", postcode: "2150", type: "townhouse", address: "5/31 Macarthur Street, Parramatta NSW 2150", lat: -33.8150, lng: 151.0011, beds: 3, baths: 2, cars: 2,
+    title: "Modern three-bedroom townhouse near the river", price: 945000, amenities: ["air_conditioning", "garage", "balcony", "study"],
+    intro: "A low-maintenance townhouse in a small complex of eight. Three bedrooms upstairs, a study nook, a sunny courtyard and a double lock-up garage. Walk to the light rail, the river and the Westfield.",
+    rates: { council: 386, water: 154, strata: 760 }, docs: "nsw", times: [[6, 660, 720], [4, 1080, 1140]] },
+  { state: "VIC", suburb: "Brunswick", postcode: "3056", type: "house", address: "63 Albert Street, Brunswick VIC 3056", lat: -37.7664, lng: 144.9600, beds: 3, baths: 2, cars: 1,
+    title: "Renovated Victorian terrace in the heart of Brunswick", price: 1325000, amenities: ["garden", "air_conditioning", "solar", "study"],
+    intro: "A beautifully renovated terrace that keeps its period details: high ceilings, timber floors and original fireplaces. A rear extension adds an open kitchen and dining room opening to a leafy garden, and there is off-street parking at the back.",
+    rates: { council: 462, water: 171, strata: 0 }, docs: "vic", times: [[6, 600, 660], [2, 1050, 1110]] },
+  { state: "VIC", suburb: "Richmond", postcode: "3121", type: "unit", address: "9/14 Bridge Road, Richmond VIC 3121", lat: -37.8183, lng: 144.9984, beds: 2, baths: 2, cars: 1,
+    title: "Stylish two-bedroom apartment close to Swan Street", price: 780000, amenities: ["balcony", "air_conditioning", "lift", "security", "ensuite"],
+    intro: "A contemporary apartment in a boutique block of twelve. Two bedrooms with built-in robes, an ensuite to the main, a covered balcony and a secure car space. Cafes, trams and the MCG precinct are on your doorstep.",
+    rates: { council: 301, water: 142, strata: 1020 }, docs: "vic", times: [[6, 630, 690], [3, 1080, 1140]] },
+  { state: "QLD", suburb: "Bulimba", postcode: "4171", type: "house", address: "34 Oxford Street, Bulimba QLD 4171", lat: -27.4502, lng: 153.0586, beds: 4, baths: 2, cars: 2,
+    title: "Elevated Queenslander with a pool, minutes to Oxford Street", price: 1895000, amenities: ["pool", "garden", "air_conditioning", "garage", "balcony"],
+    intro: "A character Queenslander raised high on a 607 sqm block. Wide verandahs, VJ walls and polished hoop pine floors sit alongside a modern kitchen. Downstairs has a second living area, a laundry and a double garage, and the saltwater pool is fenced to current standards.",
+    rates: { council: 623, water: 214, strata: 0 }, docs: "qld", times: [[6, 600, 660], [3, 1050, 1110]] },
+  // ---- 30 more examples: 1-bed units to 5+ bed estates, entry-level to premium, renovated and needs-work, across NSW, VIC and QLD ----
+  { state: "NSW", suburb: "Newtown", postcode: "2042", type: "unit", address: "4/62 King Street, Newtown NSW 2042", lat: -33.8960, lng: 151.1796, beds: 1, baths: 1, cars: 0,
+    title: "Compact one-bedroom apartment above King Street", price: 640000, amenities: ["air_conditioning", "balcony"],
+    intro: "A neat one-bedroom apartment in a boutique 1930s block. Polished boards, a north-facing balcony and a European laundry. No car space, but the train station, buses and King Street cafes are all a short walk away. A solid entry-level buy or investment.",
+    rates: { council: 265, water: 132, strata: 890 }, docs: "nsw", times: [[6, 600, 660], [2, 1080, 1140]] },
+  { state: "NSW", suburb: "Penrith", postcode: "2750", type: "unit", address: "17/9 Henry Street, Penrith NSW 2750", lat: -33.7511, lng: 150.6942, beds: 1, baths: 1, cars: 1,
+    title: "Affordable one-bedroom unit near Penrith station", price: 435000, amenities: ["air_conditioning", "lift", "security"],
+    intro: "A tidy one-bedroom unit on the fifth floor with a lock-up car space. Open-plan living, a modern kitchen and a bedroom with a built-in robe. Five minutes' walk to the station and Westfield Penrith. Ideal for first home buyers.",
+    rates: { council: 248, water: 120, strata: 780 }, docs: "nsw", times: [[0, 600, 660], [6, 780, 840]] },
+  { state: "NSW", suburb: "Wollongong", postcode: "2500", type: "unit", address: "22/40 Market Street, Wollongong NSW 2500", lat: -34.4247, lng: 150.8946, beds: 2, baths: 2, cars: 1,
+    title: "Two-bedroom apartment with ocean glimpses", price: 695000, amenities: ["balcony", "air_conditioning", "lift", "pool", "security"],
+    intro: "A modern two-bedroom, two-bathroom apartment with a sunny balcony and glimpses of the water. The building has a resort-style pool and gym. Walk to the beach, the Crown Street Mall and the train.",
+    rates: { council: 290, water: 138, strata: 1240 }, docs: "nsw", times: [[6, 630, 690], [3, 1050, 1110]] },
+  { state: "NSW", suburb: "Marrickville", postcode: "2204", type: "townhouse", address: "3/55 Illawarra Road, Marrickville NSW 2204", lat: -33.9107, lng: 151.1558, beds: 2, baths: 1, cars: 1,
+    title: "Two-bedroom townhouse with a courtyard in Marrickville", price: 1050000, amenities: ["garden", "air_conditioning", "pet_friendly"],
+    intro: "A quiet townhouse at the back of a small group of three. Two bedrooms, a renovated bathroom, a timber kitchen and a private courtyard that suits a dog. Close to the Marrickville Metro, cafes and the light rail.",
+    rates: { council: 340, water: 146, strata: 520 }, docs: "nsw", times: [[6, 570, 630], [4, 1080, 1140]] },
+  { state: "NSW", suburb: "Cronulla", postcode: "2230", type: "townhouse", address: "2/14 Kingsway, Cronulla NSW 2230", lat: -34.0538, lng: 151.1522, beds: 3, baths: 2, cars: 2,
+    title: "Three-bedroom townhouse close to Cronulla Beach", price: 1780000, amenities: ["garage", "balcony", "air_conditioning", "garden", "ensuite"],
+    intro: "A light, split-level townhouse a few streets from the sand. Three bedrooms with an ensuite to the main, a covered entertaining terrace and a double garage. Fresh paint and new carpet throughout.",
+    rates: { council: 395, water: 160, strata: 610 }, docs: "nsw", times: [[6, 600, 660], [0, 600, 660]] },
+  { state: "NSW", suburb: "Gosford", postcode: "2250", type: "house", address: "18 Mann Street, Gosford NSW 2250", lat: -33.4254, lng: 151.3417, beds: 3, baths: 1, cars: 1,
+    title: "Original three-bedroom home with big potential", price: 820000, amenities: ["garden"],
+    intro: "A solid brick home on a flat 640 sqm block, in original condition and ready for a renovator. Three bedrooms, a sunroom and a large backyard with room for a pool or a granny flat (subject to council approval). Needs updating, priced accordingly.",
+    rates: { council: 372, water: 150, strata: 0 }, docs: "nsw", times: [[6, 600, 660], [3, 1050, 1110]] },
+  { state: "NSW", suburb: "Orange", postcode: "2800", type: "house", address: "41 Summer Street, Orange NSW 2800", lat: -33.2835, lng: 149.1000, beds: 4, baths: 2, cars: 2,
+    title: "Four-bedroom family home with a wood heater and garden", price: 760000, amenities: ["garden", "garage", "air_conditioning", "solar"],
+    intro: "A spacious brick home in a quiet pocket of Orange. Four bedrooms, a wood fire and reverse-cycle air conditioning, a big family kitchen and a landscaped garden with fruit trees. Solar panels and a double garage.",
+    rates: { council: 330, water: 128, strata: 0 }, docs: "nsw", times: [[6, 570, 630], [0, 600, 660]] },
+  { state: "NSW", suburb: "Mosman", postcode: "2088", type: "house", address: "9 Awaba Street, Mosman NSW 2088", lat: -33.8280, lng: 151.2430, beds: 4, baths: 3, cars: 2,
+    title: "Renovated family residence in the heart of Mosman", price: 4350000, amenities: ["pool", "garden", "garage", "air_conditioning", "ensuite", "study", "security"],
+    intro: "A fully renovated four-bedroom residence on a level 720 sqm block. Designer kitchen with butler's pantry, a study, a sparkling pool and a landscaped garden with a covered terrace. Zoned for top local schools, a short walk to Mosman Village.",
+    rates: { council: 780, water: 240, strata: 0 }, docs: "nsw", times: [[6, 600, 660], [3, 1050, 1110]] },
+  { state: "NSW", suburb: "Castle Hill", postcode: "2154", type: "house", address: "12 Greenwood Close, Castle Hill NSW 2154", lat: -33.7294, lng: 151.0039, beds: 5, baths: 3, cars: 3,
+    title: "Executive five-bedroom home with a pool and a theatre room", price: 2650000, amenities: ["pool", "garden", "garage", "air_conditioning", "ensuite", "study", "solar", "security"],
+    intro: "A grand five-bedroom family home in a cul-de-sac. Formal and informal living, a home theatre, a gourmet kitchen, a study and a heated pool with an alfresco area. Triple garage, ducted air conditioning and solar. Close to the Metro and top schools.",
+    rates: { council: 590, water: 220, strata: 0 }, docs: "nsw", times: [[6, 600, 660], [0, 570, 630]] },
+  { state: "NSW", suburb: "Terrigal", postcode: "2260", type: "house", address: "7 Scenic Highway, Terrigal NSW 2260", lat: -33.4478, lng: 151.4440, beds: 6, baths: 5, cars: 4,
+    title: "Waterfront estate with a pool, tennis court and six bedrooms", price: 7800000, amenities: ["pool", "garden", "garage", "air_conditioning", "ensuite", "study", "solar", "security", "balcony"],
+    intro: "A private estate on an elevated 2,100 sqm block with sweeping water views. Six bedrooms each with an ensuite, a library, a wine cellar, a resort pool and a floodlit tennis court. Four-car garage with a gated drive. Offered for the first time in 30 years.",
+    rates: { council: 1150, water: 310, strata: 0 }, docs: "nsw", times: [[6, 600, 660], [0, 600, 660]] },
+  { state: "NSW", suburb: "Paddington", postcode: "2021", type: "house", address: "26 Gordon Street, Paddington NSW 2021", lat: -33.8850, lng: 151.2300, beds: 3, baths: 2, cars: 0,
+    title: "Charming terrace in a heritage street, Paddington", price: 3150000, amenities: ["garden", "air_conditioning", "study"],
+    intro: "A Victorian terrace on a tree-lined street with iron lace, high ceilings and a sandstone-paved courtyard. Three bedrooms and a study, a renovated kitchen and a bathroom added in 2021. Heritage conservation area. Street parking by permit.",
+    rates: { council: 510, water: 180, strata: 0 }, docs: "nsw", times: [[6, 630, 690], [2, 1080, 1140]] },
+  { state: "NSW", suburb: "Lismore", postcode: "2480", type: "house", address: "33 Keen Street, Lismore NSW 2480", lat: -28.8135, lng: 153.2770, beds: 3, baths: 1, cars: 2,
+    title: "Elevated cottage on a large block, needs finishing touches", price: 520000, amenities: ["garden", "garage", "pet_friendly"],
+    intro: "A classic timber cottage on high ground with a 900 sqm block. Three bedrooms, wide verandahs and a big shed. The kitchen has been renovated; the bathroom and exterior paint still need work, reflected in the price. See the flood search under the disclosures.",
+    rates: { council: 305, water: 118, strata: 0 }, docs: "nsw", times: [[6, 600, 660], [0, 630, 690]] },
+  { state: "VIC", suburb: "St Kilda", postcode: "3182", type: "unit", address: "5/28 Fitzroy Street, St Kilda VIC 3182", lat: -37.8600, lng: 144.9810, beds: 1, baths: 1, cars: 1,
+    title: "Art deco one-bedroom apartment near the beach", price: 565000, amenities: ["balcony", "air_conditioning", "pet_friendly"],
+    intro: "A character one-bedroom in a well-kept art deco block. Original parquetry floors, a sunny balcony and a lock-up garage. Trams and Fitzroy Street cafes at your door, the beach a short stroll away.",
+    rates: { council: 252, water: 124, strata: 840 }, docs: "vic", times: [[6, 600, 660], [3, 1080, 1140]] },
+  { state: "VIC", suburb: "Footscray", postcode: "3011", type: "unit", address: "11/75 Barkly Street, Footscray VIC 3011", lat: -37.8000, lng: 144.8990, beds: 2, baths: 1, cars: 1,
+    title: "Two-bedroom apartment minutes from Footscray station", price: 480000, amenities: ["air_conditioning", "lift", "security"],
+    intro: "A bright two-bedroom apartment with an open kitchen and a secure car space. Five minutes to the station, the market and Victoria University. A well-priced first home or investment in a fast-changing suburb.",
+    rates: { council: 255, water: 125, strata: 810 }, docs: "vic", times: [[0, 600, 660], [6, 720, 780]] },
+  { state: "VIC", suburb: "South Yarra", postcode: "3141", type: "unit", address: "14/7 Toorak Road, South Yarra VIC 3141", lat: -37.8394, lng: 144.9930, beds: 3, baths: 2, cars: 2,
+    title: "Luxury three-bedroom apartment overlooking the Botanic Gardens", price: 2250000, amenities: ["balcony", "air_conditioning", "lift", "security", "pool", "ensuite"],
+    intro: "A sophisticated three-bedroom apartment on a high floor with garden views. Stone kitchen, European appliances, an ensuite and walk-in robe to the main, and two car spaces. Residents enjoy a pool, gym and concierge.",
+    rates: { council: 520, water: 190, strata: 2150 }, docs: "vic", times: [[6, 630, 690], [3, 1050, 1110]] },
+  { state: "VIC", suburb: "Preston", postcode: "3072", type: "townhouse", address: "2/118 Gower Street, Preston VIC 3072", lat: -37.7401, lng: 145.0001, beds: 2, baths: 2, cars: 1,
+    title: "Two-bedroom townhouse on a quiet street in Preston", price: 705000, amenities: ["garden", "air_conditioning", "garage"],
+    intro: "A modern two-storey townhouse at the back of a block of two. Two bedrooms upstairs each with an ensuite-style bathroom access, an open living area and a low-maintenance garden. Close to the High Street tram and the Preston market.",
+    rates: { council: 320, water: 140, strata: 0 }, docs: "vic", times: [[6, 600, 660], [2, 1080, 1140]] },
+  { state: "VIC", suburb: "Glen Waverley", postcode: "3150", type: "townhouse", address: "5/22 Springvale Road, Glen Waverley VIC 3150", lat: -37.8780, lng: 145.1650, beds: 3, baths: 2, cars: 2,
+    title: "Three-bedroom townhouse in the Glen Waverley school zone", price: 1180000, amenities: ["garage", "garden", "air_conditioning", "ensuite"],
+    intro: "A stylish three-bedroom townhouse in a boutique group of five, in the zone for Glen Waverley Secondary College. Double garage with internal entry, a north-facing courtyard and ducted heating and cooling.",
+    rates: { council: 405, water: 158, strata: 0 }, docs: "vic", times: [[6, 570, 630], [0, 600, 660]] },
+  { state: "VIC", suburb: "Geelong", postcode: "3220", type: "house", address: "29 Pakington Street, Geelong West VIC 3218", lat: -38.1400, lng: 144.3500, beds: 3, baths: 1, cars: 1,
+    title: "Californian bungalow ready for your renovation ideas", price: 735000, amenities: ["garden", "pet_friendly"],
+    intro: "A sunny bungalow on a 520 sqm block, with leadlight windows, a timber porch and plenty of original charm. Three bedrooms, a big back garden and a single garage. Needs a refresh; a rare chance to add value close to Pakington Street.",
+    rates: { council: 340, water: 132, strata: 0 }, docs: "vic", times: [[6, 600, 660], [3, 1050, 1110]] },
+  { state: "VIC", suburb: "Ballarat", postcode: "3350", type: "house", address: "54 Lydiard Street North, Ballarat VIC 3350", lat: -37.5600, lng: 143.8600, beds: 4, baths: 2, cars: 2,
+    title: "Four-bedroom family home with ducted heating", price: 595000, amenities: ["garden", "garage", "solar", "air_conditioning"],
+    intro: "A comfortable four-bedroom brick home with an open-plan kitchen and family room, a separate lounge and a large rear yard. Ducted heating, solar panels and a double garage. Walk to the Ballarat Gardens and the train station.",
+    rates: { council: 310, water: 118, strata: 0 }, docs: "vic", times: [[6, 600, 660], [0, 570, 630]] },
+  { state: "VIC", suburb: "Brighton", postcode: "3186", type: "house", address: "16 Wolseley Grove, Brighton VIC 3186", lat: -37.9061, lng: 144.9990, beds: 5, baths: 4, cars: 3,
+    title: "Grand five-bedroom Brighton residence with a pool and tennis court", price: 6200000, amenities: ["pool", "garden", "garage", "air_conditioning", "ensuite", "study", "solar", "security"],
+    intro: "A magnificent five-bedroom residence on 1,050 sqm in the golden mile. Formal and casual living, a gourmet kitchen with a butler's pantry, a cinema room, a heated pool and a tennis court. Three-car garage with a gated entrance. A short walk to Church Street and Brighton Beach.",
+    rates: { council: 1020, water: 285, strata: 0 }, docs: "vic", times: [[6, 600, 660], [3, 1050, 1110]] },
+  { state: "VIC", suburb: "Mornington", postcode: "3931", type: "house", address: "8 Vale Street, Mornington VIC 3931", lat: -38.2180, lng: 145.0360, beds: 4, baths: 2, cars: 2,
+    title: "Coastal four-bedroom villa within walking distance of the pier", price: 1650000, amenities: ["garden", "garage", "air_conditioning", "balcony", "solar"],
+    intro: "A coastal villa with a wide verandah, high ceilings and a renovated kitchen opening to a north-facing deck. Four bedrooms, a double garage and a manicured garden. Walk to the Main Street cafes and the pier.",
+    rates: { council: 470, water: 175, strata: 0 }, docs: "vic", times: [[6, 600, 660], [0, 600, 660]] },
+  { state: "QLD", suburb: "Fortitude Valley", postcode: "4006", type: "unit", address: "1204/88 Brunswick Street, Fortitude Valley QLD 4006", lat: -27.4570, lng: 153.0370, beds: 1, baths: 1, cars: 1,
+    title: "High-floor one-bedroom apartment in the Valley", price: 520000, amenities: ["balcony", "air_conditioning", "lift", "pool", "security"],
+    intro: "A stylish one-bedroom apartment on the 12th floor with city views, a covered balcony and a secure car space. The building has a pool, gym and rooftop terrace. Walk to the train, restaurants and James Street.",
+    rates: { council: 245, water: 128, strata: 1350 }, docs: "qld", times: [[6, 600, 660], [3, 1080, 1140]] },
+  { state: "QLD", suburb: "Southport", postcode: "4215", type: "unit", address: "802/12 Marine Parade, Southport QLD 4215", lat: -27.9670, lng: 153.4140, beds: 2, baths: 2, cars: 2,
+    title: "Gold Coast two-bedroom apartment with water views", price: 890000, amenities: ["balcony", "pool", "air_conditioning", "lift", "security", "ensuite"],
+    intro: "A spacious two-bedroom, two-bathroom apartment with a large balcony overlooking the Broadwater. Two secure car spaces, a resort pool and a gym. Walk to Australia Fair, the tram and the beach.",
+    rates: { council: 350, water: 160, strata: 1650 }, docs: "qld", times: [[6, 630, 690], [0, 600, 660]] },
+  { state: "QLD", suburb: "Indooroopilly", postcode: "4068", type: "townhouse", address: "6/45 Station Road, Indooroopilly QLD 4068", lat: -27.5000, lng: 152.9730, beds: 3, baths: 2, cars: 2,
+    title: "Three-bedroom townhouse close to the university and the station", price: 925000, amenities: ["garage", "air_conditioning", "garden", "balcony"],
+    intro: "A well-kept townhouse in a quiet complex of nine, close to the University of Queensland, the shopping centre and the train. Three bedrooms, air conditioning in each, a double lock-up garage and a private courtyard.",
+    rates: { council: 390, water: 150, strata: 700 }, docs: "qld", times: [[6, 600, 660], [2, 1080, 1140]] },
+  { state: "QLD", suburb: "Carindale", postcode: "4152", type: "house", address: "20 Whitehaven Court, Carindale QLD 4152", lat: -27.5040, lng: 153.1010, beds: 4, baths: 2, cars: 2,
+    title: "Low-set four-bedroom family home with a pool", price: 1090000, amenities: ["pool", "garden", "garage", "air_conditioning", "solar"],
+    intro: "A low-set brick family home on a 700 sqm corner block. Four bedrooms, a big open living area flowing to a covered patio and a fenced saltwater pool. Solar panels and a double garage. Near Carindale Westfield and good schools.",
+    rates: { council: 510, water: 190, strata: 0 }, docs: "qld", times: [[6, 600, 660], [0, 600, 660]] },
+  { state: "QLD", suburb: "Toowoomba", postcode: "4350", type: "house", address: "15 Margaret Street, Toowoomba QLD 4350", lat: -27.5598, lng: 151.9507, beds: 3, baths: 1, cars: 1,
+    title: "Original Queenslander on a large block, needs renovating", price: 465000, amenities: ["garden", "pet_friendly"],
+    intro: "A classic high-set Queenslander on 810 sqm in original condition, with VJ walls and high ceilings. Three bedrooms and a sleep-out. Needs a full renovation, including wiring and plumbing checks; a great project close to the city centre.",
+    rates: { council: 290, water: 110, strata: 0 }, docs: "qld", times: [[6, 600, 660], [0, 630, 690]] },
+  { state: "QLD", suburb: "Noosa Heads", postcode: "4567", type: "house", address: "3 Hastings Street, Noosa Heads QLD 4567", lat: -26.3880, lng: 153.0910, beds: 5, baths: 4, cars: 3,
+    title: "Luxury five-bedroom villa moments from Hastings Street", price: 5400000, amenities: ["pool", "garden", "garage", "air_conditioning", "ensuite", "study", "security", "balcony", "solar"],
+    intro: "A resort-style villa on a 900 sqm block a short stroll from Noosa Main Beach. Five bedrooms each with an ensuite, a chef's kitchen, a media room and a private pool courtyard with an outdoor kitchen. Triple garage and a separate guest suite.",
+    rates: { council: 980, water: 270, strata: 0 }, docs: "qld", times: [[6, 600, 660], [0, 600, 660]] },
+  { state: "QLD", suburb: "Cairns", postcode: "4870", type: "house", address: "22 Esplanade, Cairns City QLD 4870", lat: -16.9220, lng: 145.7800, beds: 3, baths: 2, cars: 2,
+    title: "Tropical three-bedroom home with a pool and tiled terrace", price: 780000, amenities: ["pool", "garden", "garage", "air_conditioning", "balcony"],
+    intro: "A tropical home with louvred windows, a big tiled terrace and a shimmering pool in a lush garden. Three bedrooms, a renovated kitchen and a double garage. Close to the Esplanade Lagoon and the city centre.",
+    rates: { council: 400, water: 180, strata: 0 }, docs: "qld", times: [[6, 570, 630], [0, 600, 660]] },
+  { state: "VIC", suburb: "Hawthorn", postcode: "3122", type: "house", address: "31 Glenferrie Road, Hawthorn VIC 3122", lat: -37.8220, lng: 145.0350, beds: 4, baths: 2, cars: 2,
+    title: "Federation villa with period features near Glenferrie station", price: 2480000, amenities: ["garden", "garage", "air_conditioning", "study", "solar"],
+    intro: "A beautifully restored Federation villa with ornate ceilings, stained glass and polished floors. Four bedrooms and a study, a modern rear extension with a stone kitchen, a north-facing garden and a double garage via the rear lane. Walk to Glenferrie Road and the train.",
+    rates: { council: 560, water: 195, strata: 0 }, docs: "vic", times: [[6, 600, 660], [3, 1050, 1110]] },
+  { state: "QLD", suburb: "Nundah", postcode: "4012", type: "townhouse", address: "4/31 Buckland Road, Nundah QLD 4012", lat: -27.4000, lng: 153.0600, beds: 2, baths: 2, cars: 1,
+    title: "Two-bedroom townhouse a short walk from Nundah Village", price: 640000, amenities: ["air_conditioning", "garden", "pet_friendly", "garage"],
+    intro: "A low-maintenance townhouse in a group of six. Two bedrooms with built-in robes, two bathrooms, a covered patio and a small garden. Walk to Nundah Village, the train station and the cafes.",
+    rates: { council: 325, water: 140, strata: 620 }, docs: "qld", times: [[6, 600, 660], [2, 1080, 1140]] }
+
+];
+const DOC_SETS = {
+  nsw: [["contract", "Contract for the sale of land (with section 10.7 planning certificate)", "nsw_contract_of_sale"], ["title_search", "Title search", "title_search"],
+    ["building_inspection", "Building inspection report", "building_pest_report"], ["pest_report", "Timber pest report", null]],
+  vic: [["contract", "Vendor's statement (section 32) and contract of sale", "vic_section_32"], ["title_search", "Title search and plan of subdivision", "title_search"],
+    ["building_inspection", "Building inspection report", "building_pest_report"], ["pest_report", "Timber pest report", null]],
+  qld: [["contract", "Seller disclosure statement (Form 2) and contract", "qld_seller_disclosure_statement"], ["title_search", "Current title search", "qld_title_search"],
+    ["other", "Registered survey plan", "qld_registered_plan"], ["other", "Pool safety certificate", "qld_pool_safety_sale"], ["other", "Smoke alarm compliance declaration", "qld_smoke_alarm_compliance_sale"],
+    ["building_inspection", "Building inspection report", null], ["pest_report", "Timber pest report", null]]
+};
+const describe = e => {
+  const f = e.rates, repay = loan(e.price);
+  return [e.intro,
+    `Rates and outgoings (approximate, per quarter): council rates ${money(f.council)}, water and sewerage ${money(f.water)}${f.strata ? `, strata levies ${money(f.strata)}` : ""}.`,
+    `Finance example: with a 20% deposit (${money(Math.round(e.price * 0.2))}) and a 30-year loan at an example rate of 6.20% a year, repayments would be about ${money(repay)} a month. This is an illustration only, not an offer of credit; rates change.`,
+    `Open inspections are bookable on the listing page. Sold direct by the owner, so you deal with the person who knows the property best. Demo data.`].join("\n\n");
+};
+
+async function seedOwnerExamples(client) {
+  const email = `${EXAMPLE_OWNER}${D}`;
+  let owner = (await client.query(`SELECT id FROM app_user WHERE email = $1`, [email])).rows[0]?.id;
+  if (!owner) {
+    owner = (await client.query(`INSERT INTO app_user (email, display_name, user_type, status) VALUES ($1, 'Marcus Bell (owner, 36 example listings)', 'owner', 'active') RETURNING id`, [email])).rows[0].id;
+    await client.query(`INSERT INTO terms_acceptance (user_id, version) VALUES ($1, '2026-10-24')`, [owner]);
+  }
+  const boss = (await client.query(`SELECT id FROM app_user WHERE email = $1`, [`staff.super_admin${D}`])).rows[0]?.id;
+  if (!boss) { console.log("Example listings skipped: demo staff are missing."); return; }
+  let ta = (await client.query(`SELECT id FROM trust_account WHERE approved_at IS NOT NULL ORDER BY approved_at LIMIT 1`)).rows[0]?.id;
+  if (!ta) {
+    const firm = (await client.query(`INSERT INTO law_firm (name, jurisdiction, tier) VALUES ('Harbour Legal (demo)', 'QLD', 'registered') RETURNING id`)).rows[0].id;
+    ta = (await client.query(
+      `INSERT INTO trust_account (firm_id, account_name, bsb, account_number_encrypted, details_fingerprint, last_human_approved_fingerprint, approved_by, approved_at)
+       VALUES ($1, 'Harbour Legal Trust (demo)', '064000', '\\x00', 'demo-fp', 'demo-fp', $2, now()) RETURNING id`, [firm, boss])).rows[0].id;
+  }
+  const dir = localDevStorageDir(process.env);
+  const iso = days => new Date(Date.now() + days * 864e5).toISOString().slice(0, 10);
+  let made = 0;
+  for (const [i, e] of EXAMPLES.entries()) {
+    if ((await client.query(`SELECT 1 FROM property_listing WHERE owner_user_id = $1 AND address_text = $2`, [owner, e.address])).rowCount) continue;
+    const cfg = (await client.query(`SELECT id FROM disclosure_config_version WHERE jurisdiction = $1 AND transaction_type = 'sale' AND use_class = 'residential' AND status = 'approved'`, [e.state])).rows[0]?.id ?? null;
+    const pid = (await client.query(
+      `INSERT INTO property (address_text, state, suburb, postcode, use_class, property_type, bedrooms, bathrooms, car_spaces, latitude, longitude)
+       VALUES ($1, $2, $3, $4, 'residential', $5, $6, $7, $8, $9, $10) RETURNING id`, [e.address, e.state, e.suburb, e.postcode, e.type, e.beds, e.baths, e.cars, e.lat, e.lng])).rows[0].id;
+    const lid = (await client.query(
+      `INSERT INTO property_listing (owner_user_id, jurisdiction, transaction_type, use_class, property_type, title, description, address_text, suburb, postcode, price_cents,
+         bedrooms, bathrooms, parking, amenities, latitude, longitude, property_id, status, listing_fee_paid, terms_accepted, disclosure_config_version_id, created_at)
+       VALUES ($1, $2, 'sale', 'residential', $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, 'published', true, true, $17, now() - $18::int * interval '1 day') RETURNING id`,
+      [owner, e.state, e.type, e.title, describe(e), e.address, e.suburb, e.postcode, e.price * 100, e.beds, e.baths, e.cars, e.amenities, e.lat, e.lng, pid, cfg, 3 + i * 2])).rows[0].id;
+    await client.query(`INSERT INTO trust_account_check (listing_id, trust_account_id, decision, evidence, reasons) VALUES ($1, $2, 'approved', '{}', '["Demo data"]')`, [lid, ta]);
+    for (const [kind, name, key] of DOC_SETS[e.docs]) {
+      const bytes = makePdf(name, [e.address, `State: ${e.state}`, "Example document for the demo owner. Not a real certificate or report."]);
+      const id = randomUUID(), storageKey = `listings/${lid}/${randomUUID()}`;
+      if (dir) await putLocalObject(dir, storageKey, bytes);
+      // Contracts and disclosures are public so buyers can read them before an offer; reports are shared with parties only.
+      await client.query(
+        `INSERT INTO property_document (id, property_id, listing_id, kind, storage_key, sha256, uploaded_by, source, declared_mime, size_bytes, visibility, status, uploaded_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, 'owner_supplied', 'application/pdf', $8, $9, 'active', now() - interval '2 days')`,
+        [id, pid, lid, kind, storageKey, createHash("sha256").update(bytes).digest("hex"), owner, bytes.length, key ? "public" : "parties"]);
+      if (key) {
+        await client.query(
+          `INSERT INTO listing_disclosure (listing_id, jurisdiction, disclosure_key, satisfied, evidence_reference, verified_by, verified_at, state, evidence_document_id, submitted_by, submitted_at, config_version_id)
+           VALUES ($1, $2, $3, true, $4, $5, now() - interval '1 day', 'verified', $6, $7, now() - interval '2 days', $8)`, [lid, e.state, key, name, boss, id, owner, cfg]);
+      }
+    }
+    for (const [dow, start, end] of e.times) {
+      await client.query(`INSERT INTO open_inspection_availability (listing_id, created_by, recurrence, day_of_week, start_min, end_min, slot_minutes, capacity) VALUES ($1, $2, 'weekly', $3, $4, $5, 15, 2)`, [lid, owner, dow, start, end]);
+    }
+    await client.query(`INSERT INTO open_inspection_availability (listing_id, created_by, recurrence, on_date, start_min, end_min, slot_minutes, capacity) VALUES ($1, $2, 'once', $3, 720, 780, 30, 3)`, [lid, owner, iso(5 + i)]);
+    made++;
+  }
+  console.log(made ? `Example listings created: ${made} for ${email}.` : `Example listings already present for ${email}.`);
+}
+
+// ---- 30 more varied listings (browse and saved-search testing) -------------------------------------------------------
+// Sale and rent across all eight states, every property type, 0-6 bedrooms, so saved searches have something to filter.
+// Idempotent per address. Photos and map pins come from the shared seedPhotos / listing coordinates below.
+const MORE_LISTINGS = [
+  // [state, suburb, postcode, street, type, sale|rent, price (AUD, weekly for rent), beds, baths, cars, lat, lng]
+  ["QLD", "Bulimba", "4171", "14 Oxford St", "house", "sale", 1850000, 5, 3, 2, -27.4488, 153.0584], ["QLD", "Teneriffe", "4005", "22/9 Macquarie St", "unit", "sale", 695000, 2, 2, 1, -27.4558, 153.0463],
+  ["QLD", "Ascot", "4007", "61 Lancaster Rd", "house", "rent", 1100, 4, 2, 2, -27.4300, 153.0600], ["QLD", "Southport", "4215", "7/30 Seaworld Dr", "unit", "rent", 620, 1, 1, 1, -27.9660, 153.4290],
+  ["QLD", "Noosaville", "4566", "5 Gympie Tce", "townhouse", "sale", 1250000, 3, 2, 2, -26.3970, 153.0620], ["QLD", "Springfield Lakes", "4300", "18 Brookside Ct", "land", "sale", 420000, 0, 0, 0, -27.6840, 152.9060],
+  ["NSW", "Manly", "2095", "12 Ocean Pde", "unit", "sale", 1480000, 2, 2, 1, -33.7970, 151.2880], ["NSW", "Parramatta", "2150", "310/8 Church St", "unit", "rent", 560, 1, 1, 0, -33.8150, 151.0010],
+  ["NSW", "Newtown", "2042", "27 Camden St", "townhouse", "sale", 1690000, 3, 2, 1, -33.8970, 151.1790], ["NSW", "Penrith", "2750", "44 High St", "house", "sale", 890000, 4, 2, 2, -33.7510, 150.6940],
+  ["NSW", "Newcastle", "2300", "9 Hunter St", "house", "rent", 780, 3, 1, 1, -32.9270, 151.7760], ["NSW", "Bondi Junction", "2022", "2/88 Oxford St", "unit", "rent", 850, 2, 1, 0, -33.8930, 151.2480],
+  ["VIC", "Brighton", "3186", "19 Bay St", "house", "sale", 3250000, 5, 4, 3, -37.9060, 144.9960], ["VIC", "Carlton", "3053", "3/150 Lygon St", "unit", "rent", 520, 1, 1, 0, -37.7990, 144.9670],
+  ["VIC", "Footscray", "3011", "41 Barkly St", "townhouse", "sale", 780000, 3, 2, 2, -37.8000, 144.8990], ["VIC", "Geelong", "3220", "6 Moorabool St", "house", "sale", 720000, 4, 2, 2, -38.1490, 144.3600],
+  ["VIC", "St Kilda", "3182", "12/20 Acland St", "unit", "sale", 560000, 1, 1, 0, -37.8680, 144.9810], ["VIC", "Richmond", "3121", "88 Swan St", "house", "rent", 950, 3, 2, 1, -37.8240, 144.9990],
+  ["WA", "Cottesloe", "6011", "4 Marine Pde", "house", "sale", 2950000, 5, 3, 2, -31.9950, 115.7510], ["WA", "Perth", "6000", "1204/1 Barrack Sq", "unit", "rent", 700, 2, 2, 1, -31.9570, 115.8590],
+  ["WA", "Fremantle", "6160", "15 South Tce", "townhouse", "sale", 910000, 3, 2, 1, -32.0570, 115.7480], ["SA", "Glenelg", "5045", "31 Moseley St", "house", "sale", 1380000, 4, 2, 2, -34.9810, 138.5160],
+  ["SA", "Adelaide", "5000", "9/60 Gouger St", "unit", "rent", 480, 1, 1, 0, -34.9290, 138.5960], ["SA", "Norwood", "5067", "23 The Parade", "house", "rent", 690, 3, 1, 1, -34.9210, 138.6330],
+  ["TAS", "Sandy Bay", "7005", "17 Churchill Ave", "house", "sale", 1050000, 4, 2, 2, -42.8990, 147.3250], ["TAS", "Launceston", "7250", "5 George St", "townhouse", "rent", 560, 2, 1, 1, -41.4370, 147.1390],
+  ["ACT", "Kingston", "2604", "11/3 Giles St", "unit", "sale", 640000, 2, 1, 1, -35.3150, 149.1450], ["ACT", "Gungahlin", "2912", "28 Hibberson St", "house", "rent", 720, 4, 2, 2, -35.1850, 149.1330],
+  ["NT", "Darwin City", "0800", "14/2 Smith St", "unit", "rent", 520, 2, 1, 1, -12.4630, 130.8420], ["NT", "Fannie Bay", "0820", "8 Aralia St", "house", "sale", 970000, 4, 2, 2, -12.4290, 130.8350]
+];
+async function seedMoreListings(client) {
+  const email = "more.listings@demo.invalid";
+  let owner = (await client.query(`SELECT id FROM app_user WHERE email = $1`, [email])).rows[0]?.id;
+  if (!owner) {
+    owner = (await client.query(`INSERT INTO app_user (email, display_name, user_type, status) VALUES ($1, 'Dana Wright (owner, 30 more listings)', 'owner', 'active') RETURNING id`, [email])).rows[0].id;
+    await client.query(`INSERT INTO terms_acceptance (user_id, version) VALUES ($1, '2026-10-24')`, [owner]);
+  }
+  const ta = (await client.query(`SELECT id FROM trust_account WHERE approved_at IS NOT NULL ORDER BY approved_at LIMIT 1`)).rows[0]?.id;
+  if (!ta) { console.log("More listings skipped: no approved trust account yet."); return; }
+  let made = 0;
+  for (const [i, [state, suburb, postcode, street, type, tx, price, beds, baths, cars, lat, lng]] of MORE_LISTINGS.entries()) {
+    const address = `${street}, ${suburb} ${state} ${postcode}`;
+    if ((await client.query(`SELECT 1 FROM property_listing WHERE owner_user_id = $1 AND address_text = $2`, [owner, address])).rowCount) continue;
+    const kind = type === "land" ? "Vacant block" : `${beds}-bedroom ${type}`;
+    const title = `${kind.charAt(0).toUpperCase() + kind.slice(1)} in ${suburb}`;
+    const pid = (await client.query(
+      `INSERT INTO property (address_text, state, suburb, postcode, use_class, property_type, bedrooms, bathrooms, car_spaces, latitude, longitude)
+       VALUES ($1, $2, $3, $4, 'residential', $5, $6, $7, $8, $9, $10) RETURNING id`, [address, state, suburb, postcode, type, beds, baths, cars, lat, lng])).rows[0].id;
+    const lid = (await client.query(
+      `INSERT INTO property_listing (owner_user_id, jurisdiction, transaction_type, use_class, property_type, title, description, address_text, suburb, postcode, price_cents,
+         bedrooms, bathrooms, parking, latitude, longitude, property_id, status, listing_fee_paid, terms_accepted, created_at)
+       VALUES ($1, $2, $3, 'residential', $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, 'published', true, true, now() - $17::int * interval '1 day') RETURNING id`,
+      [owner, state, tx, type, title, `Demo listing in ${suburb}. Example data for browsing and saved-search testing.`, address, suburb, postcode, price * 100, beds, baths, cars, lat, lng, pid, 1 + i])).rows[0].id;
+    await client.query(`INSERT INTO trust_account_check (listing_id, trust_account_id, decision, evidence, reasons) VALUES ($1, $2, 'approved', '{}', '["Demo data"]')`, [lid, ta]);
+    made++;
+  }
+  console.log(made ? `More listings created: ${made} for ${email}.` : `More listings already present for ${email}.`);
+}
+
 // ---- Open inspection times for the Bondi demo listing ----------------------------------------------------------------
 // Published by the owner (Sarah): a weekly Saturday morning session plus a few one-off dates over the next three weeks
 // (evening, morning and afternoon). Dates are relative to today in Sydney time. Idempotent: skipped once the listing has times.
@@ -353,13 +876,24 @@ const D = "@demo.invalid";
 // Demo investor (investors are buyer accounts holding the investor role, see src/domain/roles.ts). Idempotent so an already-seeded DB gets it too.
 async function seedInvestor(db) {
   const email = `noah.investor${D}`;
-  if ((await db.query(`SELECT 1 FROM app_user WHERE email = $1`, [email])).rows.length) return;
-  const id = (await db.query(
-    `INSERT INTO app_user (email, display_name, user_type, status, roles, active_role) VALUES ($1, 'Noah Patel (investor)', 'buyer', 'active', ARRAY['buyer','investor'], 'investor') RETURNING id`, [email])).rows[0].id;
-  await db.query(`INSERT INTO terms_acceptance (user_id, version) VALUES ($1, '2026-10-24')`, [id]);
-  await db.query(`INSERT INTO buyer_verification (user_id, email_verified_at, phone_verified_at, phone_e164, id_verified_at, id_method)
-                  VALUES ($1, now(), now(), '+61400000002', now(), 'manual_review')`, [id]);
-  console.log("Demo investor created: Noah Patel (fully verified).");
+  let id = (await db.query(`SELECT id FROM app_user WHERE email = $1`, [email])).rows[0]?.id;
+  if (!id) {
+    id = (await db.query(
+      `INSERT INTO app_user (email, display_name, user_type, status, roles, active_role) VALUES ($1, 'Noah Patel (investor)', 'buyer', 'active', ARRAY['buyer','investor'], 'investor') RETURNING id`, [email])).rows[0].id;
+    await db.query(`INSERT INTO terms_acceptance (user_id, version) VALUES ($1, '2026-10-24')`, [id]);
+    await db.query(`INSERT INTO buyer_verification (user_id, email_verified_at, phone_verified_at, phone_e164, id_verified_at, id_method)
+                    VALUES ($1, now(), now(), '+61400000002', now(), 'manual_review')`, [id]);
+    console.log("Demo investor created: Noah Patel (fully verified).");
+  }
+  // The investor declaration is what the project pages check; without a row for the CURRENT disclosure version every project shows "not found" (older rows such as 'local-demo' do not count). Added for already-seeded DBs too.
+  const added = await db.query(`INSERT INTO investor_declaration (user_id, category, ack_not_advice, ack_not_offer, ack_no_funds_held, ack_off_platform, disclosure_version)
+             SELECT $1, 'wholesale', true, true, true, true, $2 WHERE NOT EXISTS (SELECT 1 FROM investor_declaration WHERE user_id = $1 AND disclosure_version = $2)`, [id, DISCLOSURE_VERSION]);
+  if (added.rowCount) console.log("Demo investor declaration added for Noah Patel (wholesale).");
+  // Other demo investors (Grace, Hugo) were seeded with an old 'local-demo' version; give them a current one too.
+  const more = await db.query(`INSERT INTO investor_declaration (user_id, category, ack_not_advice, ack_not_offer, ack_no_funds_held, ack_off_platform, disclosure_version)
+             SELECT u.id, 'wholesale', true, true, true, true, $1 FROM app_user u WHERE u.email LIKE '%.investor${D}'
+             AND NOT EXISTS (SELECT 1 FROM investor_declaration d WHERE d.user_id = u.id AND d.disclosure_version = $1)`, [DISCLOSURE_VERSION]);
+  if (more.rowCount) console.log(`Demo investor declarations added for ${more.rowCount} more demo investor(s).`);
 }
 // ---- Demo agent performance + sale conversations (Messages page, Agent performance page) ------------------------------
 // Idempotent (marker: priya.agent). Adds three listed agents, 13 past sales from the last 6 months (two fell through) with buyer
@@ -530,11 +1064,19 @@ try {
     console.log("Demo data already present. (Use local-reset to start again.)");
     await seedInvestor(db);
     await seedPerformanceAndMessages(db);
+    await seedOwnerExamples(db);
+    await seedMoreListings(db);
+    await seedDescriptions(db);
     await seedPhotos(db);
     await seedLocations(db);
     await seedFiles(db);
+    await seedDisclosuresAndPublicDocs(db);
     await seedLeads(db);
     await seedMedia(db);
+    await seedAdminExamples(db);
+    await seedProject(db);
+    await seedProjectDocuments(db);
+    await seedContractors(db);
     await db.end();
     process.exit(0);
   }
@@ -658,12 +1200,20 @@ try {
   console.log(`Demo data created: 6 staff, 2 owners, 1 agent, 3 buyers, ${listing.length} listings, 3 enquiries, 3 offers, 2 invoices, 2 ID reviews. (run ${randomUUID().slice(0, 8)})`);
   await seedInvestor(db);
   await seedPerformanceAndMessages(db);
+  await seedOwnerExamples(db);
+  await seedMoreListings(db);
+  await seedDescriptions(db);
   await seedPhotos(db);
   await seedLocations(db);
   await seedFiles(db);
+  await seedDisclosuresAndPublicDocs(db);
   await seedLeads(db);
   await seedMedia(db);
   await seedInspectionTimes(db);
+  await seedAdminExamples(db);
+  await seedProject(db);
+  await seedProjectDocuments(db);
+  await seedContractors(db);
 } catch (e) {
   await db.query("ROLLBACK").catch(() => undefined);
   console.error(`Seed failed: ${e.message}`);

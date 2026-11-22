@@ -1,13 +1,19 @@
 import type { ReactNode } from "react";
-import { cookies, headers } from "next/headers";
+import { cookies } from "next/headers";
 import "./globals.css";
 import GuideAssistant from "./guide-assistant";
+import { ElenaContextTracker } from "./elena-context";
 import AdminShell from "./admin-shell";
 import SiteNav from "./site-nav";
+import NavMemory from "./nav-memory";
 import { THEME_INIT_SCRIPT } from "./theme-toggle";
 import ThemePreviewBridge from "./theme-preview-bridge";
 import "./styles/a11y.css";
 import "./styles/inspections.css";
+import "./styles/emergency.css";
+import "./styles/rentals.css";
+import "./styles/pwa.css";
+import PwaRegister from "./pwa-register";
 import { appOriginFor, readAppMode } from "../src/config/app-mode";
 import { LOCALE_COOKIE } from "../src/domain/account-settings";
 import { DEFAULT_LOCALE, LOCALES, isRtl } from "../src/domain/i18n";
@@ -15,7 +21,6 @@ import { personaById } from "../src/domain/assistant-persona";
 import { GUIDE_DISCLAIMER } from "../src/domain/guide-assistant";
 import { assetUrl, buildThemeCss, fontStylesheetUrl } from "../src/domain/site-theme";
 import { tenantAssetUrl } from "../src/domain/white-label";
-import { devLoginAllowed } from "../src/server/dev-login";
 import { getLivePersona } from "../src/server/assistant-persona-db";
 import { getLiveGuide } from "../src/server/guide-assistant-db";
 import { getRequestTheme } from "../src/server/request-theme";
@@ -25,9 +30,12 @@ const admin = readAppMode() === "admin";
 /** Footer columns used until an admin sets footer links at /staff/site (then those links replace the columns). */
 const FOOTER_COLUMNS = [
   { title: "Buy or rent", links: [{ label: "Browse listings", href: "/listings" }, { label: "Saved searches", href: "/buyer/saved-searches" }, { label: "Verify your account", href: "/buyer/verification" }] },
-  { title: "Owners", links: [{ label: "List your property", href: "/listings/new" }, { label: "Plans and fees", href: "/plans" }, { label: "My listings", href: "/listings/mine" }] },
+  { title: "Owners", links: [{ label: "List your property", href: "/listings/new" }, { label: "Plans and fees", href: "/plans" }, { label: "Emergency contractors", href: "/emergency" }, { label: "My listings", href: "/listings/mine" }] },
   { title: "Help", links: [{ label: "How it works", href: "/#home-how" }, { label: "Questions", href: "/#home-faq" }, { label: "Dashboard", href: "/dashboard" }, { label: "Terms", href: "/terms" }] }
 ];
+
+/** Always shown under the footer, whether or not an admin has replaced the footer links. */
+const LEGAL_LINKS = [{ label: "Privacy", href: "/privacy" }, { label: "Terms", href: "/terms" }, { label: "Support", href: "/support" }, { label: "Get the app", href: "/get-the-app" }];
 
 const getTheme = getRequestTheme;
 
@@ -39,9 +47,9 @@ export async function generateMetadata() {
   const robots = admin || t.source === "draft" ? { robots: { index: false, follow: false } } : {};
   return admin
     ? { title: { default: `${brand.name} Admin`, template: `%s | ${brand.name} Admin` }, description: "Staff only", ...robots, ...icons }
-    : { title: { default: brand.name, template: `%s | ${brand.name}` }, description: `${brand.tagline}. List your own property, meet verified buyers and decide on every offer yourself.`, ...robots, ...icons };
+    : { title: { default: brand.name, template: `%s | ${brand.name}` }, description: `${brand.tagline}. List your own property, meet verified buyers and decide on every offer yourself.`, manifest: "/manifest.webmanifest", appleWebApp: { capable: true, title: brand.name, statusBarStyle: "black-translucent" as const }, applicationName: brand.name, formatDetection: { telephone: false }, ...robots, ...icons, icons: { ...("icons" in icons ? icons.icons : {}), apple: "/icons/apple-touch-icon.png" } };
 }
-export const viewport = { width: "device-width", initialScale: 1 };
+export const viewport = { width: "device-width", initialScale: 1, viewportFit: "cover" as const, themeColor: "#14213d" };
 
 export default async function RootLayout({ children }: { children: ReactNode }) {
   const t = await getTheme();
@@ -65,9 +73,6 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   const bridgeOrigin = t.source === "draft" ? appOriginFor(admin ? "admin" : "all") : null;
   const [guide, personaId] = admin ? [null, null] : await Promise.all([getLiveGuide(), getLivePersona()]);
   const persona = personaById(personaId);
-  // "Sign in" goes to the local test kit's dev sign-in only where devLoginAllowed() holds (never in production); otherwise unchanged.
-  const h = await headers();
-  const devSignIn = !admin && devLoginAllowed({ url: `http://${h.get("host") ?? ""}/`, headers: { get: n => h.get(n) } });
 
   // The saved language (set on /settings) drives <html lang> and text direction. Page text stays English until a language is enabled.
   const savedLocale = (await cookies()).get(LOCALE_COOKIE)?.value;
@@ -89,7 +94,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
             <header className="site-header">
               <div className="site-header-inner">
                 <a className="brand" href="/">{logo ?? brand.name}</a>
-                <SiteNav items={settings.navigation} iconStyle={settings.layout.iconStyle} themeToggle={!fixedLight} {...(devSignIn ? { signInHref: "/dev-login" as const } : {})} />
+                <SiteNav items={settings.navigation} iconStyle={settings.layout.iconStyle} themeToggle={!fixedLight} />
               </div>
             </header>
             <div className="page" id="main-content" tabIndex={-1}>{children}</div>
@@ -114,10 +119,18 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
                   </nav>
                 )}
               </div>
-              <div className="site-footer-base"><p>{footer.text || `© ${new Date().getFullYear()} ${brand.name}`}</p></div>
+              <div className="site-footer-base">
+                <p>{footer.text || `© ${new Date().getFullYear()} ${brand.name}`}</p>
+                <nav aria-label="Legal" className="site-footer-legal">
+                  <ul>{LEGAL_LINKS.map(l => <li key={l.href}><a href={l.href}>{l.label}</a></li>)}</ul>
+                </nav>
+              </div>
             </footer>
           </>
         )}
+        <NavMemory />
+        {!admin && <PwaRegister />}
+        <ElenaContextTracker />
         {guide?.enabled && <GuideAssistant greeting={guide.greeting} chips={guide.chips} disclaimer={GUIDE_DISCLAIMER} persona={{ name: persona.name, icon: persona.icon, portrait: persona.portrait, poses: persona.poses }} />}
         {bridgeOrigin && <ThemePreviewBridge allowedOrigin={bridgeOrigin} />}
       </body>

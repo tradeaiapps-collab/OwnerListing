@@ -48,6 +48,7 @@ Do not turn this on for real users until counsel has approved the retention peri
 
 ## 4c. Agent invitation reminders (hourly)
 - `.github/workflows/agent-invite-reminders.yml` calls `POST $APP_URL/api/internal/appointments/reminders` with header `x-cron-secret` at 15 past every hour. Set repository secrets `APP_URL` and `APPOINTMENT_REMINDER_CRON_SECRET` (same value as the app, 32+ chars). Until both are set the run is skipped with a warning.
+- Contractor job reminders: have a scheduler call `POST $APP_URL/api/internal/job-reminders` hourly with header `x-cron-secret` set to `JOB_REMINDER_CRON_SECRET` (32+ chars; the route answers 503 while it is unset). Job access details are sealed with `MESSAGING_SETTINGS_KEY`; without it owners cannot save a lockbox code or key location.
 - `.github/workflows/signing-reminders.yml` calls `POST $APP_URL/api/internal/signing/reminders` with header `x-cron-secret` at 25 past every hour. Set repository secret `SIGNING_REMINDER_CRON_SECRET` (same value as the app, 32+ chars) next to `APP_URL`. Until both are set the run is skipped with a warning.
 - Each invitation unanswered for 48 hours gets one reminder to the agent. Safe to repeat; answers `{reminded}`.
 - Elena lead qualifier: `.github/workflows/lead-followups.yml` every 15 minutes; setup in `docs/ELENA_LEAD_QUALIFIER.md`.
@@ -64,7 +65,7 @@ Do not turn this on for real users until counsel has approved the retention peri
 - Run it only after migration `20261105200000_market_shift_alerts.sql` has been applied (`npm run migrate`). Rollback: disable the workflow; the table is append-only and can stay.
 
 ## 5. Smoke test after deploy
-Home loads; Google sign-in works; `/plans` loads; an upload answers 503 (storage off, expected); checkout answers "not available yet" (expected); `/api/webhooks/payway` rejects unsigned posts.
+Home loads; Google sign-in works; `/plans` loads; an upload answers 503 (storage off, expected); checkout answers "not available yet" (expected); `/api/webhooks/payway`, `/api/webhooks/mls` and `/api/webhooks/push-status` reject unsigned posts (503 while their secret is unset). Staff can check provider keys at `GET /api/staff/providers/health`.
 
 ## 6. Blocked on providers (stays off or fails closed)
 | Area | Behaviour now | Needs |
@@ -74,6 +75,8 @@ Home loads; Google sign-in works; `/plans` loads; an upload answers 503 (storage
 | Payments | Adapter stub; nothing can be marked paid, so nothing publishes | Westpac PayWay merchant account and docs |
 | File storage and malware scan | Upload and download answer 503 | Storage provider, scanner, encryption at rest |
 | ID verification | In-house photo ID + selfie review is built but off until storage, ClamAV, `ID_IMAGE_KEY` and `ID_RETENTION_CRON_SECRET` are all set (page says "not available yet", approval blocked) | Settings below; counsel sign-off; pen test |
+| MLS / Zillow property data | Skeleton built (client, webhooks, tables, health). Nothing is fetched until the keys are set and a provider PR implements the sync | `MLS_API_KEY`, `MLS_API_BASE_URL`, `MLS_WEBHOOK_SECRET`, `ZILLOW_API_KEY`, `ZILLOW_API_BASE_URL`, `PROVIDER_CREDENTIAL_KEY` (docs/PROVIDER_KEYS.md) |
+| FCM / APNs push | Keys read by `check:providers`; delivery-status webhook `/api/webhooks/push-status?provider=fcm\|apns` answers 503 until the secret is set | `FCM_*`, `APNS_*`, `PUSH_STATUS_WEBHOOK_SECRET` |
 | ABN check | Adapter built, reads ABN_LOOKUP_GUID (unset = not confirmed, staff review) | ABN Lookup GUID |
 | AI | Rules-only engine; features report off | Self-hosted model and OCR server |
 | Legal text | Draft terms and contract template | Counsel review |
@@ -114,7 +117,7 @@ Settings (`.env.example`): `S3_BUCKET`, `S3_REGION`, `S3_ACCESS_KEY_ID`, `S3_SEC
 
 What the code does: every request is TLS and AWS Signature V4 signed; every write sends `x-amz-server-side-encryption` and fails if the service answers with a different mode; objects never overwrite (`If-None-Match: *`) and are stored with `Content-Disposition: attachment` and `Cache-Control: private, no-store`; only `id/` objects can be deleted. The app routes already serve bytes with the stored content type, `X-Content-Type-Options: nosniff` and a sandbox CSP after the access check. `signedUrl(key, { ttlSeconds, filename, contentType })` makes a link valid 1 to 3600 seconds (default 300) that forces `attachment`, for any route that wants to hand the browser a direct link after its own access check.
 
-Bucket setup (once, by whoever owns the account):
+Ready-made policy, lifecycle and CORS files, plus the step-by-step AWS setup, are in `deploy/s3/` (start at `deploy/s3/README.md`). Check a bucket with `npm run check:s3`. The manual outline:
 1. Create a private bucket in the same region as the app. Turn on **Block all public access** (all four settings).
 2. Enable **versioning**. For `id/` objects add a lifecycle rule that expires non-current versions after 1 day, otherwise a "deleted" ID image survives as an old version and breaks the retention promise.
 3. Default encryption: SSE-S3 (`AES256`), or SSE-KMS with a customer key (`S3_SSE=aws:kms`, `S3_KMS_KEY_ID`). Add a bucket policy that denies `s3:PutObject` without encryption and denies any request with `aws:SecureTransport` false.

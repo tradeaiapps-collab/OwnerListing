@@ -24,11 +24,17 @@ describe("sign-up input", () => {
   const ok = { name: "  Ann   Owner ", email: " Ann@Example.COM ", password: PW, userType: "owner" };
   it("cleans the name and email and accepts buyer, owner and agent", () => {
     for (const t of ["buyer", "owner", "agent"]) {
-      expect(readSignup({ ...ok, userType: t })).toEqual({ ok: true, value: { name: "Ann Owner", email: "ann@example.com", password: PW, userType: t } });
+      expect(readSignup({ ...ok, userType: t })).toEqual({ ok: true, value: { name: "Ann Owner", email: "ann@example.com", password: PW, userType: t, trade: null } });
     }
   });
-  it("refuses staff, vendor and other types, bad emails, short or email-like passwords and odd names", () => {
-    for (const t of ["admin", "vendor", "staff", "investor", "", undefined]) expect(readSignup({ ...ok, userType: t }).ok).toBe(false);
+  it("accepts a contractor only with a trade, and ignores a trade on any other type", () => {
+    expect(readSignup({ ...ok, userType: "vendor", trade: "pest_control" })).toEqual({ ok: true, value: { name: "Ann Owner", email: "ann@example.com", password: PW, userType: "vendor", trade: "pest_control" } });
+    for (const trade of [undefined, "", "plumber", "admin", 5]) expect(readSignup({ ...ok, userType: "vendor", trade }).ok).toBe(false);
+    expect(readSignup({ ...ok, userType: "owner", trade: "photographer" })).toMatchObject({ ok: true, value: { userType: "owner", trade: null } });
+    expect(homeFor("vendor")).toBe("/contractor/profile");
+  });
+  it("refuses staff and other types, bad emails, short or email-like passwords and odd names", () => {
+    for (const t of ["admin", "staff", "project_owner", "investor", "", undefined]) expect(readSignup({ ...ok, userType: t }).ok).toBe(false);
     for (const e of ["", "no-at", "a@b", "a b@c.com", "x@y.com\nBcc: z@z.com"]) expect(readSignup({ ...ok, email: e }).ok).toBe(false);
     expect(readSignup({ ...ok, password: "short" }).ok).toBe(false);
     expect(readSignup({ ...ok, password: "x".repeat(129) }).ok).toBe(false);
@@ -84,6 +90,15 @@ describe.skipIf(!DATABASE_URL)("email sign-up, sign-in and reset on Postgres", (
   let n = 0;
   const fresh = () => `person${++n}.${Date.now()}@example.com`;
   beforeEach(() => { sent.length = 0; });
+
+  it("refuses an offensive or contact-detail display name and stores nothing", async () => {
+    for (const name of ["Big Fucking Idiot", "Call 0412 345 678", "jo@example.com"]) {
+      const addr = fresh();
+      expect(await startSignup(deps(), { name, email: addr, password: PW, userType: "buyer" }, "1.1.1.3")).toMatchObject({ ok: false, code: "invalid" });
+      expect((await t.db.query("SELECT 1 FROM email_auth_token WHERE email = $1", [addr])).rows).toHaveLength(0);
+    }
+    expect(sent).toHaveLength(0);
+  });
 
   it("creates the account only when the emailed link is used, once", async () => {
     const addr = fresh();
@@ -149,7 +164,7 @@ describe.skipIf(!DATABASE_URL)("email sign-up, sign-in and reset on Postgres", (
     await t.db.query("INSERT INTO app_user (email, display_name, user_type, status, google_sub) VALUES ($1, 'G', 'owner', 'active', $2)", [google, `sub-${google}`]);
     expect(await passwordSignIn(deps(), { email: google, password: PW }, "2.2.2.1")).toMatchObject({ code: "bad_credentials" });
     const hash = await hashPassword(PW);
-    for (const [type, status] of [["admin", "active"], ["vendor", "active"], ["owner", "suspended"]]) {
+    for (const [type, status] of [["admin", "active"], ["project_owner", "active"], ["vendor", "suspended"], ["owner", "suspended"]]) {
       const e = fresh();
       await t.db.query("INSERT INTO app_user (email, display_name, user_type, status, password_hash) VALUES ($1, 'X', $2, $3, $4)", [e, type, status, hash]);
       expect(await passwordSignIn(deps(), { email: e, password: PW }, "2.2.2.1")).toMatchObject({ code: "bad_credentials" });
@@ -165,6 +180,15 @@ describe.skipIf(!DATABASE_URL)("email sign-up, sign-in and reset on Postgres", (
     }
     expect(codes.slice(0, 8).every(c => c === "bad_credentials")).toBe(true);
     expect(codes[8]).toBe("rate_limited");
+  });
+
+  it("alerts the admins once when an address first goes over the limit, and at most once per window", async () => {
+    const locked: string[] = [];
+    const at = new Date("2031-03-03T03:01:00Z");
+    const d = deps({ onLockout: e => locked.push(e), now: () => at });
+    const [a, b] = [fresh(), fresh()];
+    for (const addr of [a, b]) for (let i = 0; i < 11; i++) await passwordSignIn(d, { email: addr, password: "wrong password!" }, `7.7.${i}.1`);
+    expect(locked).toEqual([a]);
   });
 
   it("resets the password with a one-time link and signs the account out everywhere", async () => {

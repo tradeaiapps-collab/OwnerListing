@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import type { ObjectStoragePort } from "../adapters/object-storage";
 import { sniffMime } from "./file-sniff";
 import { viewProject, type InvestmentDeps } from "./investment-service";
+import { maskTitle, type MaskBox } from "./doc-masking";
 import { maskContacts } from "./investment-terms";
 import { ownerMayEdit } from "./investor-projects";
 import type { Actor, Failure, Result } from "./listing-service";
@@ -27,6 +28,15 @@ export interface ProjectDocRecord {
   id: string; projectId: string; kind: ProjectDocKind; visibility: ProjectDocVisibility; title: string; uploadedBy: string;
   contentType: string; sizeBytes: number; uploadedAt: string; supersedesId?: string;
 }
+/**
+ * One revision of a document's address masking. Insert only: every save is a new revision and the latest one counts, so an edit after
+ * confirmation un-confirms the document until it is confirmed again. Investors see a document only while its latest revision is confirmed.
+ */
+export interface MaskRevision {
+  id: string; documentId: string; revision: number; boxes: MaskBox[]; terms: string[]; pageCount: number; textFound: boolean;
+  confirmed: boolean; actorId: string; createdAt: string;
+}
+export type MaskingStatus = "not_needed" | "pending" | "confirmed";
 export interface NewProjectDoc { record: ProjectDocRecord; storageKey: string; sha256: string }
 export interface StaffView { staffId: string }
 
@@ -37,16 +47,22 @@ export interface ProjectDocStore {
   documentById(id: string): Promise<ProjectDocRecord | undefined>;
   storedFile(id: string): Promise<{ storageKey: string; contentType: string } | undefined>;
   addDocument(d: NewProjectDoc): Promise<void>;
+  /** Investor-visible current documents whose latest masking revision is missing or not confirmed, oldest first (at most 200). */
+  unconfirmedInvestorDocs(): Promise<ProjectDocRecord[]>;
+  /** Latest masking revision, if any. */
+  latestMask(documentId: string): Promise<MaskRevision | undefined>;
+  /** False when that revision number already exists (someone saved first). */
+  addMask(r: MaskRevision): Promise<boolean>;
   bytesUploadedSince(userId: string, sinceIso: string): Promise<number | undefined>;
 }
 
 const notFound = (message = "Not found."): Failure => ({ ok: false, code: "not_found", message });
 const fail = (code: Failure["code"], message: string): Failure => ({ ok: false, code, message });
 
-type Viewer = "owner" | "staff" | "investor" | null;
+export type Viewer = "owner" | "staff" | "investor" | null;
 
 /** Which of the three groups this person is in for the project. Investors must pass viewProject (approved, category allowed). */
-async function viewerOf(deps: InvestmentDeps, actor: Actor | null, projectId: string, ownerUserId: string, staff?: StaffView): Promise<Viewer> {
+export async function viewerOf(deps: InvestmentDeps, actor: Actor | null, projectId: string, ownerUserId: string, staff?: StaffView): Promise<Viewer> {
   if (actor && actor.userId === ownerUserId) return "owner";
   if (staff) return "staff";
   if (actor && (await viewProject(deps, actor, projectId)).ok) return "investor";
@@ -56,7 +72,8 @@ async function viewerOf(deps: InvestmentDeps, actor: Actor | null, projectId: st
 export const mayViewDoc = (viewer: Viewer, v: ProjectDocVisibility): boolean =>
   viewer === "owner" || (viewer === "staff" && v !== "private") || (viewer === "investor" && v === "investors");
 
-export interface ProjectDocView extends Omit<ProjectDocRecord, "uploadedBy"> { current: boolean }
+/** `masking` is "pending" until staff confirm the address masking of an investor-visible document (see project-document-masking). */
+export interface ProjectDocView extends Omit<ProjectDocRecord, "uploadedBy"> { current: boolean; masking: MaskingStatus }
 export interface ProjectDocList { documents: ProjectDocView[]; canManage: boolean }
 
 /** Documents this viewer may see, current versions first-class; the owner also gets earlier versions (current: false). */
@@ -69,9 +86,16 @@ export async function listProjectDocuments(
   if (!viewer) return notFound("Project not found.");
   const all = await store.documentsFor(projectId);
   const replaced = new Set(all.map(d => d.supersedesId).filter((x): x is string => !!x));
-  const documents = all
-    .filter(d => mayViewDoc(viewer, d.visibility) && (viewer === "owner" || !replaced.has(d.id)))
-    .map(({ uploadedBy: _u, ...d }) => ({ ...d, current: !replaced.has(d.id) }))
+  const visible = all.filter(d => mayViewDoc(viewer, d.visibility) && (viewer === "owner" || !replaced.has(d.id)));
+  const withMask = await Promise.all(visible.map(async d => {
+    const mask = d.visibility !== "investors" ? undefined : await store.latestMask(d.id);
+    const masking: MaskingStatus = d.visibility !== "investors" ? "not_needed" : mask?.confirmed ? "confirmed" : "pending";
+    return { d: viewer === "investor" ? { ...d, title: maskTitle(d.title, mask?.terms ?? []) } : d, masking };
+  }));
+  const documents = withMask
+    // An investor never sees a document whose address masking has not been confirmed by staff.
+    .filter(({ masking }) => viewer !== "investor" || masking === "confirmed")
+    .map(({ d: { uploadedBy: _u, ...d }, masking }) => ({ ...d, current: !replaced.has(d.id), masking }))
     .sort((a, b) => Number(b.current) - Number(a.current) || b.uploadedAt.localeCompare(a.uploadedAt));
   return { ok: true, value: { documents, canManage: viewer === "owner" && ownerMayEdit(p) } };
 }
@@ -140,7 +164,10 @@ export async function uploadProjectDocument(
   return { ok: true, value: { id } };
 }
 
-/** Bytes of one document. Same visibility rules as the list; an earlier version is served to the owner only. Staff views are logged. */
+/**
+ * Original bytes of one document. Same visibility rules as the list; an earlier version is served to the owner only. Staff views are
+ * logged. Investors never get the original file (they read the masked page images instead), so for them this is "not found".
+ */
 export async function readProjectDocument(
   deps: InvestmentDeps, store: ProjectDocStore, storage: ObjectStoragePort, actor: Actor | null, docId: string, staff?: StaffView
 ): Promise<Result<{ bytes: Uint8Array; contentType: string; title: string }>> {
@@ -148,7 +175,7 @@ export async function readProjectDocument(
   const p = doc ? await deps.repo.getProject(doc.projectId) : undefined;
   if (!doc || !p) return notFound("Document not found.");
   const viewer = await viewerOf(deps, actor, p.id, p.ownerUserId, staff);
-  if (!viewer || !mayViewDoc(viewer, doc.visibility)) return notFound("Document not found.");
+  if (!viewer || viewer === "investor" || !mayViewDoc(viewer, doc.visibility)) return notFound("Document not found.");
   if (viewer !== "owner" && (await store.documentsFor(p.id)).some(d => d.supersedesId === doc.id)) return notFound("Document not found.");
   const file = await store.storedFile(docId);
   if (!file) return notFound("Document not found.");
@@ -164,6 +191,7 @@ export async function readProjectDocument(
 
 export function createInMemoryProjectDocStore() {
   const rows: (NewProjectDoc & { bytes?: number })[] = [];
+  const masks: MaskRevision[] = [];
   const store: ProjectDocStore = {
     async documentsFor(id) { return rows.filter(r => r.record.projectId === id).map(r => r.record); },
     async documentById(id) { return rows.find(r => r.record.id === id)?.record; },
@@ -172,7 +200,21 @@ export function createInMemoryProjectDocStore() {
       if (d.record.supersedesId && rows.some(r => r.record.supersedesId === d.record.supersedesId)) throw new Error("already replaced");
       rows.push(d);
     },
+    async unconfirmedInvestorDocs() {
+      const replaced = new Set(rows.map(r => r.record.supersedesId).filter(Boolean));
+      const out: ProjectDocRecord[] = [];
+      for (const r of rows) {
+        if (r.record.visibility !== "investors" || replaced.has(r.record.id)) continue;
+        if (!(await store.latestMask(r.record.id))?.confirmed) out.push(r.record);
+      }
+      return out.slice(0, 200);
+    },
+    async latestMask(id) { return masks.filter(m => m.documentId === id).sort((a, b) => b.revision - a.revision)[0]; },
+    async addMask(r) {
+      if (masks.some(m => m.documentId === r.documentId && m.revision === r.revision)) return false;
+      masks.push(r); return true;
+    },
     async bytesUploadedSince(userId) { return rows.filter(r => r.record.uploadedBy === userId).reduce((n, r) => n + r.record.sizeBytes, 0); }
   };
-  return { store, rows };
+  return { store, rows, masks };
 }

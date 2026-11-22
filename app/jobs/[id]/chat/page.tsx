@@ -48,6 +48,7 @@ export default function JobChat() {
   return (
     <main>
       <h1>Job chat</h1>
+      <p><a href={`/jobs/${id}/details`}>Job details, quotes and reviews</a></p>
       <p className="muted">Messages are a permanent record and cannot be edited or deleted.</p>
       {loadError && <p role="alert">{loadError}</p>}
       {!loadError && messages === null && <p className="muted" role="status">Loading…</p>}

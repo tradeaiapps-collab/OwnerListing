@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState, type FormEvent } from "react";
-import { PASSWORD_MIN, isSelfSignupType, type SelfSignupType } from "../../src/domain/email-auth";
+import { PASSWORD_MIN, SIGNUP_TRADES, isSelfSignupType, type SelfSignupType, type SignupTrade } from "../../src/domain/email-auth";
+import { TRADE_LABELS } from "../../src/domain/contractor-market";
 import { safeNext } from "../../src/server/auth/safe-next";
 import { AuthCard, GoogleButton, OrDivider, errorOf, loadProviders, postJson, type Providers } from "../login/auth-ui";
 import "../styles/auth.css";
@@ -8,14 +9,16 @@ import "../styles/auth.css";
 const ROLES: { id: SelfSignupType; title: string; text: string }[] = [
   { id: "buyer", title: "Buying or renting", text: "Save searches, get alerts and make offers." },
   { id: "owner", title: "Owner", text: "List your own home for sale or rent." },
-  { id: "agent", title: "Agent", text: "Work on listings owners appoint you to. Needs a verified licence." }
+  { id: "agent", title: "Agent", text: "Work on listings owners appoint you to. Needs a verified licence." },
+  { id: "vendor", title: "Contractor", text: "Photographer, building inspector, pest control or another trade. Get jobs from owners." }
 ];
 
-/** Open sign-up for buyers, owners and agents, with Google or with email and password (confirmed by a link before the account exists). */
+/** Open sign-up for buyers, owners, agents and contractors, with Google or with email and password (confirmed by a link before the account exists). */
 export default function Signup() {
   const [providers, setProviders] = useState<Providers | null>(null);
   const [next, setNext] = useState<string | undefined>();
   const [role, setRole] = useState<SelfSignupType>("buyer");
+  const [trade, setTrade] = useState<SignupTrade>("photographer");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -35,7 +38,7 @@ export default function Signup() {
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     setBusy(true); setMsg("");
-    const r = await postJson("/api/auth/password/signup", { name, email, password, userType: role });
+    const r = await postJson("/api/auth/password/signup", { name, email, password, userType: role, ...(role === "vendor" ? { trade } : {}) });
     setBusy(false);
     if (r.ok) setSentTo(email.trim());
     else setMsg(errorOf(r.d, "Could not create your account. Try again."));
@@ -50,6 +53,8 @@ export default function Signup() {
     );
   }
 
+  // Contractor accounts use email and password only: Google sign-in cannot create one.
+  const googleOk = role !== "vendor";
   const googleHref = `/api/auth/google/start?as=${role}${next ? `&next=${encodeURIComponent(next)}` : ""}`;
   return (
     <AuthCard title="Create your account" lead="Free to join. Choose what you are here to do; you can still browse everything."
@@ -64,12 +69,21 @@ export default function Signup() {
         ))}
       </fieldset>
       {(role === "owner" || role === "agent") && <p className="auth-note">Owner and agent accounts also set up a second sign-in step (an authenticator app or a text message) right after joining.</p>}
+      {role === "vendor" && <p className="auth-note">After you confirm your email you set up your public page, prices and service areas. Owners pay you directly; the platform does not hold the money.</p>}
       {providers === null ? <p className="muted" role="status">Loading…</p> : (
         <>
-          {providers.google && <GoogleButton href={googleHref} label="Sign up with Google" />}
-          {providers.google && providers.email && <OrDivider />}
+          {providers.google && googleOk && <GoogleButton href={googleHref} label="Sign up with Google" />}
+          {providers.google && googleOk && providers.email && <OrDivider />}
           {providers.email && (
             <form className="auth-form" onSubmit={submit}>
+              {role === "vendor" && (
+                <label className="field">
+                  Your trade
+                  <select value={trade} onChange={e => setTrade(e.target.value as SignupTrade)} required>
+                    {SIGNUP_TRADES.map(t => <option key={t} value={t}>{TRADE_LABELS[t]}</option>)}
+                  </select>
+                </label>
+              )}
               <label className="field">
                 Full name
                 <input value={name} onChange={e => setName(e.target.value)} autoComplete="name" required minLength={2} maxLength={80} />
@@ -91,7 +105,7 @@ export default function Signup() {
               <button type="submit" disabled={busy}>{busy ? "Creating account…" : "Create account"}</button>
             </form>
           )}
-          {!providers.google && !providers.email && <p role="alert">Sign-up is not available right now. Try again shortly.</p>}
+          {!(providers.google && googleOk) && !providers.email && <p role="alert">Sign-up is not available right now. Try again shortly.</p>}
         </>
       )}
       <p className="auth-terms">By creating an account you agree to the <a href="/terms">Terms and Conditions</a>, including the investment risk warning.</p>

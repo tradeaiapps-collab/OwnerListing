@@ -4,7 +4,7 @@ Elena reads an inspection report, contract, market report or email and returns a
 
 ## Pieces
 - `src/domain/doc-analyst.ts` pure engine: classify, extractive key points, fact extraction, rule tables (contract, inspection, market, email), template summary, `compareAnalyses` (2 to 6 documents), `buildEmailDigest`. Bump `ENGINE_VERSION` when rules change; stored readings are per engine, so old documents are re-read once.
-- `src/server/doc-extract.ts` bytes to text. PDF text operators (Flate, size and stream caps), plain text, HTML, `.eml`. Scanned PDFs and images return `needs_ocr`; plug a self-hosted `OcrPort` (for example Tesseract behind an internal service) into `getAnalystDeps` to read them.
+- `src/server/doc-extract.ts` bytes to text. PDF text operators (Flate, size and stream caps), plain text, HTML, `.eml`. Scanned PDFs and images return `needs_ocr`; `src/server/ocr.ts` is wired in (document analyst and pre-qualification uploads): local Tesseract (WebAssembly, English data from `@tesseract.js-data/eng`), no cloud service, 10 pages and 120 seconds per file, `OCR_ENABLED=false` switches it off. A scanned PDF is read by taking its embedded page pictures directly (pdf.js painting images crashes the server canvas on some machines). Scans of poor quality or handwriting read badly; Elena's flags are advice, not facts.
 - `src/domain/doc-analysis-service.ts` access, caching, rate limit (30 readings per user per hour), audit, owner notice, sharing. Access is exactly the document download rule (`canViewDocument`); anything else answers not_found.
 - `db/20261105200000_document_analysis.sql` insert-only `document_analysis` and `document_analysis_share`.
 

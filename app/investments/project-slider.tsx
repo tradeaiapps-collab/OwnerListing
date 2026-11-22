@@ -1,5 +1,6 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { PhotoViewer } from "../listings/gallery";
 import { altFor, photoUrl, srcSetFor, type PhotoView } from "../../src/domain/listing-photos";
 
 const BASE = "/api/investments/photos";
@@ -15,6 +16,7 @@ export function ProjectSlider({ photos, title }: { photos: PhotoView[]; title: s
   const [playing, setPlaying] = useState(true);
   const [hold, setHold] = useState(false);
   const [calm, setCalm] = useState(false);
+  const [full, setFull] = useState(false);
   const start = useRef<{ x: number; y: number } | null>(null);
   const thumbs = useRef<HTMLDivElement>(null);
   const total = photos.length;
@@ -28,7 +30,7 @@ export function ProjectSlider({ photos, title }: { photos: PhotoView[]; title: s
     return () => q.removeEventListener("change", on);
   }, []);
 
-  const auto = playing && !hold && !calm && total > 1;
+  const auto = playing && !hold && !full && !calm && total > 1;
   useEffect(() => {
     if (!auto) return;
     const t = window.setInterval(() => { if (!document.hidden) setAt(i => (i + 1) % total); }, INTERVAL_MS);
@@ -68,6 +70,7 @@ export function ProjectSlider({ photos, title }: { photos: PhotoView[]; title: s
           ))}
         </ul>
         {v.caption && <p className="ps-caption">{v.caption}</p>}
+        <button type="button" className="ps-full" onClick={() => setFull(true)} aria-label="View photos full screen">Full screen</button>
         {total > 1 && (
           <>
             <button type="button" className="ps-nav ps-prev" onClick={() => go(at - 1)} aria-label="Previous photo">‹</button>
@@ -93,6 +96,7 @@ export function ProjectSlider({ photos, title }: { photos: PhotoView[]; title: s
           ))}
         </div>
       )}
+      {full && <PhotoViewer photos={photos} title={title} base={BASE} start={at} onClose={() => setFull(false)} />}
     </section>
   );
 }

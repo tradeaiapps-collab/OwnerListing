@@ -34,7 +34,7 @@ export default function ProjectForm({ initial }: { initial?: Project }) {
     setBusy(true);
     const r = await send(initial ? `/api/investments/projects/${initial.id}` : "/api/investments/projects", initial ? "PUT" : "POST", body);
     setBusy(false);
-    if (r.ok) window.location.assign(`/investments/${(r.data["project"] as { id: string }).id}`);
+    if (r.ok) { const pid = (r.data["project"] as { id: string }).id; window.location.assign(initial ? `/investments/${pid}` : `/investments/${pid}/photos?new=1`); }
     else { setError(String(r.data["error"] ?? "Could not save.")); setErrors((r.data["fields"] as Record<string, string>) ?? {}); }
   }
 

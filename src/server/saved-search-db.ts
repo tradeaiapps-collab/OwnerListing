@@ -44,6 +44,13 @@ export function createPgSavedSearchRepository(db: Queryable): SavedSearchReposit
       if (typeof id !== "string") throw new Error("Saved search was not created.");
       return { id, buyerUserId, active: true, ...input };
     },
+    async remove(buyerUserId, searchId) {
+      const r = await db.query(
+        "DELETE FROM saved_search WHERE buyer_user_id = $1 AND id::text = $2 RETURNING id",
+        [buyerUserId, searchId]
+      );
+      return r.rows.length > 0;
+    },
     async listPreferences(buyerUserId) {
       const r = await db.query(
         "SELECT channel, consent_given_at, unsubscribed_at FROM alert_preference WHERE buyer_user_id = $1 ORDER BY channel",
