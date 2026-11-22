@@ -1,7 +1,7 @@
 export type DashboardRole = "owner" | "agent" | "buyer" | "investor" | "staff";
 export interface DashboardLink { href: string; label: string; text: string }
 
-const SETTINGS: DashboardLink = { href: "/settings", label: "Settings", text: "Language and time zone." };
+const SETTINGS: DashboardLink = { href: "/settings", label: "Account", text: "Profile, sign-in, language and time zone." };
 const PLANS: DashboardLink = { href: "/plans", label: "Plans", text: "Listing fees, with GST shown." };
 const BILLING: DashboardLink = { href: "/billing", label: "Billing", text: "Invoices, your plan and payments." };
 const ENQUIRIES: DashboardLink = { href: "/enquiries", label: "Enquiries", text: "Messages with buyers and owners." };

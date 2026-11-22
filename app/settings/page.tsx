@@ -1,27 +1,24 @@
 "use client";
 import { useEffect, useState } from "react";
-import { DEFAULT_SETTINGS, TIME_ZONE_CHOICES, type AccountSettings } from "../../src/domain/account-settings";
-import { LOCALES } from "../../src/domain/i18n";
 import { JSON_HEADERS } from "../listings/ui";
-import "../styles/settings.css";
 
-export default function Settings() {
-  const [state, setState] = useState<"loading" | "signedOut" | "error" | "ok">("loading");
-  const [s, setS] = useState<AccountSettings>(DEFAULT_SETTINGS);
+interface Profile { displayName: string; email: string | null; hasPassword: boolean; hasGoogle: boolean }
+
+export default function ProfilePage() {
+  const [state, setState] = useState<"loading" | "out" | "error" | "ok">("loading");
+  const [p, setP] = useState<Profile | null>(null);
+  const [name, setName] = useState("");
   const [msg, setMsg] = useState("");
-  const [busy, setBusy] = useState(false);
   const [ok, setOk] = useState(false);
-  const [enabled, setEnabled] = useState<string[]>([]);
+  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    fetch("/api/settings")
+    fetch("/api/me/profile")
       .then(async r => {
-        if (r.status === 401) return setState("signedOut");
+        if (r.status === 401) return setState("out");
         if (!r.ok) return setState("error");
-        const d = (await r.json()) as { settings: AccountSettings; enabledLocales?: string[] };
-        setS(d.settings);
-        setEnabled(d.enabledLocales ?? []);
-        setState("ok");
+        const d = (await r.json()) as Profile;
+        setP(d); setName(d.displayName); setState("ok");
       })
       .catch(() => setState("error"));
   }, []);
@@ -29,48 +26,35 @@ export default function Settings() {
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
     setBusy(true); setMsg(""); setOk(false);
-    const r = await fetch("/api/settings", { method: "PUT", headers: JSON_HEADERS, body: JSON.stringify(s) }).catch(() => null);
-    if (!r) { setBusy(false); return setMsg("Could not save. Check your connection and try again."); }
-    const d = (await r.json().catch(() => ({}))) as { error?: string; settings?: AccountSettings; enabledLocales?: string[] };
+    const r = await fetch("/api/me/profile", { method: "PUT", headers: JSON_HEADERS, body: JSON.stringify({ displayName: name }) }).catch(() => null);
     setBusy(false);
-    if (r.status === 401) return setState("signedOut");
-    if (!r.ok || !d.settings) return setMsg(d.error ?? "Could not save. Please try again.");
-    setS(d.settings);
-    setEnabled(d.enabledLocales ?? []);
-    setOk(true);
-    const live = d.settings.locale === DEFAULT_SETTINGS.locale || (d.enabledLocales ?? []).includes(d.settings.locale);
-    setMsg(live ? "Saved. Your language and time zone are updated." : "Saved. This language is not switched on yet, so pages still show in English. Your choice is kept and applies as soon as it is.");
-    // Reload so the page picks up the saved language and direction.
-    window.setTimeout(() => window.location.reload(), live ? 600 : 2500);
+    if (!r) return setMsg("Could not save. Check your connection and try again.");
+    const d = (await r.json().catch(() => ({}))) as { error?: string; displayName?: string };
+    if (!r.ok || !d.displayName) return setMsg(d.error ?? "Could not save. Please try again.");
+    setName(d.displayName); setP(p ? { ...p, displayName: d.displayName } : p); setOk(true); setMsg("Saved.");
   };
 
   if (state === "loading") return <main><p className="muted" role="status">Loading…</p></main>;
-  if (state === "signedOut") return <main><h1>Settings</h1><p role="alert"><a href="/login?next=/settings">Sign in</a> to change your settings.</p></main>;
-  if (state === "error") return <main><h1>Settings</h1><p role="alert">Could not load your settings.</p></main>;
-
-  const zones = TIME_ZONE_CHOICES.includes(s.timeZone) ? TIME_ZONE_CHOICES : [s.timeZone, ...TIME_ZONE_CHOICES];
+  if (state === "out") return <main><h1>Account</h1><div className="empty-state"><p>Sign in to see your account.</p><a className="button" href="/login?next=/settings">Sign in</a></div></main>;
+  if (state === "error" || !p) return <main><h1>Account</h1><p role="alert">Could not load your profile. Try again shortly.</p></main>;
   return (
     <main>
-      <h1>Settings</h1>
-      <p className="muted">Times are stored in UTC and shown in your time zone. Legal documents, disclosures and terms stay in English.</p>
-      <form className="settings-form" onSubmit={save}>
-        <label>
-          Language
-          <select value={s.locale} onChange={e => { setS({ ...s, locale: e.target.value }); setMsg(""); }}>
-            {LOCALES.map(l => <option key={l.code} value={l.code}>{l.name}</option>)}
-          </select>
-          <span className="hint">A language shows only once it has been reviewed and switched on. Until then you see English.</span>
-        </label>
-        <label>
-          Time zone
-          <select value={s.timeZone} onChange={e => { setS({ ...s, timeZone: e.target.value }); setMsg(""); }}>
-            {zones.map(z => <option key={z} value={z}>{z}</option>)}
-          </select>
-        </label>
-        {msg ? <p role={ok ? "status" : "alert"}>{msg}</p> : null}
-        <button type="submit" disabled={busy}>{busy ? "Saving…" : "Save settings"}</button>
-      </form>
-      <p><a href="/terms?from=/settings">Terms and privacy</a> · <a href="/dashboard">Dashboard</a></p>
+      <h1>Profile</h1>
+      <section className="acct-card" aria-labelledby="acct-name-h">
+        <h2 id="acct-name-h">Your name</h2>
+        <form onSubmit={save}>
+          <label>
+            Name
+            <input value={name} onChange={e => { setName(e.target.value); setMsg(""); }} maxLength={80} autoComplete="name" required />
+          </label>
+          {msg ? <p role={ok ? "status" : "alert"}>{msg}</p> : null}
+          <button type="submit" disabled={busy || name.trim() === p.displayName}>{busy ? "Saving…" : "Save name"}</button>
+        </form>
+      </section>
+      <section className="acct-card" aria-labelledby="acct-photo-h">
+        <h2 id="acct-photo-h">Photo</h2>
+        <p className="muted">Profile photos are coming soon. They need file storage and a security review first.</p>
+      </section>
     </main>
   );
 }
