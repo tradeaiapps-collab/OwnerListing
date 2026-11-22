@@ -1,18 +1,20 @@
 import type { Metadata } from "next";
+import { ANDROID_APK_URL, readBrand } from "../../src/config/brand";
 
 export const metadata: Metadata = {
   title: "Get the app",
-  description: "Download the OwnerListing Android app for testing, or use the website on any phone."
+  description: `Download the ${readBrand().name} Android app for testing, or use the website on any phone.`
 };
 
-const ANDROID_APK = "https://github.com/tradeaiapps-collab/OwnerListing/releases/download/android-latest/ownerlisting.apk";
+const ANDROID_APK = ANDROID_APK_URL;
 
 /** Public page with download links for the test builds of the phone app. */
 export default function GetTheApp() {
+  const brand = readBrand();
   return (
     <main className="legal-page">
       <h1>Get the app</h1>
-      <p className="muted">Test builds of the OwnerListing phone app. The app opens this same website, so your account and listings are the same everywhere.</p>
+      <p className="muted">Test builds of the {brand.name} phone app. The app opens this same website, so your account and listings are the same everywhere.</p>
 
       <section aria-labelledby="android-h">
         <h2 id="android-h">Android</h2>
@@ -20,7 +22,7 @@ export default function GetTheApp() {
         <ol>
           <li>Tap the button on your phone and open the downloaded file.</li>
           <li>If Android asks, allow installing from this source (Chrome or Files).</li>
-          <li>Tap Install, then open OwnerListing.</li>
+          <li>Tap Install, then open {brand.name}.</li>
         </ol>
         <p className="muted">This is a test build for sideloading. It is not on Google Play yet. If you have an older copy, uninstall it first.</p>
       </section>
