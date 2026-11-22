@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { messagingKeyUsable } from "../../../../src/domain/messaging-crypto";
 import { FIELDS, displayValue, isField, resolveMessaging, validateField, type MessagingField } from "../../../../src/domain/messaging-settings";
 import { getDb } from "../../../../src/server/context";
+import { recentOutbox } from "../../../../src/server/messaging";
 import { loadFieldStates, loadStored, saveSettings, type Changes } from "../../../../src/server/messaging-settings-db";
 import { fail, readJsonObject, staffGate } from "../../../../src/server/staff-route";
 import { withApi } from "../../../../src/server/api/with-api";
@@ -19,7 +20,10 @@ async function view() {
     fields[f] = { set: s.set, source: s.source, ...(shown !== undefined ? { display: shown } : {}) };
   }
   const resolved = resolveMessaging(await loadStored(getDb(), env), env);
-  return { keyConfigured: messagingKeyUsable(env["MESSAGING_SETTINGS_KEY"]), fields, smsConfigured: resolved.sms !== null, emailConfigured: resolved.email !== null };
+  return {
+    keyConfigured: messagingKeyUsable(env["MESSAGING_SETTINGS_KEY"]), fields, smsConfigured: resolved.sms !== null, emailConfigured: resolved.email !== null,
+    log: await recentOutbox(getDb())
+  };
 }
 
 /** Current settings, masked. Secrets are never returned, only "set" or "not set". */

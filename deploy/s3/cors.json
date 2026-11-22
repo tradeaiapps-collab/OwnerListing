@@ -1,0 +1,10 @@
+{
+  "CORSRules": [
+    {
+      "AllowedOrigins": ["https://www.DOMAIN", "https://admin.DOMAIN"],
+      "AllowedMethods": ["GET"],
+      "AllowedHeaders": [],
+      "MaxAgeSeconds": 600
+    }
+  ]
+}

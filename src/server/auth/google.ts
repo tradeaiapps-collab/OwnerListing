@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { scanContent } from "../../domain/content-filter";
 
 export interface GoogleConfig {
   clientId: string;
@@ -78,4 +79,16 @@ export async function exchangeCode(
   const body: unknown = await res.json().catch(() => null);
   const idToken = typeof body === "object" && body !== null ? (body as Record<string, unknown>)["id_token"] : undefined;
   return typeof idToken === "string" ? decodeIdToken(idToken) : null;
+}
+
+/**
+ * The Google display name is shown to other people, so it gets the same check as the email sign-up name. A name with abuse or contact
+ * details is not used: the first part of the email address stands in (or "Member" if that fails the check too). Sign-in itself is not
+ * refused, since the person did not type the name here. `replaced` is true when the name was swapped, so the caller can record it.
+ */
+export function vetGoogleName(who: GoogleIdentity): { identity: GoogleIdentity; replaced: boolean } {
+  if (scanContent(who.name).action !== "block") return { identity: who, replaced: false };
+  const local = (who.email.split("@")[0] ?? "").replace(/[._-]+/g, " ").trim();
+  const name = local && scanContent(local).action !== "block" ? local : "Member";
+  return { identity: { ...who, name }, replaced: true };
 }

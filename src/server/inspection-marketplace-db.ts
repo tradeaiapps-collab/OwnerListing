@@ -3,6 +3,7 @@ import type { AuditEvent } from "../domain/audit";
 import type {
   Booking, BookingRepository, BookingStatus, InspectorProfile, InspectorStatus, Jurisdiction, OpenRequest, StaffBookingRow
 } from "../domain/inspection-marketplace";
+import { areaOnly } from "../domain/contractor-trust";
 import { getBuyerVerification } from "./enquiry-db";
 import { getDb } from "./context";
 import type { Queryable } from "./db";
@@ -60,9 +61,10 @@ export const UPSERT_PROFILE_SQL =
 
 /** Params: 1 inspector. Pending requests in the inspector's states that they have not passed on, never their own listing or own request. */
 export const OPEN_REQUESTS_SQL =
-  "SELECT b.id, b.listing_id, l.title, l.address_text, l.jurisdiction, b.slots, b.notes, b.created_at FROM inspection_booking b " +
+  "SELECT b.id, b.listing_id, l.title, l.suburb, l.postcode, l.jurisdiction, b.slots, b.notes, b.created_at FROM inspection_booking b " +
   "JOIN property_listing l ON l.id = b.listing_id JOIN inspector_profile p ON p.user_id = $1::uuid AND p.status = 'approved' AND l.jurisdiction = ANY(p.jurisdictions) " +
   "WHERE b.status = 'pending_inspector_response' AND l.status = 'published' AND l.owner_user_id <> $1::uuid AND b.buyer_id <> $1::uuid " +
+  "AND NOT EXISTS (SELECT 1 FROM contractor_standing cs WHERE cs.user_id = $1::uuid AND cs.suspended) " +
   "AND NOT EXISTS (SELECT 1 FROM inspection_booking_pass x WHERE x.booking_id = b.id AND x.inspector_user_id = $1::uuid) " +
   "ORDER BY b.created_at, b.id LIMIT 100";
 
@@ -73,6 +75,7 @@ export const OPEN_REQUESTS_SQL =
 export const ACCEPT_SQL =
   "WITH b AS (UPDATE inspection_booking b SET status = 'scheduled', inspection_id = $4::uuid, inspector_user_id = $2::uuid, scheduled_at = $3::timestamptz " +
   "FROM property_listing l, inspector_profile p WHERE b.id = $1::uuid AND b.status = 'pending_inspector_response' AND l.id = b.listing_id AND l.status = 'published' " +
+  "AND NOT EXISTS (SELECT 1 FROM contractor_standing cs WHERE cs.user_id = $2::uuid AND cs.suspended) " +
   "AND l.owner_user_id <> $2::uuid AND b.buyer_id <> $2::uuid AND p.user_id = $2::uuid AND p.status = 'approved' AND l.jurisdiction = ANY(p.jurisdictions) " +
   "AND b.slots @> to_jsonb($3::text) AND $3::timestamptz > now() " +
   "AND NOT EXISTS (SELECT 1 FROM listing_agent_appointment a WHERE a.listing_id = l.id AND a.agent_user_id = $2::uuid AND a.revoked_at IS NULL) " +
@@ -136,7 +139,7 @@ export function createPgBookingRepository(db: Queryable): BookingRepository {
       const now = Date.now();
       return (await db.query(OPEN_REQUESTS_SQL, [inspectorId])).rows
         .map((r): OpenRequest => ({
-          id: text(r["id"]), listingId: text(r["listing_id"]), listingTitle: text(r["title"]), address: text(r["address_text"]), jurisdiction: text(r["jurisdiction"]) as Jurisdiction,
+          id: text(r["id"]), listingId: text(r["listing_id"]), listingTitle: text(r["title"]), area: areaOnly({ suburb: r["suburb"] === null ? null : text(r["suburb"]), postcode: r["postcode"] === null ? null : text(r["postcode"]), jurisdiction: text(r["jurisdiction"]) }), jurisdiction: text(r["jurisdiction"]) as Jurisdiction,
           slots: slotsOf(r["slots"]).filter(s => Date.parse(s) > now), notes: text(r["notes"]), createdAt: iso(r["created_at"])
         }))
         .filter(r => r.slots.length > 0);

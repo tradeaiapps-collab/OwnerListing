@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { JSON_HEADERS } from "../../ui";
+import { RatesEditor } from "../rates-editor";
 
 interface Item {
   key: string; label: string; description: string; legalRef: string; notApplicableAllowed: boolean;
@@ -110,6 +111,7 @@ export default function ListingDisclosures() {
       <ul className="card-list">
         {items?.map(i => <DisclosureRow key={`${i.key}-${i.state}`} listingId={id} item={i} docs={docs} editable={editable} onSaved={() => void load()} />)}
       </ul>
+      <RatesEditor listingId={id} />
     </main>
   );
 }

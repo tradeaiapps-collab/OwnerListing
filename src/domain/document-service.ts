@@ -10,6 +10,7 @@ export interface DocumentSummary {
   kind: DocumentKind;
   visibility: Visibility;
   status: DocumentStatus;
+  title?: string;
   supersedesId?: string;
 }
 
@@ -38,6 +39,7 @@ const notFound = (message: string): Result<never> => ({ ok: false, code: "not_fo
 
 const summary = (d: DocumentRecord): DocumentSummary => ({
   id: d.id, kind: d.kind, visibility: d.visibility, status: d.status,
+  ...(d.title ? { title: d.title } : {}),
   ...(d.supersedesId ? { supersedesId: d.supersedesId } : {})
 });
 

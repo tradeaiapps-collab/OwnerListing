@@ -1,5 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { CHANNEL_ACCESS, isChannel, mayUseChannel, mentionedRoles, MAX_PER_MINUTE, snippet, threadTitle, type Channel, type Role, type SendInput } from "../domain/transaction-messages";
+import { createPgContentFlagStore } from "./content-flag-db";
+import { guardContent } from "./content-guard";
 import type { Queryable } from "./db";
 import { notifyUser } from "./notifier";
 
@@ -123,6 +125,9 @@ export async function setArchived(db: Queryable, userId: string, id: string, arc
  * anyone @mentioned is always told; the rest only when they had nothing unread, so a busy thread is one alert until they catch up.
  */
 export async function sendMessage(db: Queryable, userId: string, id: string, input: SendInput, env: Readonly<Record<string, string | undefined>> = process.env, viewer: Viewer = PERSON): Promise<Out<{ id: string }>> {
+  // Abuse is refused and spam is flagged for staff. Contact details are not checked here: once an offer is accepted the parties are put in touch.
+  const guard = await guardContent(createPgContentFlagStore(db), { source: "message", subjectType: "deal_message", userId, fields: { body: input.body }, ignore: ["contact_details"] });
+  if (!guard.ok) return no(422, guard.message);
   const done = await atomic(db, async tx => {
     const t = await access(tx, userId, id, viewer);
     if (!t) return no(404, "Conversation not found.");
@@ -151,6 +156,7 @@ export async function sendMessage(db: Queryable, userId: string, id: string, inp
     return { ok: true as const, value: { id: msgId }, tell, sender: t.people.find(p => p.userId === userId)?.name ?? "Team", listing: t.listing };
   });
   if (!done.ok) return done;
+  await guard.after(done.value.id);
   // After the commit, and never allowed to fail the send (notifyUser does not throw).
   await Promise.all(done.tell.map(o => notifyUser(db, o.userId, "message_received", { name: done.sender, listing: done.listing, link: `/settlements/${id}/messages` }, env)));
   return { ok: true, value: done.value };

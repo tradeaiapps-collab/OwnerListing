@@ -9,6 +9,10 @@ export const MAX_SUBURBS_PER_SEARCH = 10;
 const MAX_SUBURB_LENGTH = 80;
 const MAX_PRICE_CENTS = 100_000_000_000;
 const MAX_BEDROOMS = 20;
+/** Smallest price a real listing can have: a studio or unit is listed as 1 bedroom, and nobody buys for under $10,000 or rents for under $50 a week. */
+export const MIN_BEDROOMS = 1;
+export const MIN_SALE_PRICE_CENTS = 1_000_000;
+export const MIN_RENT_PRICE_CENTS = 5_000;
 
 export type SavedSearchInput = Omit<SavedSearch, "id" | "buyerUserId" | "active">;
 export type AlertChannel = AlertPreference["channel"];
@@ -17,6 +21,8 @@ export interface AlertConsentInput { channel: AlertChannel; consent: boolean }
 export interface SavedSearchRepository {
   list(buyerUserId: string): Promise<SavedSearch[]>;
   insert(buyerUserId: string, input: SavedSearchInput): Promise<SavedSearch>;
+  /** Removes one of the buyer's own searches. Returns false when it does not exist or belongs to someone else. */
+  remove(buyerUserId: string, searchId: string): Promise<boolean>;
   listPreferences(buyerUserId: string): Promise<AlertPreference[]>;
   giveConsent(buyerUserId: string, channel: AlertChannel, nowIso: string): Promise<void>;
   unsubscribe(buyerUserId: string, channel: AlertChannel, nowIso: string): Promise<void>;
@@ -84,8 +90,16 @@ export function parseSavedSearchInput(body: unknown): Result<SavedSearchInput> {
   const max = intField(body, "maxPriceCents", MAX_PRICE_CENTS, "maximum price");
   if (!max.ok) return max;
   if (min.value !== undefined && max.value !== undefined && min.value > max.value) return fail("invalid", "Minimum price is above maximum price.");
+  const floor = transactionType === "sale" ? MIN_SALE_PRICE_CENTS : MIN_RENT_PRICE_CENTS;
+  for (const [v, label] of [[min.value, "minimum"], [max.value, "maximum"]] as const) {
+    if (v !== undefined && v > 0 && v < floor)
+      return fail("invalid", transactionType === "sale"
+        ? `The ${label} price looks too low. Homes for sale start around $10,000.`
+        : `The ${label} price looks too low. Rent is entered per week and starts around $50.`);
+  }
   const beds = intField(body, "minBedrooms", MAX_BEDROOMS, "bedrooms");
   if (!beds.ok) return beds;
+  if (useClass === "residential" && beds.value !== undefined && beds.value < MIN_BEDROOMS) return fail("invalid", "Studios are typically listed as 1+ bedrooms. Choose 1 or more, or leave bedrooms blank.");
 
   const baths = intField(body, "minBathrooms", MAX_BEDROOMS, "bathrooms");
   if (!baths.ok) return baths;
@@ -104,8 +118,8 @@ export function parseSavedSearchInput(body: unknown): Result<SavedSearchInput> {
       ...(min.value !== undefined ? { minPriceCents: min.value } : {}),
       ...(max.value !== undefined ? { maxPriceCents: max.value } : {}),
       ...(beds.value !== undefined ? { minBedrooms: beds.value } : {}),
-      ...(baths.value !== undefined ? { minBathrooms: baths.value } : {}),
-      ...(parking.value !== undefined ? { minParking: parking.value } : {}),
+      ...(baths.value !== undefined && baths.value > 0 ? { minBathrooms: baths.value } : {}),
+      ...(parking.value !== undefined && parking.value > 0 ? { minParking: parking.value } : {}),
       ...(amenities.value.length > 0 ? { amenities: amenities.value } : {}),
       ...(near.value !== undefined ? { near: near.value } : {})
     }
@@ -150,4 +164,14 @@ export async function setAlertConsent(
   if (input.consent) await repo.giveConsent(buyerUserId, input.channel, nowIso);
   else await repo.unsubscribe(buyerUserId, input.channel, nowIso);
   return repo.listPreferences(buyerUserId);
+}
+
+/** Deletes a saved search the buyer owns. A saved search is a preference, not chat or a published file. */
+export async function deleteSavedSearch(
+  repo: SavedSearchRepository, buyerUserId: string, searchId: string
+): Promise<Result<{ deleted: true }>> {
+  if (searchId.length === 0 || searchId.length > 64) return fail("not_found", "Saved search not found.");
+  return (await repo.remove(buyerUserId, searchId))
+    ? { ok: true, value: { deleted: true } }
+    : fail("not_found", "Saved search not found.");
 }

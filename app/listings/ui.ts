@@ -1,4 +1,4 @@
-import { dollarsToCents, MAX_ROOMS } from "../../src/domain/listing-details";
+import { priceInputToCents, MAX_ROOMS } from "../../src/domain/listing-details";
 import type { BondPathway } from "../../src/domain/publish";
 
 export const JSON_HEADERS = { "content-type": "application/json" } as const;
@@ -15,6 +15,11 @@ const ROOM_FIELDS = [["bedrooms", "Bedrooms"], ["bathrooms", "Bathrooms"], ["par
 
 export type FieldErrors = Record<string, string>;
 
+/** Which wizard step each validated field lives on (the names ListingFields uses for its steps). */
+export const FIELD_ERROR_STEP: Record<string, "basics" | "details" | "location"> = {
+  title: "basics", price: "basics", bedrooms: "details", bathrooms: "details", parking: "details", address: "location", postcode: "location"
+};
+
 /**
  * Turns the listing form into the API body. Blank optional fields become null, which clears them on edit.
  * The price field is dollars; the API takes whole cents. On failure `errors` maps each bad field name to its message.
@@ -23,6 +28,7 @@ export function listingFormBody(fd: FormData): { body: Record<string, unknown> }
   const body: Record<string, unknown> = {};
   const errors: FieldErrors = {};
   for (const [k, v] of fd.entries()) if (typeof v === "string" && k !== "price") body[k] = v;
+  if (fd.getAll("allowFlagged").length > 0) body["allowFlagged"] = true; else delete body["allowFlagged"];
   body["amenities"] = fd.getAll("amenities").filter((v): v is string => typeof v === "string");
   for (const k of ["suburb", "postcode", "description"]) body[k] = String(body[k] ?? "").trim() || null;
   if (String(body["title"] ?? "").trim() === "") errors["title"] = "Enter a title for the listing.";
@@ -31,8 +37,8 @@ export function listingFormBody(fd: FormData): { body: Record<string, unknown> }
   const price = String(fd.get("price") ?? "").trim();
   if (price === "") body["priceCents"] = null;
   else {
-    const cents = dollarsToCents(price);
-    if (cents === undefined) errors["price"] = "Enter the price in dollars, for example 850000 or 650.50.";
+    const cents = priceInputToCents(price);
+    if (cents === undefined) errors["price"] = "Enter the price in dollars, for example 850000, 850k or 650.50. Cents are optional.";
     else body["priceCents"] = cents;
   }
   for (const [k, label] of ROOM_FIELDS) {
@@ -47,12 +53,19 @@ export function listingFormBody(fd: FormData): { body: Record<string, unknown> }
   return { body };
 }
 
-/** Scrolls to and focuses the first invalid field, in form order. */
-export function focusFirstError(form: HTMLFormElement, errors: FieldErrors) {
+/** The first invalid field in form order, or undefined. */
+export function firstErrorField(form: HTMLFormElement, errors: FieldErrors): HTMLElement | undefined {
   for (const el of Array.from(form.elements)) {
     const name = (el as HTMLInputElement).name;
-    if (name && errors[name] !== undefined) { (el as HTMLElement).focus(); (el as HTMLElement).scrollIntoView({ block: "center", behavior: "smooth" }); return; }
+    if (name && errors[name] !== undefined) return el as HTMLElement;
   }
+  return undefined;
+}
+
+/** Scrolls to and focuses the first invalid field. The field must be visible (its step shown). */
+export function focusFirstError(form: HTMLFormElement, errors: FieldErrors) {
+  const el = firstErrorField(form, errors);
+  if (el) { el.focus(); el.scrollIntoView({ block: "center", behavior: "smooth" }); }
 }
 
 /** Cents as a plain dollar amount for an input: 85000000 -> "850000", 65050 -> "650.50". */

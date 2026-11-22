@@ -82,6 +82,8 @@ export interface InvestmentDeps {
   appendAudit: (e: AuditEvent) => Promise<void>;
   now: () => string;
   newId: () => string;
+  /** Abuse and spam filter for what people write. Unset means no filter. Refused text is never stored; `after` runs once a flagged message is stored. */
+  contentGuard?: (input: { userId: string; text: string }) => Promise<{ ok: true; after?: (messageId: string) => Promise<void> } | { ok: false; message: string }>;
 }
 
 type Fail = Failure & { fields?: Record<string, string>; step?: string };
@@ -274,10 +276,14 @@ export async function expressInterest(deps: InvestmentDeps, actor: Actor, projec
   if (existing) return fail("conflict", "You already expressed interest. Continue in the conversation.");
   if (!(await under(deps, `inv-int:${actor.userId}`, INVESTMENT_RATE.newInterest))) return TOO_FAST;
   const p = (await deps.repo.getProject(projectId))!;
+  const content = deps.contentGuard ? await deps.contentGuard({ userId: actor.userId, text: r.value.message }) : undefined;
+  if (content && !content.ok) return fail("invalid", content.message);
   const m = maskContacts(r.value.message); // no contract yet, so contacts are hidden under both models
   const now = deps.now();
   const i: Interest = { id: deps.newId(), projectId, investorUserId: actor.userId, amountMinCents: r.value.amountMinCents, amountMaxCents: r.value.amountMaxCents, createdAt: now, contractStatus: "none" };
-  await deps.repo.addInterest(i, { id: deps.newId(), interestId: i.id, senderUserId: actor.userId, body: m.text, sentAt: now });
+  const first: InvestmentMessage = { id: deps.newId(), interestId: i.id, senderUserId: actor.userId, body: m.text, sentAt: now };
+  await deps.repo.addInterest(i, first);
+  if (content?.after) await content.after(first.id).catch(() => undefined);
   await audit(deps, actor.userId, "investment_interest", i.id, "investment.interest_expressed", { projectId, masked: m.masked });
   await notice(deps, p.ownerUserId, "investment_interest", "New interest in your project", `/investments/threads/${i.id}`, `An investor expressed non-binding interest in "${p.title}".`);
   return { ok: true, value: { id: i.id, masked: m.masked } };
@@ -335,9 +341,12 @@ export async function postMessage(deps: InvestmentDeps, actor: Actor, interestId
   const body = cleanText(raw !== null && typeof raw === "object" ? (raw as Record<string, unknown>)["body"] : undefined, 1, 4000);
   if (!body.ok) return fail("invalid", `Message: ${body.error}`);
   if (!(await under(deps, `inv-msg:${actor.userId}`, INVESTMENT_RATE.message))) return TOO_FAST;
+  const content = deps.contentGuard ? await deps.contentGuard({ userId: actor.userId, text: body.value }) : undefined;
+  if (content && !content.ok) return fail("invalid", content.message);
   const m = disclosed(pt.p, pt.i) ? { text: body.value, masked: false } : maskContacts(body.value);
   const msg: InvestmentMessage = { id: deps.newId(), interestId, senderUserId: actor.userId, body: m.text, sentAt: deps.now() };
   await deps.repo.addMessage(msg);
+  if (content?.after) await content.after(msg.id).catch(() => undefined);
   await audit(deps, actor.userId, "investment_interest", interestId, "investment.message_sent", { messageId: msg.id, masked: m.masked });
   await notice(deps, pt.other, "investment_message", `New message about "${pt.p.title}"`, `/investments/threads/${interestId}`,
     `You have a new message from the ${pt.role === "investor" ? "investor" : "project owner"} about "${pt.p.title}".`);

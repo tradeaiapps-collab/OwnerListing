@@ -2,7 +2,7 @@
 import type { ReactNode } from "react";
 import { JSON_HEADERS } from "../listings/ui";
 
-export interface Providers { google: boolean; email: boolean }
+export interface Providers { google: boolean; email: boolean; dev?: boolean }
 
 export async function postJson(url: string, body: unknown): Promise<{ ok: boolean; status: number; d: Record<string, unknown> }> {
   const r = await fetch(url, { method: "POST", headers: JSON_HEADERS, body: JSON.stringify(body) }).catch(() => null);
@@ -12,7 +12,7 @@ export async function postJson(url: string, body: unknown): Promise<{ ok: boolea
 export const errorOf = (d: Record<string, unknown>, fallback: string) => (typeof d["error"] === "string" ? d["error"] : fallback);
 
 export const loadProviders = (): Promise<Providers> =>
-  fetch("/api/auth/providers").then(r => (r.ok ? r.json() : null)).then(p => ({ google: p?.google === true, email: p?.email === true }), () => ({ google: false, email: false }));
+  fetch("/api/auth/providers").then(r => (r.ok ? r.json() : null)).then(p => ({ google: p?.google === true, email: p?.email === true, dev: p?.dev === true }), () => ({ google: false, email: false }));
 
 /** The centred card every sign-in page uses. */
 export function AuthCard({ title, lead, children, foot }: { title: string; lead?: ReactNode; children: ReactNode; foot?: ReactNode }) {

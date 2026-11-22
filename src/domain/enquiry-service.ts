@@ -12,7 +12,7 @@ import { messageWordingError } from "./discrimination-filter";
 
 export interface Enquiry { id: string; listingId: string; buyerUserId: string; createdAt: string }
 /** senderUserId is null for automated system messages (the chat-offer notice). */
-export interface EnquiryMessage { id: string; enquiryId: string; senderUserId: string | null; automated: boolean; body: string; sentAt: string }
+export interface EnquiryMessage { id: string; enquiryId: string; senderUserId: string | null; automated: boolean; /** Sent by Elena for the owner (an automated message that is not a system notice). */ elena?: boolean; body: string; sentAt: string }
 /** An enquiry as shown in an inbox: which listing it is about, the viewer's side, and unread messages from the other side. */
 export interface InboxItem { enquiry: Enquiry; listingTitle: string; role: "buyer" | "owner"; unread: number }
 
@@ -55,6 +55,8 @@ export interface EnquiryDeps {
   /** With both set, an agent with an active appointment and a current licence may handle the listing's threads. Unset means owner only. */
   appointmentFor?: (listingId: string, agentUserId: string) => Promise<AgentAppointment | undefined>;
   licences?: () => Promise<readonly AgentLicence[]>;
+  /** Content filter (contact details, abuse, spam). Unset means no filter. `after` runs once a flagged message is stored. */
+  contentGuard?: (input: { userId: string; enquiryId: string; text: string }) => Promise<{ ok: true; after?: (messageId: string) => Promise<void> } | { ok: false; message: string }>;
 }
 
 const fail = (code: Failure["code"], message: string): Failure => ({ ok: false, code, message });
@@ -96,7 +98,9 @@ const TOO_FAST = fail("rate_limited", "You are sending too many messages. Try ag
  * an offer-looking one gets one automated notice (at most an hour apart) pointing to the formal offer-link flow
  * (no link is issued here), and any other one may queue an owner-review draft (preview only, nothing is sent).
  */
-async function post(deps: EnquiryDeps, e: Enquiry, ownerUserId: string, senderUserId: string, body: string): Promise<Result<EnquiryMessage>> {
+async function post(
+  deps: EnquiryDeps, e: Enquiry, ownerUserId: string, senderUserId: string, body: string, beforeStore?: () => Promise<void>
+): Promise<Result<EnquiryMessage>> {
   const fromBuyer = senderUserId === e.buyerUserId;
   const verification = fromBuyer ? await deps.verification(senderUserId) : undefined;
   if (fromBuyer && verification && !canContactSeller(verification)) {
@@ -108,10 +112,16 @@ async function post(deps: EnquiryDeps, e: Enquiry, ownerUserId: string, senderUs
     const wording = messageWordingError(body);
     if (wording) return fail("invalid", wording);
   }
+  // Contact details, abuse and spam. Refused text is never stored; flagged text is stored and queued for staff.
+  const content = deps.contentGuard ? await deps.contentGuard({ userId: senderUserId, enquiryId: e.id, text: body }) : undefined;
+  if (content && !content.ok) return fail("invalid", content.message);
 
   const now = deps.now();
+  // A new thread is created only now, so a refused first message never leaves an empty thread behind.
+  if (beforeStore) await beforeStore();
   const m: EnquiryMessage = { id: deps.newId(), enquiryId: e.id, senderUserId, automated: false, body, sentAt: now };
   await deps.enquiries.addMessage(m);
+  if (content?.after) await content.after(m.id).catch(() => undefined);
   await audit(deps, senderUserId, e.id, "enquiry.message_sent", { messageId: m.id });
 
   if (fromBuyer && verification) {
@@ -142,12 +152,14 @@ export async function startEnquiry(
   if (!canContactSeller(v)) return fail("forbidden", STEP_TEXT[nextVerificationStep(v) ?? "verify_id"]);
 
   let enquiry = await deps.enquiries.find(listingId, actor.userId);
+  let create: (() => Promise<void>) | undefined;
   if (!enquiry) {
     if (!(await underLimit(deps, `enq-new:${actor.userId}`, ENQUIRY_RATE.newThreads))) return TOO_FAST;
-    enquiry = { id: deps.newId(), listingId, buyerUserId: actor.userId, createdAt: deps.now() };
-    await deps.enquiries.insert(enquiry);
+    const fresh: Enquiry = { id: deps.newId(), listingId, buyerUserId: actor.userId, createdAt: deps.now() };
+    enquiry = fresh;
+    create = () => deps.enquiries.insert(fresh);
   }
-  const m = await post(deps, enquiry, rec.listing.ownerUserId, actor.userId, body);
+  const m = await post(deps, enquiry, rec.listing.ownerUserId, actor.userId, body, create);
   return m.ok ? { ok: true, value: { enquiry, message: m.value } } : m;
 }
 

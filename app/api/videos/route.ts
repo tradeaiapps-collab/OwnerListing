@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { agentVideos, videoForListing, videoPricing } from "../../../src/domain/listing-video";
 import { getActor } from "../../../src/server/context";
 import { failure, unauthenticated } from "../../../src/server/http";
-import { getVideoRepo, videoIds } from "../../../src/server/listing-video-db";
+import { getCheckout, getVideoProvider, getVideoRepo, videoIds } from "../../../src/server/listing-video-db";
 import { withApi } from "../../../src/server/api/with-api";
 
 /**
@@ -15,7 +15,10 @@ async function handleGet(req: Request) {
   const repo = getVideoRepo();
   if (listingId) {
     const r = await videoForListing(repo, actor, listingId);
-    return r.ok ? NextResponse.json({ ...r.value, priceCents: r.value.canBuy ? videoPricing(process.env).buyerPriceCents : null }) : failure(r);
+    if (!r.ok) return failure(r);
+    // Only offer the purchase when it can actually go through (Hedra key set and payments on); otherwise the page shows nothing.
+    const canBuy = r.value.canBuy && getVideoProvider().configured && getCheckout().enabled;
+    return NextResponse.json({ ...r.value, canBuy, priceCents: canBuy ? videoPricing(process.env).buyerPriceCents : null });
   }
   if (!actor) return unauthenticated();
   const r = await agentVideos(repo, actor, videoPricing(process.env), videoIds);

@@ -5,6 +5,7 @@ import { requireBuyerOffer } from "../../../../../src/server/buyer-offer";
 import { getDb, getDeps } from "../../../../../src/server/context";
 import { csrfGuard } from "../../../../../src/server/csrf";
 import { failure } from "../../../../../src/server/http";
+import { notifyOwnerOfTermsAgreed } from "../../../../../src/server/notifier";
 import { buyerAgreePg } from "../../../../../src/server/offer-counter-db";
 import { eligibleBuyerPg } from "../../../../../src/server/offer-flow-db";
 import { requireCurrentTerms } from "../../../../../src/server/terms-guard";
@@ -44,6 +45,7 @@ async function handlePost(req: Request, { params }: Ctx) {
     aggregateType: "formal_offer", aggregateId: offerId, eventType: "offer.buyer_agreed",
     correlationId: deps.newId(), payload: { listingId: offer.listingId, counterId }
   });
+  await notifyOwnerOfTermsAgreed(db, offerId);
   return NextResponse.json({ offer: { id: offerId, status: "buyer_countered" } });
 }
 

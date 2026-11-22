@@ -1,3 +1,4 @@
+import { notSuspendedSql } from "./contractor-standing-sql";
 import type { JobAssignment } from "../domain/job-chat";
 import type { PhotoMime } from "../domain/image-meta";
 import { EMPTY_LAYOUT, cleanFeatures, coverOf, isPhotoCategory, type Layout, type LayoutEntry, type PhotoKind, type PhotoRecord } from "../domain/listing-photos";
@@ -41,11 +42,11 @@ export function createPgPhotoStore(db: Queryable): PhotoStore {
     currentLayout: id => currentLayout(db, id),
     async assignmentsFor(listingId, userId) {
       const res = await db.query(
-        "SELECT id, listing_id, owner_user_id, contractor_user_id, kind, status FROM job_assignment WHERE listing_id = $1 AND contractor_user_id = $2",
+        "SELECT id, listing_id, owner_user_id, contractor_user_id, kind, status, usage_rights_confirmed_at IS NOT NULL AS usage_rights_confirmed FROM job_assignment WHERE listing_id = $1 AND contractor_user_id = $2 AND " + notSuspendedSql("contractor_user_id"),
         [listingId, userId]);
       return res.rows.map(r => ({
         id: String(r["id"]), listingId: String(r["listing_id"]), ownerUserId: String(r["owner_user_id"]),
-        contractorUserId: String(r["contractor_user_id"]), kind: r["kind"], status: r["status"]
+        contractorUserId: String(r["contractor_user_id"]), kind: r["kind"], status: r["status"], usageRightsConfirmed: r["usage_rights_confirmed"] === true
       }) as JobAssignment);
     },
     async storedSizes(id) {

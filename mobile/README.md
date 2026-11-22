@@ -64,7 +64,7 @@ npm run typecheck
 Push needs a real phone and a development build (`eas build --profile development`); Expo Go cannot receive FCM/APNs tokens.
 `npx expo start --web` gives a browser preview for design checks only (tokens kept in memory, no push).
 
-Store builds: `eas build --platform all --profile production`, then `eas submit`.
+Store builds and every step you must do yourself: docs/MOBILE_APP_STORES.md (section 3).
 
 ## Tests
 

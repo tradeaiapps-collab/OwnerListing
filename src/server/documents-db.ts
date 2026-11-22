@@ -4,7 +4,7 @@ import type { JobAssignment } from "../domain/job-chat";
 import type { Queryable } from "./db";
 
 /** Constant text, parameters only. Storage keys and fingerprints are deliberately not selected. */
-const DOC_SELECT = `SELECT d.id, d.listing_id, l.owner_user_id, d.uploaded_by, d.kind, d.visibility, d.status, d.supersedes_id
+const DOC_SELECT = `SELECT d.id, d.listing_id, l.owner_user_id, d.uploaded_by, d.kind, d.visibility, d.status, d.supersedes_id, d.title
   FROM property_document d JOIN property_listing l ON l.id = d.listing_id`;
 
 const toDocument = (r: Record<string, unknown>): DocumentRecord => ({
@@ -15,6 +15,7 @@ const toDocument = (r: Record<string, unknown>): DocumentRecord => ({
   kind: r["kind"] as DocumentKind,
   visibility: r["visibility"] as Visibility,
   status: r["status"] as DocumentStatus,
+  ...(r["title"] ? { title: String(r["title"]) } : {}),
   ...(r["supersedes_id"] ? { supersedesId: String(r["supersedes_id"]) } : {})
 });
 

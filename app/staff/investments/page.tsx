@@ -9,12 +9,13 @@ import { loadError, postStaff } from "../staff-api";
 type Queued = Project & { ownerUserId: string; terms: { model: string } };
 type Contract = { interest: { id: string; projectId: string; amountMinCents: number; amountMaxCents: number }; projectTitle: string; file?: { id: string; sizeBytes: number; uploadedAt: string } };
 type Fee = { id: string; projectId: string; amountCents: number; status: string; createdAt: string };
-type Tab = "projects" | "contracts" | "fees";
+type ToMask = { documentId: string; projectId: string; projectTitle: string; projectStatus: string; title: string; kind: string; uploadedAt: string; contentType: string };
+type Tab = "projects" | "masking" | "contracts" | "fees";
 type Note = { kind: "ok" | "error"; text: string };
 
 /** The server needs a recorded reason of at least this many characters for every decision. */
 const REASON_MIN = 10;
-const TABS: readonly Tab[] = ["projects", "contracts", "fees"];
+const TABS: readonly Tab[] = ["projects", "masking", "contracts", "fees"];
 
 /** Recorded reason with a live length hint. */
 function Reason({ value, onChange, id }: { value: string; onChange: (v: string) => void; id: string }) {
@@ -50,6 +51,7 @@ export default function StaffInvestments() {
   const [counts, setCounts] = useState<Record<string, number>>({});
   const [contracts, setContracts] = useState<Contract[]>([]);
   const [fees, setFees] = useState<Fee[] | null>(null);
+  const [toMask, setToMask] = useState<ToMask[]>([]);
   const [off, setOff] = useState(false);
   const [error, setError] = useState("");
   const [note, setNote] = useState<Note | null>(null);
@@ -73,6 +75,8 @@ export default function StaffInvestments() {
     setItems(d.items); setCounts(d.counts);
     const c = await fetch("/api/staff/investments/contracts").catch(() => null);
     if (c?.ok) setContracts((await c.json()).items);
+    const m = await fetch("/api/staff/investments/documents").catch(() => null);
+    if (m?.ok) setToMask((await m.json()).items);
     const f = await fetch("/api/staff/investments/fees").catch(() => null);
     if (f?.ok) setFees((await f.json()).items);
   }, []);
@@ -91,11 +95,11 @@ export default function StaffInvestments() {
   const reason = (k: string) => <Reason id={k} value={reasonOf(k)} onChange={v => setReasons(x => ({ ...x, [k]: v }))} />;
 
   const dueFees = fees?.filter(f => f.status === "due") ?? [];
-  const tabCount: Record<Tab, number> = { projects: items?.length ?? 0, contracts: contracts.length, fees: dueFees.length };
-  const tabName: Record<Tab, string> = { projects: "Projects to review", contracts: "Signed contracts", fees: "Platform fees" };
+  const tabCount: Record<Tab, number> = { projects: items?.length ?? 0, masking: toMask.length, contracts: contracts.length, fees: dueFees.length };
+  const tabName: Record<Tab, string> = { projects: "Projects to review", masking: "Documents to mask", contracts: "Signed contracts", fees: "Platform fees" };
   const shownTabs = TABS.filter(t => t !== "fees" || fees !== null);
   const stats: [string, number | undefined, Tab | null][] = [
-    ["Waiting for review", counts["pending_review"], "projects"], ["Contracts to check", counts["contractsSubmitted"], "contracts"], ["Fees due", counts["feesDue"], fees ? "fees" : null],
+    ["Waiting for review", counts["pending_review"], "projects"], ["Documents to mask", toMask.length, "masking"], ["Contracts to check", counts["contractsSubmitted"], "contracts"], ["Fees due", counts["feesDue"], fees ? "fees" : null],
     ["Approved projects", counts["approved"], null], ["Changes requested", counts["changes_requested"], null], ["Interests", counts["interests"], null], ["Declared investors", counts["declarations"], null]
   ];
 
@@ -173,6 +177,26 @@ export default function StaffInvestments() {
                         <button type="button" className="secondary" disabled={!ready(p.id)} onClick={() => void act(p.id, `/api/staff/investments/${p.id}`, { outcome: "request_changes", reason: reasonOf(p.id), version: p.version }, `Sent "${p.title}" back to the owner for changes.`)}>Request changes</button>
                         <button type="button" className="secondary danger" disabled={!ready(p.id)} onClick={() => void act(p.id, `/api/staff/investments/${p.id}`, { outcome: "reject", reason: reasonOf(p.id), version: p.version }, `Rejected "${p.title}".`, `Reject "${p.title}"? The owner cannot edit a rejected project.`)}>Reject</button>
                       </div>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+
+          {tab === "masking" && (
+            <section role="tabpanel" id="panel-masking" aria-labelledby="tab-masking" className="sr-panel">
+              <p className="muted inv-small">Investors see a document only after its address masking is confirmed here (and the project is approved). Open one to run Elena&apos;s auto-mask, add or remove boxes, and confirm.</p>
+              {toMask.length === 0 && <p className="empty">No documents waiting for masking.</p>}
+              <ul className="sr-cards">
+                {toMask.map(d => (
+                  <li key={d.documentId} className="sr-card">
+                    <div className="sr-card-head">
+                      <div>
+                        <h2>{d.title}</h2>
+                        <p className="muted inv-small">{d.projectTitle} · {label(d.kind)} · {d.contentType === "application/pdf" ? "PDF" : "Image"} · uploaded {new Date(d.uploadedAt).toLocaleDateString("en-AU")} · project {label(d.projectStatus)}</p>
+                      </div>
+                      <a className="button" href={`/staff/investments/documents/${d.documentId}`}>Review masking</a>
                     </div>
                   </li>
                 ))}

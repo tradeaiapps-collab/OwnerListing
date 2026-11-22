@@ -10,7 +10,7 @@ export interface ElenaConfig {
   production: boolean;
 }
 
-export function loadConfig(env: NodeJS.ProcessEnv = process.env, mediaDir: string): ElenaConfig {
+export function loadConfig(env: Record<string, string | undefined> = process.env, mediaDir: string): ElenaConfig {
   const apiKeys = new Map<string, string>();
   for (const part of (env["ELENA_API_KEYS"] ?? "").split(",")) {
     const i = part.indexOf(":");

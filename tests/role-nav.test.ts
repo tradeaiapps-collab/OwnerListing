@@ -6,9 +6,9 @@ const labels = (r: (typeof USER_ROLES)[number]) => roleNav(r).map(i => i.label);
 
 describe("role navigation", () => {
   it("shows the focused items for each role", () => {
-    expect(labels("owner")).toEqual(["My listings", "Offers", "Messages", "Agent performance", "Account"]);
-    expect(labels("buyer")).toEqual(["Browse", "Search", "My offers", "Saved searches", "Messages", "Account"]);
-    expect(labels("agent")).toEqual(["Listings", "CRM", "Messages", "Reports", "Workspace", "Account"]);
+    expect(labels("owner")).toEqual(["My listings", "Offers", "Projects", "Contractors", "Jobs", "Messages", "Agent performance", "Account"]);
+    expect(labels("buyer")).toEqual(["Browse", "Search", "My offers", "Saved searches", "Projects", "Messages", "Account"]);
+    expect(labels("agent")).toEqual(["Listings", "CRM", "Projects", "Jobs", "Messages", "Reports", "Workspace", "Account"]);
     expect(labels("investor")).toEqual(["Projects", "Portfolio", "Insights", "Messages", "Account"]);
   });
   it("keeps Account on every role with unique ids", () => {

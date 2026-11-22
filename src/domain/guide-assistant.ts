@@ -31,6 +31,8 @@ export const GUIDE_LIMITS = { greeting: 300, chipLabel: 40, chips: 8, question: 
 /** Shown under every answer. Fixed in code so it cannot be edited away. */
 export const GUIDE_DISCLAIMER =
   "General help with using this website only. Not legal, financial or tax advice. For advice about your situation, speak to a solicitor, conveyancer or licensed adviser.";
+/** Compact line shown in the chat window footer. The full GUIDE_DISCLAIMER still travels with every API answer. */
+export const GUIDE_SHORT_NOTICE = "AI assistant. Not legal or financial advice.";
 const ADVICE_ANSWER =
   "I can't give legal, financial, tax or valuation advice, or tell you whether to buy, sell or accept an offer. A solicitor or conveyancer can advise on contracts, and a licensed financial adviser or broker on money. I can show you how the website works.";
 const PRIVACY_ANSWER =
