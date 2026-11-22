@@ -4,6 +4,7 @@ import {
   RISK_LABEL, STEPS, TIMEFRAME_LABEL, promptFor, type InvestorPrefs, type Step
 } from "../../../src/domain/elena-investor-match";
 import type { ElenaMatchState } from "../../../src/domain/elena-investor-match-service";
+import { INVESTMENT_DISCLOSURE } from "../../../src/config/investment-disclosure";
 import { AU_JURISDICTIONS } from "../../../src/domain/jurisdiction";
 import { aud, label, send, STEP_LINK } from "../ui";
 
@@ -127,7 +128,7 @@ export default function ElenaMatch() {
 
           {!current && s.results && (
             <div className="match-turn">
-              <p className="match-bubble elena">Thanks. Here is what I heard: {s.summary} {s.results.cards.length > 0 ? `I found ${s.results.cards.length} project${s.results.cards.length === 1 ? "" : "s"} that fit, best first.` : "I couldn't find a project that fits all of that right now."}</p>
+              <p className="match-bubble elena wide">Thanks. Here is what I heard: {s.summary} {s.results.cards.length > 0 ? `I found ${s.results.cards.length} project${s.results.cards.length === 1 ? "" : "s"} that fit, best first.` : "I couldn't find a project that fits all of that right now."}</p>
               {s.results.cards.length === 0 && (
                 <p className="muted match-hint" role="status">
                   Of {s.results.considered} project{s.results.considered === 1 ? "" : "s"} open to you, {s.results.excluded.budget} had a minimum above your budget, {s.results.excluded.risk} were earlier-stage than your risk setting, and {s.results.excluded.location} were outside your places. Use Change above to widen one, or check back as new projects are approved.
@@ -157,6 +158,11 @@ export default function ElenaMatch() {
           )}
         </section>
       )}
+      <aside className="inv-disclaimer match-disclaimer" role="note" aria-label={INVESTMENT_DISCLOSURE.title}>
+        <strong>{INVESTMENT_DISCLOSURE.title}</strong>
+        <p>{INVESTMENT_DISCLOSURE.text}</p>
+        <small>Version {INVESTMENT_DISCLOSURE.version}</small>
+      </aside>
     </main>
   );
 }

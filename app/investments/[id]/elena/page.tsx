@@ -3,6 +3,7 @@ import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import type { ReviewFlag } from "../../../../src/domain/elena-projects";
 import { QuestionCard, UpdatesList, type QView, type UView } from "../../elena-project";
+import { OwnerDiligence } from "../../diligence";
 import { send } from "../../ui";
 
 /** Owner screen: what Elena thinks is missing, her draft updates for approval, and the questions investors asked. */
@@ -54,6 +55,8 @@ export default function OwnerElena() {
       <p className="muted">Elena answers investors only from what you publish, and passes on what she can't answer. She never promises returns, never shows the exact address and never commits anyone to anything. Nothing reaches investors until you approve it.</p>
       {msg && <p role="status" className="inv-visitor">{msg}</p>}
       {error && <p role="alert" className="inv-visitor">{error}</p>}
+
+      <OwnerDiligence projectId={id} />
 
       <section className="panel elena-box" aria-labelledby="flags-h">
         <h2 id="flags-h">Keeping the project current</h2>

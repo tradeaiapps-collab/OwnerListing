@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { runDueAutomations } from "../../../../../src/server/automation-db";
+import { runCertificateExpiryNotices } from "../../../../../src/server/contractor-certificates-db";
 import { runDueRentals } from "../../../../../src/server/elena-rentals-db";
 import { runDueElenaEnquiries } from "../../../../../src/server/elena-enquiries-db";
 import { runDueElenaJobs } from "../../../../../src/server/elena-jobs-db";
@@ -31,9 +32,11 @@ async function handlePost(req: Request) {
   const ownerDigests = await runOwnerDigests(getDb(), now).catch(() => ({ sent: 0 }));
   // Sale paperwork reminders for owners who switched them on: owner and buyer are told only about their own open items. Never fails the run.
   const paperwork = await runDuePaperwork(getDb(), now).catch(() => ({ listings: 0, sent: 0, stopped: 0, done: 0 }));
+  // Contractor licence and insurance expiry emails (30 days, 7 days, expired). Once per expiry step, so every tick is safe. Never fails the run.
+  const certificates = await runCertificateExpiryNotices(getDb(), now).catch(() => ({ checked: 0, sent: 0 }));
   // Weekly investor update digest for followers of approved projects; a no-op while the investor module is off. Never fails the run.
   const investorDigests = await runInvestorDigests(getDb(), now).catch(() => ({ sent: 0, skipped: 0 }));
-  return NextResponse.json({ ...automations, scheduling, elenaJobs, rentals, elenaEnquiries, ownerDigests, paperwork, investorDigests });
+  return NextResponse.json({ ...automations, scheduling, elenaJobs, rentals, elenaEnquiries, ownerDigests, paperwork, certificates, investorDigests });
 }
 
 export const POST = withApi(handlePost);

@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { parseVerification, todayUtc, verificationState } from "../../../../src/domain/contractor-trust";
+import { effectiveDates } from "../../../../src/domain/contractor-certificates";
+import { listCertificatesPg, certDates } from "../../../../src/server/contractor-certificates-db";
 import { getStandingPg, getVerificationPg, reviewsForContractorPg, submitVerificationPg } from "../../../../src/server/contractor-trust-db";
 import { err, guardText, readBody, sessionActor } from "../../../../src/server/contractor-trust-route";
 import { getDb } from "../../../../src/server/context";
@@ -10,8 +12,9 @@ async function handleGet(req: Request) {
   const actor = await sessionActor(req, { contractor: true });
   if (actor instanceof NextResponse) return actor;
   const db = getDb();
-  const [verification, standing, reviews] = await Promise.all([getVerificationPg(db, actor.userId), getStandingPg(db, actor.userId), reviewsForContractorPg(db, actor.userId)]);
-  return NextResponse.json({ verification: verification ?? null, state: verificationState(verification, todayUtc()), standing, reviews }, { headers: { "cache-control": "no-store" } });
+  const [verification, standing, reviews, certificates] = await Promise.all([getVerificationPg(db, actor.userId), getStandingPg(db, actor.userId), reviewsForContractorPg(db, actor.userId), listCertificatesPg(db, actor.userId)]);
+  const effective = verification ? effectiveDates(verification, certDates(certificates)) : undefined;
+  return NextResponse.json({ verification: verification ?? null, state: verificationState(effective, todayUtc()), standing, reviews, certificates }, { headers: { "cache-control": "no-store" } });
 }
 
 /** Submit or re-submit licence, insurance and ABN. Staff check them; any change puts the badge back to pending. */
