@@ -5,7 +5,14 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 const state = vi.hoisted(() => ({ calls: 0 }));
 vi.mock("../src/server/context", () => ({ getDb: () => ({}) }));
 vi.mock("../src/server/automation-db", () => ({ runDueAutomations: async () => { state.calls++; return { processed: 3 }; } }));
+vi.mock("../src/server/elena-jobs-db", () => ({ runDueElenaJobs: async () => ({ created: 1, acted: 2, invited: 0 }) }));
+vi.mock("../src/server/elena-enquiries-db", () => ({ runDueElenaEnquiries: async () => ({ handled: 4 }) }));
+vi.mock("../src/server/owner-today-db", () => ({ runOwnerDigests: async () => ({ sent: 5 }) }));
+vi.mock("../src/server/investor-digest-db", () => ({ runInvestorDigests: async () => ({ sent: 6, skipped: 1 }) }));
+vi.mock("../src/server/sale-paperwork-db", () => ({ runDuePaperwork: async () => ({ listings: 1, sent: 2, stopped: 0, done: 0 }) }));
 vi.mock("../src/server/elena-scheduling-db", () => ({ runDueSchedulingMessages: async () => ({ expired: 1, suggested: 2 }) }));
+vi.mock("../src/server/elena-rentals-db", () => ({ runDueRentals: async () => ({ repairs: 1, reminders: 2, summaries: 0 }) }));
+vi.mock("../src/server/contractor-certificates-db", () => ({ runCertificateExpiryNotices: async () => ({ checked: 6, sent: 2 }) }));
 import { POST } from "../app/api/internal/automations/run/route";
 
 const SECRET = "a".repeat(40);
@@ -26,7 +33,7 @@ describe("automation run route", () => {
     expect(state.calls).toBe(0);
     const ok = await call(SECRET);
     expect(ok.status).toBe(200);
-    expect(await ok.json()).toEqual({ processed: 3, scheduling: { expired: 1, suggested: 2 } });
+    expect(await ok.json()).toEqual({ processed: 3, scheduling: { expired: 1, suggested: 2 }, elenaJobs: { created: 1, acted: 2, invited: 0 }, rentals: { repairs: 1, reminders: 2, summaries: 0 }, elenaEnquiries: { handled: 4 }, ownerDigests: { sent: 5 }, paperwork: { listings: 1, sent: 2, stopped: 0, done: 0 }, certificates: { checked: 6, sent: 2 }, investorDigests: { sent: 6, skipped: 1 } });
   });
   it("has a scheduled workflow that calls the route with the shared secret", () => {
     const wf = readFileSync(path.join(__dirname, "..", ".github", "workflows", "automation-runs.yml"), "utf8");

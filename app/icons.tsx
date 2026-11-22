@@ -12,6 +12,7 @@ const PATHS: Record<IconName, string> = {
   shield: "M12 2.5 4 5.5v6c0 5 3.4 8.5 8 10 4.6-1.5 8-5 8-10v-6z",
   gauge: "M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z",
   briefcase: "M9 5V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v1h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1zm1.5 0h3V4.5h-3z",
+  building: "M5 21V4a1 1 0 0 1 1-1h8a1 1 0 0 1 1 1v6h3a1 1 0 0 1 1 1v10zm3-14v2h4V7zm0 4v2h4v-2zm0 4v2h4v-2zm8.5-3v2h1.5v-2zm0 4v2h1.5v-2z",
   login: "M12 3h7a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-7v-2.5h6.5v-13H12zM10.5 7.5 15 12l-4.5 4.5-1.8-1.8 1.7-1.7H3v-2.5h6.4L8.7 9.3z"
 };
 

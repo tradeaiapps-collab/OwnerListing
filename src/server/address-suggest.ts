@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { addressLookupFromEnv } from "../adapters/address-lookup";
 import {
   isPlaceId, normaliseAddressQuery, sessionTokenOr, ADDRESS_QUERY_MIN, ADDRESS_QUERY_MAX,
-  type AddressLookupPort, type AddressParts, type AddressProvider, type AddressSuggestion
+  type AddressLookupPort, type AddressParts, type GeoPoint, type AddressProvider, type AddressSuggestion
 } from "../domain/address-suggest";
 import { withinLimit, windowStart } from "../domain/rate-limit";
 import { sha256Hex } from "../domain/phone-verification";
@@ -48,6 +48,20 @@ export async function runAddressResolve(d: AddressSuggestDeps, personId: string,
   try {
     const parts = await d.port.resolve(id, sessionTokenOr(session, randomUUID()));
     return parts ? { ok: true, value: parts } : fail("not_found", "That address could not be found in Australia. Type it in full.");
+  } catch {
+    return fail("unavailable", OFF);
+  }
+}
+
+/** Map position for the listing's saved address, so the pin can be placed without the owner clicking the map. */
+export async function runAddressGeocode(d: AddressSuggestDeps, personId: string, q: unknown, ip: string = "unknown"): Promise<Result<GeoPoint>> {
+  if (!d.port) return fail("unavailable", OFF);
+  const query = normaliseAddressQuery(q);
+  if (query === null) return fail("invalid", `Type ${ADDRESS_QUERY_MIN} to ${ADDRESS_QUERY_MAX} characters of the address.`);
+  if (await limited(d, personId, ip)) return fail("rate_limited", "Too many address lookups. Place the pin on the map yourself or try again in a few minutes.");
+  try {
+    const pt = await d.port.locate(query);
+    return pt ? { ok: true, value: pt } : fail("not_found", "That address could not be found on the map. Click the map to place the pin.");
   } catch {
     return fail("unavailable", OFF);
   }

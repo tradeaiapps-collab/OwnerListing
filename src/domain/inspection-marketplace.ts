@@ -31,7 +31,7 @@ export interface Booking {
   inspectionId?: string; inspectorName?: string; scheduledAt?: string; createdAt: string;
 }
 /** What an inspector sees before accepting: the property and the times, never the buyer's identity. */
-export interface OpenRequest { id: string; listingId: string; listingTitle: string; address: string; jurisdiction: Jurisdiction; slots: string[]; notes: string; createdAt: string }
+export interface OpenRequest { id: string; listingId: string; listingTitle: string; /** Suburb and postcode only: the street address stays private. */ area: string; jurisdiction: Jurisdiction; slots: string[]; notes: string; createdAt: string }
 export interface StaffBookingRow extends Booking { buyerName: string; inspectorUserId?: string }
 
 export interface BookingRepository {

@@ -211,6 +211,15 @@ describe("SMTP email adapter", () => {
     expect(sendMail).toHaveBeenCalledWith({ from: "no-reply@example.test", to: "buyer@example.test", subject: "Hi", text: "Body" });
     expect(t.close).toHaveBeenCalled();
   });
+
+  it("sends the HTML part alongside the text, and refuses an oversized one", async () => {
+    const sendMail = vi.fn(async () => ({}));
+    const t = transportFor(sendMail);
+    const port = createSmtpEmail(smtpCfg, { createTransport: t.factory, resolve: PUBLIC });
+    await port.send({ to: "buyer@example.test", subject: "Hi", text: "Body", html: "<p>Body</p>" });
+    expect(sendMail).toHaveBeenCalledWith({ from: "no-reply@example.test", to: "buyer@example.test", subject: "Hi", text: "Body", html: "<p>Body</p>" });
+    expect(await port.send({ to: "buyer@example.test", subject: "Hi", text: "Body", html: "x".repeat(100_001) })).toMatchObject({ status: "failed", errorCode: "invalid_message" });
+  });
   it("uses implicit TLS on 465 and no auth when none is configured", async () => {
     const t = transportFor(async () => ({}));
     await createSmtpEmail({ host: "h.test", port: 465, from: "a@b.test" }, { createTransport: t.factory, resolve: PUBLIC }).send({ to: "buyer@example.test", subject: "Hi", text: "x" });

@@ -1,3 +1,5 @@
+import { guardContent } from "./content-guard";
+import { createPgContentFlagStore } from "./content-flag-db";
 import { randomUUID } from "node:crypto";
 import type { AutoReplySettings } from "../domain/auto-reply";
 import type { BuyerVerification } from "../domain/buyer";
@@ -64,7 +66,7 @@ export function createPgEnquiryRepository(db: Queryable): EnquiryRepository {
       const r = await db.query("SELECT * FROM enquiry_message WHERE enquiry_id = $1::uuid ORDER BY sent_at, id", [enquiryId]);
       return r.rows.map((x): EnquiryMessage => ({
         id: String(x["id"]), enquiryId: String(x["enquiry_id"]), senderUserId: x["sender_user_id"] === null ? null : String(x["sender_user_id"]),
-        automated: x["automated"] === true, body: String(x["body"]), sentAt: iso(x["sent_at"])
+        automated: x["automated"] === true, ...(x["elena"] === true ? { elena: true } : {}), body: String(x["body"]), sentAt: iso(x["sent_at"])
       }));
     },
     async lastAutomatedAt(enquiryId) {
@@ -92,6 +94,11 @@ export function createPgEnquiryRepository(db: Queryable): EnquiryRepository {
          ON CONFLICT (enquiry_id, user_id) DO UPDATE SET last_read_at = GREATEST(enquiry_read.last_read_at, EXCLUDED.last_read_at)`,
         [enquiryId, userId, at]
       );
+    },
+    async lastReadByOthers(userId, enquiryId) {
+      const r = await db.query("SELECT max(last_read_at) AS at FROM enquiry_read WHERE enquiry_id = $1::uuid AND user_id <> $2::uuid", [enquiryId, userId]);
+      const at = r.rows[0]?.["at"];
+      return at ? iso(at) : undefined;
     }
   };
 }
@@ -172,6 +179,8 @@ export function getEnquiryDeps(): EnquiryDeps {
     appendAudit: base.appendAudit,
     now: base.now,
     newId: () => randomUUID(),
+    contentGuard: ({ userId, enquiryId, text }) =>
+      guardContent(createPgContentFlagStore(db), { source: "message", subjectType: "enquiry_message", userId, fields: { body: text } }).then(r => r.ok ? { ok: true as const, after: r.after } : r),
     ...(base.appointmentFor ? { appointmentFor: base.appointmentFor } : {}),
     ...(base.licences ? { licences: base.licences } : {})
   };

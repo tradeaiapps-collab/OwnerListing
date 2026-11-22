@@ -47,3 +47,9 @@ export async function saveSettingsPg(db: Queryable, userId: string, s: AccountSe
     [userId, s.locale, s.timeZone]
   );
 }
+
+/** Language codes an admin has switched on (reviewed catalogues). English is always available. */
+export async function getEnabledLocalesPg(db: Queryable): Promise<string[]> {
+  const r = await db.query("SELECT code FROM enabled_locale WHERE enabled = true", []);
+  return r.rows.map(row => String(row["code"]));
+}

@@ -1,5 +1,5 @@
 import {
-  addressParts, isPlaceId, MAX_SUGGESTIONS, type AddressLookupPort, type AddressParts, type AddressSuggestion
+  addressParts, auPoint, isPlaceId, MAX_SUGGESTIONS, type AddressLookupPort, type AddressParts, type AddressSuggestion, type GeoPoint
 } from "../domain/address-suggest";
 
 type FetchInit = { method?: "GET" | "POST"; redirect: "error"; signal: AbortSignal; headers: Record<string, string>; body?: string };
@@ -60,8 +60,27 @@ export function createGooglePlaces(apiKey: string, fetchFn: FetchLike = (u, i) =
         headers: { "x-goog-api-key": key, "x-goog-fieldmask": "addressComponents" }
       });
       return parseGooglePlace(j);
+    },
+    async locate(address) {
+      const j = await getJson(fetchFn, `${GOOGLE_HOST}/places:searchText`, {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-goog-api-key": key, "x-goog-fieldmask": "places.location" },
+        body: JSON.stringify({ textQuery: address, regionCode: "au", languageCode: "en-AU", pageSize: 1 })
+      });
+      return parseGoogleLocation(j);
     }
   };
+}
+
+/** Exported for tests. First place with a position inside Australia. */
+export function parseGoogleLocation(j: Record<string, unknown>): GeoPoint | null {
+  const places = Array.isArray(j["places"]) ? j["places"] : [];
+  for (const p of places) {
+    const loc = obj(obj(p)?.["location"]);
+    const pt = auPoint(loc?.["latitude"], loc?.["longitude"]);
+    if (pt) return pt;
+  }
+  return null;
 }
 
 /** Exported for tests. */
@@ -119,8 +138,27 @@ export function createPhoton(baseUrl: string = PUBLIC_PHOTON, fetchFn: FetchLike
       return parsePhoton(j);
     },
     // Photon suggestions always carry their parts, so the client never asks to resolve one.
-    async resolve() { return null; }
+    async resolve() { return null; },
+    async locate(address) {
+      const qs = new URLSearchParams({ q: address, limit: "5", lang: "en", bbox: AU_BBOX, ...BIAS });
+      for (const layer of ["house", "street", "locality", "district"]) qs.append("layer", layer);
+      const j = await getJson(fetchFn, `${base}/api/?${qs.toString()}`, { method: "GET", headers: { accept: "application/json" } });
+      return parsePhotonLocation(j);
+    }
   };
+}
+
+/** Exported for tests. First Australian feature with a position; Photon lists the best match first. */
+export function parsePhotonLocation(j: Record<string, unknown>): GeoPoint | null {
+  const feats = Array.isArray(j["features"]) ? j["features"] : [];
+  for (const f of feats) {
+    const o = obj(f);
+    if (str(obj(o?.["properties"])?.["countrycode"])?.toUpperCase() !== "AU") continue;
+    const c = obj(o?.["geometry"])?.["coordinates"]; // GeoJSON order: [longitude, latitude]
+    const pt = Array.isArray(c) ? auPoint(c[1], c[0]) : null;
+    if (pt) return pt;
+  }
+  return null;
 }
 
 /** Exported for tests. Keeps Australian street and house results that have a street line; drops duplicates. */
@@ -146,7 +184,7 @@ export function parsePhoton(j: Record<string, unknown>): AddressSuggestion[] {
 }
 
 /** GOOGLE_PLACES_API_KEY picks Google; otherwise Photon (ADDRESS_PHOTON_URL or the public instance). ADDRESS_LOOKUP=off turns it off. */
-export function addressLookupFromEnv(env: NodeJS.ProcessEnv = process.env, fetchFn?: FetchLike): AddressLookupPort | null {
+export function addressLookupFromEnv(env: Record<string, string | undefined> = process.env, fetchFn?: FetchLike): AddressLookupPort | null {
   if ((env.ADDRESS_LOOKUP ?? "").trim().toLowerCase() === "off") return null;
   const key = (env.GOOGLE_PLACES_API_KEY ?? "").trim();
   if (key !== "") return createGooglePlaces(key, fetchFn);

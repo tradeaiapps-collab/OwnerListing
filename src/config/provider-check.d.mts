@@ -1,4 +1,4 @@
-export type ProviderId = "google" | "mfa" | "payway" | "smtp" | "sms" | "webpush" | "fcm" | "apns" | "abn" | "docusign" | "domain" | "meta_leads" | "address" | "maptiles";
+export type ProviderId = "google" | "mfa" | "payway" | "smtp" | "sms" | "webpush" | "fcm" | "apns" | "mls" | "zillow" | "providercreds" | "abn" | "docusign" | "domain" | "meta_leads" | "address" | "maptiles";
 export type ProviderStatus = "ready" | "off" | "incomplete" | "invalid";
 export interface ProviderResult {
   id: ProviderId;

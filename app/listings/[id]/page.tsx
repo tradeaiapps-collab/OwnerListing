@@ -5,12 +5,15 @@ import { AMENITY_LABELS, formatPrice, isAmenity } from "../../../src/domain/list
 import { actionHref } from "../../../src/domain/listing-actions";
 import { ListingGallery } from "../gallery";
 import MortgageCalc from "../../mortgage-calc";
+import ReturnsCalc from "../../returns-calc";
 import { monthlyEstimate } from "../../../src/domain/mortgage";
 import { VideoTour } from "../video-tour";
 import { LocationMap } from "../location-map";
 import { JSON_HEADERS } from "../ui";
 import { SaveAsTemplate } from "../save-as-template";
 import { MarketSnapshot } from "./market-snapshot";
+import { SuburbSnapshot } from "./suburb-snapshot";
+import { RatesCard } from "./rates-card";
 import { OptimizationPanel } from "../optimization-panel";
 import { ValuationCard } from "../valuation-card";
 import "../../styles/cards.css";
@@ -88,7 +91,7 @@ interface Compliance {
   listedAt: string;
   reference: string;
 }
-interface Doc { id: string; kind: string; visibility: string; status: string }
+interface Doc { id: string; kind: string; visibility: string; status: string; title?: string }
 
 /** Files shown in the gallery are left out of the documents list. */
 const GALLERY_KINDS = new Set(["photo", "photo_360", "video", "video_360", "floorplan"]);
@@ -165,7 +168,7 @@ function Documents({ docs }: { docs: Doc[] }) {
                 <span className="pd-doc-icon" aria-hidden="true">
                   <svg viewBox="0 0 16 16" width="16" height="16"><path d="M4 1.5h5l3 3v10H4z M9 1.5v3h3" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" /></svg>
                 </span>
-                <span className="pd-row-text"><strong>{DOC_LABELS[d.kind] ?? cap(d.kind)}</strong></span>
+                <span className="pd-row-text"><strong>{d.title ?? DOC_LABELS[d.kind] ?? cap(d.kind)}</strong></span>
                 <a className="pd-row-link" href={`/api/documents/${d.id}/file`}>Download</a>
               </li>
             ))}
@@ -175,7 +178,16 @@ function Documents({ docs }: { docs: Doc[] }) {
   );
 }
 
-function Safety({ c, tx }: { c: Compliance; tx: "sale" | "rent" }) {
+/** General public information only, shown as "usually". Not legal advice; the contract and the state's own rules decide. */
+const COOLING_OFF: Record<string, string> = {
+  NSW: "5 business days", VIC: "3 business days", QLD: "5 business days"
+};
+const BOND_AUTHORITY: Record<string, string> = {
+  NSW: "NSW Fair Trading", VIC: "the Residential Tenancies Bond Authority", QLD: "the Residential Tenancies Authority",
+  WA: "the Bond Administrator", SA: "Consumer and Business Services", TAS: "the Rental Deposit Authority"
+};
+
+function Safety({ c, tx, state }: { c: Compliance; tx: "sale" | "rent"; state: string }) {
   const s = c.seller, dep = c.deposit;
   const sellerTone = s.handledBy === "owner" || s.agentLicenceVerified ? "ok" : "wait";
   const depTone = dep.status === "verified" ? "ok" : dep.status === "checking" ? "wait" : "none";
@@ -206,6 +218,34 @@ function Safety({ c, tx }: { c: Compliance; tx: "sale" | "rent" }) {
             </p>
           </div>
         </li>
+        {tx === "sale" ? (
+          <>
+            <li className="pd-card">
+              <Mark tone="ok" />
+              <div>
+                <h3>Cooling-off period</h3>
+                <p>{COOLING_OFF[state]
+                  ? `In ${STATE_NAMES[state] ?? state} buyers usually get a cooling-off period of ${COOLING_OFF[state]} after signing, unless it is waived. Check your contract.`
+                  : `Cooling-off rules differ by state and by contract. Ask your solicitor what applies in ${STATE_NAMES[state] ?? state}.`}</p>
+              </div>
+            </li>
+            <li className="pd-card">
+              <Mark tone="ok" />
+              <div>
+                <h3>Get your own legal advice</h3>
+                <p>Have your solicitor or conveyancer review the contract and disclosures before you sign. We never give legal advice.</p>
+              </div>
+            </li>
+          </>
+        ) : (
+          <li className="pd-card">
+            <Mark tone="ok" />
+            <div>
+              <h3>Bond is lodged with the state authority</h3>
+              <p>{BOND_AUTHORITY[state] ? `In ${STATE_NAMES[state] ?? state} the bond is lodged with ${BOND_AUTHORITY[state]}.` : "The bond is lodged with the state bond authority."} The owner never holds it.</p>
+            </div>
+          </li>
+        )}
         <li className="pd-card">
           <Mark tone="ok" />
           <div>
@@ -318,7 +358,11 @@ export default function ListingDetail() {
             </section>
           )}
 
+          {tx === "sale" && <RatesCard listingId={listing.id} />}
+
           {tx === "sale" && userType !== null && <ValuationCard listingId={listing.id} />}
+
+          {listing.suburb && <SuburbSnapshot state={listing.jurisdiction} suburb={listing.suburb} />}
 
           <h2>Property details</h2>
           <dl className="details detail-facts">
@@ -346,8 +390,16 @@ export default function ListingDetail() {
             </section>
           )}
 
+          {listing.priceCents !== undefined && (
+            <section className="pd-section" id="pd-returns" aria-label="Returns and yield calculator">
+              {tx === "sale"
+                ? <ReturnsCalc kind="property" price={listing.priceCents / 100} heading="Returns and yield if you rent this home out" />
+                : <ReturnsCalc kind="property" weeklyRent={listing.priceCents / 100} heading="Yield for an investor buying a similar rental" />}
+            </section>
+          )}
+
           {compliance
-            ? <><Disclosures c={compliance} state={listing.jurisdiction} tx={tx} /><Documents docs={docs} /><Safety c={compliance} tx={tx} /></>
+            ? <><Disclosures c={compliance} state={listing.jurisdiction} tx={tx} /><Documents docs={docs} /><Safety c={compliance} tx={tx} state={listing.jurisdiction} /></>
             : <Documents docs={docs} />}
         </div>
         <aside className="detail-aside" aria-label="Contact the seller">
@@ -356,6 +408,8 @@ export default function ListingDetail() {
           <div className="detail-actions">
             <a className="button" href={actionHref(listing.id, "enquire", userType !== null)}>Enquire</a>
             {userType === "buyer" && <a className="button secondary" href={`/client/portal?listing=${listing.id}`}>Book a viewing</a>}
+            {tx === "rent" && userType !== "agent" && <a className="button" href={`/listings/${listing.id}/apply`}>Apply to rent</a>}
+            {tx === "rent" && userType === "owner" && <a className="button secondary" href={`/listings/${listing.id}/rentals`}>Rentals desk (owner)</a>}
             {userType !== "agent" && <a className="button secondary" href={`/listings/${listing.id}/book-inspection`}>Book an open inspection</a>}
             {userType === "buyer" && <a className="button secondary" href={`/listings/${listing.id}/inspection`}>Book a building inspection</a>}
             <SaveButton listingId={listing.id} userType={userType} />

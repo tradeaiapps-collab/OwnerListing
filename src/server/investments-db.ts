@@ -12,6 +12,8 @@ import { hashToken } from "../domain/offer-intake";
 import { windowStart } from "../domain/rate-limit";
 import type { StaffActor } from "../domain/staff-access";
 import { getDb } from "./context";
+import { createPgContentFlagStore } from "./content-flag-db";
+import { guardContent } from "./content-guard";
 import { appendAuditPg, type Queryable } from "./db";
 import { getBuyerVerification } from "./enquiry-db";
 import { getEmailPort } from "./messaging";
@@ -341,6 +343,8 @@ export function investmentDepsFor(db: () => Queryable, env: Env): InvestmentDeps
     sha256: async b => createHash("sha256").update(b).digest("hex"),
     appUrl: (env["APP_URL"] ?? "").replace(/\/+$/, ""),
     appendAudit: e => appendAuditPg(db(), e),
+    // Abuse is refused, spam is flagged. Contact details are masked by the service itself before a contract, so they are not blocked here.
+    contentGuard: ({ userId, text }) => guardContent(createPgContentFlagStore(db()), { source: "message", subjectType: "investment_message", userId, fields: { body: text }, ignore: ["contact_details"] }).then(r => r.ok ? { ok: true as const, after: r.after } : r),
     now: () => new Date().toISOString(),
     newId: () => randomUUID()
   };

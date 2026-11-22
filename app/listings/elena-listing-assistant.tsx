@@ -1,8 +1,10 @@
 "use client";
 import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
-import type { AssistantPlan, FeedbackEvent, RewriteMode, Rewrite } from "../../src/domain/listing-assistant";
+import type { AssistantPlan, AssistantQuestion, FeedbackEvent, RewriteMode, Rewrite } from "../../src/domain/listing-assistant";
 import { dollarsToCents, formatAud } from "../../src/domain/listing-details";
 import { useSearchPersona } from "./persona-context";
+import { useElenaContext } from "../elena-context";
+import { roomsFromText, sectionHint, sectionOfField } from "../../src/domain/elena-context";
 import { JSON_HEADERS } from "./ui";
 
 /** Small "?" button that opens one of Elena's tips under the field label. */
@@ -16,6 +18,10 @@ export function ElenaTip({ text }: { text: string }): ReactNode {
     </span>
   );
 }
+
+const ROOM_LABEL: Record<string, string> = { bedrooms: "Bedrooms", bathrooms: "Bathrooms", parking: "Parking spaces" };
+const isEmpty = (form: HTMLFormElement, name: string) => String(new FormData(form).get(name) ?? "").trim() === "";
+interface Filled { field: string; label: string; value: string }
 
 const dollars = (c: number, rent: boolean) => `${formatAud(c)}${rent ? " per week" : ""}`;
 const words = (t: string) => (t.trim() === "" ? 0 : t.trim().split(/\s+/).length);
@@ -46,6 +52,63 @@ function setControl(form: HTMLFormElement, name: string, value: string) {
   el.dispatchEvent(new Event("change", { bubbles: true }));
 }
 
+type Answer = { kind: "text"; value: string } | { kind: "number"; value: number } | { kind: "yes" } | { kind: "no" } | { kind: "open" };
+
+const FLAG: Record<string, string> = { furnished: "furnished", pets: "pet_friendly" };
+const FIELD_LABEL: Record<string, string> = { suburb: "Suburb", bedrooms: "Bedrooms", bathrooms: "Bathrooms", parking: "Parking spaces", price: "Price" };
+const SENTENCE_LEAD: Record<string, string> = { love: "", outdoor: "Outdoors: ", renovation: "Recent work: ", nearby: "Nearby: " };
+
+/** Puts an answer into the form the way a person typing it would. Returns a one-line confirmation. */
+function applyAnswer(form: HTMLFormElement, q: AssistantQuestion, a: Answer): string {
+  if (a.kind === "number") { setControl(form, q.id, String(a.value)); return `${FIELD_LABEL[q.id]} set to ${a.value}. You can change it in the form.`; }
+  if (a.kind === "text" && (q.id === "suburb" || q.id === "price")) { setControl(form, q.id, a.value.replace(/^\$/, "")); return `${FIELD_LABEL[q.id]} filled in.`; }
+  if (a.kind === "text") {
+    const now = String(new FormData(form).get("description") ?? "").trim();
+    const sentence = `${SENTENCE_LEAD[q.id] ?? ""}${a.value.trim().replace(/^./, c => c.toUpperCase())}${/[.!?]$/.test(a.value.trim()) ? "" : "."}`;
+    setControl(form, "description", now ? `${now}\n\n${sentence}` : sentence);
+    return "Added to your description.";
+  }
+  if (a.kind === "yes" && FLAG[q.id]) {
+    const box = form.querySelector<HTMLInputElement>(`input[name="amenities"][value="${FLAG[q.id]}"]`);
+    if (box && !box.checked) box.click();
+    return "Ticked in the features list.";
+  }
+  return "Noted.";
+}
+
+/** The answer control for one of Elena's questions, shown inside her card. Number chips, a text box, or yes/no. */
+function ElenaAnswer({ q, rent, onAnswer, onSkip }: { q: AssistantQuestion; rent: boolean; onAnswer: (a: Answer) => void; onSkip: () => void }) {
+  const [text, setText] = useState("");
+  const id = useId();
+  const skip = <button type="button" className="secondary" onClick={onSkip}>{q.essential ? "Skip for now" : "Not now"}</button>;
+  if (q.id === "bedrooms" || q.id === "bathrooms" || q.id === "parking") {
+    return (
+      <div className="ela-actions" role="group" aria-label={q.question}>
+        {[0, 1, 2, 3, 4, 5].map(n => <button key={n} type="button" className="ela-num" onClick={() => onAnswer({ kind: "number", value: n })}>{n === 5 ? "5+" : n}</button>)}
+        {skip}
+      </div>
+    );
+  }
+  if (q.id === "furnished" || q.id === "pets") {
+    return <div className="ela-actions"><button type="button" onClick={() => onAnswer({ kind: "yes" })}>Yes</button><button type="button" className="secondary" onClick={() => onAnswer({ kind: "no" })}>No</button>{skip}</div>;
+  }
+  if (q.id === "photos") {
+    return <div className="ela-actions"><button type="button" onClick={() => onAnswer({ kind: "open" })}>Show me where</button>{skip}</div>;
+  }
+  const short = q.id === "suburb" || q.id === "price";
+  const submit = () => { if (text.trim()) onAnswer({ kind: "text", value: text.trim() }); };
+  return (
+    <div className="ela-answer">
+      <label htmlFor={id} className="sr-only">{q.question}</label>
+      {short
+        ? <input id={id} value={text} onChange={e => setText(e.target.value)} onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); submit(); } }}
+            inputMode={q.id === "price" ? "decimal" : "text"} placeholder={q.id === "price" ? (rent ? "650" : "850000") : "e.g. Paddington"} autoComplete="off" />
+        : <textarea id={id} rows={3} value={text} onChange={e => setText(e.target.value)} placeholder="Type it in your own words. Elena adds it to your description." maxLength={500} />}
+      <div className="ela-actions"><button type="button" disabled={!text.trim()} onClick={submit}>Add answer</button>{skip}</div>
+    </div>
+  );
+}
+
 /**
  * Elena's guided listing creation: questions, tags, description rewriter, pricing, photo shots, marketing angles and where to
  * advertise, beside the form. She only suggests: every change needs a click, and nothing is saved until the author saves the form.
@@ -64,6 +127,12 @@ export function ElenaListingAssistant({ photoCount }: { photoCount?: number }) {
   // Open beside the form on wide screens; closed on phones so the form stays first.
   const [open, setOpen] = useState(false);
   useEffect(() => { setOpen(window.matchMedia("(min-width: 720px)").matches); }, []);
+  const here = useElenaContext();
+  const [filled, setFilled] = useState<Filled[]>([]);
+  const triedAuto = useRef<Set<string>>(new Set());
+  const [notes, setNotes] = useState("");
+  const [noteBusy, setNoteBusy] = useState(false);
+  const [noteMsg, setNoteMsg] = useState("");
   const recommendedId = plan?.pricing.state === "ready" ? plan.pricing.recommended : undefined;
   const rent = plan?.pricing && formRef.current ? new FormData(formRef.current).get("transactionType") === "rent" : false;
 
@@ -87,7 +156,18 @@ export function ElenaListingAssistant({ photoCount }: { photoCount?: number }) {
     formRef.current = form;
     if (!form) return;
     let t: ReturnType<typeof setTimeout> | undefined;
-    const later = () => { clearTimeout(t); t = setTimeout(() => void refresh(), 800); };
+    // Elena fills empty room counts from what the owner wrote in the description. Each field once: if they clear it, she leaves it.
+    const autofill = () => {
+      const found = roomsFromText(String(new FormData(form).get("description") ?? ""));
+      const made: Filled[] = [];
+      for (const [field, v] of Object.entries(found)) {
+        if (triedAuto.current.has(field) || !isEmpty(form, field)) continue;
+        triedAuto.current.add(field); setControl(form, field, String(v));
+        made.push({ field, label: ROOM_LABEL[field]!, value: String(v) });
+      }
+      if (made.length) setFilled(f => [...f, ...made]);
+    };
+    const later = () => { clearTimeout(t); t = setTimeout(() => { autofill(); void refresh(); }, 800); };
     const blur = (e: FocusEvent) => {
       // After "Use this", record how far the author then edited Elena's text (length only, never the words).
       if ((e.target as HTMLElement | null)?.getAttribute?.("name") !== "description" || !applied.current) return;
@@ -120,7 +200,64 @@ export function ElenaListingAssistant({ photoCount }: { photoCount?: number }) {
     if (node instanceof HTMLElement) { node.scrollIntoView({ block: "center", behavior: "smooth" }); node.focus({ preventScroll: true }); }
     else if (target === "photos") document.querySelector(".gl-mgr")?.scrollIntoView({ block: "center", behavior: "smooth" });
   };
+  /** Tell Elena in your own words: she reads the notes and fills only the fields that are still empty. */
+  async function tell() {
+    const f = form();
+    if (!f || !notes.trim()) return;
+    setNoteBusy(true); setNoteMsg("");
+    try {
+      const tx = new FormData(f).get("transactionType") === "rent" ? "rent" : "sale";
+      const r = await fetch("/api/listings/assistant/quick-setup", { method: "POST", headers: JSON_HEADERS, body: JSON.stringify({ notes: notes.trim(), transactionType: tx }) });
+      const d = await r.json();
+      if (!r.ok || d.state !== "ready") { setNoteMsg(d.error ?? d.message ?? "Elena could not read that. Try adding the suburb, rooms and price."); return; }
+      const x = d.fields as Record<string, unknown>, made: Filled[] = [];
+      const put = (field: string, label: string, v: unknown, shown?: string) => {
+        if (v === undefined || v === "" || !isEmpty(f, field)) return;
+        setControl(f, field, String(v)); triedAuto.current.add(field); made.push({ field, label, value: shown ?? String(v) });
+      };
+      put("suburb", "Suburb", x["suburb"]); put("postcode", "Postcode", x["postcode"]);
+      put("bedrooms", "Bedrooms", x["bedrooms"]); put("bathrooms", "Bathrooms", x["bathrooms"]); put("parking", "Parking spaces", x["parking"]);
+      if (typeof x["priceCents"] === "number") put("price", "Price", x["priceCents"] / 100, formatAud(x["priceCents"]));
+      put("title", "Title", x["title"]); put("description", "Description", x["description"], "written from your notes");
+      if (typeof x["jurisdiction"] === "string") setControl(f, "jurisdiction", x["jurisdiction"]);
+      if (typeof x["propertyType"] === "string") setControl(f, "propertyType", x["propertyType"]);
+      for (const a of Array.isArray(x["amenities"]) ? x["amenities"] : []) {
+        const box = f.querySelector<HTMLInputElement>(`input[name="amenities"][value="${String(a)}"]`);
+        if (box && !box.checked) { box.click(); made.push({ field: "amenities", label: "Feature", value: String(a).replace(/_/g, " ") }); }
+      }
+      setFilled(prev => [...prev, ...made]);
+      setNoteMsg(made.length ? "Filled in below. Check each one and change anything that is wrong." : "Everything I found is already filled in.");
+      if (made.length) setNotes("");
+    } catch { setNoteMsg("Elena can't help right now. You can keep filling in the form."); } finally { setNoteBusy(false); }
+  }
+  const undo = (x: Filled) => {
+    const f = form();
+    if (f && x.field !== "amenities") setControl(f, x.field, "");
+    setFilled(p => p.filter(y => y !== x));
+  };
+  /** Runs the action on the section hint. */
+  function act(id: "pricing" | "rewrite" | "shots" | "tell") {
+    const root = anchor.current;
+    if (id === "rewrite") void rewrite("better");
+    else if (id === "tell") root?.querySelector<HTMLElement>(".ela-tell textarea")?.focus();
+    else if (id === "shots") { const d = root?.querySelector<HTMLDetailsElement>("details.ela-shots"); if (d) { d.open = true; d.scrollIntoView({ block: "center", behavior: "smooth" }); } }
+    else root?.querySelector<HTMLElement>('section[aria-label="Pricing"]')?.scrollIntoView({ block: "center", behavior: "smooth" });
+  }
   const hide = (key: string) => setGone(g => new Set(g).add(key));
+  const [done, setDone] = useState("");
+  /** Elena fills the form for the person: the answer goes straight into the field, nothing scrolls. */
+  function answer(q: AssistantQuestion, a: Answer) {
+    const f = form();
+    if (!f) return;
+    const msg = applyAnswer(f, q, a);
+    send([{ kind: "question", key: q.id, action: "answered" }]);
+    hide(`q-${q.id}`); setDone(msg);
+    if (q.id === "photos") focus("photos");
+  }
+  function skip(q: AssistantQuestion) {
+    if (!q.essential) send([{ kind: "question", key: q.id, action: "dismissed" }]);
+    hide(`q-${q.id}`); setDone("");
+  }
   async function forget() {
     await fetch("/api/listings/assistant/feedback", { method: "DELETE", headers: JSON_HEADERS }).catch(() => undefined);
     setForgot(true); void refresh();
@@ -138,22 +275,53 @@ export function ElenaListingAssistant({ photoCount }: { photoCount?: number }) {
       {open && !plan && !error && <p role="status" className="muted">Elena is looking at your details…</p>}
       {open && plan && (
         <div className="ela-body">
-          {plan.questions.filter(q => !gone.has(`q-${q.id}`)).length > 0 && (
-            <section aria-label="Questions from Elena">
-              <h3>Elena asks</h3>
-              <ul className="ela-list">
-                {plan.questions.filter(q => !gone.has(`q-${q.id}`)).map(q => (
-                  <li key={q.id}>
-                    <p><strong>{q.question}</strong><br /><span className="muted">{q.why}</span></p>
-                    <div className="ela-actions">
-                      <button type="button" onClick={() => { send([{ kind: "question", key: q.id, action: "answered" }]); focus(q.target); }}>Answer</button>
-                      {!q.essential && <button type="button" className="secondary" onClick={() => { send([{ kind: "question", key: q.id, action: "dismissed" }]); hide(`q-${q.id}`); }}>Not now</button>}
-                    </div>
-                  </li>
-                ))}
-              </ul>
+          {here.section && (() => {
+            const f = formRef.current;
+            const h = sectionHint(here.section, { price: !f || isEmpty(f, "price"), description: !f || isEmpty(f, "description"), rooms: !f || isEmpty(f, "bedrooms") });
+            return (
+              <section aria-label="Where you are" className="ela-now" aria-live="polite">
+                <p className="muted ela-fine">You are in: <strong>{here.sectionLabel}</strong></p>
+                {h && <p>{h.text}</p>}
+                {h?.action && <div className="ela-actions"><button type="button" className="secondary" onClick={() => act(h.action!.id)}>{h.action.label}</button></div>}
+              </section>
+            );
+          })()}
+
+          <section aria-label="Tell Elena" className="ela-tell">
+            <h3>Tell Elena about the property</h3>
+            <label htmlFor="ela-notes" className="sr-only">Describe the property in your own words</label>
+            <textarea id="ela-notes" rows={2} value={notes} maxLength={2000} onChange={e => setNotes(e.target.value)} placeholder="e.g. 3 bed 2 bath house in Paddington QLD 4064, 2 car, pool, $850,000" />
+            <div className="ela-actions"><button type="button" disabled={noteBusy || !notes.trim()} onClick={() => void tell()}>{noteBusy ? "Filling in…" : "Fill in the form"}</button></div>
+            {noteMsg && <p role="status" className="muted">{noteMsg}</p>}
+          </section>
+
+          {filled.length > 0 && (
+            <section aria-label="Filled in by Elena" aria-live="polite">
+              <h3>Elena filled in</h3>
+              <ul className="ela-chips">{filled.map(x => (
+                <li key={x.field + x.value} className="ela-chip"><span>{x.label}: <strong>{x.value}</strong></span>
+                  {x.field !== "amenities" && <button type="button" className="secondary" onClick={() => undo(x)} aria-label={`Undo ${x.label}`}>Undo</button>}</li>
+              ))}</ul>
             </section>
           )}
+
+          {(() => {
+            // The question about the section the person is in comes first.
+            const qs = plan.questions.filter(q => !gone.has(`q-${q.id}`)).sort((a, b) => Number(sectionOfField(b.target) === here.section) - Number(sectionOfField(a.target) === here.section));
+            const q = qs[0];
+            return (
+              <section aria-label="Questions from Elena" aria-live="polite">
+                {done && <p role="status" className="ela-done">{done}</p>}
+                {q && (
+                  <>
+                    <h3>Elena asks <span className="muted ela-count">{qs.length === 1 ? "last question" : `${qs.length} questions left`}</span></h3>
+                    <p><strong>{q.question}</strong><br /><span className="muted">{q.why}</span></p>
+                    <ElenaAnswer key={q.id} q={q} rent={rent} onAnswer={a => answer(q, a)} onSkip={() => skip(q)} />
+                  </>
+                )}
+              </section>
+            );
+          })()}
 
           <section aria-label="Description">
             <h3>Description</h3>
@@ -225,7 +393,7 @@ export function ElenaListingAssistant({ photoCount }: { photoCount?: number }) {
             <p className="muted ela-fine">{plan.pricing.note}</p>
           </section>
 
-          <details>
+          <details className="ela-shots">
             <summary>Photo shot list ({plan.photos.have !== undefined ? `${plan.photos.have} of about ${plan.photos.target}` : `about ${plan.photos.target} photos`})</summary>
             <p>{plan.photos.message}</p>
             <ol className="plain-list">{plan.photos.shots.map(s => <li key={s.id}><strong>{s.title}</strong>{s.essential ? "" : " (optional)"}. <span className="muted">{s.tip}</span></li>)}</ol>

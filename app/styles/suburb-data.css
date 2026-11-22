@@ -1,0 +1,16 @@
+/* Suburb data: staff import screen and the buyer "Suburb snapshot". Site tokens only; mobile first. */
+.suburb-data .sd-import { display: grid; gap: var(--space-4); max-width: 48rem; }
+.suburb-data .sd-meta { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-4); }
+@media (min-width: 640px) { .suburb-data .sd-meta { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); } }
+.suburb-data textarea { width: 100%; min-height: 10rem; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.875rem; }
+.suburb-data .sd-columns { overflow-wrap: anywhere; }
+.suburb-data .sd-errors { margin: var(--space-2) 0 0; padding-left: var(--space-6); }
+.suburb-data .sd-table { min-width: 44rem; }
+.suburb-data .sd-table th, .suburb-data .sd-table td { vertical-align: top; }
+.suburb-data .sd-table td:last-child { min-width: 16rem; }
+/* Phones: let the three columns wrap inside the viewport instead of scrolling sideways, so Figures is readable. */
+@media (max-width: 639px) { .suburb-data .table-wrap > .sd-table { min-width: 0; table-layout: fixed; width: 100%; } .suburb-data .sd-table td:last-child { min-width: 0; } .suburb-data .sd-table th, .suburb-data .sd-table td { overflow-wrap: break-word; padding-inline: var(--space-2); } .suburb-data .sd-table th { white-space: normal; } .suburb-data .sd-table th:nth-child(1) { width: 26%; } .suburb-data .sd-table th:nth-child(2) { width: 28%; } .suburb-data .sd-table th:nth-child(3) { width: 46%; } }
+.sd-snapshot .sd-facts { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-2) var(--space-4); margin: 0 0 var(--space-3); }
+.sd-snapshot .sd-facts dt { font-weight: 600; }
+.sd-snapshot .sd-facts dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+@media (min-width: 640px) { .sd-snapshot .sd-facts { grid-template-columns: minmax(0, 16rem) minmax(0, 1fr); } }

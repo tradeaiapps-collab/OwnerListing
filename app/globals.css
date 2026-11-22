@@ -254,6 +254,9 @@ html[data-theme-mode="dark"] .site-footer { background: #070b16; color: #e7e2d8;
 .site-footer a:hover { color: var(--footer-ink); opacity: 1; text-decoration: underline; text-decoration-color: var(--gold); }
 .site-footer a:focus-visible { outline-color: var(--gold); }
 .site-footer-base { max-width: var(--container); margin: 0 auto; padding: var(--space-4) var(--space-4) var(--space-6); border-top: 1px solid color-mix(in srgb, var(--footer-ink) 14%, transparent); }
+.site-footer-base { display: grid; gap: var(--space-2); }
+@media (min-width: 640px) { .site-footer-base { grid-template-columns: 1fr auto; align-items: center; } }
+.site-footer-legal ul { gap: 0 var(--space-4); }
 .site-footer-base p { font-size: 0.8125rem; color: var(--footer-muted); letter-spacing: 0.02em; }
 
 /* Breadcrumbs (app/breadcrumbs.tsx) */
@@ -516,3 +519,127 @@ button.role-item:hover:not(:disabled), a.role-item:hover, .role-item:focus-visib
 .role-card-text { display: grid; gap: var(--space-1); min-width: 0; flex: 1 1 220px; }
 .role-card-text strong { display: flex; align-items: center; gap: var(--space-2); }
 @media (max-width: 640px) { .role-switch-hint { display: none; } .role-switch-btn { padding: 0 var(--space-2); } }
+.ela-done { margin: 0 0 var(--space-3); padding: var(--space-2) var(--space-3); border-radius: var(--radius); background: var(--surface); border: 1px solid var(--border); font-size: 0.875rem; }
+.ela-count { font-weight: 400; font-size: 0.8125rem; margin-left: var(--space-2); }
+.ela-answer { display: grid; gap: var(--space-3); }
+.ela-answer input, .ela-answer textarea { width: 100%; }
+.ela-num { min-width: 44px; min-height: 44px; }
+.qs-tabs { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-bottom: var(--space-4); }
+.qs-tabs > button { flex: 1 1 14rem; min-height: 44px; }
+.qs-head { display: flex; gap: var(--space-3); align-items: flex-start; }
+.qs-head > div { flex: 1; min-width: 0; }
+.qs-steps { list-style: none; margin: var(--space-4) 0; padding: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-2); }
+.qs-steps button { width: 100%; min-height: 44px; font-size: 0.875rem; padding-inline: var(--space-2); }
+.qs-steps li.on button { background: var(--navy, #1a2040); color: #fff; }
+.qs-body { min-height: 12rem; }
+.qs-body h3 { margin: 0 0 var(--space-2); font-size: 1rem; }
+.qs-opt { font-weight: 400; font-size: 0.8125rem; margin-left: var(--space-2); }
+.qs-thumbs { list-style: none; margin: var(--space-3) 0 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(88px, 1fr)); gap: var(--space-2); }
+.qs-thumb { position: relative; aspect-ratio: 1; border-radius: var(--radius); overflow: hidden; border: 1px solid var(--border); }
+.qs-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.qs-thumb button { position: absolute; top: 4px; right: 4px; min-height: 32px; min-width: 32px; padding: 0; border-radius: 50%; line-height: 1; }
+.qs-foot { display: flex; flex-wrap: wrap; gap: var(--space-3); justify-content: space-between; align-items: center; margin-top: var(--space-4); padding-top: var(--space-4); border-top: 1px solid var(--line); }
+.qs-nav { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.qs-sub { margin-top: var(--space-5); }
+.qs-body > [hidden] { display: none; }
+/* Room under the page so the floating Ask Elena button never covers the footer buttons. */
+.wiz-main { padding-bottom: 6rem; }
+.qs-result { margin-bottom: var(--space-4); }
+@media (max-width: 479px) { .qs-foot { flex-direction: column-reverse; align-items: stretch; } .qs-nav { flex-direction: column-reverse; } .qs-nav > button, .qs-foot > button { width: 100%; } }
+.ela-now { border-left: 3px solid var(--gold); padding-left: var(--space-3); }
+.ela-now p { margin: 0 0 var(--space-2); }
+.ela-tell textarea { width: 100%; margin-bottom: var(--space-2); }
+
+/* Readable text on tinted (gold, beige) boxes. Muted grey on the champagne tint is only about 5:1, which reads faint at small sizes.
+   Boxes that sit on --gold-tint, --surface or --tint get body text in --text, secondary text in --muted-strong (7:1 or better in light and dark)
+   and links in --link-strong. The tokens are mixed from the live theme, so admin theme edits carry through. */
+:root, :root:root {
+  --muted-strong: color-mix(in srgb, var(--muted) 50%, var(--text));
+  --link-strong: color-mix(in srgb, var(--link) 70%, var(--heading, var(--text)));
+}
+:is(.notice, .staff-notice, .empty, .empty-state, .cmp-empty, .elena-search, .elena-card, .leads-secret, .at-invite, .dsp-elena, .el-answer, .feeds-token, .lv-elena, .syn-secret, .sg-explain, .nt-item[data-unread="true"], .admin-staff-only) { color: var(--text); }
+:is(.notice, .staff-notice, .empty, .empty-state, .cmp-empty, .elena-search, .elena-card, .leads-secret, .at-invite, .dsp-elena, .el-answer, .feeds-token, .lv-elena, .sg-explain, .nt-item[data-unread="true"]) :is(.muted, small, p:not([class])) { color: var(--muted-strong); }
+:is(.notice, .staff-notice, .empty, .empty-state, .cmp-empty, .elena-search, .elena-card, .dsp-elena, .el-answer, .sg-explain) a:not(.button) { color: var(--link-strong); }
+.elena-search .es-head p, .elena-search .muted { color: var(--muted-strong); font-size: 0.9375rem; }
+.elena-search .es-out p, .elena-search .es-out li { color: var(--text); }
+/* Empty-state copy was left-aligned inside a centred box because of the 72ch paragraph cap; centre the block. */
+.empty p, .cmp-empty p { margin-inline: auto; }
+
+/* Create/edit listing form: extras checkboxes in a compact grid (search.css is not loaded on these pages). */
+.form-checks { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-1) var(--space-4); }
+@media (min-width: 720px) { .form-checks { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.form-checks .check { margin: 0; min-width: 0; gap: var(--space-2); }
+.form-warning { border: 1px solid var(--warning, #b45309); border-radius: var(--radius, 8px); padding: var(--space-3); margin: var(--space-3) 0; background: color-mix(in srgb, var(--warning, #b45309) 12%, transparent); overflow-wrap: anywhere; }
+.form-warning ul { margin: var(--space-2) 0 0; padding-left: var(--space-5, 1.25rem); }
+.form-warning .link-button { background: none; border: 0; padding: 0; min-height: 0; color: inherit; text-decoration: underline; cursor: pointer; font: inherit; }
+
+/* Elena publish check (app/listings/elena-publish-check.tsx) */
+.elena-checking { display: flex; align-items: center; gap: var(--space-3); margin: var(--space-3) 0; }
+.elena-spinner { flex: none; width: 1.25rem; height: 1.25rem; border: 2px solid var(--border); border-top-color: var(--accent, currentColor); border-radius: 50%; }
+@media (prefers-reduced-motion: no-preference) { .elena-spinner { animation: elena-spin 0.8s linear infinite; } }
+@keyframes elena-spin { to { transform: rotate(360deg); } }
+.elena-findings { list-style: none; margin: var(--space-3) 0; padding: 0; display: grid; gap: var(--space-2); }
+.elena-findings li { display: grid; grid-template-columns: auto 1fr; gap: var(--space-2) var(--space-3); align-items: start; padding: var(--space-3); border: 1px solid var(--border); border-radius: 8px; }
+.elena-findings .elena-msg { min-width: 0; overflow-wrap: anywhere; }
+.elena-findings .elena-fix { grid-column: 2; justify-self: start; display: inline-flex; align-items: center; min-height: 44px; }
+.elena-check h4 { margin: var(--space-4) 0 var(--space-2); }
+
+.ss-cta { margin-top: var(--space-6); }
+@media (max-width: 479px) { .ss-cta .button { width: 100%; } }
+
+.ctr-list { list-style: none; margin: var(--space-3) 0; padding: 0; display: grid; gap: var(--space-3); }
+.ctr-row { display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: flex-start; justify-content: space-between; padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius); }
+.ctr-main { display: grid; gap: var(--space-1); min-width: 0; flex: 1 1 14rem; }
+.ctr-form { display: grid; gap: var(--space-2); flex: 1 1 16rem; }
+@media (max-width: 479px) { .ctr-row > button, .ctr-form .qs-nav > button { width: 100%; } }
+
+/* Approve and publish screen */
+.approve { max-width: 56rem; }
+.approve-photos { display: grid; grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr)); gap: var(--space-2); margin: 0 0 var(--space-4); padding: 0; list-style: none; }
+.approve-photos img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 8px; display: block; }
+.approve-desc { white-space: pre-line; overflow-wrap: anywhere; }
+@media (max-width: 639px) { .approve .form-bar > button, .approve .qs-nav > :is(button, a) { flex: 1 1 100%; } }
+
+/* Elena job handling (owner panel) */
+.ej-switches { display: grid; gap: var(--space-3); margin: var(--space-3) 0; }
+.ej-switch { display: flex; gap: var(--space-3); align-items: flex-start; }
+.ej-switch input { margin-top: var(--space-1); flex: none; }
+.ej-switch > span { display: grid; gap: var(--space-1); min-width: 0; }
+.ej-list { list-style: none; margin: var(--space-3) 0 0; padding: 0; display: grid; gap: var(--space-3); }
+.ej-job { display: grid; gap: var(--space-2); padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius); min-width: 0; }
+.ej-head { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: baseline; justify-content: space-between; }
+.ej-state { font-size: var(--text-sm, 0.875rem); }
+.ej-needs_owner .ej-state, .ej-state.ej-needs_owner { font-weight: 600; }
+.ej-ask, .ej-form { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: flex-end; }
+.ej-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.ej-log ul { list-style: none; margin: var(--space-2) 0 0; padding: 0; display: grid; gap: var(--space-2); }
+.ej-log li { display: grid; gap: var(--space-1); overflow-wrap: anywhere; }
+@media (max-width: 479px) { .ej-ask .qs-nav > button, .ej-form > button, .ej-actions > button { width: 100%; } }
+
+/* Elena price suggestion */
+.eps-range { font-size: 1.375rem; margin: 0 0 var(--space-2); overflow-wrap: anywhere; }
+.eps-meta { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); margin: 0 0 var(--space-3); }
+.eps-conf { font-weight: 600; }
+.eps-conf-low { color: var(--warn); }
+.eps-conf-medium, .eps-conf-high { color: var(--ok); }
+.eps > button { margin-bottom: var(--space-3); }
+.eps-more { margin-top: var(--space-3); }
+.eps-more h3 { margin: var(--space-4) 0 var(--space-2); font-size: 1rem; }
+.eps .eps-num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.eps-more th, .eps-more td { vertical-align: top; }
+.eps .table-wrap > table { min-width: 0; }
+@media (max-width: 639px) { .eps .eps-opt { display: none; } }
+@media (max-width: 639px) { .eps > p > a.button, .eps > button { width: 100%; } }
+.ee-body, .et-body { white-space: pre-wrap; overflow-wrap: anywhere; }
+.ee-body { padding: var(--space-2); border-radius: var(--radius); background: var(--surface); }
+.et { display: grid; gap: var(--space-3); margin: var(--space-3) 0; min-width: 0; }
+.et-block { max-width: none; display: grid; gap: var(--space-2); padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); min-width: 0; }
+.et-block h2 { margin: 0; font-size: var(--text-lg, 1.125rem); }
+.et-pending { border-color: var(--warn); background: var(--warn-tint); }
+.et-slots { max-width: none; list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-2); }
+.et-slots button, .et-actions > button { width: 100%; min-height: 44px; }
+.et-actions { display: grid; gap: var(--space-2); }
+.et-ok { margin: 0; color: var(--ok); font-weight: 600; }
+.et-log ul { list-style: none; margin: var(--space-2) 0 0; padding: 0; display: grid; gap: var(--space-2); }
+.et-log li { max-width: none; display: grid; gap: var(--space-1); overflow-wrap: anywhere; }
+@media (min-width: 768px) { .et-slots { grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr)); } .et-actions { display: flex; flex-wrap: wrap; } .et-actions > button { width: auto; } }

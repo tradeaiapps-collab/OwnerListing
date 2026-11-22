@@ -14,6 +14,7 @@ vi.mock("../src/server/context", () => ({ getActor: () => state.actor }));
 vi.mock("../src/server/saved-search-context", () => ({ getSavedSearchRepo: () => state.repo }));
 
 import { GET as listRoute, POST as createRoute } from "../app/api/buyer/saved-searches/route";
+import { DELETE as deleteRoute } from "../app/api/buyer/saved-searches/[searchId]/route";
 import { GET as prefsGet, PUT as prefsPut } from "../app/api/buyer/alert-preferences/route";
 process.env["APP_URL"] = "http://test";
 
@@ -28,6 +29,7 @@ function memoryRepo(): SavedSearchRepository & { prefs: AlertPreference[]; searc
     searches, prefs,
     async list(buyer) { return searches.filter(s => s.buyerUserId === buyer); },
     async insert(buyer, input) { const s: SavedSearch = { id: `s-${++n}`, buyerUserId: buyer, active: true, ...input }; searches.push(s); return s; },
+    async remove(buyer, id) { const i = searches.findIndex(s => s.id === id && s.buyerUserId === buyer); if (i < 0) return false; searches.splice(i, 1); return true; },
     async listPreferences() { return [...prefs]; },
     async giveConsent(_b, channel, now) {
       const i = prefs.findIndex(p => p.channel === channel);
@@ -129,7 +131,8 @@ describe("createPgSavedSearchRepository", () => {
     await repo.listPreferences("u1");
     await repo.giveConsent("u1", "email", "2026-10-24T00:00:00.000Z");
     await repo.unsubscribe("u1", "sms", "2026-10-24T00:00:00.000Z");
-    expect(calls).toHaveLength(5);
+    await repo.remove("u1", "s1");
+    expect(calls).toHaveLength(6);
     for (const c of calls) {
       expect(c.params?.[0]).toBe("u1");
       expect(c.text).not.toContain("u1");
@@ -176,6 +179,19 @@ describe("buyer routes", () => {
     expect(((await (await listRoute(req("GET"))).json()) as { searches: unknown[] }).searches).toHaveLength(0);
   });
 
+  it("deletes only the signed-in user's own search", async () => {
+    const ctx = (id: string) => ({ params: Promise.resolve({ searchId: id }) });
+    expect((await deleteRoute(req("DELETE"), ctx("s-1"))).status).toBe(401);
+    state.actor = { userId: "u1", userType: "owner" };
+    await createRoute(req("POST", valid));
+    state.actor = { userId: "u2", userType: "agent" };
+    expect((await deleteRoute(req("DELETE"), ctx("s-1"))).status).toBe(404);
+    state.actor = { userId: "u1", userType: "owner" };
+    expect((await deleteRoute(req("DELETE"), ctx("s-1"))).status).toBe(200);
+    expect((await deleteRoute(req("DELETE"), ctx("s-1"))).status).toBe(404);
+    expect(((await (await listRoute(req("GET"))).json()) as { searches: unknown[] }).searches).toHaveLength(0);
+  });
+
   it("records alert consent and unsubscribe, and rejects a non-boolean", async () => {
     state.actor = { userId: "u1", userType: "owner" };
     expect((await prefsPut(req("PUT", { channel: "email", consent: "yes" }))).status).toBe(400);
@@ -183,5 +199,24 @@ describe("buyer routes", () => {
     expect(mayAlert(on.preferences[0])).toBe(true);
     const off = (await (await prefsPut(req("PUT", { channel: "email", consent: false }))).json()) as { preferences: AlertPreference[] };
     expect(mayAlert(off.preferences[0])).toBe(false);
+  });
+});
+
+describe("sensible minimums", () => {
+  const base = { transactionType: "sale", useClass: "residential" };
+  it("rejects 0 bedrooms with a helpful message", () => {
+    const r = parseSavedSearchInput({ ...base, minBedrooms: 0 });
+    expect(r).toMatchObject({ ok: false, message: expect.stringContaining("Studios") });
+  });
+  it("treats 0 bathrooms and 0 parking as no minimum", () => {
+    const r = parseSavedSearchInput({ ...base, minBathrooms: 0, minParking: 0 });
+    expect(r.ok && "minBathrooms" in r.value).toBe(false);
+    expect(r.ok && "minParking" in r.value).toBe(false);
+  });
+  it("rejects unrealistically low prices but allows 0 as no floor", () => {
+    expect(parseSavedSearchInput({ ...base, minPriceCents: 1000, maxPriceCents: 10000 }).ok).toBe(false);
+    expect(parseSavedSearchInput({ ...base, transactionType: "rent", maxPriceCents: 1000 }).ok).toBe(false);
+    expect(parseSavedSearchInput({ ...base, minPriceCents: 0, maxPriceCents: 90_000_000 }).ok).toBe(true);
+    expect(parseSavedSearchInput({ ...base, transactionType: "rent", minPriceCents: 30_000, maxPriceCents: 65_000 }).ok).toBe(true);
   });
 });

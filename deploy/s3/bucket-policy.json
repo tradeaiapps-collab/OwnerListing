@@ -1,0 +1,43 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "DenyInsecureTransport",
+      "Effect": "Deny",
+      "Principal": "*",
+      "Action": "s3:*",
+      "Resource": ["arn:aws:s3:::BUCKET", "arn:aws:s3:::BUCKET/*"],
+      "Condition": { "Bool": { "aws:SecureTransport": "false" } }
+    },
+    {
+      "Sid": "DenyOldTls",
+      "Effect": "Deny",
+      "Principal": "*",
+      "Action": "s3:*",
+      "Resource": ["arn:aws:s3:::BUCKET", "arn:aws:s3:::BUCKET/*"],
+      "Condition": { "NumericLessThan": { "s3:TlsVersion": "1.2" } }
+    },
+    {
+      "Sid": "DenyUnencryptedWrites",
+      "Effect": "Deny",
+      "Principal": "*",
+      "Action": "s3:PutObject",
+      "Resource": "arn:aws:s3:::BUCKET/*",
+      "Condition": { "StringNotEquals": { "s3:x-amz-server-side-encryption": "AES256" } }
+    },
+    {
+      "Sid": "AppUserCannotDeleteOutsideIdImages",
+      "Effect": "Deny",
+      "Principal": { "AWS": "arn:aws:iam::ACCOUNT_ID:user/APP_IAM_USER" },
+      "Action": ["s3:DeleteObject", "s3:DeleteObjectVersion"],
+      "NotResource": "arn:aws:s3:::BUCKET/id/*"
+    },
+    {
+      "Sid": "AppUserCannotDeleteIdVersions",
+      "Effect": "Deny",
+      "Principal": { "AWS": "arn:aws:iam::ACCOUNT_ID:user/APP_IAM_USER" },
+      "Action": "s3:DeleteObjectVersion",
+      "Resource": "arn:aws:s3:::BUCKET/*"
+    }
+  ]
+}

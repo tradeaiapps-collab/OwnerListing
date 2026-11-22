@@ -5,7 +5,7 @@ import { PRESENTER_SPEAK_EVENT } from "../presenter/presenter-core";
 import { classifyTour, tourSummary } from "../../src/domain/virtual-tour";
 import "../styles/gallery.css";
 
-type Tab = "photo" | "floorplan" | "photo360" | "tour";
+type Tab = "photo" | "floorplan" | "photo360" | "tour" | "video";
 type Media = { id: string; label: string };
 
 /** True while the viewport is phone-sized (carousel instead of the hero grid). */
@@ -91,9 +91,6 @@ function Lightbox({ items, index, title, onIndex, onClose, info }: {
         <p className="gl-counter" aria-live="polite">{index + 1} of {total}</p>
         <div className="gl-top-tools">
           {info && <button type="button" className="gl-close gl-info-btn" aria-expanded={panel} onClick={() => setPanel(!panel)}>{panel ? "Hide details" : "Details"}</button>}
-          <button type="button" className="gl-close gl-x" onClick={onClose} aria-label="Close photo viewer">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
-          </button>
         </div>
       </div>
       <div className="gl-stage"
@@ -131,7 +128,7 @@ function Lightbox({ items, index, title, onIndex, onClose, info }: {
           {items.map((p, i) => (
             <button key={p.id} type="button" data-i={i} className="gl-thumb" aria-current={i === index ? "true" : undefined}
               aria-label={`Show ${p.kind === "floorplan" ? "floor plan" : "photo"} ${i + 1} of ${total}`} onClick={() => show(i)}>
-              <Img v={p} sizes="96px" alt="" />
+              <Img v={p} sizes="88px" alt="" />
             </button>
           ))}
         </div>
@@ -248,8 +245,8 @@ function TourFrame({ src, label, title, poster }: { src: string; label: string; 
 }
 
 /**
- * Public gallery of a listing: Photos and Floor plan tabs, and a Video / virtual tour link when the owner added one.
- * Public video files from the listing's documents are offered as downloads in the same place.
+ * Public gallery of a listing: Photos, Floor plan and Video tabs, and a virtual tour link when the owner added one.
+ * Public video files from the listing's documents play in the Video tab.
  */
 export function ListingGallery({ listingId, title, highlights }: { listingId: string; title: string; highlights?: string }) {
   const [photos, setPhotos] = useState<PhotoView[] | null>(null);
@@ -278,20 +275,26 @@ export function ListingGallery({ listingId, title, highlights }: { listingId: st
   const byKind = { photo: photos.filter(p => p.kind === "photo"), floorplan: photos.filter(p => p.kind === "floorplan"), photo360: photos.filter(p => p.kind === "photo360") };
   const tour = classifyTour(tourUrl);
   const framed = tour?.embedUrl !== undefined;
-  const wantsTour = tab === "tour" && framed, wants360 = tab === "photo360" && byKind.photo360.length > 0;
+  const wantsVideo = tab === "video" && videos.length > 0, wantsTour = tab === "tour" && framed, wants360 = tab === "photo360" && byKind.photo360.length > 0;
   const all = byKind[tab === "floorplan" ? "floorplan" : "photo"].length ? byKind[tab === "floorplan" ? "floorplan" : "photo"] : byKind.photo.length ? byKind.photo : byKind.floorplan;
-  const current: Tab = wantsTour ? "tour" : wants360 ? "photo360" : all === byKind.floorplan && byKind.floorplan.length ? "floorplan" : "photo";
+  const current: Tab = wantsVideo ? "video" : wantsTour ? "tour" : wants360 ? "photo360" : all === byKind.floorplan && byKind.floorplan.length ? "floorplan" : "photo";
   const rooms = current === "photo" ? categoriesIn(all) : [];
   const activeRoom = rooms.some(r => r.key === room) ? room : "";
   const items = activeRoom ? all.filter(p => p.category === activeRoom) : all;
   const tabs = ([["photo", "Photos"], ["floorplan", "Floor plan"], ["photo360", "360 photos"]] as const).filter(([k]) => byKind[k].length > 0);
-  const allTabs: (readonly [Tab, string, number?])[] = [...tabs.map(([k, n]) => [k, n, byKind[k].length] as const), ...(framed ? [["tour", tour!.label] as const] : [])];
+  const allTabs: (readonly [Tab, string, number?])[] = [...tabs.map(([k, n]) => [k, n, byKind[k].length] as const), ...(framed ? [["tour", tour!.label] as const] : []), ...(videos.length ? [["video", "Video", videos.length] as const] : [])];
   const pano = byKind.photo360[Math.min(panoIdx, byKind.photo360.length - 1)];
   const label = current === "floorplan" ? (items.length === 1 ? "floor plan" : "floor plans") : items.length === 1 ? "photo" : "photos";
 
   return (
     <section className="gl" aria-label="Photos and plans">
-      {current === "tour" && tour?.embedUrl
+      {current === "video" && videos[0]
+        ? (
+          <div className="gl-videobox">
+            {videos.map(m => <video key={m.id} className="gl-video" controls preload="metadata" playsInline src={`/api/documents/${m.id}/file`} aria-label={`${m.label}: ${title}`} />)}
+          </div>
+        )
+        : current === "tour" && tour?.embedUrl
         ? <TourFrame src={tour.embedUrl} label={tour.label} title={title} poster={byKind.photo[0]} />
         : current === "photo360" && pano
         ? (
@@ -309,7 +312,7 @@ export function ListingGallery({ listingId, title, highlights }: { listingId: st
         : narrow
           ? <Carousel key={current + activeRoom} items={items} title={title} onOpen={setOpen} />
           : <HeroGrid key={current + activeRoom} items={items} title={title} onOpen={setOpen} label={label} />}
-      {(allTabs.length > 1 || tourUrl || videos.length > 0) && (
+      {(allTabs.length > 1 || tourUrl) && (
         <div className="gl-tabs">
           {allTabs.length > 1 && (
             <div role="group" aria-label="Show">
@@ -321,7 +324,6 @@ export function ListingGallery({ listingId, title, highlights }: { listingId: st
             </div>
           )}
           {tourUrl && !framed && <a className="gl-tab gl-link" href={tourUrl} target="_blank" rel="noopener noreferrer nofollow">{tour?.label ?? "Virtual tour"}<span className="sr-only"> (opens a new tab)</span></a>}
-          {videos.map((m, i) => <a key={m.id} className="gl-tab gl-link" href={`/api/documents/${m.id}/file`}>{m.label} {videos.length > 1 ? i + 1 : ""} (download)</a>)}
         </div>
       )}
       {(tour || byKind.photo360.length > 0) && (
@@ -342,6 +344,17 @@ export function ListingGallery({ listingId, title, highlights }: { listingId: st
       )}
       {open !== null && items[open] && <Lightbox items={items} index={open} title={title} onIndex={setOpen} onClose={() => setOpen(null)} />}
     </section>
+  );
+}
+
+/** Full-screen viewer alone, for pages that have their own carousel (investor project page). */
+export function PhotoViewer({ photos, title, base, start, onClose }: { photos: PhotoView[]; title: string; base: string; start: number; onClose: () => void }) {
+  const [at, setAt] = useState(start);
+  if (!photos[at]) return null;
+  return (
+    <PhotoBase.Provider value={base}>
+      <div className="gl"><Lightbox items={photos} index={at} title={title} onIndex={setAt} onClose={onClose} /></div>
+    </PhotoBase.Provider>
   );
 }
 

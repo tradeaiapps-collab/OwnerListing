@@ -1,3 +1,4 @@
+import type { PageRenderer } from "../domain/project-document-masking";
 import { imageVariantsFromEnv, type ImageVariantPort } from "../adapters/image-variants";
 import { malwareScannerFromEnv } from "../adapters/malware-scan";
 import { objectStorageFromEnv } from "../adapters/object-storage";
@@ -12,6 +13,7 @@ import { staffFromRequest } from "./staff-auth";
 import { createPgPublishAlertHook } from "./publish-alerts-db";
 import { syndicateListing, syndicationDeps } from "./syndication-db";
 import { hasCurrentTermsPg } from "./terms-db";
+import { elenaPhotoFactsPg, queueForModerationPg } from "./elena-review-db";
 import { clearedWordingFlagsPg, recordWordingFlagsPg } from "./wording-flags-db";
 import { disclosureRequirementsPg, markListingDisclosureVersionPg } from "./disclosure-config-db";
 import { appendAuditPg, appointmentForPg, createPgListingRepository, trustAccountDecisionPg, verifiedLicencesPg, type Queryable } from "./db";
@@ -69,6 +71,8 @@ function wire(): Wired {
         // Share on the portals the owner opted into; best effort, the scheduled run retries anything that fails.
         return async (listing: Parameters<typeof alerts>[0]) => { await alerts(listing); await syndicateListing(db, syndicationDeps(), listing.id); };
       })(),
+      elenaFacts: listingId => elenaPhotoFactsPg(db, listingId),
+      queueForModeration: (listing, review, actorUserId) => queueForModerationPg(db, listing.id, review, actorUserId),
       clearedWordingFlags: listingId => clearedWordingFlagsPg(db, listingId),
       recordWordingFlags: (listingId, actorUserId, fields) => recordWordingFlagsPg(db, listingId, actorUserId, fields)
     }
@@ -99,6 +103,14 @@ export async function getActor(req: Request): Promise<Actor | null> {
 /** File storage and malware scanner. Both fail closed (uploads refused) until real providers are configured. */
 export function getUploadPorts() {
   return { storage: objectStorageFromEnv(process.env), scanner: malwareScannerFromEnv(process.env) };
+}
+
+/** Storage plus the server-side page renderer used to show investor project documents in the site. */
+export function getMaskPorts() {
+  // Loaded on first use: pdf.js and the canvas library are heavy native code that no other page needs.
+  const load = async () => (await import("./pdf-pages")).createPageRenderer();
+  const renderer: PageRenderer = { async analyse(b, m) { return (await load()).analyse(b, m); }, async render(b, m, p, o) { return (await load()).render(b, m, p, o); } };
+  return { storage: objectStorageFromEnv(process.env), renderer };
 }
 
 let variants: Promise<ImageVariantPort> | undefined;

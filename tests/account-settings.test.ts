@@ -149,11 +149,18 @@ describe("settings route", () => {
 
   it("returns defaults, then saves per user without touching anyone else", async () => {
     state.actor = owner;
-    expect(await (await settingsRoute.GET(get())).json()).toEqual({ settings: DEFAULT_SETTINGS });
+    expect(await (await settingsRoute.GET(get())).json()).toEqual({ settings: DEFAULT_SETTINGS, enabledLocales: [] });
     expect((await settingsRoute.PUT(body("PUT", { locale: "it", timeZone: "Australia/Perth" }))).status).toBe(200);
-    expect(await (await settingsRoute.GET(get())).json()).toEqual({ settings: { locale: "it", timeZone: "Australia/Perth" } });
+    expect(await (await settingsRoute.GET(get())).json()).toEqual({ settings: { locale: "it", timeZone: "Australia/Perth" }, enabledLocales: [] });
     state.actor = { userId: B, userType: "buyer" };
-    expect(await (await settingsRoute.GET(get())).json()).toEqual({ settings: DEFAULT_SETTINGS });
+    expect(await (await settingsRoute.GET(get())).json()).toEqual({ settings: DEFAULT_SETTINGS, enabledLocales: [] });
+  });
+
+  it("sets the language cookie on save so the page follows the saved language", async () => {
+    state.actor = owner;
+    const res = await settingsRoute.PUT(body("PUT", { locale: "ar", timeZone: "UTC" }));
+    expect(res.status).toBe(200);
+    expect(res.headers.get("set-cookie")).toContain("ol_locale=ar");
   });
 
   it("refuses invalid input and a client-sent user id", async () => {

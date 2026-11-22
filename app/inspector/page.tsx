@@ -4,7 +4,7 @@ import { JSON_HEADERS, formatWhen } from "../inspections/ui";
 
 const STATES = ["NSW", "VIC", "QLD", "WA", "SA", "TAS", "ACT", "NT"];
 type Profile = { businessName: string; licenceRef: string; jurisdictions: string[]; status: string; reviewNote: string };
-type Req = { id: string; listingTitle: string; address: string; jurisdiction: string; slots: string[]; notes: string };
+type Req = { id: string; listingTitle: string; area: string; jurisdiction: string; slots: string[]; notes: string };
 type Job = { id: string; listingTitle: string; status: string; scheduledAt?: string; inspectionId?: string };
 const STATUS: Record<string, string> = { pending: "Waiting for review", approved: "Approved", rejected: "Not approved", suspended: "Suspended" };
 
@@ -84,7 +84,7 @@ export default function InspectorPortal() {
           {reqs.map(r => (
             <li key={r.id}>
               <div className="top"><strong>{r.listingTitle}</strong><span className="badge">{r.jurisdiction}</span></div>
-              <span>{r.address}</span>
+              <span>{r.area}</span>
               {r.notes && <span className="muted">Buyer notes: {r.notes}</span>}
               <fieldset className="insp-pick"><legend className="muted">Pick a time</legend>
                 {r.slots.map(s => <label key={s}><input type="radio" name={`slot-${r.id}`} checked={slot[r.id] === s} onChange={() => setSlot({ ...slot, [r.id]: s })} />{formatWhen(s)}</label>)}

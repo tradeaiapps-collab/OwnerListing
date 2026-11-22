@@ -7,6 +7,8 @@ import { getEnquiryDeps } from "../../../../../src/server/enquiry-db";
 import { failure, unauthenticated } from "../../../../../src/server/http";
 import { screenWithDefaults } from "../../../../../src/server/message-safety";
 import { moderateSentMessage } from "../../../../../src/server/message-moderation-db";
+import { listingNumberPg } from "../../../../../src/server/listing-number";
+import { handleBuyerMessage } from "../../../../../src/server/elena-enquiries-db";
 import { notifyEnquiryMessage } from "../../../../../src/server/notifier";
 import { requireCurrentTerms } from "../../../../../src/server/terms-guard";
 import { withApi } from "../../../../../src/server/api/with-api";
@@ -24,7 +26,10 @@ async function handleGet(req: Request, { params }: Ctx) {
   const { id } = await params;
   if (!isUuid(id)) return failure(notFound);
   const r = await getThread(getEnquiryDeps(), actor, id);
-  return r.ok ? NextResponse.json(r.value) : failure(r);
+  if (!r.ok) return failure(r);
+  // The listing's public number, shown at the top of the chat. Absent when the lookup fails; the chat still works.
+  const number = await listingNumberPg(getDb(), r.value.enquiry.listingId).catch(() => undefined);
+  return NextResponse.json({ ...r.value, ...(number ? { listingNumber: number } : {}) });
 }
 
 /** Adds a message to the thread. Body: { "body": "text" }. */
@@ -48,6 +53,8 @@ async function handlePost(req: Request, { params }: Ctx) {
   // Seller-side messages only (the helper checks): store a moderation flag for staff. Never blocks or changes the message.
   if (enquiry) await moderateSentMessage(getDb(), enquiry, r.value);
   await notifyEnquiryMessage(getDb(), id, actor.userId);
+  // Elena (only when the owner switched her on for this listing): answers from the listing facts or hands it to the owner. Never blocks or fails the message.
+  if (enquiry && enquiry.buyerUserId === actor.userId) await handleBuyerMessage(getDb(), r.value.id, new Date().toISOString()).catch(() => undefined);
   return NextResponse.json({ message: r.value }, { status: 201 });
 }
 
