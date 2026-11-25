@@ -4,6 +4,7 @@ import { classifyTour } from "../../src/domain/virtual-tour";
 import { FEATURE_LIMITS, PHOTO_BASE, PHOTO_CATEGORIES, PHOTO_LIMITS, PROFANITY_MESSAGE, PROJECT_PHOTO_MAX, findProfanity, isPhotoCategory, makeCover, moveEntry, photoUrl, type PhotoKind, type PhotoView } from "../../src/domain/listing-photos";
 import { HASH_COLS, HASH_ROWS, dHash, findDuplicates } from "../../src/domain/photo-duplicates";
 import { JSON_HEADERS } from "./ui";
+import { shrinkImage } from "./shrink-image";
 import "../styles/gallery.css";
 
 type Gallery = { photos: PhotoView[]; tourUrl: string | null; version: number; canManage: boolean; canUpload: boolean; everPublished: boolean; editable: boolean };
@@ -45,6 +46,7 @@ function hashImage(url: string): Promise<string | null> {
 }
 
 async function errorOf(r: Response): Promise<string> {
+  if (r.status === 413) return "That photo is too large to upload.";
   if (r.status === 401) return "Sign in again to continue.";
   if (r.status === 503) return "Photo upload is not available yet.";
   try { return (await r.json()).error ?? "Upload failed."; } catch { return "Upload failed."; }
@@ -144,17 +146,18 @@ export function PhotoManager({ listingId, projectId }: { listingId?: string; pro
     setQueue(items);
     setBusy(true);
     const set = (i: number, q: Partial<QueueItem>) => setQueue(prev => prev.map((x, j) => (j === i ? { ...x, ...q } : x)));
-    let ok = 0;
+    let ok = 0, off = false;
     for (let i = 0; i < files.length; i++) {
       if (items[i]!.state === "error") continue;
+      if (off) { set(i, { state: "error", message: "Not added: uploads are not available yet." }); continue; }
       set(i, { state: "uploading" });
       const fd = new FormData();
-      fd.set("file", files[i]!);
+      fd.set("file", await shrinkImage(files[i]!));
       fd.set("kind", replacesId ? (rows.find(r => r.id === replacesId)?.kind ?? kind) : kind);
       if (replacesId) fd.set("replacesId", replacesId);
       try {
         const r = await fetch(listUrl, { method: "POST", body: fd });
-        if (r.ok) { ok++; set(i, { state: "done" }); } else set(i, { state: "error", message: await errorOf(r) });
+        if (r.ok) { ok++; set(i, { state: "done" }); } else { off = r.status === 503; set(i, { state: "error", message: await errorOf(r) }); }
       } catch {
         set(i, { state: "error", message: "Network error." });
       }
@@ -223,7 +226,7 @@ export function PhotoManager({ listingId, projectId }: { listingId?: string; pro
     <section className="gl-mgr" aria-labelledby="gl-mgr-h">
       <h2 id="gl-mgr-h">{isProject ? "Gallery" : "Photos and floor plans"}</h2>
       <p className="muted">
-        {isProject ? `${counts.photo} of ${PROJECT_PHOTO_MAX} photos.` : `${counts.photo} of ${PHOTO_LIMITS.maxPhotos} photos, ${counts.floorplan} of ${PHOTO_LIMITS.maxFloorplans} floor plans, ${rows.filter(r => !r.hidden && r.kind === "photo360").length} of ${PHOTO_LIMITS.max360} 360 photos.`} JPEG, PNG or WebP, up to {MB} MB each.
+        {isProject ? `${counts.photo} of ${PROJECT_PHOTO_MAX} photos.` : `${counts.photo} of ${PHOTO_LIMITS.maxPhotos} photos, ${counts.floorplan} of ${PHOTO_LIMITS.maxFloorplans} floor plans, ${rows.filter(r => !r.hidden && r.kind === "photo360").length} of ${PHOTO_LIMITS.max360} 360 photos.`} JPEG, PNG or WebP, up to {MB} MB each. Animated WebP is saved as a single still frame.
         Location and camera details are removed from every image. The first photo is the cover.
       </p>
       {isProject && <p className="muted">Photos are shown only to investors who can see the full project. They are kept on record: you can hide, reorder or replace them, but not delete them. Any change except hiding sends an approved project back to staff review.</p>}

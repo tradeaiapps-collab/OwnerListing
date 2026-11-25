@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import type { ImageSanitiserPort } from "../adapters/image-sanitiser";
 import type { ImageVariantPort } from "../adapters/image-variants";
 import type { MalwareScanPort } from "../adapters/malware-scan";
 import type { ObjectStoragePort } from "../adapters/object-storage";
@@ -75,13 +76,14 @@ export async function listPhotos(
 }
 
 export interface PhotoUploadInput { kind: string; declaredMime: string; bytes: Uint8Array; replacesId?: string }
-export type PhotoPorts = { storage: ObjectStoragePort; scanner: MalwareScanPort; variants: ImageVariantPort };
+/** Images are cleared by a malware scanner (ClamAV) and/or by the sanitiser that re-encodes them. At least one must be on. */
+export type PhotoPorts = { storage: ObjectStoragePort; scanner: MalwareScanPort; variants: ImageVariantPort; sanitiser?: ImageSanitiserPort };
 
 /** Cheap checks before the request body is read: providers ready, listing exists, role, listing editable. */
 export async function precheckPhotoUpload(
   deps: ListingServiceDeps, store: PhotoStore, ports: PhotoPorts, actor: Actor, listingId: string
 ): Promise<Failure | undefined> {
-  if (!ports.storage.configured || !ports.scanner.configured) return fail("unavailable", "Photo upload is not available yet.");
+  if (!ports.storage.configured || !(ports.scanner.configured || ports.sanitiser?.available)) return fail("unavailable", "Photo upload is not available yet.");
   const rec = await deps.repo.get(listingId);
   if (!rec) return notFound();
   const owner = rec.listing.ownerUserId;
@@ -92,7 +94,7 @@ export async function precheckPhotoUpload(
 }
 
 /**
- * Order: role, providers, type from the bytes, metadata strip, size and pixel checks, room, malware scan (fail closed),
+ * Order: role, providers, type from the bytes, metadata strip, size and pixel checks, re-encode (sanitiser) and recheck, room, malware scan (fail closed),
  * resized copies (optional), store bytes under random keys, then the photo row and new layout in one locked write.
  * The user's filename is discarded. A replacement keeps the earlier photo on record, hidden.
  */
@@ -109,10 +111,21 @@ export async function uploadPhoto(
   if (input.bytes.length > PHOTO_LIMITS.maxBytes) return fail("invalid", "Each photo must be 10 MB or smaller.");
   const real = sniffMime(input.bytes);
   if (real !== input.declaredMime) return fail("invalid", "The file's contents do not match its type.");
-  const stripped = stripImageMetadata(input.bytes, real as PhotoMime);
+  // Cheap header checks on the original first (type, size, pixel count), so a huge image never reaches the decoder.
+  let stripped = stripImageMetadata(input.bytes, real as PhotoMime);
   if (!stripped.ok) return fail("invalid", stripped.reason);
-  const problem = checkImage(stripped.info, stripped.bytes.length);
+  let problem = checkImage(stripped.info, stripped.bytes.length);
   if (problem) return fail("invalid", problem);
+  // Then re-encode when the sanitiser is on: only decoded pixels go into storage. The result is checked again.
+  if (ports.sanitiser?.available) {
+    let clean: Uint8Array;
+    try { clean = await ports.sanitiser.sanitise(stripped.bytes, real as PhotoMime); } catch { return fail("invalid", "This image could not be read. Try saving it again as a JPEG or PNG."); }
+    const again = stripImageMetadata(clean, real as PhotoMime);
+    if (!again.ok) return fail("invalid", again.reason);
+    stripped = again;
+    problem = checkImage(stripped.info, stripped.bytes.length);
+    if (problem) return fail("invalid", problem);
+  }
   if (kind === "photo360" && !looks360(stripped.info.width, stripped.info.height)) return fail("invalid", "A 360 photo must be a full panorama twice as wide as it is tall (2:1).");
 
   const [layout, existing] = await Promise.all([store.currentLayout(listingId), store.photosForListing(listingId)]);
@@ -130,10 +143,12 @@ export async function uploadPhoto(
   const pre = replaceCheck(layout, photos) ?? (() => { const r = roomFor(layout, photos, kind, !!input.replacesId); return r ? fail("conflict", r) : null; })();
   if (pre) return pre;
 
-  try {
-    if ((await ports.scanner.scan(input.bytes)) !== "clean") return fail("invalid", "The file did not pass the security scan.");
-  } catch {
-    return fail("unavailable", "Photo upload is not available right now.");
+  if (ports.scanner.configured) {
+    try {
+      if ((await ports.scanner.scan(input.bytes)) !== "clean") return fail("invalid", "The file did not pass the security scan.");
+    } catch {
+      return fail("unavailable", "Photo upload is not available right now.");
+    }
   }
 
   const id = deps.newId();
