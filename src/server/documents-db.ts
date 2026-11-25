@@ -39,18 +39,37 @@ export function createPgDocumentStore(db: Queryable): UploadStore {
         contractorUserId: String(r["contractor_user_id"]), kind: r["kind"], status: r["status"]
       }) as JobAssignment);
     },
-    /** One statement: insert the new version and mark the earlier one superseded together. Insert and update only. */
+    /**
+     * One statement: insert the new version and mark the earlier one superseded together. Insert and update only.
+     * The statement also refuses a name another current file on the listing already has; the listing's uploads are
+     * serialised by an advisory lock (when the pool offers a transaction) so two uploads of one name cannot both pass.
+     */
     async addDocument(d, supersede) {
       const r = d.record;
-      await db.query(
-        `WITH ins AS (
-           INSERT INTO property_document (id, property_id, listing_id, kind, storage_key, sha256, uploaded_by, source, declared_mime, size_bytes, visibility, status, supersedes_id)
-           SELECT $1, l.property_id, l.id, $2, $3, $4, $5, $6, $7, $8, $9, 'active', $10::uuid FROM property_listing l WHERE l.id = $11
-           RETURNING id)
-         UPDATE property_document SET status = 'superseded' WHERE id = $10::uuid AND EXISTS (SELECT 1 FROM ins)`,
-        [r.id, r.kind, d.storageKey, d.sha256, r.uploadedBy, r.uploadedBy === r.ownerUserId ? "owner_supplied" : "platform",
-          d.declaredMime, d.sizeBytes, r.visibility, supersede?.id ?? null, r.listingId]
-      );
+      const run = async (q: Queryable) => {
+        if (d.filename) await q.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`listing_doc_names:${r.listingId}`]);
+        const res = await q.query(
+          `WITH ins AS (
+             INSERT INTO property_document (id, property_id, listing_id, kind, storage_key, sha256, uploaded_by, source, declared_mime, size_bytes, visibility, status, supersedes_id, filename)
+             SELECT $1, l.property_id, l.id, $2, $3, $4, $5, $6, $7, $8, $9, 'active', $10::uuid, $12 FROM property_listing l WHERE l.id = $11
+               AND ($12::text IS NULL OR NOT EXISTS (SELECT 1 FROM property_document x WHERE x.listing_id = $11 AND x.status = 'active' AND lower(x.filename) = lower($12::text) AND x.id IS DISTINCT FROM $10::uuid))
+             RETURNING id),
+           sup AS (UPDATE property_document SET status = 'superseded' WHERE id = $10::uuid AND EXISTS (SELECT 1 FROM ins) RETURNING id)
+           SELECT (SELECT count(*) FROM ins) AS inserted`,
+          [r.id, r.kind, d.storageKey, d.sha256, r.uploadedBy, r.uploadedBy === r.ownerUserId ? "owner_supplied" : "platform",
+            d.declaredMime, d.sizeBytes, r.visibility, supersede?.id ?? null, r.listingId, d.filename ?? null]
+        );
+        return Number(res.rows[0]?.["inserted"]) === 0 ? ("name_taken" as const) : undefined;
+      };
+      return db.transaction ? db.transaction(run) : run(db);
+    },
+    /** Only files the viewer may see count: the owner sees all, anyone else sees their own uploads and files shared with the parties. */
+    async filenameTaken(listingId, filename, viewer, exceptId) {
+      const res = await db.query(
+        `SELECT 1 FROM property_document WHERE listing_id = $1 AND status = 'active' AND lower(filename) = lower($2) AND ($3::uuid IS NULL OR id <> $3::uuid)
+           AND ($4::boolean OR uploaded_by = $5::uuid OR visibility = 'parties') LIMIT 1`,
+        [listingId, filename, exceptId ?? null, viewer.isOwner, viewer.userId]);
+      return res.rows.length > 0;
     },
     async bytesUploadedSince(userId, sinceIso) {
       const res = await db.query("SELECT COALESCE(SUM(size_bytes), 0) AS total FROM property_document WHERE uploaded_by = $1::uuid AND uploaded_at >= $2::timestamptz", [userId, sinceIso]);

@@ -75,7 +75,7 @@ async function handlePost(req: Request, { params }: Ctx) {
     return NextResponse.json({ error: "Invalid earlier version." }, { status: 400 });
   }
   const r = await uploadDocument(getDeps(), store, ports, actor, id, {
-    kind: kind as DocumentKind, visibility: visibility as Visibility, declaredMime: file.type,
+    kind: kind as DocumentKind, visibility: visibility as Visibility, declaredMime: file.type, filename: file.name,
     bytes: new Uint8Array(await file.arrayBuffer()), ...(supersedes ? { supersedesId: supersedes } : {})
   });
   if (r.ok) return NextResponse.json({ id: r.value.id }, { status: 201 });

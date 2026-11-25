@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { checkElenaInput } from "../../../../../src/domain/text-quality";
 import { MAX_OWNER_NOTES, suggestDescription } from "../../../../../src/domain/ai-description";
 import { AI_DESCRIPTION_RATE, withinLimit, windowStart } from "../../../../../src/domain/rate-limit";
 import { getAiEngine } from "../../../../../src/server/ai";
@@ -26,6 +27,8 @@ async function handlePost(req: Request, { params }: Ctx) {
   if (notes !== undefined && (typeof notes !== "string" || notes.length > MAX_OWNER_NOTES)) {
     return NextResponse.json({ error: `Notes must be text of up to ${MAX_OWNER_NOTES} characters.` }, { status: 400 });
   }
+  const badNotes = typeof notes === "string" ? checkElenaInput(notes) : null;
+  if (badNotes) return NextResponse.json({ error: badNotes }, { status: 400 });
   const hits = await countHitPg(getDb(), `ai-desc:${handler.actor.userId}`, windowStart(new Date().toISOString(), AI_DESCRIPTION_RATE.windowMs));
   if (!withinLimit(hits, AI_DESCRIPTION_RATE.perUser)) return NextResponse.json({ error: "Too many suggestions. Try again later." }, { status: 429 });
   const l = handler.rec.listing;

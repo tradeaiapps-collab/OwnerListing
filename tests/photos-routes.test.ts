@@ -34,6 +34,7 @@ const draft: DraftInput = { title: "Family home", address: "1 Example St, Brisba
 const EXE = Uint8Array.from([0x4d, 0x5a, 0x90, 0, 3, 0, 0, 0, 4, 0, 0, 0]);
 const PDF = new TextEncoder().encode("%PDF-1.7\n1 0 obj\n<<>>\nendobj\n");
 
+let imgSeq = 0;
 let listingId: string;
 let mem: ReturnType<typeof createInMemoryPhotoStore>;
 let objects: Map<string, { bytes: Uint8Array; type: string }>;
@@ -71,7 +72,7 @@ async function setStatus(status: "published" | "withdrawn" | "pending_review") {
 
 function upload(bytes: Uint8Array, o: { type?: string; name?: string; kind?: string; replacesId?: string; id?: string; origin?: string; length?: number } = {}) {
   const form = new FormData();
-  form.set("file", new File([bytes as Uint8Array<ArrayBuffer>], o.name ?? "IMG_0001.jpg", { type: o.type ?? "image/jpeg" }));
+  form.set("file", new File([bytes as Uint8Array<ArrayBuffer>], o.name ?? `IMG_${String(++imgSeq).padStart(4, "0")}.jpg`, { type: o.type ?? "image/jpeg" }));
   if (o.kind) form.set("kind", o.kind);
   if (o.replacesId) form.set("replacesId", o.replacesId);
   return uploadRoute.POST(new Request("http://test/x", {
@@ -344,5 +345,15 @@ describe("browse cards", () => {
     const e = await (await GET(new Request("http://test/api/listings"))).json();
     expect(e.listings[0]).toMatchObject({ id: listingId });
     expect(e.listings[0].cover).toBeUndefined();
+  });
+});
+
+describe("duplicate photo names", () => {
+  it("refuses the same file name again on a listing, ignoring case", async () => {
+    expect((await upload(jpeg(), { name: "Kitchen.jpg" })).status).toBe(201);
+    const dup = await upload(jpeg({ orientation: 8 }), { name: "kitchen.JPG" });
+    expect(dup.status).toBe(409);
+    expect((await dup.json()).error).toContain("already on this listing");
+    expect((await upload(jpeg(), { name: "Bathroom.jpg" })).status).toBe(201);
   });
 });

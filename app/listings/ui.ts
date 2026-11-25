@@ -1,4 +1,5 @@
 import { priceInputToCents, MAX_ROOMS } from "../../src/domain/listing-details";
+import { checkRealText } from "../../src/domain/text-quality";
 import type { BondPathway } from "../../src/domain/publish";
 
 export const JSON_HEADERS = { "content-type": "application/json" } as const;
@@ -16,8 +17,8 @@ const ROOM_FIELDS = [["bedrooms", "Bedrooms"], ["bathrooms", "Bathrooms"], ["par
 export type FieldErrors = Record<string, string>;
 
 /** Which wizard step each validated field lives on (the names ListingFields uses for its steps). */
-export const FIELD_ERROR_STEP: Record<string, "basics" | "details" | "location"> = {
-  title: "basics", price: "basics", bedrooms: "details", bathrooms: "details", parking: "details", address: "location", postcode: "location"
+export const FIELD_ERROR_STEP: Record<string, "basics" | "details" | "description" | "location"> = {
+  title: "basics", price: "basics", bedrooms: "details", bathrooms: "details", parking: "details", address: "location", postcode: "location", description: "description"
 };
 
 /**
@@ -31,6 +32,8 @@ export function listingFormBody(fd: FormData): { body: Record<string, unknown> }
   if (fd.getAll("allowFlagged").length > 0) body["allowFlagged"] = true; else delete body["allowFlagged"];
   body["amenities"] = fd.getAll("amenities").filter((v): v is string => typeof v === "string");
   for (const k of ["suburb", "postcode", "description"]) body[k] = String(body[k] ?? "").trim() || null;
+  const unreal = checkRealText(typeof body["description"] === "string" ? body["description"] : null);
+  if (unreal) errors["description"] = unreal;
   if (String(body["title"] ?? "").trim() === "") errors["title"] = "Enter a title for the listing.";
   if (String(body["address"] ?? "").trim() === "") errors["address"] = "Enter the street address.";
   if (body["postcode"] !== null && !/^\d{4}$/.test(String(body["postcode"]))) errors["postcode"] = "Postcode must be 4 digits, for example 4000.";

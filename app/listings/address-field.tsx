@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState } from "react";
 
-interface Parts { address: string; suburb?: string; state?: string; postcode?: string }
+interface Parts { address: string; street?: string; suburb?: string; state?: string; postcode?: string }
 interface Suggestion { id: string; main: string; secondary: string; parts?: Parts }
 type Status = "idle" | "loading" | "ready" | "error" | "signin";
 
@@ -21,7 +21,7 @@ function setFormField(form: HTMLFormElement | null, name: string, value: string 
  * Street address with suggestions while typing (combobox pattern). Picking one fills the address and the suburb, postcode
  * and state fields. The owner can always ignore the list and type the address in full; nothing here blocks saving.
  */
-export function AddressField({ defaultValue = "", invalid = false }: { defaultValue?: string; invalid?: boolean }) {
+export function AddressField({ defaultValue = "", invalid = false, onCommit }: { defaultValue?: string; invalid?: boolean; onCommit?: (form: HTMLFormElement | null) => void }) {
   const id = useId();
   const listId = `${id}-list`;
   const inputRef = useRef<HTMLInputElement>(null);
@@ -60,7 +60,7 @@ export function AddressField({ defaultValue = "", invalid = false }: { defaultVa
   async function pick(s: Suggestion) {
     setOpen(false);
     setQuery(null);
-    setValue(s.parts?.address ?? [s.main, s.secondary].filter(Boolean).join(", "));
+    setValue(s.parts?.street ?? s.parts?.address ?? s.main);
     let parts = s.parts;
     if (!parts) {
       try {
@@ -70,11 +70,12 @@ export function AddressField({ defaultValue = "", invalid = false }: { defaultVa
     }
     session.current = newSession(); // a pick ends the billing session
     if (!parts) return;
-    setValue(parts.address);
+    setValue(parts.street ?? parts.address); // street line only; suburb, state and postcode have their own fields
     const form = inputRef.current?.form ?? null;
     setFormField(form, "suburb", parts.suburb);
     setFormField(form, "postcode", parts.postcode);
     setFormField(form, "jurisdiction", parts.state);
+    onCommit?.(form);
   }
 
   function onKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
@@ -103,7 +104,7 @@ export function AddressField({ defaultValue = "", invalid = false }: { defaultVa
         {...(invalid ? { "aria-invalid": true, "aria-describedby": "err-address" } : {})}
         onChange={e => { setValue(e.target.value); setQuery(e.target.value); setOpen(true); }}
         onFocus={() => { if (items.length > 0) setOpen(true); }}
-        onBlur={() => setOpen(false)}
+        onBlur={() => { setOpen(false); onCommit?.(inputRef.current?.form ?? null); }}
         onKeyDown={onKeyDown}
       />
       {showList && (
