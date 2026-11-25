@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { checkElenaInput } from "../../../../../src/domain/text-quality";
+
 import { buildQuickSetup, MAX_QUICK_NOTES } from "../../../../../src/domain/quick-setup";
 import { AI_DESCRIPTION_RATE, withinLimit, windowStart } from "../../../../../src/domain/rate-limit";
 import { withApi } from "../../../../../src/server/api/with-api";
@@ -18,6 +20,8 @@ async function handlePost(req: Request) {
   const b = gate.body as Record<string, unknown>;
   const notes = b["notes"];
   if (typeof notes !== "string" || notes.length > MAX_QUICK_NOTES) return NextResponse.json({ error: `Notes must be text of up to ${MAX_QUICK_NOTES} characters.` }, { status: 400 });
+  const badNotes = checkElenaInput(notes);
+  if (badNotes) return NextResponse.json({ error: badNotes }, { status: 400 });
   const tx = b["transactionType"];
   if (tx !== undefined && tx !== "sale" && tx !== "rent") return NextResponse.json({ error: "transactionType must be sale or rent." }, { status: 400 });
   const hits = await countHitPg(getDb(), `ai-desc:${gate.actor.userId}`, windowStart(new Date().toISOString(), AI_DESCRIPTION_RATE.windowMs));

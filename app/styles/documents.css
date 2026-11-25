@@ -10,3 +10,10 @@
 .doc-version.superseded { opacity: 0.75; }
 .doc-mark { font-size: 0.875rem; color: var(--muted); }
 .doc-note { margin: 0; font-size: 0.875rem; color: var(--muted); flex-basis: 100%; }
+
+/* Upload box: one left-aligned column, every control the same width, button under them */
+.doc-form { justify-items: stretch; align-items: start; text-align: left; }
+.doc-form label { text-align: left; }
+.doc-form :is(select, input[type="file"]) { width: 100%; max-width: 100%; box-sizing: border-box; text-align: left; justify-self: stretch; }
+.doc-form input[type="file"] { padding: var(--space-2) var(--space-3); }
+.doc-form > button[type="submit"] { justify-self: start; }

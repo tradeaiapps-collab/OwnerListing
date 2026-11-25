@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { readHostedConfig } from "../adapters/hosted-engine";
 import { readAiConfig } from "../adapters/ollama-engine";
 import type { StaffActor } from "../domain/staff-access";
 import { aiSwitchHistory, aiSwitchOn } from "./ai-switch-db";
@@ -17,13 +18,14 @@ export async function aiAdminGate(req: Request): Promise<StaffActor | NextRespon
 
 /** The switch, the server config (no secrets in it) and the history. */
 export async function aiAdminView() {
-  const cfg = readAiConfig(process.env);
+  const hosted = readHostedConfig(process.env);
+  const cfg = hosted.ok ? hosted : readAiConfig(process.env);
   const enabled = await aiSwitchOn(getDb());
   return {
     enabled,
     configured: cfg.ok,
     effective: enabled && cfg.ok,
-    ...(cfg.ok ? { engine: "ollama", model: cfg.config.model, endpoint: cfg.config.endpoint } : { configState: cfg.state, problem: cfg.problem }),
+    ...(cfg.ok ? { engine: hosted.ok ? "anthropic" : "ollama", model: cfg.config.model, endpoint: "endpoint" in cfg.config ? cfg.config.endpoint : "api.anthropic.com" } : { configState: cfg.state, problem: cfg.problem }),
     history: await aiSwitchHistory(getDb())
   };
 }

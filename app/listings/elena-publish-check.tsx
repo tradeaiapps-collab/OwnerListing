@@ -13,11 +13,10 @@ const MIN_CHECK_MS = 1200; // long enough to read "Elena is checking", short eno
 function goTo(href: string, e: React.MouseEvent) {
   const hash = href.split("#")[1];
   if (!hash || !href.includes("/edit#")) return;
-  const el = document.querySelector<HTMLElement>(`[name="${hash}"], #${hash === "bond" ? "bond-pathway" : hash}`);
-  if (!el) return;
+  // On the edit page the page opens the right step and highlights the field; elsewhere the link opens the edit page at that field.
+  if (!document.getElementById("edit-listing-form")) return;
   e.preventDefault();
-  el.scrollIntoView({ block: "center" });
-  el.focus({ preventScroll: true });
+  window.dispatchEvent(new CustomEvent("listing-focus-field", { detail: hash }));
 }
 
 /**

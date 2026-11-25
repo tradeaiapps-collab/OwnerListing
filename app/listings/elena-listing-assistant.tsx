@@ -43,13 +43,15 @@ function factsFrom(form: HTMLFormElement, photoCount: number | undefined) {
 }
 
 /** Sets a form control the way a person would, so the form and the other panels notice the change. */
-function setControl(form: HTMLFormElement, name: string, value: string) {
-  const el = form.elements.namedItem(name);
-  if (!(el instanceof HTMLInputElement || el instanceof HTMLSelectElement || el instanceof HTMLTextAreaElement)) return;
-  const proto = el instanceof HTMLInputElement ? HTMLInputElement.prototype : el instanceof HTMLSelectElement ? HTMLSelectElement.prototype : HTMLTextAreaElement.prototype;
-  Object.getOwnPropertyDescriptor(proto, "value")?.set?.call(el, value);
-  el.dispatchEvent(new Event("input", { bubbles: true }));
-  el.dispatchEvent(new Event("change", { bubbles: true }));
+export function setControl(form: HTMLFormElement, name: string, value: string) {
+  // More than one control can share a name (quick setup and the full form sit in the same <form>), and namedItem then returns a list, so set every match.
+  const els = Array.from(form.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>(`input[name="${name}"], select[name="${name}"], textarea[name="${name}"]`));
+  for (const el of els) {
+    const proto = el instanceof HTMLInputElement ? HTMLInputElement.prototype : el instanceof HTMLSelectElement ? HTMLSelectElement.prototype : HTMLTextAreaElement.prototype;
+    Object.getOwnPropertyDescriptor(proto, "value")?.set?.call(el, value);
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+    el.dispatchEvent(new Event("change", { bubbles: true }));
+  }
 }
 
 type Answer = { kind: "text"; value: string } | { kind: "number"; value: number } | { kind: "yes" } | { kind: "no" } | { kind: "open" };

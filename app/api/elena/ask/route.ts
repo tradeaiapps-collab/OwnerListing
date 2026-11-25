@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { checkElenaInput } from "../../../../src/domain/text-quality";
+
 import { answerQuestion, needsMarketData, resolveSuburb, type BrainData, type ElenaAppContext } from "../../../../src/domain/elena-brain";
 import { buildExtended } from "../../../../src/domain/market-forecast";
 import { getActor, getDb } from "../../../../src/server/context";
@@ -36,6 +38,8 @@ async function handlePost(req: Request) {
   }
   const question = body["question"];
   if (typeof question !== "string" || !question.trim()) return NextResponse.json({ error: "Type a question." }, { status: 400, headers: noStore });
+  const badQuestion = checkElenaInput(question);
+  if (badQuestion) return NextResponse.json({ error: badQuestion }, { status: 400, headers: noStore });
   if (question.length > MAX_QUESTION) return NextResponse.json({ error: `Questions can be up to ${MAX_QUESTION} characters.` }, { status: 400, headers: noStore });
 
   const c = typeof body["context"] === "object" && body["context"] !== null && !Array.isArray(body["context"]) ? (body["context"] as Record<string, unknown>) : {};

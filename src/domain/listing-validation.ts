@@ -1,5 +1,6 @@
 import type { PropertyListing } from "./listing";
 import { AMENITIES, AMENITY_LABELS, formatPrice, type Amenity } from "./listing-details";
+import { checkRealText } from "./text-quality";
 import { flagKey, type FieldFlags } from "./discrimination-filter";
 
 /**
@@ -99,6 +100,7 @@ export function reviewListing(input: ElenaInput): ElenaReview {
 
   // Description
   if (!desc) add("description", "block", "description", "The listing needs a description.", edit("description"));
+  else if (checkRealText(desc)) add("description-gibberish", "block", "description", checkRealText(desc)!, edit("description"));
   else if (desc.length < DESCRIPTION_MIN) add("description-short", "advice", "description", `The description is short (${desc.length} characters). Buyers expect more about the home and the area.`, edit("description"));
 
   // Description against the form

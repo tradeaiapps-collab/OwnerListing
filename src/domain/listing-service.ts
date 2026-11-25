@@ -1,4 +1,5 @@
 import type { AuditEvent } from "./audit";
+import { checkRealText } from "./text-quality";
 import { PROFANITY_MESSAGE, hasProfanity } from "./profanity-filter";
 import { isJurisdiction, type Jurisdiction } from "./jurisdiction";
 import type { PropertyListing, PropertyType, PublishDecision, UseClass } from "./listing";
@@ -157,6 +158,8 @@ export function parseDraftInput(body: unknown): Result<DraftCreate> {
     return fail("invalid", "Title, address, state, sale or rent, use and property type are all required.");
   }
   if (wordsFlagged(b, title, b["description"])) return fail("invalid", PROFANITY_MESSAGE);
+  const gibberish = checkRealText(typeof b["description"] === "string" ? b["description"] : null, 0);
+  if (gibberish) return fail("invalid", gibberish);
   const details = parseDetails(b, transactionType);
   if (!details.ok) return fail("invalid", details.message);
   const desc = b["description"] === undefined ? { ok: true as const, value: null } : description(b["description"]);
@@ -171,6 +174,8 @@ export function parseDraftPatch(body: unknown): Result<DraftPatch> {
   const b = body as Record<string, unknown>;
   const patch: DraftPatch = {};
   if (wordsFlagged(b, b["title"], b["description"])) return fail("invalid", PROFANITY_MESSAGE);
+  const gibberish = checkRealText(typeof b["description"] === "string" ? b["description"] : null, 0);
+  if (gibberish) return fail("invalid", gibberish);
   if ("title" in b) { const v = str(b["title"], 200); if (!v) return fail("invalid", "Invalid title."); patch.title = v; }
   if ("address" in b) { const v = str(b["address"], 300); if (!v) return fail("invalid", "Invalid address."); patch.address = v; }
   if ("jurisdiction" in b) {
