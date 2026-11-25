@@ -37,7 +37,7 @@ const ALLOWED_MIME: Record<DocumentKind, readonly string[]> = {
   building_inspection: PDF, pest_report: PDF, contract: PDF, other: [...IMAGE, ...PDF]
 };
 const MAX_BYTES: Record<DocumentKind, number> = {
-  photo: 25_000_000, photo_360: 100_000_000, video: 2_000_000_000, video_360: 4_000_000_000, floorplan: 50_000_000, title_search: 50_000_000,
+  photo: 25_000_000, photo_360: 100_000_000, video: 2_000_000_000, video_360: 4_000_000_000, floorplan: 20_000_000, title_search: 50_000_000,
   building_inspection: 50_000_000, pest_report: 50_000_000, contract: 50_000_000, other: 50_000_000
 };
 

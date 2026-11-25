@@ -4,6 +4,7 @@ import { AU_JURISDICTIONS } from "../../src/domain/jurisdiction";
 import { filterProjects, PROJECT_STAGES, PROJECT_TYPES, type ProjectFilter } from "../../src/domain/investor-projects";
 import { ProjectCard, type CardProject } from "./project-card";
 import { aud, label, STEP_LINK } from "./ui";
+import SwitchToInvestor from "./switch-to-investor";
 
 const MIN_TICKET_CAPS = [10_000, 50_000, 100_000, 250_000, 500_000, 1_000_000];
 
@@ -16,6 +17,7 @@ export default function BrowseProjects() {
   const [error, setError] = useState("");
   const [step, setStep] = useState("");
   const [visitor, setVisitor] = useState("");
+  const [signedIn, setSignedIn] = useState(false);
   const [filter, setFilter] = useState<ProjectFilter>({});
 
   useEffect(() => {
@@ -25,6 +27,7 @@ export default function BrowseProjects() {
       if (r.ok) { setItems(d.items ?? []); return; }
       if (r.status === 404) { setError(NOT_OPEN); return; }
       if (r.status !== 401 && r.status !== 403) { setError(d.error ?? "Could not load."); return; }
+      setSignedIn(r.status === 403);
       setVisitor(r.status === 401 ? "Sign in as an investor to see full details, risks and contract terms." : d.error ?? "");
       setStep(r.status === 401 ? "investor_account" : d.step ?? "");
       const pub = await fetch("/api/investments/public");
@@ -38,6 +41,8 @@ export default function BrowseProjects() {
   const filtered = Object.values(filter).some(v => v !== undefined && v !== "");
 
   const link = STEP_LINK[step];
+  const needsSwitch = signedIn && step === "investor_account";
+  const action = needsSwitch ? <SwitchToInvestor /> : link && <a href={link[0]}>{link[1]}</a>;
   return (
     <main className="inv-browse">
       <header className="inv-page-head">
@@ -53,8 +58,8 @@ export default function BrowseProjects() {
           <a className="button" href="/investments/new">Post a project</a>
         </nav>
       </header>
-      {error && <p role="alert">{error} {link && <a href={link[0]}>{link[1]}</a>}</p>}
-      {visitor && !error && <p className="inv-visitor">{visitor} {link && <a href={link[0]}>{link[1]}</a>}</p>}
+      {error && <p role="alert">{error} {action}</p>}
+      {visitor && !error && <p className="inv-visitor">{visitor} {action}</p>}
       {items !== null && items.length > 0 && (
         <form className="inv-filters" role="search" aria-label="Filter projects" onSubmit={e => e.preventDefault()}>
           <label className="inv-filter-q">Search<input type="search" value={filter.q ?? ""} placeholder="Title, suburb, issuer…" onChange={e => set("q", e.target.value)} /></label>

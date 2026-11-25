@@ -487,7 +487,8 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 /* Elena's listing assistant (guided creation) and her field tips. */
 .ela-assist { border: 1px solid var(--border); border-radius: var(--radius); background: var(--elevated, var(--surface)); padding: var(--space-4); margin-bottom: var(--space-6); }
 .ela-head { display: flex; gap: var(--space-3); align-items: center; width: 100%; text-align: left; background: transparent; border: 0; padding: 0; box-shadow: none; min-height: 44px; font-weight: 400; }
-.ela-head:hover:not(:disabled) { background: transparent; color: inherit; }
+.ela-assist .ela-head.secondary, .ela-assist .ela-head.secondary:hover:not(:disabled) { background: transparent; color: inherit; border: 0; box-shadow: none; transform: none; border-radius: 0; }
+.ela-toggle { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 2rem; height: 2rem; border-radius: 50%; border: 1px solid var(--border); font-size: 1.25rem; line-height: 1; }
 .ela-head-text { flex: 1; display: block; }
 .ela-sub { display: block; }
 .ela-avatar { border-radius: 50%; object-fit: cover; flex: none; }
@@ -551,6 +552,11 @@ button.role-item:hover:not(:disabled), a.role-item:hover, .role-item:focus-visib
 .qs-thumb { position: relative; aspect-ratio: 1; border-radius: var(--radius); overflow: hidden; border: 1px solid var(--border); }
 .qs-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .qs-thumb button { position: absolute; top: 4px; right: 4px; min-height: 32px; min-width: 32px; padding: 0; border-radius: 50%; line-height: 1; }
+.qs-plan { display: flex; align-items: center; gap: var(--space-3); margin-top: var(--space-3); padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius); }
+.qs-plan-pic { flex: none; width: 72px; height: 72px; border-radius: var(--radius); overflow: hidden; background: var(--bg); border: 1px solid var(--border); display: grid; place-items: center; font-weight: 700; color: var(--muted); }
+.qs-plan-pic img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.qs-plan-info { flex: 1; min-width: 0; display: grid; gap: var(--space-1); }
+.qs-plan-info .muted { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .qs-foot { display: flex; flex-wrap: wrap; gap: var(--space-3); justify-content: space-between; align-items: center; margin-top: var(--space-4); padding-top: var(--space-4); border-top: 1px solid var(--line); }
 .qs-nav { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 .qs-sub { margin-top: var(--space-5); }
