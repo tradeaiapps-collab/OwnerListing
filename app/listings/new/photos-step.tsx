@@ -63,7 +63,7 @@ export function PhotosStep({ files, onChange }: { files: QuickFiles; onChange: (
   return (
     <fieldset className="form-section">
       <legend>Photos</legend>
-      <p className="muted">JPEG, PNG or WebP, up to {MB} MB each. The site or floor plan can also be a PDF, up to {PLAN_PDF_MAX_BYTES / 1_000_000} MB. Photos are optional now and are added to your draft when you save it on the last step. The first photo is the cover.</p>
+      <p className="muted">JPEG, PNG or WebP, up to {MB} MB each (animated WebP is saved as one still frame). The site or floor plan can also be a PDF, up to {PLAN_PDF_MAX_BYTES / 1_000_000} MB. Photos are optional now and are added to your draft when you save it on the last step. The first photo is the cover.</p>
       <input ref={photoInput} type="file" accept={TYPES.join(",")} multiple hidden onChange={e => { void addPhotos(e.target.files); e.target.value = ""; }} aria-label="Choose photos" />
       <div className="form-bar">
         <button type="button" className="secondary" onClick={() => photoInput.current?.click()}>Choose photos</button>
