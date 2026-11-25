@@ -49,6 +49,8 @@ export interface PhotoRecord {
   height: number;
   /** Which resized copies exist (made with the optional image library). */
   variants: Exclude<PhotoSize, "full">[];
+  /** Cleaned original file name, for the duplicate-name check. Absent on files added before names were kept. */
+  filename?: string;
 }
 
 /** Rooms and areas a photo can be filed under. An empty category means "not sorted yet". */

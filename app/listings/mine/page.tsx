@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import { ShareLink } from "../../components/share-link";
 
 interface Row { id: string; title: string; address: string; status: string; transactionType: string }
 
@@ -43,6 +44,7 @@ export default function MyListings() {
               {offersView && <div><a className="button" href={`/listings/${r.id}/offers`}>View offers</a></div>}
               {!offersView && r.status === "draft" && <div><a href={`/listings/${r.id}/edit`}>Edit this draft</a> · <a href={`/listings/${r.id}/photos`}>Photos</a> · <a href={`/listings/${r.id}/checkout`}>Pay and publish</a> · <a href={`/listings/${r.id}/agent`}>Agent</a> · <a href={`/listings/${r.id}/signing`}>Documents</a></div>}
               {!offersView && r.status !== "draft" && <div><a href={`/listings/${r.id}/photos`}>Photos</a> · <a href={`/listings/${r.id}/offers`}>Offers</a> · <a href={`/listings/${r.id}/mandate`}>Negotiation mandate</a> · <a href={`/listings/${r.id}/agent`}>Agent</a> · <a href={`/listings/${r.id}/signing`}>Documents</a> · <a href={`/listings/${r.id}/syndication`}>Other portals</a></div>}
+              {!offersView && r.status === "published" && <ShareLink listingId={r.id} published title={r.title} />}
               {!offersView && <div><a href={`/listings/${r.id}/returns`}>Returns calculator</a></div>}
             </li>
           ))}

@@ -4,6 +4,7 @@ import type { ImageVariantPort } from "../adapters/image-variants";
 import type { MalwareScanPort } from "../adapters/malware-scan";
 import type { ObjectStoragePort } from "../adapters/object-storage";
 import { sniffMime } from "./file-sniff";
+import { cleanFilename, duplicateNameMessage, sameFilename } from "./file-names";
 import { looks360, type TourKind } from "./virtual-tour";
 import { stripImageMetadata, type PhotoMime } from "./image-meta";
 import type { JobAssignment } from "./job-chat";
@@ -75,7 +76,7 @@ export async function listPhotos(
   };
 }
 
-export interface PhotoUploadInput { kind: string; declaredMime: string; bytes: Uint8Array; replacesId?: string }
+export interface PhotoUploadInput { kind: string; declaredMime: string; bytes: Uint8Array; replacesId?: string; filename?: string }
 /** Images are cleared by a malware scanner (ClamAV) and/or by the sanitiser that re-encodes them. At least one must be on. */
 export type PhotoPorts = { storage: ObjectStoragePort; scanner: MalwareScanPort; variants: ImageVariantPort; sanitiser?: ImageSanitiserPort };
 
@@ -140,7 +141,14 @@ export async function uploadPhoto(
     if (actor.userId !== owner && old.uploadedBy !== actor.userId) return fail("forbidden", "You can only replace photos you added.");
     return null;
   };
-  const pre = replaceCheck(layout, photos) ?? (() => { const r = roomFor(layout, photos, kind, !!input.replacesId); return r ? fail("conflict", r) : null; })();
+  const filename = cleanFilename(input.filename);
+  /** A showing photo or floor plan on this listing already has this name (case-insensitive). The photo being replaced does not count. */
+  const nameCheck = (current: Layout, map: ReadonlyMap<string, PhotoRecord>): Failure | null => {
+    if (!filename) return null;
+    const clash = current.entries.some(e => !e.hidden && e.photoId !== input.replacesId && sameFilename(map.get(e.photoId)?.filename ?? "", filename));
+    return clash ? fail("conflict", duplicateNameMessage(filename)) : null;
+  };
+  const pre = replaceCheck(layout, photos) ?? nameCheck(layout, photos) ?? (() => { const r = roomFor(layout, photos, kind, !!input.replacesId); return r ? fail("conflict", r) : null; })();
   if (pre) return pre;
 
   if (ports.scanner.configured) {
@@ -172,7 +180,8 @@ export async function uploadPhoto(
   }
   const record: PhotoRecord = {
     id, listingId, kind, uploadedBy: actor.userId, contentType: stripped.info.mime, width: stripped.info.width, height: stripped.info.height,
-    variants: (["thumb", "medium"] as const).filter(s => files[s])
+    variants: (["thumb", "medium"] as const).filter(s => files[s]),
+    ...(filename ? { filename } : {})
   };
   const sha256 = createHash("sha256").update(stripped.bytes).digest("hex");
   let saved: Result<{ version: number }>;
@@ -180,6 +189,8 @@ export async function uploadPhoto(
     saved = await store.updateGallery(listingId, actor.userId, (current, map) => {
       const again = replaceCheck(current, map);
       if (again) return again;
+      const dup = nameCheck(current, map);
+      if (dup) return dup;
       const room = roomFor(current, map, kind, !!input.replacesId);
       if (room) return fail("conflict", room);
       return { ok: true, addPhoto: { record, files, sha256, sizeBytes: stripped.bytes.length }, entries: layoutWithUpload(current, id, input.replacesId), tourUrl: current.tourUrl };

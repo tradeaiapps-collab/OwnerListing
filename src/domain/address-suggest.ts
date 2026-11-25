@@ -3,7 +3,7 @@
 export type AuState = "NSW" | "VIC" | "QLD" | "WA" | "SA" | "TAS" | "ACT" | "NT";
 
 /** What the form fills in when a suggestion is picked. Any part the provider did not return is left out. */
-export interface AddressParts { address: string; suburb?: string; state?: AuState; postcode?: string }
+export interface AddressParts { address: string; street: string; suburb?: string; state?: AuState; postcode?: string }
 
 export interface AddressSuggestion {
   id: string;
@@ -86,6 +86,7 @@ export function addressParts(f: { street?: unknown; suburb?: unknown; state?: un
   const postcode = pc && POSTCODE.test(pc) ? pc : undefined;
   return {
     address: formatAddress(street, suburb, state, postcode).slice(0, 300),
+    street,
     ...(suburb ? { suburb } : {}), ...(state ? { state } : {}), ...(postcode ? { postcode } : {})
   };
 }

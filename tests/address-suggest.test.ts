@@ -19,8 +19,8 @@ describe("address query and parts", () => {
     expect(toAuState("new south wales")).toBe("NSW");
     expect(toAuState("Bavaria")).toBeUndefined();
     expect(addressParts({ street: "6 Gable St", suburb: "Bracken Ridge", state: "Queensland", postcode: "4017" }))
-      .toEqual({ address: "6 Gable St, Bracken Ridge QLD 4017", suburb: "Bracken Ridge", state: "QLD", postcode: "4017" });
-    expect(addressParts({ street: "6 Gable St", postcode: "40171" })).toEqual({ address: "6 Gable St" });
+      .toEqual({ address: "6 Gable St, Bracken Ridge QLD 4017", street: "6 Gable St", suburb: "Bracken Ridge", state: "QLD", postcode: "4017" });
+    expect(addressParts({ street: "6 Gable St", postcode: "40171" })).toEqual({ address: "6 Gable St", street: "6 Gable St" });
     expect(addressParts({ suburb: "Bracken Ridge" })).toBeNull();
   });
 
@@ -52,7 +52,7 @@ describe("Google Places adapter", () => {
   });
 
   it("builds the parts from address components, Australia only", () => {
-    expect(parseGooglePlace(place)).toEqual({ address: "6 Gable St, Bracken Ridge QLD 4017", suburb: "Bracken Ridge", state: "QLD", postcode: "4017" });
+    expect(parseGooglePlace(place)).toEqual({ address: "6 Gable St, Bracken Ridge QLD 4017", street: "6 Gable St", suburb: "Bracken Ridge", state: "QLD", postcode: "4017" });
     const nz = { addressComponents: place.addressComponents.map(c => (c.types.includes("country") ? { ...c, shortText: "NZ" } : c)) };
     expect(parseGooglePlace(nz)).toBeNull();
   });
@@ -91,8 +91,8 @@ describe("Photon adapter", () => {
 
   it("keeps Australian streets and houses with their parts, without duplicates", () => {
     expect(parsePhoton(body)).toEqual([
-      { id: "N1", main: "6 Gable Street", secondary: "Bracken Ridge QLD 4017", parts: { address: "6 Gable Street, Bracken Ridge QLD 4017", suburb: "Bracken Ridge", state: "QLD", postcode: "4017" } },
-      { id: "W3", main: "Gable Street", secondary: "Toowoomba QLD 4350", parts: { address: "Gable Street, Toowoomba QLD 4350", suburb: "Toowoomba", state: "QLD", postcode: "4350" } }
+      { id: "N1", main: "6 Gable Street", secondary: "Bracken Ridge QLD 4017", parts: { address: "6 Gable Street, Bracken Ridge QLD 4017", street: "6 Gable Street", suburb: "Bracken Ridge", state: "QLD", postcode: "4017" } },
+      { id: "W3", main: "Gable Street", secondary: "Toowoomba QLD 4350", parts: { address: "Gable Street, Toowoomba QLD 4350", street: "Gable Street", suburb: "Toowoomba", state: "QLD", postcode: "4350" } }
     ]);
   });
 
@@ -116,7 +116,7 @@ describe("address lookup service", () => {
   const port = (over: Partial<AddressLookupPort> = {}): AddressLookupPort => ({
     provider: "google",
     suggest: async () => [{ id: "ChIJabc123", main: "6 Gable Street", secondary: "Bracken Ridge QLD" }],
-    resolve: async () => ({ address: "6 Gable St, Bracken Ridge QLD 4017", suburb: "Bracken Ridge", state: "QLD", postcode: "4017" }),
+    resolve: async () => ({ address: "6 Gable St, Bracken Ridge QLD 4017", street: "6 Gable St", suburb: "Bracken Ridge", state: "QLD", postcode: "4017" }),
     locate: async () => ({ lat: -27.3155, lng: 153.0391 }),
     ...over
   });

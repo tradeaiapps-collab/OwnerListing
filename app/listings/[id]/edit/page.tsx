@@ -1,5 +1,8 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useBackspaceGuard } from "../../use-backspace-guard";
+import { stepFromHash, stepHash } from "../../../../src/domain/wizard-history";
+import { checkElenaInput } from "../../../../src/domain/text-quality";
+import { useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { BondPathwayField, ListingFields, type BondState, type FieldStep, type ListingDefaults } from "../../fields";
 import { FIELD_ERROR_STEP, JSON_HEADERS, firstErrorField, focusFirstError, listingFormBody, type FieldErrors } from "../../ui";
@@ -16,6 +19,11 @@ const TITLES = ["What are you listing?", "Rooms and extras", "Describe the prope
 const INTROS = ["Start with the essentials buyers look at first.", "These power the filters buyers use to find your home.", "Plain, specific wording works best.", "Good photos are the biggest driver of enquiries.", "The map pin is placed from the address; drag it if it is off.", "Check the summary, run Elena's publish check, then save."] as const;
 const FIELD_STEPS: (FieldStep | "none")[] = ["basics", "details", "description", "none", "location", "none"];
 const LAST = STEPS.length - 1;
+/** Which step shows each field a finding can point at (price and title are on Basics, rooms and extras on Details, and so on). */
+const FIELD_TO_STEP: Record<string, number> = {
+  title: 0, price: 0, bedrooms: 1, bathrooms: 1, parking: 1, amenities: 1, description: 2, address: 4, suburb: 4, postcode: 4, bond: 4
+};
+const FOCUS_FIELD_EVENT = "listing-focus-field";
 
 type Loaded = ListingDefaults & { id: string; status: string; latitude?: number; longitude?: number };
 type FieldFlags = { field: string; flags: WordingFlagView[] };
@@ -28,6 +36,8 @@ function SuggestDescription({ id }: { id: string }) {
   const [result, setResult] = useState<Suggestion | null>(null);
   const [error, setError] = useState("");
   async function ask() {
+    const bad = checkElenaInput(notes);
+    if (bad) { setError(bad); setResult(null); return; }
     setBusy(true); setError(""); setResult(null);
     try {
       const res = await fetch(`/api/listings/${id}/description-suggestion`, { method: "POST", headers: JSON_HEADERS, body: JSON.stringify({ notes }) });
@@ -38,7 +48,7 @@ function SuggestDescription({ id }: { id: string }) {
   return (
     <section className="panel">
       <h3>Suggest description</h3>
-      <label>Notes for the AI (optional, for example what you love about the home)
+      <label>Notes for Elena (optional, for example what you love about the home)
         <textarea value={notes} maxLength={1000} rows={3} onChange={e => setNotes(e.target.value)} />
       </label>
       <button type="button" className="secondary" disabled={busy} onClick={ask}>{busy ? "Working..." : "Suggest description"}</button>
@@ -68,6 +78,51 @@ export default function EditListing() {
   const [step, setStep] = useState(0);
   const [reached, setReached] = useState(0);
   const [review, setReview] = useState<[string, string][]>([]);
+  const [dirty, setDirty] = useState(false);
+  const reachedRef = useRef(0);
+  reachedRef.current = reached;
+  useBackspaceGuard();
+  /** Opens the step that holds a field, then scrolls to it, focuses it and highlights it briefly. */
+  function focusField(name: string) {
+    const at = FIELD_TO_STEP[name];
+    if (at === undefined) return;
+    setStep(at); setReached(r => Math.max(r, at));
+    window.history.pushState({ wizStep: at }, "", stepHash(at));
+    setTimeout(() => {
+      const el = document.querySelector<HTMLElement>(`#edit-listing-form [name="${name}"], #${name === "bond" ? "bond-pathway" : name}`);
+      if (!el) return;
+      el.scrollIntoView({ block: "center" });
+      el.focus({ preventScroll: true });
+      const box = el.closest("label, .field, fieldset") ?? el;
+      box.classList.add("field-flash");
+      setTimeout(() => box.classList.remove("field-flash"), 2500);
+    }, 50);
+  }
+  const focusRef = useRef(focusField);
+  focusRef.current = focusField;
+  // A link such as /listings/<id>/edit#price opens the right step on the field; Elena's publish check asks for the same while on this page.
+  useEffect(() => {
+    const onEvent = (e: Event) => focusRef.current(String((e as CustomEvent).detail ?? ""));
+    window.addEventListener(FOCUS_FIELD_EVENT, onEvent);
+    return () => window.removeEventListener(FOCUS_FIELD_EVENT, onEvent);
+  }, []);
+  const [pendingField] = useState(() => (typeof window === "undefined" ? "" : window.location.hash.replace(/^#/, "")));
+  useEffect(() => {
+    if (listing && pendingField && !pendingField.startsWith("step-") && FIELD_TO_STEP[pendingField] !== undefined) focusRef.current(pendingField);
+  }, [listing === null]); // eslint-disable-line react-hooks/exhaustive-deps
+  // One history entry per step: Back and Forward move between steps, never further than the owner has reached.
+  useEffect(() => {
+    if (!window.location.hash.startsWith("#step-")) window.history.replaceState({ wizStep: 0 }, "", stepHash(0));
+    const onPop = () => setStep(stepFromHash(window.location.hash, reachedRef.current, LAST));
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
+  useEffect(() => {
+    if (!dirty) return;
+    const warn = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ""; };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [dirty]);
 
   useEffect(() => {
     setListing(null);
@@ -108,7 +163,7 @@ export default function EditListing() {
       if (res.status === 401) { setError("Sign in to edit this draft."); return false; }
       if (!res.ok) { setError(d.error ?? "Could not save the draft."); return false; }
       setListing(d.listing);
-      setSaved(true);
+      setSaved(true); setDirty(false);
       setSavedFlags(Array.isArray(d.wordingFlags) ? d.wordingFlags : []);
       return true;
     } catch {
@@ -143,6 +198,7 @@ export default function EditListing() {
     }
     setError("");
     if (next === LAST) setReview(reviewRows(form));
+    if (next !== step) window.history.pushState({ wizStep: next }, "", stepHash(next));
     setStep(next); setReached(r => Math.max(r, next));
     document.getElementById("wiz-top")?.scrollIntoView({ block: "start" });
   }
@@ -194,13 +250,13 @@ export default function EditListing() {
               <h2>{TITLES[step]}</h2>
               <p className="muted">{INTROS[step]}</p>
             </header>
-            <form id="edit-listing-form" onSubmit={onSubmit} onInput={e => { const n = (e.target as HTMLInputElement).name; if (n && fieldErrors[n] !== undefined) { const { [n]: _gone, ...rest } = fieldErrors; setFieldErrors(rest); if (Object.keys(rest).length === 0) setError(""); } }} noValidate>
+            <form id="edit-listing-form" onSubmit={onSubmit} onInput={e => { setDirty(true); setSaved(false); const n = (e.target as HTMLInputElement).name; if (n && fieldErrors[n] !== undefined) { const { [n]: _gone, ...rest } = fieldErrors; setFieldErrors(rest); if (Object.keys(rest).length === 0) setError(""); } }} noValidate>
               <div className="wiz-body">
                 <ListingFields defaults={listing} step={FIELD_STEPS[step] ?? "none"} errors={fieldErrors} />
                 {step === 3 && <PhotoManager listingId={listing.id} />}
                 {step === 4 && (
                   <>
-                    <LocationPicker listingId={listing.id} address={listing.address} latitude={listing.latitude} longitude={listing.longitude} />
+                    <LocationPicker listingId={listing.id} address={[listing.address, listing.suburb, listing.jurisdiction, listing.postcode].filter(Boolean).join(" ")} latitude={listing.latitude} longitude={listing.longitude} />
                     <section className="panel">
                       {listing.transactionType === "rent" && <BondPathwayField value={bond} state={bondState} onChange={saveBond} />}
                       <p><a href={`/listings/${listing.id}/disclosures`}>Required disclosures for your state</a></p>
@@ -219,14 +275,17 @@ export default function EditListing() {
                   </div>
                 )}
               </div>
-              {saved && <p role="status">Changes saved.</p>}
+              {saved && <p role="status">{step === LAST ? "Changes saved. Next: review and publish." : "Changes saved."}</p>}
               {saved && savedFlags.map(f => <WordingFlagList key={f.field} field={f.field} flags={f.flags} />)}
               {error && <p role="alert">{error}</p>}
               <div className="wiz-nav">
                 <button type="button" className="secondary" disabled={busy || step === 0} onClick={() => void goTo(step - 1)}>Previous</button>
                 {step < LAST
                   ? <button type="submit" disabled={busy}>{busy ? "Saving..." : `Next: ${STEPS[step + 1]}`}</button>
-                  : <button type="submit" disabled={busy}>{busy ? "Saving..." : "Save changes"}</button>}
+                  : <>
+                    <button type="submit" className={saved ? "secondary" : ""} disabled={busy}>{busy ? "Saving..." : "Save changes"}</button>
+                    {saved && <a className="button" href={`/listings/${listing.id}/approve`}>Review and publish</a>}
+                  </>}
               </div>
             </form>
           </section>

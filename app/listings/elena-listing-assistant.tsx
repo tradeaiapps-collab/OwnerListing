@@ -1,4 +1,5 @@
 "use client";
+import { ShareLink } from "../components/share-link";
 import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
 import type { AssistantPlan, AssistantQuestion, FeedbackEvent, RewriteMode, Rewrite } from "../../src/domain/listing-assistant";
 import { priceInputToCents, formatAud } from "../../src/domain/listing-details";
@@ -411,7 +412,7 @@ export function ElenaListingAssistant({ photoCount }: { photoCount?: number }) {
 
           <details>
             <summary>Where to advertise</summary>
-            <ul className="ela-list">{plan.channels.map(c => <li key={c.id}><p><strong>{c.label}</strong> <span className="badge">{c.status === "ready" ? "Included" : c.status === "optional" ? "Optional" : "Needs an agent"}</span><br /><span className="muted">{c.why}</span></p></li>)}</ul>
+            <ul className="ela-list">{plan.channels.map(c => <li key={c.id}><p><strong>{c.label}</strong> <span className="badge">{c.status === "ready" ? "Included" : c.status === "optional" ? "Optional" : "Needs an agent"}</span><br /><span className="muted">{c.why}</span></p>{c.id === "share" && <ShareLink published={false} />}</li>)}</ul>
           </details>
 
           <details>

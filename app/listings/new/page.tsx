@@ -1,5 +1,7 @@
 "use client";
-import { useState } from "react";
+import { useBackspaceGuard } from "../use-backspace-guard";
+import { useEffect, useRef, useState } from "react";
+import { stepFromHash, stepHash } from "../../../src/domain/wizard-history";
 import { BondPathwayField, ListingFields, type BondState, type ListingDefaults } from "../fields";
 import { TemplatePicker } from "../template-picker";
 import type { TemplateView } from "../../../src/domain/listing-template";
@@ -15,10 +17,11 @@ import { ElenaEnquiriesPanel } from "../elena-enquiries-panel";
 import { ElenaJobsPanel } from "../elena-jobs-panel";
 import type { FieldStep } from "../fields";
 
+const FORM_KEY = "ol-new-listing-form";
 const STEPS = ["Basics", "Details", "Description", "Photos", "Location", "Publish"] as const;
 const SUBS = ["Title, price and type", "Rooms and extras", "Tell the story", "Show it off", "Address and map", "Review and save"] as const;
 const TITLES = ["What are you listing?", "Rooms and extras", "Describe the property", "Add photos", "Where is it?", "Review your listing"] as const;
-const INTROS = ["Start with the essentials buyers look at first.", "These power the filters buyers use to find your home.", "Plain, specific wording works best.", "Good photos are the biggest driver of enquiries.", "The map pin is placed from your address.", "Check the details, then save your draft."] as const;
+const INTROS = ["Start with the essentials buyers look at first.", "These power the filters buyers use to find your home.", "Plain, specific wording works best.", "Good photos are the biggest driver of enquiries.", "The map pin is placed from your address when you save. Nothing to confirm.", "Check the details, then save your draft."] as const;
 const FIELD_STEPS: (FieldStep | "none")[] = ["basics", "details", "description", "none", "location", "none"];
 const LAST = STEPS.length - 1;
 
@@ -58,6 +61,50 @@ export default function NewListing() {
   const [uploads, setUploads] = useState<Upload[]>([]);
   const [step, setStep] = useState(0);
   const [reached, setReached] = useState(0);
+  const [dirty, setDirty] = useState(false);
+  const [photosOff, setPhotosOff] = useState(false);
+  useBackspaceGuard();
+  // The form is kept in this browser as the owner types, so a refresh, Back, closing the tab or a crash never loses what was entered.
+  useEffect(() => {
+    // A refresh after the draft was saved goes to the saved draft, never to a blank form.
+    const saved = /^#draft-([0-9a-f-]{36})$/i.exec(window.location.hash);
+    if (saved) { window.location.replace(`/listings/${saved[1]}/edit`); return; }
+    try {
+      const raw = localStorage.getItem(FORM_KEY);
+      if (!raw) return;
+      const v = JSON.parse(raw) as Record<string, string | string[]>;
+      const s = (k: string) => (typeof v[k] === "string" ? (v[k] as string) : "");
+      const cents = priceInputToCents(s("price"));
+      const n = (k: string) => (s(k).trim() === "" || !/^\d+$/.test(s(k)) ? {} : { [k]: Number(s(k)) });
+      if (!s("title") && !s("address") && !s("description")) return;
+      setDefaults({
+        title: s("title"), address: s("address"), suburb: s("suburb"), postcode: s("postcode"), jurisdiction: s("jurisdiction") || "QLD", transactionType: s("transactionType") || "sale",
+        useClass: s("useClass") || "residential", propertyType: s("propertyType") || "house", description: s("description"), amenities: Array.isArray(v["amenities"]) ? (v["amenities"] as string[]) : [],
+        ...(cents !== undefined ? { priceCents: cents } : {}), ...n("bedrooms"), ...n("bathrooms"), ...n("parking")
+      });
+      setFieldsKey(k => k + 1); setMode("manual");
+    } catch { /* storage blocked: nothing to restore */ }
+  }, []);
+  useEffect(() => {
+    fetch("/api/listings/upload-status", { headers: { accept: "application/json" } })
+      .then(r => (r.ok ? r.json() : null)).then(d => { if (d && d.photos === false) setPhotosOff(true); }).catch(() => undefined);
+  }, []);
+  const reachedRef = useRef(0);
+  reachedRef.current = reached;
+  // Back and Forward move between steps (entered data stays: every step stays mounted). The first entry is step 1.
+  useEffect(() => {
+    if (!window.location.hash.startsWith("#step-")) window.history.replaceState({ wizStep: 0 }, "", stepHash(0));
+    const onPop = () => setStep(stepFromHash(window.location.hash, reachedRef.current, STEPS.length - 1));
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
+  // Warn before leaving with changes that are not saved as a draft.
+  useEffect(() => {
+    if (!dirty || draftId) return;
+    const warn = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ""; };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [dirty, draftId]);
   const [review, setReview] = useState<[string, string][]>([]);
   const [live, setLive] = useState({ price: "Price not set", title: "Untitled listing", addr: "Address not set", rooms: "" });
   /** The "Still needed" list follows the form, so answers given to Elena (or typed) drop off it straight away. */
@@ -184,8 +231,20 @@ export default function NewListing() {
     setError("");
     setFieldErrors({});
     if (next === LAST) setReview(reviewRows(form));
+    if (next !== step) window.history.pushState({ wizStep: next }, "", stepHash(next));
     setStep(next); setReached(r => Math.max(r, next));
     document.getElementById("wiz-top")?.scrollIntoView({ block: "start" });
+  }
+
+  /** Places the map pin from the address as soon as the draft exists, so the owner never has to confirm it. Best effort; the pin can be adjusted on the edit page. */
+  async function saveLocation(id: string, b: Record<string, unknown>) {
+    const q = [b["address"], [b["suburb"], b["jurisdiction"], b["postcode"]].filter(Boolean).join(" ")].filter(Boolean).join(", ");
+    try {
+      const g = await fetch(`/api/address/geocode?${new URLSearchParams({ q })}`, { headers: { accept: "application/json" } });
+      const p = await g.json().catch(() => ({}));
+      if (!g.ok || typeof p.lat !== "number" || typeof p.lng !== "number") return;
+      await fetch(`/api/listings/${id}`, { method: "PATCH", headers: JSON_HEADERS, body: JSON.stringify({ latitude: Math.round(p.lat * 1e6) / 1e6, longitude: Math.round(p.lng * 1e6) / 1e6 }) });
+    } catch { /* no pin yet: the edit page places it again */ }
   }
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>, force = false) {
@@ -207,6 +266,9 @@ export default function NewListing() {
       else if (!res.ok) setError(d.error ?? "Could not save the draft.");
       else {
         setDraftId(d.listing.id);
+        window.history.replaceState(null, "", `/listings/new#draft-${d.listing.id}`);
+        try { localStorage.removeItem(FORM_KEY); } catch { /* ignore */ }
+        void saveLocation(d.listing.id, body);
         setIsRent(d.listing.transactionType === "rent");
         void uploadPending(d.listing.id);
       }
@@ -249,15 +311,15 @@ export default function NewListing() {
             {filled.questions && filled.questions.length > 0 && <><p><strong>Elena needs to know:</strong></p><ul className="plain-list">{filled.questions.map(x => <li key={x}>{x}</li>)}</ul></>}
             <ul className="plain-list">{filled.filled.map(x => <li key={x.key}><strong>{x.label}:</strong> {x.value}</li>)}</ul>
             {filled.photoState === "read" && filled.seen && filled.seen.length > 0 && <p><strong>Elena saw in your photos:</strong> {filled.seen.join(", ")}.</p>}
-            {filled.photoState === "off" && <p className="muted">Your photos are added when you save. Tick the features they show in the form below.</p>}
-            {filled.photoState === "failed" && <p className="muted">Elena couldn&apos;t read the photos this time. Your photos are still added when you save.</p>}
+            {filled.photoState === "off" && <p className="muted">{photosOff ? "Photos can be added after the draft is saved." : "Your photos are added when you save."} Tick the features they show in the form below.</p>}
+            {filled.photoState === "failed" && <p className="muted">Elena couldn&apos;t read the photos this time. {photosOff ? "" : "Your photos are still added when you save."}</p>}
             {filled.area && filled.area.suburbFacts.length > 0 && <>
               <p><strong>What we know about the area</strong> <span className="muted">({filled.area.suburbSource})</span></p>
               <ul className="plain-list">{filled.area.suburbFacts.map(x => <li key={x.label}>{x.label}: {x.value}</li>)}</ul>
             </>}
             {filled.area && filled.area.checklist.length > 0 && <p className="muted"><strong>Papers a seller usually needs in {filled.fields.jurisdiction}:</strong> {filled.area.checklist.join("; ")}. Draft list, not legal advice.</p>}
             {stillNeeded(filled.missing).length > 0 && <p><strong>Still needed:</strong> {stillNeeded(filled.missing).join(", ")}.</p>}
-            {(pending.photos.length > 0 || pending.plan) && <p className="muted">{pending.photos.length} {pending.photos.length === 1 ? "photo" : "photos"}{pending.plan ? " and a site plan" : ""} will be added when you save the draft.</p>}
+            {!photosOff && (pending.photos.length > 0 || pending.plan) && <p className="muted">{pending.photos.length} {pending.photos.length === 1 ? "photo" : "photos"}{pending.plan ? " and a site plan" : ""} will be added when you save the draft.</p>}
           </section>
         )}
         <TemplatePicker onApply={t => { const f = document.getElementById("new-listing-form"); if (f instanceof HTMLFormElement) applyTemplate(t, f); }} />
@@ -287,15 +349,17 @@ export default function NewListing() {
               <h2>{TITLES[step]}</h2>
               <p className="muted">{INTROS[step]}</p>
             </header>
-            <form id="new-listing-form" onSubmit={onSubmit} onInput={e => { setLive(readPreview(e.currentTarget)); const n = (e.target as HTMLInputElement).name; if (n && fieldErrors[n] !== undefined) { const { [n]: _gone, ...rest } = fieldErrors; setFieldErrors(rest); if (Object.keys(rest).length === 0) setError(""); } }} noValidate>
+            <form id="new-listing-form" onSubmit={onSubmit} onInput={e => { setDirty(true); try { const fd = new FormData(e.currentTarget), o: Record<string, string | string[]> = {}; for (const k of new Set(Array.from(fd.keys()))) o[k] = k === "amenities" ? fd.getAll(k).map(String) : String(fd.get(k) ?? ""); localStorage.setItem(FORM_KEY, JSON.stringify(o)); } catch { /* storage blocked */ } setLive(readPreview(e.currentTarget)); const n = (e.target as HTMLInputElement).name; if (n && fieldErrors[n] !== undefined) { const { [n]: _gone, ...rest } = fieldErrors; setFieldErrors(rest); if (Object.keys(rest).length === 0) setError(""); } }} noValidate>
               <div className="wiz-body">
                 <ListingFields key={fieldsKey} defaults={defaults} step={FIELD_STEPS[step] ?? "none"} errors={fieldErrors} />
-                <div hidden={step !== 3}><PhotosStep files={pending} onChange={setPending} /></div>
+                <div hidden={step !== 3}><PhotosStep files={pending} onChange={setPending} unavailable={photosOff} /></div>
                 <div hidden={step !== LAST} className="wiz-review">
                   {review.map(([k, v], i) => (
                     <div key={k} className="wiz-rv"><h3>{k}</h3><p>{v}</p><button type="button" className="link-button" onClick={() => goTo(i)}>Edit</button></div>
                   ))}
-                  <p className="muted">Saving creates a draft. Then you can invite your photographer and building inspector. Nothing is public until you publish.</p>
+                  {draftId
+                    ? <p className="muted">Draft saved, next: invite or publish. Nothing is public until you publish.</p>
+                    : <p className="muted">Saving creates a draft. Then you can invite your photographer and building inspector. Nothing is public until you publish.</p>}
                 </div>
               </div>
               <div className="wiz-nav">
@@ -314,17 +378,32 @@ export default function NewListing() {
       {draftId && (
         <section role="status" className="panel">
           <h2>Draft saved</h2>
-          <p><a href={`/listings/${draftId}/edit`}>Edit this draft</a></p>
-          {uploads.length > 0 && <UploadSummary uploads={uploads} />}
-          {!uploading && <PhotoManager key={uploads.length} listingId={draftId} />}
-          {isRent && (
-            <BondPathwayField value={bond} state={bondState} onChange={saveBond} />
-          )}
-          <ContractorSection listingId={draftId} />
-          <ElenaJobsPanel listingId={draftId} />
-          <ElenaEnquiriesPanel listingId={draftId} />
-          <p><a className="button" href={`/listings/${draftId}/approve`}>Review and approve your ad</a></p>
-          <ElenaPublishCheck listingId={draftId} />
+          <div className="post-save">
+            <section className="post-save-group" aria-labelledby="ps-publish">
+              <h3 id="ps-publish">Publish</h3>
+              <p className="muted">You do not need a photographer, inspector or any contractor to publish. Elena lists exactly what must be done first (for example disclosures, ID check or trust account), with a link to fix each one.</p>
+              <ElenaPublishCheck listingId={draftId} />
+              <p><a href={`/listings/${draftId}/approve`}>Preview your ad as buyers see it</a> · <a href={`/listings/${draftId}/edit`}>Edit this draft</a></p>
+            </section>
+            <details className="post-save-group">
+              <summary>Photos and plan already added ({uploads.filter(u => u.state === "done").length || "see"}): change or reorder</summary>
+              {uploads.length > 0 && (
+                <UploadSummary uploads={uploads} />
+              )}
+              {!uploading && <PhotoManager key={uploads.length} listingId={draftId} />}
+            </details>
+            {isRent && (
+              <section className="post-save-group" aria-label="Rental bond">
+                <BondPathwayField value={bond} state={bondState} onChange={saveBond} />
+              </section>
+            )}
+            <details className="post-save-group">
+              <summary>Optional: invite a photographer or inspector (skip if you do not need them)</summary>
+              <ContractorSection listingId={draftId} />
+              <ElenaJobsPanel listingId={draftId} />
+              <ElenaEnquiriesPanel listingId={draftId} />
+            </details>
+          </div>
         </section>
       )}
       <p className="page-foot"><a className="button secondary" href="/listings/mine">Back to my listings</a></p>
