@@ -100,21 +100,21 @@ export default function NewListing() {
     setPending({ photos: [], plan: null });
     setUploads(items.map(i => ({ name: i.file.name, state: "waiting" })));
     const set = (i: number, u: Partial<Upload>) => setUploads(prev => prev.map((x, j) => (j === i ? { ...x, ...u } : x)));
-    let stopped = "";
+    // Storage or the scanner is not set up: the first 503 stops the rest instead of sending every file to fail the same way.
+    let unavailable = false;
     for (let i = 0; i < items.length; i++) {
-      // Storage off or request too big affects every file the same way: say so once and stop, instead of one error per file.
-      if (stopped) { set(i, { state: "error", message: "" }); continue; }
+      if (unavailable) { set(i, { state: "error", message: "File upload is not available yet." }); continue; }
       set(i, { state: "uploading" });
       const fd = new FormData();
-      fd.set("file", await shrinkImage(items[i]!.file)); fd.set("kind", items[i]!.kind);
+      fd.set("file", items[i]!.file.type.startsWith("image/") ? await shrinkImage(items[i]!.file) : items[i]!.file); fd.set("kind", items[i]!.kind);
+      // A PDF plan cannot go through the image pipeline: it is stored as a public floor plan document (scanned, served as a download only).
+      const pdf = items[i]!.file.type === "application/pdf";
+      if (pdf) fd.set("visibility", "public");
       try {
-        const r = await fetch(`/api/listings/${id}/photos`, { method: "POST", body: fd });
+        const r = await fetch(`/api/listings/${id}/${pdf ? "documents" : "photos"}`, { method: "POST", body: fd });
         if (r.ok) set(i, { state: "done" });
-        else {
-          const msg = r.status === 503 ? "Photo upload is not available yet." : r.status === 413 ? "That photo is too large to upload." : (await r.json().catch(() => ({}))).error ?? "Upload failed.";
-          set(i, { state: "error", message: msg });
-          if (r.status === 503) stopped = msg;
-        }
+        else if (r.status === 503) { unavailable = true; set(i, { state: "error", message: "File upload is not available yet." }); }
+        else set(i, { state: "error", message: r.status === 413 ? "That file is too large to upload." : (await r.json().catch(() => ({}))).error ?? "Upload failed." });
       } catch { set(i, { state: "error", message: "Network error." }); }
     }
   }
@@ -282,7 +282,7 @@ export default function NewListing() {
             <header id="wiz-top" className="wiz-header">
               <div className="wiz-eyebrow"><span aria-live="polite">Step {step + 1} of {STEPS.length}</span><span className="wiz-eb2">{STEPS[step]}</span></div>
               <div className="wiz-seg" role="progressbar" aria-label="Listing progress" aria-valuemin={1} aria-valuemax={STEPS.length} aria-valuenow={step + 1}>
-                {STEPS.map((n, i) => <i key={n} className={i < step ? "ok" : i === step ? "on" : ""} />)}
+                {STEPS.map((n, i) => <span key={n} className={`wiz-seg-item ${i < step ? "ok" : i === step ? "on" : ""}`}><i /><em><span className="wiz-n">{i + 1} </span>{n}</em></span>)}
               </div>
               <h2>{TITLES[step]}</h2>
               <p className="muted">{INTROS[step]}</p>

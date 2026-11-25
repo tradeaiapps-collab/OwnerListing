@@ -9,6 +9,9 @@ export function I18nProvider({ catalog, children }: { catalog?: Catalog; childre
   return <Ctx.Provider value={catalog}>{children}</Ctx.Provider>;
 }
 
+/** True when a translated catalogue is live for this page (false means plain English). */
+export function useTranslated(): boolean { return useContext(Ctx) !== undefined; }
+
 /** t("English text") returns the translation, or the English text itself when there is none. Never blank. */
 export function useT(): (text: string) => string {
   const c = useContext(Ctx);
