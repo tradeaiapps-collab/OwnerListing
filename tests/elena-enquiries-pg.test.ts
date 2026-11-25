@@ -216,7 +216,7 @@ describe.skipIf(!DATABASE_URL)("Elena buyer enquiries and the owner list on Post
   it("the daily digest goes once per local day, only when something needs the owner, and only if opted in", async () => {
     sent.length = 0;
     const owner = await addUser(t.db, "owner");
-    await addListing(t.db, owner, { status: "draft", title: "Unfinished", created_at: new Date(Date.now() - 3 * 86_400_000).toISOString() });
+    await addListing(t.db, owner, { status: "draft", title: "Unfinished", created_at: "2026-11-17T00:00:00Z" });
     const morning = "2026-11-20T21:00:00Z"; // 8 am in Sydney
     expect((await runOwnerDigests(t.db, morning, notify)).sent).toBe(0); // not opted in
     await setDigest(t.db, owner, true);
