@@ -60,9 +60,11 @@ function s3FromEnv(env: Readonly<Record<string, string | undefined>>): ObjectSto
   const { S3_BUCKET: bucket, S3_REGION: region, S3_ACCESS_KEY_ID: accessKeyId, S3_SECRET_ACCESS_KEY: secretAccessKey } = env;
   if (!bucket || !region || !accessKeyId || !secretAccessKey) return createUnconfiguredStorage();
   const sse = env.S3_SSE || "AES256";
-  if (sse !== "AES256" && sse !== "aws:kms") return createUnconfiguredStorage();
+  if (sse !== "AES256" && sse !== "aws:kms" && sse !== "none") return createUnconfiguredStorage();
   const endpoint = env.S3_ENDPOINT || undefined;
-  if (endpoint && !/^https?:\/\/[^/\s]+$/.test(endpoint)) return createUnconfiguredStorage();
+  // "none" drops the encryption header: only for a non-AWS service that encrypts at rest itself, never real AWS.
+  if (sse === "none" && (!endpoint || /(^|\.)amazonaws\.com(\.cn)?(\/|$)/i.test(new URL(endpoint).host + "/"))) return createUnconfiguredStorage();
+  if (endpoint && !/^https?:\/\/[^/\s?#]+(\/[A-Za-z0-9._~\/-]*)?$/.test(endpoint)) return createUnconfiguredStorage();
   if (endpoint && env.NODE_ENV === "production" && !endpoint.startsWith("https://")) return createUnconfiguredStorage();
   return createS3Storage({
     bucket, region, accessKeyId, secretAccessKey, endpoint, sse,

@@ -19,7 +19,8 @@ export interface S3Config {
   endpoint?: string | undefined;
   /** Path-style addressing (endpoint/bucket/key). Default: virtual-hosted style on AWS, path style with a custom endpoint. */
   forcePathStyle?: boolean | undefined;
-  sse?: "AES256" | "aws:kms";
+  /** "none" sends no encryption header, for services that encrypt at rest themselves and reject the header (Supabase Storage). */
+  sse?: "AES256" | "aws:kms" | "none";
   kmsKeyId?: string | undefined;
   /** Send If-None-Match: * on writes. On by default; turn off for services that reject it. */
   conditionalPut?: boolean;
@@ -56,7 +57,9 @@ export function createS3Storage(cfg: S3Config): S3StoragePort {
   const pathStyle = cfg.forcePathStyle ?? custom !== null;
   const host = custom ? (pathStyle ? custom.host : `${cfg.bucket}.${custom.host}`) : (pathStyle ? `s3.${cfg.region}.amazonaws.com` : `${cfg.bucket}.s3.${cfg.region}.amazonaws.com`);
   const scheme = custom ? custom.protocol : "https:";
-  const basePath = (key: string) => (pathStyle ? `/${cfg.bucket}/` : "/") + encPath(key);
+  // An endpoint may carry a path prefix (Supabase: https://<ref>.storage.supabase.co/storage/v1/s3).
+  const prefix = custom ? custom.pathname.replace(/\/+$/, "") : "";
+  const basePath = (key: string) => prefix + (pathStyle ? `/${cfg.bucket}/` : "/") + encPath(key);
 
   const signingKey = (date: string) => {
     const kDate = hmac("AWS4" + cfg.secretAccessKey, date);
@@ -89,15 +92,15 @@ export function createS3Storage(cfg: S3Config): S3StoragePort {
       const h: Record<string, string> = {
         "content-type": contentType,
         "content-disposition": "attachment",
-        "cache-control": "private, no-store",
-        "x-amz-server-side-encryption": sse
+        "cache-control": "private, no-store"
       };
+      if (sse !== "none") h["x-amz-server-side-encryption"] = sse;
       if (sse === "aws:kms" && cfg.kmsKeyId) h["x-amz-server-side-encryption-aws-kms-key-id"] = cfg.kmsKeyId;
       if (cfg.conditionalPut !== false) h["if-none-match"] = "*";
       const r = await request("PUT", key, bytes, h);
       if (!r.ok) throw new Error(`Object storage write failed (${r.status}).`);
       const echoed = r.headers.get("x-amz-server-side-encryption");
-      if (echoed && echoed !== sse) throw new Error("Object storage did not apply the requested encryption.");
+      if (sse !== "none" && echoed && echoed !== sse) throw new Error("Object storage did not apply the requested encryption.");
     },
     async get(key) {
       resolveStorageKey("/x", key);

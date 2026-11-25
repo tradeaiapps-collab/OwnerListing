@@ -11,6 +11,7 @@ import { PhotoManager } from "../photo-manager";
 import { QuickSetupPanel, type Drafted, type QuickFiles } from "../quick-setup";
 import { ElenaPublishCheck } from "../elena-publish-check";
 import { PhotosStep } from "./photos-step";
+import { shrinkImage } from "../shrink-image";
 import { ContractorSection } from "../contractor-section";
 import { ElenaEnquiriesPanel } from "../elena-enquiries-panel";
 import { ElenaJobsPanel } from "../elena-jobs-panel";
@@ -25,6 +26,22 @@ const FIELD_STEPS: (FieldStep | "none")[] = ["basics", "details", "description",
 const LAST = STEPS.length - 1;
 
 type Ready = Drafted;
+/** One line for the files added and one line per distinct problem, never one error line per file. */
+function UploadSummary({ uploads }: { uploads: Upload[] }) {
+  const done = uploads.filter(u => u.state === "done").length;
+  const active = uploads.some(u => u.state === "waiting" || u.state === "uploading");
+  const groups = new Map<string, string[]>();
+  for (const u of uploads) if (u.state === "error" && u.message) groups.set(u.message, [...(groups.get(u.message) ?? []), u.name]);
+  const failed = uploads.filter(u => u.state === "error").length;
+  return (
+    <div role="status" aria-label="Uploads">
+      {active && <p>Uploading photos ({done} of {uploads.length})...</p>}
+      {!active && done > 0 && <p>{done} {done === 1 ? "photo" : "photos"} added.</p>}
+      {!active && failed > 0 && [...groups].map(([msg, names]) => <p key={msg} role="alert">{msg}{names.length > 1 || failed > names.length ? ` (${failed} not added)` : ` (${names[0]})`}</p>)}
+    </div>
+  );
+}
+
 type Upload = { name: string; state: "waiting" | "uploading" | "done" | "error"; message?: string };
 
 export default function NewListing() {
@@ -130,14 +147,21 @@ export default function NewListing() {
     setPending({ photos: [], plan: null });
     setUploads(items.map(i => ({ name: i.file.name, state: "waiting" })));
     const set = (i: number, u: Partial<Upload>) => setUploads(prev => prev.map((x, j) => (j === i ? { ...x, ...u } : x)));
+    // Storage or the scanner is not set up: the first 503 stops the rest instead of sending every file to fail the same way.
+    let unavailable = false;
     for (let i = 0; i < items.length; i++) {
+      if (unavailable) { set(i, { state: "error", message: "File upload is not available yet." }); continue; }
       set(i, { state: "uploading" });
       const fd = new FormData();
-      fd.set("file", items[i]!.file); fd.set("kind", items[i]!.kind);
+      fd.set("file", items[i]!.file.type.startsWith("image/") ? await shrinkImage(items[i]!.file) : items[i]!.file); fd.set("kind", items[i]!.kind);
+      // A PDF plan cannot go through the image pipeline: it is stored as a public floor plan document (scanned, served as a download only).
+      const pdf = items[i]!.file.type === "application/pdf";
+      if (pdf) fd.set("visibility", "public");
       try {
-        const r = await fetch(`/api/listings/${id}/photos`, { method: "POST", body: fd });
+        const r = await fetch(`/api/listings/${id}/${pdf ? "documents" : "photos"}`, { method: "POST", body: fd });
         if (r.ok) set(i, { state: "done" });
-        else set(i, { state: "error", message: r.status === 503 ? "Photo upload is not available yet." : (await r.json().catch(() => ({}))).error ?? "Upload failed." });
+        else if (r.status === 503) { unavailable = true; set(i, { state: "error", message: "File upload is not available yet." }); }
+        else set(i, { state: "error", message: r.status === 413 ? "That file is too large to upload." : (await r.json().catch(() => ({}))).error ?? "Upload failed." });
       } catch { set(i, { state: "error", message: "Network error." }); }
     }
   }
@@ -320,7 +344,7 @@ export default function NewListing() {
             <header id="wiz-top" className="wiz-header">
               <div className="wiz-eyebrow"><span aria-live="polite">Step {step + 1} of {STEPS.length}</span><span className="wiz-eb2">{STEPS[step]}</span></div>
               <div className="wiz-seg" role="progressbar" aria-label="Listing progress" aria-valuemin={1} aria-valuemax={STEPS.length} aria-valuenow={step + 1}>
-                {STEPS.map((n, i) => <i key={n} className={i < step ? "ok" : i === step ? "on" : ""} />)}
+                {STEPS.map((n, i) => <span key={n} className={`wiz-seg-item ${i < step ? "ok" : i === step ? "on" : ""}`}><i /><em><span className="wiz-n">{i + 1} </span>{n}</em></span>)}
               </div>
               <h2>{TITLES[step]}</h2>
               <p className="muted">{INTROS[step]}</p>
@@ -364,7 +388,7 @@ export default function NewListing() {
             <details className="post-save-group">
               <summary>Photos and plan already added ({uploads.filter(u => u.state === "done").length || "see"}): change or reorder</summary>
               {uploads.length > 0 && (
-                <ul className="plain-list" role="status" aria-label="Uploads">{uploads.map((u, i) => <li key={i}>{u.name}: {u.state === "waiting" ? "waiting" : u.state === "uploading" ? "uploading..." : u.state === "done" ? "added" : u.message}</li>)}</ul>
+                <UploadSummary uploads={uploads} />
               )}
               {!uploading && <PhotoManager key={uploads.length} listingId={draftId} />}
             </details>

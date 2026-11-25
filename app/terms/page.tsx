@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { ENGLISH_PREVAILS_NOTICE } from "../../src/domain/i18n";
 import { TERMS_LAST_UPDATED, TERMS_PARTS, TERMS_SUMMARY } from "../../src/domain/terms-content";
+import { useTranslated } from "../i18n-provider";
 import { JSON_HEADERS } from "../listings/ui";
 import BackLink from "../back-link";
 import "../styles/settings.css";
@@ -10,6 +11,7 @@ import "../styles/legal.css";
 type Current = { version: string; textReference: string; includesAiLearningClause: boolean };
 
 export default function Terms() {
+  const translated = useTranslated();
   const [state, setState] = useState<"loading" | "signedOut" | "error" | "ok">("loading");
   const [current, setCurrent] = useState<Current | null>(null);
   const [accepted, setAccepted] = useState(false);
@@ -49,7 +51,7 @@ export default function Terms() {
         <ul>
           {TERMS_SUMMARY.map(t => <li key={t}>{t}</li>)}
         </ul>
-        <p className="muted">{ENGLISH_PREVAILS_NOTICE}</p>
+        {translated && <p className="muted">{ENGLISH_PREVAILS_NOTICE}</p>}
       </section>
       <nav className="terms-toc" aria-label="Contents">
         <ol>
