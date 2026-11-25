@@ -1,4 +1,5 @@
 "use client";
+import { ShareLink } from "../../components/share-link";
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { AMENITY_LABELS, formatPrice, isAmenity } from "../../../src/domain/listing-details";
@@ -346,6 +347,7 @@ export default function ListingDetail() {
             </p>
             <h1>{listing.title}</h1>
             <p className="detail-address">{listing.address}</p>
+            <ShareLink listingId={listing.id} published title={listing.title} />
             {listing.priceCents !== undefined && <p className="detail-price detail-price-m">{formatPrice(listing.priceCents, tx)}</p>}
           </div>
           <ul className="pd-facts" aria-label="Key facts">
