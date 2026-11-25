@@ -68,7 +68,7 @@ async function handlePost(req: Request, { params }: Ctx) {
   if (file.size > PHOTO_LIMITS.maxBytes) return NextResponse.json({ error: "Each photo must be 10 MB or smaller." }, { status: 413 });
   if (replaces !== null && (typeof replaces !== "string" || !UUID.test(replaces))) return NextResponse.json({ error: "Invalid photo to replace." }, { status: 400 });
   const r = await uploadPhoto(deps, store, ports, actor, id, {
-    kind, declaredMime: file.type, bytes: new Uint8Array(await file.arrayBuffer()), ...(replaces ? { replacesId: replaces } : {})
+    kind, declaredMime: file.type, filename: file.name, bytes: new Uint8Array(await file.arrayBuffer()), ...(replaces ? { replacesId: replaces } : {})
   });
   return r.ok ? NextResponse.json({ id: r.value.id }, { status: 201 }) : failure(r);
 }

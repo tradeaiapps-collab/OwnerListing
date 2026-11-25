@@ -73,6 +73,7 @@ beforeEach(async () => {
   const store: UploadStore = {
     ...mem.store, async listingHasProperty() { return hasProperty; },
     async bytesUploadedSince() { return usedBytes; },
+    async filenameTaken(_l, name, viewer, exceptId) { return added.some(a => a.doc.filename?.toLowerCase() === name.toLowerCase() && a.doc.record.id !== exceptId && (viewer.isOwner || a.doc.record.uploadedBy === viewer.userId || a.doc.record.visibility === "parties")); },
     async addDocument(doc, supersede) { added.push({ doc, ...(supersede ? { supersede } : {}) }); }
   };
   state.store = store;
@@ -124,7 +125,7 @@ describe("POST /api/listings/[id]/documents", () => {
     expect(stored[0]!.key).toMatch(/^listings\/[0-9a-f-]{36}\/[0-9a-f-]{36}$/);
     expect(stored[0]!.key).not.toContain("passwd");
     expect(added[0]!.doc.sha256).toMatch(/^[0-9a-f]{64}$/);
-    expect(JSON.stringify(added[0]!.doc)).not.toContain("passwd");
+    expect(JSON.stringify({ ...added[0]!.doc, filename: undefined })).not.toContain("passwd"); // the cleaned name is kept only for the duplicate-name check
     expect(await res.json()).toEqual({ id: expect.any(String) });
     expect(scanned).toBe(1);
   });
@@ -372,5 +373,35 @@ describe("per-user upload rate limit and daily byte quota", () => {
     state.actor = stranger;
     expect((await upload(PDF)).status).toBe(403);
     expect(hitBuckets).toHaveLength(0);
+  });
+});
+
+describe("duplicate file names", () => {
+  it("refuses a second file with the same name (any case) and allows a new version of it", async () => {
+    const first = await upload(PDF, { name: "Contract.pdf" });
+    expect(first.status).toBe(201);
+    const again = await upload(PDF, { name: "contract.PDF" });
+    expect(again.status).toBe(409);
+    expect((await again.json()).error).toContain("already on this listing");
+    const other = await upload(PDF, { name: "Other.pdf" });
+    expect(other.status).toBe(201);
+  });
+});
+
+describe("duplicate names and privacy", () => {
+  it("does not tell a contractor that an owner-only file has that name", async () => {
+    expect((await upload(PDF, { name: "Secret.pdf", visibility: "owner_only" })).status).toBe(201);
+    state.actor = inspector;
+    expect((await upload(PDF, { name: "secret.pdf", kind: "pest_report", visibility: "parties" })).status).toBe(201);
+  });
+  it("tells a contractor about a name already shared with the parties", async () => {
+    state.actor = inspector;
+    expect((await upload(PDF, { name: "Report.pdf", kind: "pest_report", visibility: "parties" })).status).toBe(201);
+    expect((await upload(PDF, { name: "report.pdf", kind: "pest_report", visibility: "parties" })).status).toBe(409);
+  });
+  it("refuses when the database guard reports a name taken in a race", async () => {
+    state.store = { ...(state.store as object), async addDocument() { return "name_taken" as const; } };
+    const res = await upload(PDF, { name: "Race.pdf" });
+    expect(res.status).toBe(409);
   });
 });

@@ -6,11 +6,12 @@ import type { PhotoStore, StoredSizes } from "../domain/photo-service";
 import type { Queryable } from "./db";
 
 /** Constant SQL, parameters only. Storage keys are selected only by storedSizes. */
-const PHOTO_SELECT = "SELECT id, listing_id, kind, uploaded_by, content_type, width, height, thumb_key IS NOT NULL AS has_thumb, medium_key IS NOT NULL AS has_medium FROM listing_photo";
+const PHOTO_SELECT = "SELECT id, listing_id, kind, uploaded_by, content_type, width, height, thumb_key IS NOT NULL AS has_thumb, medium_key IS NOT NULL AS has_medium, filename FROM listing_photo";
 
 const toPhoto = (r: Record<string, unknown>): PhotoRecord => ({
   id: String(r["id"]), listingId: String(r["listing_id"]), kind: r["kind"] as PhotoKind, uploadedBy: String(r["uploaded_by"]),
   contentType: r["content_type"] as PhotoMime, width: Number(r["width"]), height: Number(r["height"]),
+  ...(typeof r["filename"] === "string" && r["filename"] ? { filename: r["filename"] } : {}),
   variants: [...(r["has_thumb"] ? ["thumb" as const] : []), ...(r["has_medium"] ? ["medium" as const] : [])]
 });
 
@@ -74,10 +75,10 @@ export function createPgPhotoStore(db: Queryable): PhotoStore {
         if (p.addPhoto) {
           const { record: r, files, sha256, sizeBytes } = p.addPhoto;
           await q.query(
-            `INSERT INTO listing_photo (id, listing_id, kind, uploaded_by, content_type, width, height, size_bytes, sha256, storage_key, thumb_key, medium_key)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+            `INSERT INTO listing_photo (id, listing_id, kind, uploaded_by, content_type, width, height, size_bytes, sha256, storage_key, thumb_key, medium_key, filename)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
             [r.id, listingId, r.kind, r.uploadedBy, r.contentType, r.width, r.height, sizeBytes, sha256,
-              files.full!.storageKey, files.thumb?.storageKey ?? null, files.medium?.storageKey ?? null]);
+              files.full!.storageKey, files.thumb?.storageKey ?? null, files.medium?.storageKey ?? null, r.filename ?? null]);
         }
         const version = cur.version + 1;
         await q.query(

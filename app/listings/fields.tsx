@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import { AMENITIES, AMENITY_LABELS, centsToDollarField, priceInputToCents } from "../../src/domain/listing-details";
 import { BOND_PATHWAY_LABELS, centsToInput, type FieldErrors } from "./ui";
 import { AddressField } from "./address-field";
+import { AddressPreviewMap } from "./address-preview-map";
 import { WordingHint } from "./wording-hint";
 import { ElenaListingAssistant, ElenaTip } from "./elena-listing-assistant";
 import { extractFeatures, featureMismatches } from "../../src/domain/listing-features-extract";
@@ -43,6 +44,15 @@ export function ListingFields({ defaults = {}, photoCount, step, errors = {} }: 
     bedrooms: String(defaults.bedrooms ?? ""), bathrooms: String(defaults.bathrooms ?? ""), parking: String(defaults.parking ?? "")
   });
   const [amenities, setAmenities] = useState<string[]>(defaults.amenities ?? []);
+  const hasAddress = !!defaults.address?.trim() && errors["address"] === undefined && errors["postcode"] === undefined;
+  const [editAddress, setEditAddress] = useState(false);
+  const fullAddress = (a?: string, s?: string, j?: string, p?: string) => [a, [s, j, p].filter(Boolean).join(" ")].filter(Boolean).join(", ");
+  const [mapAddress, setMapAddress] = useState(fullAddress(defaults.address, defaults.suburb, defaults.jurisdiction, defaults.postcode));
+  const refreshMap = (form: HTMLFormElement | null) => {
+    if (!form) return;
+    const g = (n: string) => String(new FormData(form).get(n) ?? "").trim();
+    setMapAddress(fullAddress(g("address"), g("suburb"), g("jurisdiction"), g("postcode")));
+  };
   const touched = useRef(new Set<string>());
   const [filled, setFilled] = useState("");
   /** Elena reads the description and fills the Features section; anything the owner set by hand is left alone. */
@@ -143,9 +153,10 @@ export function ListingFields({ defaults = {}, photoCount, step, errors = {} }: 
       <div hidden={!show("description")} className="wiz-step">
         <fieldset className="form-section">
           <legend>Description</legend>
-          <label className="field"><span>Describe the property <ElenaTip text={tips.description} /></span>
+          <label className={cls("description")}><span>Describe the property <ElenaTip text={tips.description} /></span>
             <textarea name="description" rows={8} maxLength={5000} value={description} onChange={e => onDescription(e.target.value)}
-              placeholder="Rooms, condition, outdoor space, what is nearby. Describe the property, not who should live there." />
+              placeholder="Rooms, condition, outdoor space, what is nearby. Describe the property, not who should live there." {...bad("description")} />
+            {msg("description")}
           </label>
           <small className="muted">Listings can&apos;t say who may or may not buy or rent (for example by age, family, race, religion, sex or disability). We check the wording as you type.</small>
           <WordingHint text={description} field="description" />
@@ -154,24 +165,34 @@ export function ListingFields({ defaults = {}, photoCount, step, errors = {} }: 
       <div hidden={!show("location")} className="wiz-step">
         <fieldset className="form-section">
           <legend>Location</legend>
-          <label className={cls("address")}><span>Street address</span>
-            <AddressField defaultValue={defaults.address ?? ""} invalid={errors["address"] !== undefined} />
-            {msg("address")}
-          </label>
-          <div className="form-grid cols-3">
-            <label className="field"><span>Suburb <ElenaTip text={tips.suburb} /></span>
-              <input name="suburb" maxLength={80} defaultValue={defaults.suburb ?? ""} autoComplete="address-level2" />
+          {hasAddress && !editAddress && (
+            <div className="loc-confirm">
+              <p><strong>Location</strong> <span className="muted">(placed automatically; adjust only if the pin is wrong)</span></p>
+              <p className="muted">{[defaults.address, [defaults.suburb, defaults.jurisdiction, defaults.postcode].filter(Boolean).join(" ")].filter(Boolean).join(", ")}</p>
+              <button type="button" className="link-button" onClick={() => setEditAddress(true)}>Change address</button>
+            </div>
+          )}
+          <div hidden={hasAddress && !editAddress} className="loc-fields" onBlur={e => refreshMap(e.currentTarget.closest("form"))}>
+            <label className={cls("address")}><span>Street address</span>
+              <AddressField defaultValue={defaults.address ?? ""} invalid={errors["address"] !== undefined} onCommit={refreshMap} />
+              {msg("address")}
             </label>
-            <label className={cls("postcode")}>Postcode
-              <input name="postcode" inputMode="numeric" pattern="[0-9]{4}" maxLength={4} defaultValue={defaults.postcode ?? ""} autoComplete="postal-code" {...bad("postcode")} />
-              {msg("postcode")}
-            </label>
-            <label className="field">State
-              <select name="jurisdiction" defaultValue={defaults.jurisdiction ?? "QLD"}>
-                {["NSW", "VIC", "QLD", "WA", "SA", "TAS", "ACT", "NT"].map(j => <option key={j}>{j}</option>)}
-              </select>
-            </label>
+            <div className="form-grid cols-3 loc-grid">
+              <label className="field"><span>Suburb <ElenaTip text={tips.suburb} /></span>
+                <input name="suburb" maxLength={80} defaultValue={defaults.suburb ?? ""} autoComplete="address-level2" />
+              </label>
+              <label className="field"><span>State</span>
+                <select name="jurisdiction" defaultValue={defaults.jurisdiction ?? "QLD"}>
+                  {["NSW", "VIC", "QLD", "WA", "SA", "TAS", "ACT", "NT"].map(j => <option key={j}>{j}</option>)}
+                </select>
+              </label>
+              <label className={cls("postcode")}><span>Postcode</span>
+                <input name="postcode" inputMode="numeric" pattern="[0-9]{4}" maxLength={4} defaultValue={defaults.postcode ?? ""} autoComplete="postal-code" {...bad("postcode")} />
+                {msg("postcode")}
+              </label>
+            </div>
           </div>
+          {show("location") && <AddressPreviewMap address={mapAddress} />}
         </fieldset>
       </div>
     </>
