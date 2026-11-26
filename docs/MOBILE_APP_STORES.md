@@ -35,6 +35,27 @@ Defaults you can change before the first upload: app id `au.com.ownerlisting.sit
 (`OWNERLISTING_APP_ID`, `OWNERLISTING_APP_NAME`). Replace the default Capacitor icons and splash in the two projects.
 The live site must be deployed first (docs/PRODUCTION_RUNBOOK.md); a PC address will not work for other people's phones.
 
+### 2b. Signed Android release (AAB for Play + APK)
+
+Workflow `.github/workflows/android-release.yml` (Actions, Run workflow). It signs with a keystore held only in GitHub secrets.
+
+1. On your PC (needs a JDK): `bash scripts/make-android-keystore.sh`. It prints four values.
+2. Repo Settings, Secrets and variables, Actions: add `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`. Back up the `.jks` file; never commit it (`*.jks` is git-ignored).
+3. Run the workflow. Output: `app-release.aab` (upload to Play Console, internal test first) and a signed `ownerlisting.apk` at the `android-latest` release link. versionCode = the run number, so every run is uploadable.
+4. Play App Signing: on first upload accept Google-managed signing; your keystore is then the upload key.
+
+The signed APK replaces the old debug APK at the same link. Phones with the debug APK must uninstall it first (different signing key).
+
+### 2c. iPhone build and TestFlight
+
+Workflow `.github/workflows/ios-build.yml`. Every PR touching `capacitor/` gets an unsigned simulator build (no secrets). A manual run archives, signs with Apple cloud signing and uploads to TestFlight.
+
+Only you can do: (1) join the Apple Developer Program; (2) in App Store Connect create the app record with bundle id `au.com.ownerlisting.site` (or your final id); (3) Users and Access, Integrations, create an App Store Connect API key (role App Manager) and download the `.p8` once; (4) add repo secrets `APPLE_TEAM_ID`, `APPSTORE_KEY_ID`, `APPSTORE_ISSUER_ID`, `APPSTORE_KEY_P8` (paste the whole `.p8` text). Then run the workflow.
+
+App Review risk: Apple guideline 4.2 can reject apps that are only a website in a frame. This shell adds the splash and status bar only. Before store submission, consider adding native features (push, via the Expo app in `mobile/`) or use the Expo app (section 3) for the App Store.
+
+Store listing text: `docs/store-listing.md`. Icons and splash (navy with gold mark) are in both native projects.
+
 ## 3. Native app (Expo, `mobile/`): store build and release steps
 
 Nothing below has been done or submitted. Config lives in `mobile/app.config.ts` and `mobile/eas.json`; icons and splash in `mobile/assets/`

@@ -1,0 +1,79 @@
+name: Android release (signed AAB + APK)
+# Manual only. Builds capacitor/ into a release-signed AAB (Play Store) and APK (sideload).
+# Needs repo secrets ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD (scripts/make-android-keystore.sh).
+on:
+  workflow_dispatch:
+    inputs:
+      app_url:
+        description: "Website origin the app opens"
+        required: true
+        default: "https://app.confsec.com.au"
+        type: string
+      version_name:
+        description: "Version name shown to users, e.g. 1.0.0"
+        required: true
+        default: "1.0.0"
+        type: string
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      OWNERLISTING_APP_URL: ${{ inputs.app_url }}
+      OWNERLISTING_VERSION_NAME: ${{ inputs.version_name }}
+      OWNERLISTING_VERSION_CODE: ${{ github.run_number }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check signing secrets
+        env:
+          KS: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          PW: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          AL: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KP: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          for v in KS PW AL KP; do [ -n "${!v}" ] || { echo "::error::Missing Android signing secret (see docs/MOBILE_APP_STORES.md, section 2b)"; exit 1; }; done
+          echo "$KS" | base64 -d > "$RUNNER_TEMP/upload.jks"
+          echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/upload.jks" >> "$GITHUB_ENV"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - name: Accept Android SDK licenses
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+      - name: Install and sync
+        working-directory: capacitor
+        run: |
+          npm ci --no-audit --no-fund
+          npx cap sync android
+      - name: Build signed AAB and APK
+        working-directory: capacitor/android
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: ./gradlew bundleRelease assembleRelease --no-daemon
+      - name: Verify APK signature
+        run: |
+          APK=capacitor/android/app/build/outputs/apk/release/app-release.apk
+          "$ANDROID_HOME"/build-tools/*/apksigner verify --print-certs "$APK" | head -3
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ownerlisting-android-release
+          path: |
+            capacitor/android/app/build/outputs/bundle/release/app-release.aab
+            capacitor/android/app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
+      - name: Publish release APK link
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp capacitor/android/app/build/outputs/apk/release/app-release.apk ownerlisting.apk
+          gh release delete android-latest --yes --cleanup-tag || true
+          gh release create android-latest ownerlisting.apk --prerelease \
+            --title "Android release APK (signed)" \
+            --notes "Release-signed APK ${OWNERLISTING_VERSION_NAME} (code ${OWNERLISTING_VERSION_CODE}). Opens ${OWNERLISTING_APP_URL}. Built from ${GITHUB_SHA}. The .aab for Play is in the workflow run artifacts."
+          echo "APK: https://github.com/${GITHUB_REPOSITORY}/releases/download/android-latest/ownerlisting.apk" >> "$GITHUB_STEP_SUMMARY"
