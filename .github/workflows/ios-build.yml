@@ -1,0 +1,120 @@
+name: iOS app
+# - Pull requests / pushes touching capacitor/: unsigned simulator build (needs no secrets) to prove the Xcode project compiles.
+# - Manual run: signed archive uploaded to TestFlight, using Apple's cloud signing with an App Store Connect API key.
+#   Secrets: APPLE_TEAM_ID, APPSTORE_KEY_ID, APPSTORE_ISSUER_ID, APPSTORE_KEY_P8 (contents of the AuthKey_XXXX.p8 file).
+on:
+  pull_request:
+    paths: ["capacitor/**", ".github/workflows/ios-build.yml"]
+  push:
+    branches: [main]
+    paths: ["capacitor/**", ".github/workflows/ios-build.yml"]
+  workflow_dispatch:
+    inputs:
+      app_url:
+        description: "Website origin the app opens"
+        required: true
+        default: "https://app.confsec.com.au"
+        type: string
+      version_name:
+        description: "Version name shown to users, e.g. 1.0.0"
+        required: true
+        default: "1.0.0"
+        type: string
+      bundle_id:
+        description: "App id (permanent after first upload). Must exist in Apple Developer."
+        required: true
+        default: "au.com.ownerlisting.site"
+        type: string
+permissions:
+  contents: read
+jobs:
+  simulator:
+    if: github.event_name != 'workflow_dispatch'
+    runs-on: macos-15
+    env:
+      OWNERLISTING_APP_URL: https://app.confsec.com.au
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install and sync
+        working-directory: capacitor
+        run: |
+          npm ci --no-audit --no-fund
+          npx cap sync ios
+      - name: Build for simulator (unsigned)
+        working-directory: capacitor/ios/App
+        run: |
+          xcodebuild -workspace App.xcworkspace -scheme App -configuration Release \
+            -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO build
+
+  testflight:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: macos-15
+    env:
+      OWNERLISTING_APP_URL: ${{ inputs.app_url }}
+      OWNERLISTING_APP_ID: ${{ inputs.bundle_id }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check signing secrets
+        env:
+          T: ${{ secrets.APPLE_TEAM_ID }}
+          K: ${{ secrets.APPSTORE_KEY_ID }}
+          I: ${{ secrets.APPSTORE_ISSUER_ID }}
+          P: ${{ secrets.APPSTORE_KEY_P8 }}
+        run: |
+          for v in T K I P; do [ -n "${!v}" ] || { echo "::error::Missing Apple secret (see docs/MOBILE_APP_STORES.md, section 2c)"; exit 1; }; done
+          mkdir -p "$RUNNER_TEMP/keys"
+          printf '%s\n' "$P" > "$RUNNER_TEMP/keys/AuthKey_$K.p8"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install and sync
+        working-directory: capacitor
+        run: |
+          npm ci --no-audit --no-fund
+          npx cap sync ios
+      - name: Archive (Apple cloud signing)
+        working-directory: capacitor/ios/App
+        env:
+          TEAM: ${{ secrets.APPLE_TEAM_ID }}
+          KEY_ID: ${{ secrets.APPSTORE_KEY_ID }}
+          ISSUER: ${{ secrets.APPSTORE_ISSUER_ID }}
+        run: |
+          xcodebuild -workspace App.xcworkspace -scheme App -configuration Release \
+            -destination 'generic/platform=iOS' -archivePath "$RUNNER_TEMP/App.xcarchive" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$RUNNER_TEMP/keys/AuthKey_$KEY_ID.p8" \
+            -authenticationKeyID "$KEY_ID" -authenticationKeyIssuerID "$ISSUER" \
+            DEVELOPMENT_TEAM="$TEAM" CODE_SIGN_STYLE=Automatic \
+            PRODUCT_BUNDLE_IDENTIFIER="${{ inputs.bundle_id }}" \
+            MARKETING_VERSION="${{ inputs.version_name }}" CURRENT_PROJECT_VERSION="${{ github.run_number }}" \
+            archive
+      - name: Export and upload to TestFlight
+        working-directory: capacitor/ios/App
+        env:
+          TEAM: ${{ secrets.APPLE_TEAM_ID }}
+          KEY_ID: ${{ secrets.APPSTORE_KEY_ID }}
+          ISSUER: ${{ secrets.APPSTORE_ISSUER_ID }}
+        run: |
+          cat > "$RUNNER_TEMP/ExportOptions.plist" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>destination</key><string>upload</string>
+            <key>teamID</key><string>$TEAM</string>
+            <key>signingStyle</key><string>automatic</string>
+            <key>uploadSymbols</key><true/>
+          </dict></plist>
+          EOF
+          xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/App.xcarchive" \
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist" -exportPath "$RUNNER_TEMP/export" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$RUNNER_TEMP/keys/AuthKey_$KEY_ID.p8" \
+            -authenticationKeyID "$KEY_ID" -authenticationKeyIssuerID "$ISSUER"
+      - name: Remove key
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/keys"
